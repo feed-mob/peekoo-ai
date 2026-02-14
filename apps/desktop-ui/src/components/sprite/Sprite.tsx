@@ -1,6 +1,18 @@
 import SpriteAnimation from "./SpriteAnimation";
 import type { AnimationType, SpriteState } from "@/types/sprite";
 
+const SPRITE_CHROMA_KEY = {
+  targetColor: [255, 0, 255] as const,
+  minRbOverG: 38,
+  threshold: 84,
+  softness: 64,
+  spillSuppression: {
+    enabled: true,
+    threshold: 230,
+    strength: 0.78,
+  },
+};
+
 // Map mood states to sprite animation types
 const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
   happy: "happy",
@@ -54,6 +66,7 @@ export function Sprite({ state }: SpriteProps) {
         animation={getAnimationType()}
         frameRate={8}
         scale={0.3}
+        chromaKey={SPRITE_CHROMA_KEY}
         onFrameChange={() => {
           // Optional: Log frame changes for debugging
         }}

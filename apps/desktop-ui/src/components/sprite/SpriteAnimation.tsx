@@ -1,10 +1,15 @@
 import { useEffect, useRef } from "react";
 import type { AnimationType } from "@/types/sprite";
+import {
+  buildKeyedSpriteSheet,
+  type ChromaKeyOptions,
+} from "./chromaKey";
 
 interface SpriteAnimationProps {
   animation?: AnimationType;
   frameRate?: number;
   scale?: number;
+  chromaKey?: false | Partial<ChromaKeyOptions>;
   onFrameChange?: (frameIndex: number) => void;
   className?: string;
 }
@@ -33,11 +38,12 @@ export default function SpriteAnimation({
   animation = "idle",
   frameRate = 8,
   scale = 0.3,
+  chromaKey,
   onFrameChange,
   className = "",
 }: SpriteAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
+  const sourceRef = useRef<CanvasImageSource | null>(null);
   const frameRef = useRef(0);
   const animationRef = useRef<number>();
   const currentRowRef = useRef(ANIMATION_ROWS[animation]);
@@ -48,13 +54,14 @@ export default function SpriteAnimation({
     const img = new Image();
     img.src = SPRITE_CONFIG.imageSrc;
     img.onload = () => {
-      imageRef.current = img;
+      sourceRef.current =
+        chromaKey === false ? img : buildKeyedSpriteSheet(img, chromaKey);
       if (canvasRef.current) {
         canvasRef.current.width = SPRITE_CONFIG.frameWidth * scale;
         canvasRef.current.height = SPRITE_CONFIG.frameHeight * scale;
       }
     };
-  }, [scale]);
+  }, [scale, chromaKey]);
 
   // Update row when animation changes
   useEffect(() => {
@@ -66,13 +73,18 @@ export default function SpriteAnimation({
   // Animation loop
   useEffect(() => {
     const animate = (currentTime: number) => {
-      if (!canvasRef.current || !imageRef.current) {
+      if (!canvasRef.current || !sourceRef.current) {
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
 
       const ctx = canvasRef.current.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        animationRef.current = requestAnimationFrame(animate);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = false;
 
       const frameInterval = 1000 / frameRate;
       
@@ -84,7 +96,7 @@ export default function SpriteAnimation({
 
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         ctx.drawImage(
-          imageRef.current,
+          sourceRef.current,
           sx,
           sy,
           SPRITE_CONFIG.frameWidth,
