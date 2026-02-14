@@ -13,16 +13,21 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "Peekoo",
-        "width": 1000,
-        "height": 700,
-        "resizable": true,
+        "width": 200,
+        "height": 250,
+        "resizable": false,
         "fullscreen": false,
-        "center": true
+        "center": true,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: localhost:*; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost",
+      "csp": "default-src 'self'; connect-src 'self' ipc: localhost:*; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; font-src 'self' https://fonts.bunny.net; style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
       "dangerousDisableAssetCspModification": false
     }
   },

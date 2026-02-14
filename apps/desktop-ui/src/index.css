@@ -1,31 +1,101 @@
+@import "tailwindcss";
+
+/* ─── Deep Space Dark Theme ─── */
+@theme {
+  /* Base palette */
+  --color-space-void: oklch(0.08 0.02 270);        /* #0a0a0f - deepest background */
+  --color-space-deep: oklch(0.12 0.025 270);       /* panels, cards */
+  --color-space-surface: oklch(0.16 0.03 270);     /* elevated surfaces */
+  --color-space-overlay: oklch(0.20 0.035 270);    /* hover states */
+
+  /* Glow accents */
+  --color-glow-blue: oklch(0.65 0.18 250);         /* primary blue glow */
+  --color-glow-purple: oklch(0.55 0.22 290);       /* secondary purple glow */
+  --color-glow-cyan: oklch(0.70 0.14 210);         /* info/highlights */
+  --color-glow-pink: oklch(0.60 0.20 330);         /* accent/alerts */
+
+  /* Muted variants (for borders, subtle text) */
+  --color-muted-blue: oklch(0.35 0.08 250);
+  --color-muted-purple: oklch(0.30 0.10 290);
+
+  /* Text hierarchy */
+  --color-text-primary: oklch(0.93 0.01 270);      /* near-white with blue tint */
+  --color-text-secondary: oklch(0.65 0.03 270);    /* dimmed */
+  --color-text-muted: oklch(0.45 0.04 270);        /* placeholder, disabled */
+
+  /* Semantic colors */
+  --color-success: oklch(0.65 0.18 145);
+  --color-warning: oklch(0.70 0.18 75);
+  --color-danger: oklch(0.60 0.22 25);
+
+  /* Priority badge colors */
+  --color-priority-high: oklch(0.60 0.22 25);
+  --color-priority-medium: oklch(0.70 0.18 75);
+  --color-priority-low: oklch(0.65 0.18 145);
+
+  /* Glass effect */
+  --color-glass: oklch(0.15 0.03 270 / 0.6);
+  --color-glass-border: oklch(0.30 0.05 270 / 0.3);
+
+  /* Shadows */
+  --shadow-glow-blue: 0 0 20px oklch(0.65 0.18 250 / 0.3);
+  --shadow-glow-purple: 0 0 20px oklch(0.55 0.22 290 / 0.3);
+  --shadow-panel: 0 8px 32px oklch(0 0 0 / 0.5);
+
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  /* Border radius */
+  --radius-panel: 1rem;
+  --radius-button: 0.5rem;
+
+  /* Spacing for panels */
+  --spacing-panel-padding: 1rem;
+}
+
+/* ─── Override shadcn/ui CSS variables for deep space theme ─── */
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  --background: oklch(0.08 0.02 270);
+  --foreground: oklch(0.93 0.01 270);
+  --card: oklch(0.12 0.025 270);
+  --card-foreground: oklch(0.93 0.01 270);
+  --popover: oklch(0.12 0.025 270);
+  --popover-foreground: oklch(0.93 0.01 270);
+  --primary: oklch(0.65 0.18 250);
+  --primary-foreground: oklch(0.08 0.02 270);
+  --secondary: oklch(0.16 0.03 270);
+  --secondary-foreground: oklch(0.93 0.01 270);
+  --muted: oklch(0.16 0.03 270);
+  --muted-foreground: oklch(0.65 0.03 270);
+  --accent: oklch(0.55 0.22 290);
+  --accent-foreground: oklch(0.93 0.01 270);
+  --destructive: oklch(0.60 0.22 25);
+  --destructive-foreground: oklch(0.93 0.01 270);
+  --border: oklch(0.30 0.05 270 / 0.3);
+  --input: oklch(0.30 0.05 270 / 0.3);
+  --ring: oklch(0.65 0.18 250);
+  --radius: 0.5rem;
+}
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
+/* ─── Global resets ─── */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden; /* Tauri desktop — no page scroll */
 }
 
 body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  background-color: transparent;
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
   width: 100%;
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  height: 100vh;
+  position: relative;
 }

@@ -8,12 +8,12 @@ async fn greet(name: String) -> Result<String, ()> {
 }
 
 #[tauri::command]
-async fn get_pet_state() -> Result<serde_json::Value, ()> {
+async fn get_sprite_state() -> Result<serde_json::Value, ()> {
     // TODO: Integrate with core-domain
     Ok(serde_json::json!({
         "mood": "happy",
-        "message": "Welcome to Peekoo!",
-        "animation": "idle"
+        "message": "Welcome to Peekoo! Your AI desktop sprite is ready to help you!",
+        "animation": "happy"
     }))
 }
 
@@ -43,7 +43,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             greet,
-            get_pet_state,
+            get_sprite_state,
             send_message,
             create_task
         ])

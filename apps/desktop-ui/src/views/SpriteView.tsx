@@ -1,0 +1,56 @@
+import { useState, useCallback } from "react";
+import { Sprite } from "@/components/sprite/Sprite";
+import { SpriteActionMenu } from "@/components/sprite/SpriteActionMenu";
+import { useSpriteState } from "@/hooks/use-sprite-state";
+import { usePanelWindows } from "@/hooks/use-panel-windows";
+import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
+
+export default function SpriteView() {
+  const spriteState = useSpriteState();
+  const { panels, togglePanel, expandForMenu, shrinkToSprite } =
+    usePanelWindows();
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useSpriteReactions();
+
+  const handleSpriteClick = useCallback(async () => {
+    if (menuOpen) {
+      setMenuOpen(false);
+      await shrinkToSprite();
+    } else {
+      await expandForMenu();
+      setMenuOpen(true);
+    }
+  }, [menuOpen, expandForMenu, shrinkToSprite]);
+
+  const handleTogglePanel = useCallback(
+    async (label: Parameters<typeof togglePanel>[0]) => {
+      await togglePanel(label);
+      setMenuOpen(false);
+      await shrinkToSprite();
+    },
+    [togglePanel, shrinkToSprite],
+  );
+
+  return (
+    <div
+      className="w-full h-full bg-transparent"
+      data-tauri-drag-region
+    >
+      <div className="relative flex items-center justify-center w-full h-full">
+        <div
+          onClick={handleSpriteClick}
+          className="cursor-pointer"
+        >
+          <Sprite state={spriteState} />
+        </div>
+
+        <SpriteActionMenu
+          panels={panels}
+          onTogglePanel={handleTogglePanel}
+          isOpen={menuOpen}
+        />
+      </div>
+    </div>
+  );
+}

@@ -1,10 +1,13 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App';
-import './index.css';
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { ResolvedView } from "@/routing/resolve-view";
+import "./index.css";
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
+const label = getCurrentWebviewWindow().label;
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <App />
+    <ResolvedView label={label} />
   </React.StrictMode>,
 );
