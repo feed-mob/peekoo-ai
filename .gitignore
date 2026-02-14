@@ -1,0 +1,17 @@
+/target/
+
+# JavaScript/TypeScript build artifacts
+**/node_modules/
+**/dist/
+**/.next/
+**/.turbo/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Editor/OS files
+.DS_Store
+.idea/
+.vscode/
