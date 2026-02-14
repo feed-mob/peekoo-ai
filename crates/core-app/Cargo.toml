@@ -1,0 +1,9 @@
+[package]
+name = "peekoo-core-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+peekoo-core-domain = { path = "../core-domain" }
+peekoo-event-bus = { path = "../event-bus" }
+serde_json = "1"

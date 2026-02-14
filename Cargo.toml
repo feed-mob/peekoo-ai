@@ -1,0 +1,17 @@
+[workspace]
+members = [
+  "crates/core-domain",
+  "crates/core-app",
+  "crates/plugin-host",
+  "crates/calendar-google",
+  "crates/persistence-sqlite",
+  "crates/security",
+  "crates/event-bus",
+  "apps/desktop-tauri/src-tauri",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
