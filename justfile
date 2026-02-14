@@ -6,7 +6,11 @@ dev:
 
 # Build Tauri desktop app for production
 build:
-    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build
+    cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build
+
+# Build AppImage with linuxdeploy strip workaround
+build-appimage:
+    cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build --bundles appimage
 
 # Install frontend dependencies with bun
 install:
