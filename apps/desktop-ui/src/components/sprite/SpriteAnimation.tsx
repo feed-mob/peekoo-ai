@@ -84,7 +84,8 @@ export default function SpriteAnimation({
         return;
       }
 
-      ctx.imageSmoothingEnabled = false;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
 
       const frameInterval = 1000 / frameRate;
       

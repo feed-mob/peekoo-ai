@@ -10,18 +10,29 @@ export default function SpriteView() {
   const { panels, togglePanel, expandForMenu, shrinkToSprite } =
     usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [randomTrigger, setRandomTrigger] = useState(0);
 
   useSpriteReactions();
 
-  const handleSpriteClick = useCallback(async () => {
-    if (menuOpen) {
-      setMenuOpen(false);
-      await shrinkToSprite();
-    } else {
-      await expandForMenu();
-      setMenuOpen(true);
-    }
-  }, [menuOpen, expandForMenu, shrinkToSprite]);
+  // Left click: trigger random animation
+  const handleSpriteClick = useCallback(() => {
+    setRandomTrigger((prev) => prev + 1);
+  }, []);
+
+  // Right click: toggle menu
+  const handleContextMenu = useCallback(
+    async (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (menuOpen) {
+        setMenuOpen(false);
+        await shrinkToSprite();
+      } else {
+        await expandForMenu();
+        setMenuOpen(true);
+      }
+    },
+    [menuOpen, expandForMenu, shrinkToSprite],
+  );
 
   const handleTogglePanel = useCallback(
     async (label: Parameters<typeof togglePanel>[0]) => {
@@ -40,9 +51,10 @@ export default function SpriteView() {
       <div className="relative flex items-center justify-center w-full h-full">
         <div
           onClick={handleSpriteClick}
+          onContextMenu={handleContextMenu}
           className="cursor-pointer"
         >
-          <Sprite state={spriteState} />
+          <Sprite state={spriteState} randomTrigger={randomTrigger} />
         </div>
 
         <SpriteActionMenu
