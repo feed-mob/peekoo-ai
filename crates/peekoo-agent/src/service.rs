@@ -155,3 +155,64 @@ fn extract_text(msg: &AssistantMessage) -> String {
         .collect::<Vec<_>>()
         .join("")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pi::model::{TextContent, ThinkingContent, Usage, StopReason};
+
+    fn make_message(content: Vec<ContentBlock>) -> AssistantMessage {
+        AssistantMessage {
+            content,
+            api: "test".into(),
+            provider: "test".into(),
+            model: "test-model".into(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            error_message: None,
+            timestamp: 0,
+        }
+    }
+
+    #[test]
+    fn extract_text_empty_message() {
+        let msg = make_message(vec![]);
+        assert_eq!(extract_text(&msg), "");
+    }
+
+    #[test]
+    fn extract_text_single_block() {
+        let msg = make_message(vec![ContentBlock::Text(TextContent::new("Hello!"))]);
+        assert_eq!(extract_text(&msg), "Hello!");
+    }
+
+    #[test]
+    fn extract_text_multiple_blocks_concatenates() {
+        let msg = make_message(vec![
+            ContentBlock::Text(TextContent::new("Hello ")),
+            ContentBlock::Text(TextContent::new("world!")),
+        ]);
+        assert_eq!(extract_text(&msg), "Hello world!");
+    }
+
+    #[test]
+    fn extract_text_skips_non_text_blocks() {
+        let msg = make_message(vec![
+            ContentBlock::Thinking(ThinkingContent {
+                thinking: "hmm...".into(),
+                thinking_signature: None,
+            }),
+            ContentBlock::Text(TextContent::new("The answer is 42.")),
+        ]);
+        assert_eq!(extract_text(&msg), "The answer is 42.");
+    }
+
+    #[test]
+    fn extract_text_only_non_text_blocks_returns_empty() {
+        let msg = make_message(vec![ContentBlock::Thinking(ThinkingContent {
+            thinking: "thinking only".into(),
+            thinking_signature: None,
+        })]);
+        assert_eq!(extract_text(&msg), "");
+    }
+}

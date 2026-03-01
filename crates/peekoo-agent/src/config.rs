@@ -52,3 +52,73 @@ impl Default for AgentServiceConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_no_provider() {
+        let config = AgentServiceConfig::default();
+        assert!(config.provider.is_none());
+    }
+
+    #[test]
+    fn default_config_has_no_model() {
+        let config = AgentServiceConfig::default();
+        assert!(config.model.is_none());
+    }
+
+    #[test]
+    fn default_config_has_no_api_key() {
+        let config = AgentServiceConfig::default();
+        assert!(config.api_key.is_none());
+    }
+
+    #[test]
+    fn default_config_has_no_system_prompt() {
+        let config = AgentServiceConfig::default();
+        assert!(config.system_prompt.is_none());
+    }
+
+    #[test]
+    fn default_config_has_empty_skills() {
+        let config = AgentServiceConfig::default();
+        assert!(config.skills.is_empty());
+    }
+
+    #[test]
+    fn default_config_max_iterations_is_50() {
+        let config = AgentServiceConfig::default();
+        assert_eq!(config.max_tool_iterations, 50);
+    }
+
+    #[test]
+    fn default_config_working_directory_is_set() {
+        let config = AgentServiceConfig::default();
+        // Should be either current dir or "."
+        assert!(!config.working_directory.as_os_str().is_empty());
+    }
+
+    #[test]
+    fn config_with_custom_values() {
+        let config = AgentServiceConfig {
+            provider: Some("anthropic".into()),
+            model: Some("claude-sonnet-4-6".into()),
+            api_key: Some("sk-test-key".into()),
+            system_prompt: Some("You are a helpful assistant.".into()),
+            working_directory: PathBuf::from("/tmp/test"),
+            skills: Vec::new(),
+            max_tool_iterations: 25,
+        };
+        assert_eq!(config.provider.as_deref(), Some("anthropic"));
+        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
+        assert_eq!(
+            config.system_prompt.as_deref(),
+            Some("You are a helpful assistant.")
+        );
+        assert_eq!(config.working_directory, PathBuf::from("/tmp/test"));
+        assert_eq!(config.max_tool_iterations, 25);
+    }
+}

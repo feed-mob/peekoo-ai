@@ -101,3 +101,189 @@ impl Tool for SkillAdapter {
         self.skill.is_read_only()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pi::model::ContentBlock;
+
+    // ── Mock Skill ─────────────────────────────────────────────────
+
+    struct EchoSkill;
+
+    #[async_trait]
+    impl Skill for EchoSkill {
+        fn name(&self) -> &str {
+            "echo"
+        }
+
+        fn label(&self) -> &str {
+            "Echo Tool"
+        }
+
+        fn description(&self) -> &str {
+            "Echoes back the input message"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "message": { "type": "string" }
+                },
+                "required": ["message"]
+            })
+        }
+
+        async fn execute(&self, args: Value) -> Result<String> {
+            let msg = args
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("(empty)");
+            Ok(format!("echo: {msg}"))
+        }
+
+        fn is_read_only(&self) -> bool {
+            true
+        }
+    }
+
+    struct FailingSkill;
+
+    #[async_trait]
+    impl Skill for FailingSkill {
+        fn name(&self) -> &str {
+            "fail"
+        }
+
+        fn description(&self) -> &str {
+            "Always fails"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({})
+        }
+
+        async fn execute(&self, _args: Value) -> Result<String> {
+            Err(pi::error::Error::validation("intentional test error"))
+        }
+
+        fn is_read_only(&self) -> bool {
+            false
+        }
+    }
+
+    // ── Skill defaults ─────────────────────────────────────────────
+
+    struct MinimalSkill;
+
+    #[async_trait]
+    impl Skill for MinimalSkill {
+        fn name(&self) -> &str {
+            "minimal"
+        }
+
+        fn description(&self) -> &str {
+            "A minimal skill"
+        }
+
+        fn parameters(&self) -> Value {
+            serde_json::json!({})
+        }
+
+        async fn execute(&self, _args: Value) -> Result<String> {
+            Ok("ok".into())
+        }
+    }
+
+    #[test]
+    fn skill_default_label_is_name() {
+        let skill = MinimalSkill;
+        assert_eq!(skill.label(), skill.name());
+    }
+
+    #[test]
+    fn skill_default_is_read_only() {
+        let skill = MinimalSkill;
+        assert!(skill.is_read_only());
+    }
+
+    // ── Adapter metadata pass-through ──────────────────────────────
+
+    #[test]
+    fn adapter_delegates_name_and_label() {
+        let adapter = SkillAdapter::new(Box::new(EchoSkill));
+        assert_eq!(Tool::name(&adapter), "echo");
+        assert_eq!(Tool::label(&adapter), "Echo Tool");
+    }
+
+    #[test]
+    fn adapter_delegates_description() {
+        let adapter = SkillAdapter::new(Box::new(EchoSkill));
+        assert_eq!(Tool::description(&adapter), "Echoes back the input message");
+    }
+
+    #[test]
+    fn adapter_delegates_parameters() {
+        let adapter = SkillAdapter::new(Box::new(EchoSkill));
+        let params = Tool::parameters(&adapter);
+        assert_eq!(params["type"], "object");
+        assert!(params["properties"]["message"].is_object());
+    }
+
+    #[test]
+    fn adapter_delegates_is_read_only() {
+        let echo = SkillAdapter::new(Box::new(EchoSkill));
+        assert!(Tool::is_read_only(&echo));
+
+        let fail = SkillAdapter::new(Box::new(FailingSkill));
+        assert!(!Tool::is_read_only(&fail));
+    }
+
+    // ── Adapter execution ──────────────────────────────────────────
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        // Use pi's async runtime for testing.
+        let reactor =
+            asupersync::runtime::reactor::create_reactor().expect("create reactor");
+        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+            .with_reactor(reactor)
+            .build()
+            .expect("build runtime");
+        runtime.block_on(f)
+    }
+
+    #[test]
+    fn adapter_execute_success() {
+        let adapter = SkillAdapter::new(Box::new(EchoSkill));
+        let input = serde_json::json!({ "message": "hello world" });
+
+        let output = block_on(adapter.execute("call-1", input, None)).expect("execute");
+
+        assert!(!output.is_error);
+        assert_eq!(output.content.len(), 1);
+        match &output.content[0] {
+            ContentBlock::Text(t) => assert_eq!(t.text, "echo: hello world"),
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn adapter_execute_error_is_marked() {
+        let adapter = SkillAdapter::new(Box::new(FailingSkill));
+
+        let output =
+            block_on(adapter.execute("call-2", serde_json::json!({}), None)).expect("execute");
+
+        assert!(output.is_error);
+        assert_eq!(output.content.len(), 1);
+        match &output.content[0] {
+            ContentBlock::Text(t) => assert!(
+                t.text.contains("Error:"),
+                "expected error text, got: {}",
+                t.text
+            ),
+            other => panic!("expected Text, got {other:?}"),
+        }
+    }
+}
