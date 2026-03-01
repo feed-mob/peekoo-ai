@@ -10,7 +10,6 @@
 
 pub mod config;
 pub mod service;
-pub mod skill;
 
 // Re-export key types for convenience.
 pub use pi::sdk::{AgentEvent, AssistantMessage, ContentBlock, SubscriptionId};

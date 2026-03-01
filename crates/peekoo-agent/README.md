@@ -136,64 +136,22 @@ let config = AgentServiceConfig {
 
 ## 🛠️ 4. Custom Skills (Tools)
 
-Skills are domain-specific tools that extend Peekoo's capabilities (e.g., Calendar access, File manipulation, UI Control).
-
-### Creating a Skill
-
-Implement the `Skill` trait in Rust:
+`peekoo-agent` supports adding custom skills via plain text markdown files following the [AgentSkills specification](https://agentskills.io). These are treated as **instructions** and injected into the LLM's system prompt to teach it how to use existing built-in tools (like `bash` or `read`) to accomplish domain-specific tasks.
 
 ```rust
-use async_trait::async_trait;
-use peekoo_agent::skill::Skill;
-use pi::error::Result;
-use serde_json::Value;
-
-pub struct GetTimeSkill;
-
-#[async_trait]
-impl Skill for GetTimeSkill {
-    fn name(&self) -> &str {
-        "get_current_time"
-    }
-
-    fn description(&self) -> &str {
-        "Returns the current system time"
-    }
-
-    fn parameters(&self) -> Value {
-        // JSON Schema defining the expected arguments
-        serde_json::json!({})
-    }
-
-    async fn execute(&self, _args: Value) -> Result<String> {
-        let now = chrono::Local::now();
-        Ok(now.format("%Y-%m-%d %H:%M:%S").to_string())
-    }
-}
-```
-
-### Registering Skills
-
-Pass your skills into `AgentServiceConfig` when initializing the agent:
-
-```rust
+use std::path::PathBuf;
 use peekoo_agent::config::AgentServiceConfig;
-use peekoo_agent::service::AgentService;
 
 let config = AgentServiceConfig {
-    skills: vec![
-        Box::new(GetTimeSkill),
-        // Box::new(CalendarSkill),
+    agent_skills: vec![
+        PathBuf::from("/path/to/my-agent-skill.md"),
+        PathBuf::from("/path/to/directory-of-skills"), // Will search for SKILL.md
     ],
     ..Default::default()
 };
-
-let mut agent = AgentService::new(config).await?;
 ```
 
-The LLM is now aware of your skill and will automatically decide when to invoke it based on its `description`.
 
----
 
 ## 💡 4. Other Important Information
 

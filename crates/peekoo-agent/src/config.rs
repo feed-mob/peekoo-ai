@@ -2,8 +2,6 @@
 
 use std::path::PathBuf;
 
-use crate::skill::Skill;
-
 /// Configuration for creating an [`AgentService`](super::service::AgentService).
 ///
 /// Maps to pi's [`SessionOptions`](pi::sdk::SessionOptions) under the hood,
@@ -31,9 +29,9 @@ pub struct AgentServiceConfig {
     /// Working directory for file-system tools (read, write, bash, etc.).
     pub working_directory: PathBuf,
 
-    /// Custom skills (domain-specific tools) to register alongside the
-    /// built-in tools.
-    pub skills: Vec<Box<dyn Skill>>,
+    /// List of paths to markdown files containing AgentSkills (from agentskills.io).
+    /// These are loaded, parsed, and injected into the system prompt as instructions.
+    pub agent_skills: Vec<PathBuf>,
 
     /// Maximum number of consecutive tool iterations before the agent stops.
     pub max_tool_iterations: usize,
@@ -47,7 +45,7 @@ impl Default for AgentServiceConfig {
             api_key: None,
             system_prompt: None,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
-            skills: Vec::new(),
+            agent_skills: Vec::new(),
             max_tool_iterations: 50,
         }
     }
@@ -84,7 +82,7 @@ mod tests {
     #[test]
     fn default_config_has_empty_skills() {
         let config = AgentServiceConfig::default();
-        assert!(config.skills.is_empty());
+        assert!(config.agent_skills.is_empty());
     }
 
     #[test]
@@ -108,7 +106,7 @@ mod tests {
             api_key: Some("sk-test-key".into()),
             system_prompt: Some("You are a helpful assistant.".into()),
             working_directory: PathBuf::from("/tmp/test"),
-            skills: Vec::new(),
+            agent_skills: Vec::new(),
             max_tool_iterations: 25,
         };
         assert_eq!(config.provider.as_deref(), Some("anthropic"));
