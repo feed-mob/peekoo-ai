@@ -2,8 +2,8 @@
 name = "peekoo-desktop-tauri"
 version = "0.1.0"
 description = "Peekoo AI Desktop Pet - Tauri Version"
-edition = "2021"
-rust-version = "1.70"
+edition = "2024"
+rust-version = "1.85"
 
 [lib]
 name = "peekoo_desktop_tauri_lib"

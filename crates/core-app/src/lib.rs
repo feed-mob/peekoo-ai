@@ -1,3 +1,5 @@
+pub mod agent_use_cases;
+
 use peekoo_core_domain::task::{Task, TaskPriority};
 use peekoo_event_bus::{EventBus, EventEnvelope};
 
