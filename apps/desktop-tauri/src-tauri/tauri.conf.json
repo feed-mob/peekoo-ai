@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "Peekoo",
-        "width": 200,
-        "height": 250,
+        "width": 420,
+        "height": 600,
         "resizable": false,
         "fullscreen": false,
         "center": true,
