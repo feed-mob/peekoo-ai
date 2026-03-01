@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./ChatMessage";
+import { invoke } from "@tauri-apps/api/core";
 import type { Message } from "@/types/chat";
 
 export function ChatPanel() {
@@ -34,16 +35,27 @@ export function ChatPanel() {
     setInput("");
     setIsTyping(true);
 
-    // TODO: Connect to Tauri backend
-    setTimeout(() => {
+    try {
+      const result = await invoke<{ response: string }>("agent_prompt", {
+        message: input,
+      });
+
       const petMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "pet",
-        text: "I received your message! AI integration coming soon...",
+        text: result.response,
       };
       setMessages((prev) => [...prev, petMessage]);
+    } catch (err) {
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "error",
+        text: `Error: ${err}`,
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsTyping(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -64,7 +76,7 @@ export function ChatPanel() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-start gap-2"
               >
-                <span className="text-text-muted text-sm">Typing...</span>
+                <span className="text-text-muted text-sm">Thinking...</span>
               </motion.div>
             )}
           </div>

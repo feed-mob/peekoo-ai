@@ -22,3 +22,5 @@ peekoo-core-domain = { path = "../../../crates/core-domain" }
 peekoo-core-app = { path = "../../../crates/core-app" }
 peekoo-event-bus = { path = "../../../crates/event-bus" }
 peekoo-plugin-host = { path = "../../../crates/plugin-host" }
+peekoo-agent = { path = "../../../crates/peekoo-agent" }
+asupersync = "0.2"
