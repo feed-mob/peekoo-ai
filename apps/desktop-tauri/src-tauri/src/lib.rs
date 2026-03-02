@@ -69,17 +69,7 @@ async fn agent_prompt(
 
         // Lazy init on first call.
         if guard.is_none() {
-            let config = AgentServiceConfig {
-                system_prompt: Some(
-                    "You are Peekoo, a friendly and helpful AI desktop pet. \
-                     You live on the user's desktop and assist them with coding, \
-                     writing, research, and everyday tasks. Be concise, warm, \
-                     and proactive. Use emoji sparingly to add personality. \
-                     When helping with code, be precise and show working examples."
-                        .into(),
-                ),
-                ..Default::default()
-            };
+            let config = AgentServiceConfig::default();
 
             let reactor = asupersync::runtime::reactor::create_reactor()
                 .map_err(|e| format!("Reactor error: {e}"))?;
