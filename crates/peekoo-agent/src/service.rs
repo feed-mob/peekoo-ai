@@ -82,25 +82,61 @@ impl AgentService {
 
         // 1a. Load OpenClaw-style persona files (IDENTITY → SOUL → MEMORY)
         if let Some(ref persona_dir) = resolved_persona_dir {
-            const PERSONA_FILES: &[(&str, &str)] = &[
-                ("IDENTITY.md", "Identity"),
-                ("SOUL.md", "Soul"),
-                ("MEMORY.md", "Memory"),
-            ];
-
-            for (filename, label) in PERSONA_FILES {
+            // Identity and Soul
+            for (filename, label) in &[("IDENTITY.md", "Identity"), ("SOUL.md", "Soul")] {
                 let path = persona_dir.join(filename);
                 if path.is_file() {
-                    match std::fs::read_to_string(&path) {
-                        Ok(content) if !content.trim().is_empty() => {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if !content.trim().is_empty() {
                             prompt_parts.push(format!("## {label}\n\n{}", content.trim()));
-                        }
-                        Ok(_) => {} // empty file, skip
-                        Err(e) => {
-                            eprintln!("Warning (Persona): failed to read {}: {}", path.display(), e);
                         }
                     }
                 }
+            }
+
+            // Memory files (memory.md, MEMORY.md, and memories/*.md)
+            let mut memory_parts = Vec::new();
+            
+            // Core memory file
+            for core_mem in &["memory.md", "MEMORY.md"] {
+                let path = persona_dir.join(core_mem);
+                if path.is_file() {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if !content.trim().is_empty() {
+                            memory_parts.push(content.trim().to_string());
+                        }
+                    }
+                    break; // Only load one core memory file
+                }
+            }
+
+            // Topic memory files
+            let memories_dir = persona_dir.join("memories");
+            if memories_dir.is_dir() {
+                if let Ok(entries) = std::fs::read_dir(&memories_dir) {
+                    let mut mem_files: Vec<_> = entries
+                        .filter_map(|r| r.ok())
+                        .map(|e| e.path())
+                        .filter(|p| p.is_file() && p.extension().map_or(false, |ext| ext == "md"))
+                        .collect();
+                    mem_files.sort(); // Consistent ordering
+
+                    for path in mem_files {
+                        if let Ok(content) = std::fs::read_to_string(&path) {
+                            if !content.trim().is_empty() {
+                                let title = path.file_stem()
+                                    .unwrap_or_default()
+                                    .to_string_lossy()
+                                    .replace(['_', '-'], " ");
+                                memory_parts.push(format!("### {}\n{}", title, content.trim()));
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !memory_parts.is_empty() {
+                prompt_parts.push(format!("## Memory\n\n{}", memory_parts.join("\n\n")));
             }
         }
 
