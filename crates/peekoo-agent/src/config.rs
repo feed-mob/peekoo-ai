@@ -29,6 +29,17 @@ pub struct AgentServiceConfig {
     /// Working directory for file-system tools (read, write, bash, etc.).
     pub working_directory: PathBuf,
 
+    /// Path to a directory containing OpenClaw-style persona files.
+    ///
+    /// Supported files (all optional):
+    /// - `IDENTITY.md` — Name, role, background context
+    /// - `SOUL.md` — Core personality, values, behavioral guidelines
+    /// - `MEMORY.md` — Persistent facts, user preferences, project context
+    ///
+    /// These are composed into the system prompt before any `system_prompt`
+    /// or `agent_skills` content.
+    pub persona_dir: Option<PathBuf>,
+
     /// List of paths to markdown files containing AgentSkills (from agentskills.io).
     /// These are loaded, parsed, and injected into the system prompt as instructions.
     pub agent_skills: Vec<PathBuf>,
@@ -45,6 +56,7 @@ impl Default for AgentServiceConfig {
             api_key: None,
             system_prompt: None,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            persona_dir: None,
             agent_skills: Vec::new(),
             max_tool_iterations: 50,
         }
@@ -106,6 +118,7 @@ mod tests {
             api_key: Some("sk-test-key".into()),
             system_prompt: Some("You are a helpful assistant.".into()),
             working_directory: PathBuf::from("/tmp/test"),
+            persona_dir: None,
             agent_skills: Vec::new(),
             max_tool_iterations: 25,
         };

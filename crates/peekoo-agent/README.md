@@ -119,8 +119,9 @@ agent.set_model("openai", "gpt-4o").await?;
 
 ---
 
-## 🎭 3. System Prompts
+## 🎭 3. System Prompts & Persona Files
 
+### Inline System Prompt
 You can define a custom persona, set rules, or provide context by setting a `system_prompt` when initializing the agent.
 
 ```rust
@@ -131,6 +132,33 @@ let config = AgentServiceConfig {
     ..Default::default()
 };
 ```
+
+### OpenClaw-style Persona Files
+
+For richer agent personalities, you can use a directory of markdown files inspired by [OpenClaw](https://github.com/nichochar/open-claw):
+
+| File | Purpose |
+|------|---------|
+| `IDENTITY.md` | Name, role, background context |
+| `SOUL.md` | Core personality, values, behavioral guidelines |
+| `MEMORY.md` | Persistent facts, user preferences, project context |
+
+All files are **optional**. They are composed into the system prompt in this order:
+
+`IDENTITY` → `SOUL` → `MEMORY` → `system_prompt` → `agent_skills`
+
+```rust
+use std::path::PathBuf;
+use peekoo_agent::config::AgentServiceConfig;
+
+let config = AgentServiceConfig {
+    persona_dir: Some(PathBuf::from("./persona")),
+    // system_prompt can still be used for additional overrides
+    ..Default::default()
+};
+```
+
+See `examples/persona/` for sample files.
 
 ---
 

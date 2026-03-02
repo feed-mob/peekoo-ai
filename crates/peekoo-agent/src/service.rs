@@ -43,8 +43,42 @@ impl AgentService {
     pub async fn new(config: AgentServiceConfig) -> Result<Self> {
         let default_config = pi::config::Config::load()?;
 
-        // 1. Process Markdown Agent Skills (Prompts)
-        let mut final_system_prompt = config.system_prompt.clone().unwrap_or_default();
+        // 1. Compose system prompt from persona files + user prompt + skills
+        let mut prompt_parts: Vec<String> = Vec::new();
+
+        // 1a. Load OpenClaw-style persona files (IDENTITY → SOUL → MEMORY)
+        if let Some(ref persona_dir) = config.persona_dir {
+            const PERSONA_FILES: &[(&str, &str)] = &[
+                ("IDENTITY.md", "Identity"),
+                ("SOUL.md", "Soul"),
+                ("MEMORY.md", "Memory"),
+            ];
+
+            for (filename, label) in PERSONA_FILES {
+                let path = persona_dir.join(filename);
+                if path.is_file() {
+                    match std::fs::read_to_string(&path) {
+                        Ok(content) if !content.trim().is_empty() => {
+                            prompt_parts.push(format!("## {label}\n\n{}", content.trim()));
+                        }
+                        Ok(_) => {} // empty file, skip
+                        Err(e) => {
+                            eprintln!("Warning (Persona): failed to read {}: {}", path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 1b. Append user-provided system prompt
+        if let Some(ref user_prompt) = config.system_prompt {
+            if !user_prompt.trim().is_empty() {
+                prompt_parts.push(user_prompt.trim().to_string());
+            }
+        }
+
+        // 1c. Append agent skills (markdown skill instructions)
+        let mut final_system_prompt = prompt_parts.join("\n\n");
         
         if !config.agent_skills.is_empty() {
             let options = pi::resources::LoadSkillsOptions {
