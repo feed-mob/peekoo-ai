@@ -44,6 +44,12 @@ pub struct AgentServiceConfig {
     /// These are loaded, parsed, and injected into the system prompt as instructions.
     pub agent_skills: Vec<PathBuf>,
 
+    /// Automatically discover persona files and skills from a `.peekoo/` directory
+    /// in the `working_directory`, falling back to `~/.peekoo/`. 
+    /// Discovered paths are used *only* if `persona_dir` and `agent_skills`
+    /// aren't explicitly provided.
+    pub auto_discover: bool,
+
     /// Maximum number of consecutive tool iterations before the agent stops.
     pub max_tool_iterations: usize,
 }
@@ -58,6 +64,7 @@ impl Default for AgentServiceConfig {
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             persona_dir: None,
             agent_skills: Vec::new(),
+            auto_discover: true,
             max_tool_iterations: 50,
         }
     }
@@ -120,6 +127,7 @@ mod tests {
             working_directory: PathBuf::from("/tmp/test"),
             persona_dir: None,
             agent_skills: Vec::new(),
+            auto_discover: false,
             max_tool_iterations: 25,
         };
         assert_eq!(config.provider.as_deref(), Some("anthropic"));

@@ -158,8 +158,24 @@ let config = AgentServiceConfig {
 };
 ```
 
-See `examples/persona/` for sample files.
+### Convention-based Auto-discovery
 
+By default (`auto_discover: true`), `peekoo-agent` will automatically look for a `.peekoo/` directory in your current working directory (falling back to `~/.peekoo/`). 
+
+If found, it automatically uses:
+- `.peekoo/IDENTITY.md`, `.peekoo/SOUL.md`, `.peekoo/MEMORY.md` as persona files
+- Any markdown files or `SKILL.md` subdirectories inside `.peekoo/skills/` as Agent Skills
+
+```rust
+use peekoo_agent::config::AgentServiceConfig;
+
+// No need to configure paths if using the `.peekoo/` convention!
+let config = AgentServiceConfig::default(); 
+```
+
+Explicitly setting `persona_dir` or `agent_skills` will override auto-discovery for those respective features.
+
+See `examples/persona/` for sample files.
 ---
 
 ## 🛠️ 4. Custom Skills (Tools)

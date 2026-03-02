@@ -43,11 +43,45 @@ impl AgentService {
     pub async fn new(config: AgentServiceConfig) -> Result<Self> {
         let default_config = pi::config::Config::load()?;
 
+        // Resolve paths from auto-discovery if enabled
+        let mut resolved_persona_dir = config.persona_dir.clone();
+        let mut resolved_agent_skills = config.agent_skills.clone();
+
+        if config.auto_discover {
+            // Check local working dir first, then global ~/.peekoo
+            let search_paths = vec![
+                config.working_directory.join(".peekoo"),
+                dirs::home_dir().unwrap_or_default().join(".peekoo"),
+            ];
+
+            for path in search_paths {
+                if path.is_dir() {
+                    // Only auto-discover persona if not explicitly set
+                    if resolved_persona_dir.is_none() {
+                        resolved_persona_dir = Some(path.clone());
+                    }
+                    
+                    // Only auto-discover skills if none explicitly set
+                    if resolved_agent_skills.is_empty() {
+                        let skills_dir = path.join("skills");
+                        if skills_dir.is_dir() {
+                            resolved_agent_skills.push(skills_dir);
+                        }
+                    }
+                    
+                    // If we found a .peekoo dir (either local or global), stop searching.
+                    // The first matching .peekoo completely overrides any further ones
+                    // to prevent mixing local personas with global skills.
+                    break;
+                }
+            }
+        }
+
         // 1. Compose system prompt from persona files + user prompt + skills
         let mut prompt_parts: Vec<String> = Vec::new();
 
         // 1a. Load OpenClaw-style persona files (IDENTITY → SOUL → MEMORY)
-        if let Some(ref persona_dir) = config.persona_dir {
+        if let Some(ref persona_dir) = resolved_persona_dir {
             const PERSONA_FILES: &[(&str, &str)] = &[
                 ("IDENTITY.md", "Identity"),
                 ("SOUL.md", "Soul"),
@@ -80,11 +114,11 @@ impl AgentService {
         // 1c. Append agent skills (markdown skill instructions)
         let mut final_system_prompt = prompt_parts.join("\n\n");
         
-        if !config.agent_skills.is_empty() {
+        if !resolved_agent_skills.is_empty() {
             let options = pi::resources::LoadSkillsOptions {
                 cwd: config.working_directory.clone(),
                 agent_dir: pi::config::Config::global_dir(),
-                skill_paths: config.agent_skills,
+                skill_paths: resolved_agent_skills,
                 include_defaults: false,
             };
             
