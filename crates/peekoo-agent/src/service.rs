@@ -40,7 +40,7 @@ impl AgentService {
     ///
     /// This initializes the LLM provider, loads tools (built-in + skills),
     /// and prepares the session for prompting.
-    pub async fn new(config: AgentServiceConfig) -> Result<Self> {
+    pub async fn new(mut config: AgentServiceConfig) -> Result<Self> {
         let default_config = pi::config::Config::load()?;
 
         // Resolve paths from auto-discovery if enabled
@@ -48,11 +48,20 @@ impl AgentService {
         let mut resolved_agent_skills = config.agent_skills.clone();
 
         if config.auto_discover {
-            // Check local working dir first, then global ~/.peekoo
-            let search_paths = vec![
-                config.working_directory.join(".peekoo"),
-                dirs::home_dir().unwrap_or_default().join(".peekoo"),
-            ];
+            let mut search_paths = Vec::new();
+
+            // 1. Highest priority: Environment variable
+            if let Ok(env_dir) = std::env::var("PEEKOO_CONFIG_DIR") {
+                search_paths.push(std::path::PathBuf::from(env_dir));
+            }
+
+            // 2. Next: Local working directory (crawled up to workspace root)
+            search_paths.push(config.working_directory.join(".peekoo"));
+
+            // 3. Last fallback: Global ~/.peekoo
+            if let Some(home) = dirs::home_dir() {
+                search_paths.push(home.join(".peekoo"));
+            }
 
             for path in search_paths {
                 if path.is_dir() {
@@ -68,9 +77,17 @@ impl AgentService {
                             resolved_agent_skills.push(skills_dir);
                         }
                     }
+
+                    // Peekoo is an assistant sprite, so its execution workspace
+                    // is isolated inside its configuration directory.
+                    let workspace_dir = path.join("workspace");
+                    if !workspace_dir.exists() {
+                        let _ = std::fs::create_dir_all(&workspace_dir);
+                    }
+                    config.working_directory = workspace_dir;
                     
-                    // If we found a .peekoo dir (either local or global), stop searching.
-                    // The first matching .peekoo completely overrides any further ones
+                    // If we found a config dir (either local or global), stop searching.
+                    // The first match completely overrides any further ones
                     // to prevent mixing local personas with global skills.
                     break;
                 }

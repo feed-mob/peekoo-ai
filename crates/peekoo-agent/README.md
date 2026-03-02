@@ -160,16 +160,26 @@ let config = AgentServiceConfig {
 
 ### Convention-based Auto-discovery
 
-By default (`auto_discover: true`), `peekoo-agent` will automatically look for a `.peekoo/` directory in your current working directory (falling back to `~/.peekoo/`). 
+By default (`auto_discover: true`), `peekoo-agent` will automatically search for a `.peekoo/` configuration directory to determine the persona and skills.
 
-If found, it automatically uses:
-- `.peekoo/IDENTITY.md`, `.peekoo/SOUL.md`, `.peekoo/MEMORY.md` as persona files
-- Any markdown files or `SKILL.md` subdirectories inside `.peekoo/skills/` as Agent Skills
+**The search order is:**
+1. Directory path set via the **`PEEKOO_CONFIG_DIR`** environment variable.
+2. `.peekoo/` in the current working directory.
+3. `~/.peekoo/` in the user's home directory.
+
+**Workspace Isolation:**
+Because Peekoo acts as a persistent desktop assistant sprite, its execution workspace is isolated from the directory where the application binary was launched. When Peekoo discovers a valid `.peekoo/` configuration (whether locally or via `PEEKOO_CONFIG_DIR`), it will automatically set its `working_directory` for file-system tools to the `workspace/` subdirectory *inside* that config folder (e.g., `~/.peekoo/workspace/`).
+
+If found, it automatically uses/creates:
+- **Persona:** `IDENTITY.md`, `SOUL.md`, `memory.md`, and `memories/*.md` within the config dir.
+- **Skills:** Any markdown files or `SKILL.md` subdirectories inside the `skills/` folder.
+- **Tools Execution:** `.peekoo/workspace/` is created as the isolated sandbox.
 
 ```rust
 use peekoo_agent::config::AgentServiceConfig;
 
 // No need to configure paths if using the `.peekoo/` convention!
+// The agent will automatically find its persona and isolate its workspace.
 let config = AgentServiceConfig::default(); 
 ```
 
