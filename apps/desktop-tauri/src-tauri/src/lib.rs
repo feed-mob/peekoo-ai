@@ -69,7 +69,18 @@ async fn agent_prompt(
 
         // Lazy init on first call.
         if guard.is_none() {
-            let config = AgentServiceConfig::default();
+            let mut config = AgentServiceConfig::default();
+
+            // When running from a nested workspace crate (like during `cargo tauri dev`),
+            // crawl upwards to find the `.peekoo/` root to set as the working directory.
+            let mut current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            while current.parent().is_some() {
+                if current.join(".peekoo").is_dir() {
+                    config.working_directory = current.clone();
+                    break;
+                }
+                current = current.parent().unwrap().to_path_buf();
+            }
 
             let reactor = asupersync::runtime::reactor::create_reactor()
                 .map_err(|e| format!("Reactor error: {e}"))?;
