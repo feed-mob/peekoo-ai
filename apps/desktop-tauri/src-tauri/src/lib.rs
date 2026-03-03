@@ -1,10 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::sync::Mutex;
-
-use peekoo_agent::config::AgentServiceConfig;
-use peekoo_agent::service::AgentService;
+use peekoo_agent_app::{
+    AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
+    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
+    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest,
+};
 use serde::Serialize;
 use tauri::{Emitter, State, Window};
 // ============================================================================
@@ -12,13 +14,14 @@ use tauri::{Emitter, State, Window};
 // ============================================================================
 
 struct AgentState {
-    agent: Mutex<Option<AgentService>>,
+    app: AgentApplication,
 }
 
 impl AgentState {
     fn new() -> Self {
         Self {
-            agent: Mutex::new(None),
+            app: AgentApplication::new()
+                .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
         }
     }
 }
@@ -33,7 +36,6 @@ struct ModelInfo {
     provider: String,
     model: String,
 }
-
 
 // ============================================================================
 // Tauri Commands
@@ -62,63 +64,81 @@ async fn agent_prompt(
     window: Window,
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
-    // Take the agent out of the mutex briefly to avoid holding the lock
-    // across the await point.
-    let mut agent = {
-        let mut guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+    let reply = state
+        .app
+        .prompt_streaming(&message, move |event| {
+            let _ = window.emit("agent-event", event);
+        })
+        .await?;
+    Ok(AgentResponse { response: reply })
+}
 
-        // Lazy init on first call.
-        if guard.is_none() {
-            let mut config = AgentServiceConfig::default();
+#[tauri::command]
+async fn agent_settings_get(state: State<'_, AgentState>) -> Result<AgentSettingsDto, String> {
+    state.app.get_settings()
+}
 
-            // When running from a nested workspace crate (like during `cargo tauri dev`),
-            // crawl upwards to find the `.peekoo/` root to set as the working directory.
-            let mut current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-            while current.parent().is_some() {
-                if current.join(".peekoo").is_dir() {
-                    config.working_directory = current.clone();
-                    break;
-                }
-                current = current.parent().unwrap().to_path_buf();
-            }
+#[tauri::command]
+async fn agent_settings_update(
+    patch: AgentSettingsPatchDto,
+    state: State<'_, AgentState>,
+) -> Result<AgentSettingsDto, String> {
+    state.app.update_settings(patch)
+}
 
-            let reactor = asupersync::runtime::reactor::create_reactor()
-                .map_err(|e| format!("Reactor error: {e}"))?;
-            let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-                .with_reactor(reactor)
-                .build()
-                .map_err(|e| format!("Runtime error: {e}"))?;
+#[tauri::command]
+async fn agent_settings_catalog(
+    state: State<'_, AgentState>,
+) -> Result<AgentSettingsCatalogDto, String> {
+    state.app.settings_catalog()
+}
 
-            let service = runtime.block_on(AgentService::new(config))
-                .map_err(|e| format!("Agent init error: {e}"))?;
-            *guard = Some(service);
-        }
+#[tauri::command]
+async fn agent_provider_auth_set_api_key(
+    req: SetApiKeyRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderAuthDto, String> {
+    state.app.set_provider_api_key(req)
+}
 
-        guard.take().unwrap()
-    };
+#[tauri::command]
+async fn agent_provider_auth_clear(
+    req: ProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderAuthDto, String> {
+    state.app.clear_provider_auth(req)
+}
 
-    // Run the prompt in pi's runtime.
-    let reactor = asupersync::runtime::reactor::create_reactor()
-        .map_err(|e| format!("Reactor error: {e}"))?;
-    let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-        .with_reactor(reactor)
-        .build()
-        .map_err(|e| format!("Runtime error: {e}"))?;
+#[tauri::command]
+async fn agent_provider_config_set(
+    req: SetProviderConfigRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderConfigDto, String> {
+    state.app.set_provider_config(req)
+}
 
-    let result = runtime.block_on(agent.prompt(&message, move |event| {
-        let _ = window.emit("agent-event", event);
-    }));
+#[tauri::command]
+async fn agent_oauth_start(
+    req: ProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthStartResponse, String> {
+    state.app.oauth_start(req)
+}
 
-    // Put the agent back.
-    {
-        let mut guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-        *guard = Some(agent);
-    }
+#[tauri::command]
+async fn agent_oauth_status(
+    req: OauthStatusRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthStatusResponse, String> {
+    state.app.oauth_status(req).await
+}
 
-    match result {
-        Ok(reply) => Ok(AgentResponse { response: reply }),
-        Err(e) => Err(format!("Agent error: {e}")),
-    }
+#[tauri::command]
+async fn agent_oauth_cancel(
+    req: OauthStatusRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthCancelResponse, String> {
+    state.app.oauth_cancel(req)
 }
 
 #[tauri::command]
@@ -127,44 +147,13 @@ async fn agent_set_model(
     model: String,
     state: State<'_, AgentState>,
 ) -> Result<ModelInfo, String> {
-    let mut agent = {
-        let mut guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-        guard
-            .take()
-            .ok_or("Agent not initialized. Send a message first.")?
-    };
-
-    let reactor = asupersync::runtime::reactor::create_reactor()
-        .map_err(|e| format!("Reactor error: {e}"))?;
-    let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-        .with_reactor(reactor)
-        .build()
-        .map_err(|e| format!("Runtime error: {e}"))?;
-
-    let result = runtime.block_on(agent.set_model(&provider, &model));
-
-    // Put the agent back.
-    {
-        let mut guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-        *guard = Some(agent);
-    }
-
-    result
-        .map(|_| ModelInfo {
-            provider,
-            model,
-        })
-        .map_err(|e| format!("Set model error: {e}"))
+    state.app.set_model(&provider, &model).await?;
+    Ok(ModelInfo { provider, model })
 }
 
 #[tauri::command]
 async fn agent_get_model(state: State<'_, AgentState>) -> Result<ModelInfo, String> {
-    let guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-    let agent = guard
-        .as_ref()
-        .ok_or("Agent not initialized. Send a message first.")?;
-
-    let (provider, model) = agent.model();
+    let (provider, model) = state.app.get_model()?;
     Ok(ModelInfo { provider, model })
 }
 
@@ -195,6 +184,15 @@ pub fn run() {
             agent_prompt,
             agent_set_model,
             agent_get_model,
+            agent_settings_get,
+            agent_settings_update,
+            agent_settings_catalog,
+            agent_provider_auth_set_api_key,
+            agent_provider_auth_clear,
+            agent_provider_config_set,
+            agent_oauth_start,
+            agent_oauth_status,
+            agent_oauth_cancel,
             create_task
         ])
         .run(tauri::generate_context!())

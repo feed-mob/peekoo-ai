@@ -45,7 +45,7 @@ pub struct AgentServiceConfig {
     pub agent_skills: Vec<PathBuf>,
 
     /// Automatically discover persona files and skills from a `.peekoo/` directory
-    /// in the `working_directory`, falling back to `~/.peekoo/`. 
+    /// in the `working_directory`, falling back to `~/.peekoo/`.
     /// Discovered paths are used *only* if `persona_dir` and `agent_skills`
     /// aren't explicitly provided.
     pub auto_discover: bool,

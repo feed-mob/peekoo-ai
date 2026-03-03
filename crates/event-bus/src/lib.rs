@@ -21,7 +21,10 @@ impl EventBus {
         Self { tx }
     }
 
-    pub fn publish(&self, event: EventEnvelope) -> Result<usize, broadcast::error::SendError<EventEnvelope>> {
+    pub fn publish(
+        &self,
+        event: EventEnvelope,
+    ) -> Result<usize, broadcast::error::SendError<EventEnvelope>> {
         self.tx.send(event)
     }
 

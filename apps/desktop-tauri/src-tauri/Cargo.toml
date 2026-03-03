@@ -18,9 +18,4 @@ tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-peekoo-core-domain = { path = "../../../crates/core-domain" }
-peekoo-core-app = { path = "../../../crates/core-app" }
-peekoo-event-bus = { path = "../../../crates/event-bus" }
-peekoo-plugin-host = { path = "../../../crates/plugin-host" }
-peekoo-agent = { path = "../../../crates/peekoo-agent" }
-asupersync = "0.2"
+peekoo-agent-app = { path = "../../../crates/peekoo-agent-app" }

@@ -42,6 +42,15 @@ npx tsc --noEmit
 
 ## Code Style Guidelines
 
+## Single Responsibility Principle (SRP)
+
+- Keep each function focused on one reason to change.
+- Keep each module/crate focused on one core concern.
+- When a file starts mixing transport, persistence, and business rules, split it into focused modules.
+- Prefer composition over large all-in-one services.
+- Refactors should improve boundaries first, then behavior.
+- New features should follow existing boundaries unless there is a clear design reason to introduce a new one.
+
 ### Rust
 - **Naming**: `snake_case` for functions/variables, `PascalCase` for types/traits, `SCREAMING_SNAKE_CASE` for constants
 - **Error Handling**: Use `thiserror` for custom error types, prefer `Result<T, E>` over panics
