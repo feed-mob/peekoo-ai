@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Send } from "lucide-react";
+import { Send, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./ChatMessage";
+import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type {
@@ -20,6 +21,7 @@ export function ChatPanel() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Refs to accumulate streaming content without causing re-renders per token
@@ -178,6 +180,25 @@ export function ChatPanel() {
   return (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 mb-4">
+        <div className="mb-3 flex justify-end">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowSettings((prev) => !prev)}
+            className="text-text-secondary hover:text-text-primary"
+          >
+            <Settings2 size={14} />
+            {showSettings ? "Hide Settings" : "Settings"}
+          </Button>
+        </div>
+
+        {showSettings && (
+          <div className="mb-4">
+            <ChatSettingsPanel onClose={() => setShowSettings(false)} />
+          </div>
+        )}
+
         {messages.length === 0 ? (
           <div className="text-center text-text-muted py-8 italic">
             Start chatting with your Peekoo pet!

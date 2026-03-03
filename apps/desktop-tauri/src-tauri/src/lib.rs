@@ -3,6 +3,13 @@
 
 use std::sync::Mutex;
 
+mod agent_settings;
+
+use agent_settings::{
+    AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
+    OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto, ProviderRequest,
+    SetApiKeyRequest, SettingsService,
+};
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use serde::Serialize;
@@ -13,12 +20,17 @@ use tauri::{Emitter, State, Window};
 
 struct AgentState {
     agent: Mutex<Option<AgentService>>,
+    settings: SettingsService,
+    agent_config_version: Mutex<Option<i64>>,
 }
 
 impl AgentState {
     fn new() -> Self {
         Self {
             agent: Mutex::new(None),
+            settings: SettingsService::default()
+                .unwrap_or_else(|e| panic!("Failed to initialize settings service: {e}")),
+            agent_config_version: Mutex::new(None),
         }
     }
 }
@@ -33,7 +45,6 @@ struct ModelInfo {
     provider: String,
     model: String,
 }
-
 
 // ============================================================================
 // Tauri Commands
@@ -66,14 +77,21 @@ async fn agent_prompt(
     // across the await point.
     let mut agent = {
         let mut guard = state.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+        let mut version_guard = state
+            .agent_config_version
+            .lock()
+            .map_err(|e| format!("Version lock error: {e}"))?;
 
         // Lazy init on first call.
-        if guard.is_none() {
+        let should_recreate = guard.is_none();
+
+        if should_recreate {
             let mut config = AgentServiceConfig::default();
 
             // When running from a nested workspace crate (like during `cargo tauri dev`),
             // crawl upwards to find the `.peekoo/` root to set as the working directory.
-            let mut current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let mut current =
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             while current.parent().is_some() {
                 if current.join(".peekoo").is_dir() {
                     config.working_directory = current.clone();
@@ -82,6 +100,8 @@ async fn agent_prompt(
                 current = current.parent().unwrap().to_path_buf();
             }
 
+            let (config, settings_version) = state.settings.to_agent_config(config)?;
+
             let reactor = asupersync::runtime::reactor::create_reactor()
                 .map_err(|e| format!("Reactor error: {e}"))?;
             let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
@@ -89,9 +109,40 @@ async fn agent_prompt(
                 .build()
                 .map_err(|e| format!("Runtime error: {e}"))?;
 
-            let service = runtime.block_on(AgentService::new(config))
+            let service = runtime
+                .block_on(AgentService::new(config))
                 .map_err(|e| format!("Agent init error: {e}"))?;
             *guard = Some(service);
+            *version_guard = Some(settings_version);
+        } else {
+            let current_version = state.settings.get_settings()?.version;
+            if (*version_guard).map_or(true, |version| version != current_version) {
+                let mut config = AgentServiceConfig::default();
+                let mut current =
+                    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                while current.parent().is_some() {
+                    if current.join(".peekoo").is_dir() {
+                        config.working_directory = current.clone();
+                        break;
+                    }
+                    current = current.parent().unwrap().to_path_buf();
+                }
+
+                let (config, settings_version) = state.settings.to_agent_config(config)?;
+
+                let reactor = asupersync::runtime::reactor::create_reactor()
+                    .map_err(|e| format!("Reactor error: {e}"))?;
+                let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+                    .with_reactor(reactor)
+                    .build()
+                    .map_err(|e| format!("Runtime error: {e}"))?;
+
+                let service = runtime
+                    .block_on(AgentService::new(config))
+                    .map_err(|e| format!("Agent re-init error: {e}"))?;
+                *guard = Some(service);
+                *version_guard = Some(settings_version);
+            }
         }
 
         guard.take().unwrap()
@@ -119,6 +170,66 @@ async fn agent_prompt(
         Ok(reply) => Ok(AgentResponse { response: reply }),
         Err(e) => Err(format!("Agent error: {e}")),
     }
+}
+
+#[tauri::command]
+async fn agent_settings_get(state: State<'_, AgentState>) -> Result<AgentSettingsDto, String> {
+    state.settings.get_settings()
+}
+
+#[tauri::command]
+async fn agent_settings_update(
+    patch: AgentSettingsPatchDto,
+    state: State<'_, AgentState>,
+) -> Result<AgentSettingsDto, String> {
+    state.settings.update_settings(patch)
+}
+
+#[tauri::command]
+async fn agent_settings_catalog(
+    state: State<'_, AgentState>,
+) -> Result<AgentSettingsCatalogDto, String> {
+    state.settings.catalog()
+}
+
+#[tauri::command]
+async fn agent_provider_auth_set_api_key(
+    req: SetApiKeyRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderAuthDto, String> {
+    state.settings.set_provider_api_key(req)
+}
+
+#[tauri::command]
+async fn agent_provider_auth_clear(
+    req: ProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderAuthDto, String> {
+    state.settings.clear_provider_auth(req)
+}
+
+#[tauri::command]
+async fn agent_oauth_start(
+    req: ProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthStartResponse, String> {
+    state.settings.start_oauth(req)
+}
+
+#[tauri::command]
+async fn agent_oauth_status(
+    req: OauthStatusRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthStatusResponse, String> {
+    state.settings.oauth_status(req)
+}
+
+#[tauri::command]
+async fn agent_oauth_cancel(
+    req: OauthStatusRequest,
+    state: State<'_, AgentState>,
+) -> Result<OauthCancelResponse, String> {
+    state.settings.cancel_oauth(req)
 }
 
 #[tauri::command]
@@ -150,10 +261,7 @@ async fn agent_set_model(
     }
 
     result
-        .map(|_| ModelInfo {
-            provider,
-            model,
-        })
+        .map(|_| ModelInfo { provider, model })
         .map_err(|e| format!("Set model error: {e}"))
 }
 
@@ -195,6 +303,14 @@ pub fn run() {
             agent_prompt,
             agent_set_model,
             agent_get_model,
+            agent_settings_get,
+            agent_settings_update,
+            agent_settings_catalog,
+            agent_provider_auth_set_api_key,
+            agent_provider_auth_clear,
+            agent_oauth_start,
+            agent_oauth_status,
+            agent_oauth_cancel,
             create_task
         ])
         .run(tauri::generate_context!())
