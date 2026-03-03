@@ -3,7 +3,9 @@ use std::sync::Mutex;
 
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
-use peekoo_persistence_sqlite::{MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS};
+use peekoo_persistence_sqlite::{
+    MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
+};
 use peekoo_security::{KeyringSecretStore, SecretStore, SecretStoreError};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -11,6 +13,8 @@ use uuid::Uuid;
 
 const DEFAULT_PROVIDER: &str = "anthropic";
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
+const OPENAI_COMPAT_PROVIDER_ID: &str = "openai-compatible";
+const ANTHROPIC_COMPAT_PROVIDER_ID: &str = "anthropic-compatible";
 
 fn models_for_provider(provider_id: &str) -> &'static [&'static str] {
     match provider_id {
@@ -22,6 +26,13 @@ fn models_for_provider(provider_id: &str) -> &'static [&'static str] {
 }
 
 fn default_model_for_provider(provider_id: &str) -> &'static str {
+    if provider_id == OPENAI_COMPAT_PROVIDER_ID {
+        return "gpt-4o-mini";
+    }
+    if provider_id == ANTHROPIC_COMPAT_PROVIDER_ID {
+        return "claude-3-5-haiku-latest";
+    }
+
     models_for_provider(provider_id)
         .first()
         .copied()
@@ -67,6 +78,18 @@ fn provider_catalog() -> Vec<ProviderCatalogDto> {
                 .map(|model| (*model).to_string())
                 .collect(),
         },
+        ProviderCatalogDto {
+            id: OPENAI_COMPAT_PROVIDER_ID.into(),
+            name: "OpenAI-Compatible".into(),
+            auth_modes: vec!["api_key".into()],
+            models: Vec::new(),
+        },
+        ProviderCatalogDto {
+            id: ANTHROPIC_COMPAT_PROVIDER_ID.into(),
+            name: "Anthropic-Compatible".into(),
+            auth_modes: vec!["api_key".into()],
+            models: Vec::new(),
+        },
     ]
 }
 
@@ -97,7 +120,17 @@ pub struct AgentSettingsDto {
     pub max_tool_iterations: usize,
     pub version: i64,
     pub provider_auth: Vec<ProviderAuthDto>,
+    pub provider_configs: Vec<ProviderConfigDto>,
     pub skills: Vec<SkillDto>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderConfigDto {
+    pub provider_id: String,
+    pub base_url: String,
+    pub api: String,
+    pub auth_header: bool,
 }
 
 #[derive(Deserialize)]
@@ -131,6 +164,15 @@ pub struct AgentSettingsCatalogDto {
 pub struct SetApiKeyRequest {
     pub provider_id: String,
     pub api_key: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetProviderConfigRequest {
+    pub provider_id: String,
+    pub base_url: String,
+    pub api: Option<String>,
+    pub auth_header: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -197,6 +239,12 @@ impl SettingsStore {
             "0002_agent_settings",
             "agent_settings",
             MIGRATION_0002_AGENT_SETTINGS,
+        )?;
+        apply_migration_if_needed(
+            &conn,
+            "0003_provider_compat",
+            "agent_provider_configs",
+            MIGRATION_0003_PROVIDER_COMPAT,
         )?;
 
         conn.execute(
@@ -272,6 +320,23 @@ impl SettingsStore {
             skills = discover_skills();
         }
 
+        let mut provider_cfg_stmt = conn
+            .prepare("SELECT provider_id, base_url, api, auth_header FROM agent_provider_configs")
+            .map_err(|e| format!("Prepare provider config query error: {e}"))?;
+        let provider_cfg_rows = provider_cfg_stmt
+            .query_map([], |row| {
+                Ok(ProviderConfigDto {
+                    provider_id: row.get(0)?,
+                    base_url: row.get(1)?,
+                    api: row.get(2)?,
+                    auth_header: row.get::<_, i64>(3)? == 1,
+                })
+            })
+            .map_err(|e| format!("Query provider config rows error: {e}"))?;
+        let provider_configs: Result<Vec<_>, _> = provider_cfg_rows.collect();
+        let provider_configs =
+            provider_configs.map_err(|e| format!("Map provider config rows error: {e}"))?;
+
         Ok(AgentSettingsDto {
             active_provider_id: row.0,
             active_model_id: row.1,
@@ -279,6 +344,7 @@ impl SettingsStore {
             max_tool_iterations: row.3 as usize,
             version: row.4,
             provider_auth,
+            provider_configs,
             skills,
         })
     }
@@ -486,6 +552,54 @@ impl SettingsStore {
         .map_err(|e| format!("Read provider oauth token ref error: {e}"))
         .map(|v| v.flatten())
     }
+
+    fn set_provider_config(&self, cfg: ProviderConfigDto) -> Result<ProviderConfigDto, String> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("Settings lock error: {e}"))?;
+
+        conn.execute(
+            "INSERT INTO agent_provider_configs (provider_id, base_url, api, auth_header, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))
+             ON CONFLICT(provider_id) DO UPDATE SET base_url = excluded.base_url, api = excluded.api, auth_header = excluded.auth_header, updated_at = datetime('now')",
+            params![
+                cfg.provider_id,
+                cfg.base_url,
+                cfg.api,
+                if cfg.auth_header { 1 } else { 0 }
+            ],
+        )
+        .map_err(|e| format!("Upsert provider config error: {e}"))?;
+
+        conn.execute(
+            "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
+            [],
+        )
+        .map_err(|e| format!("Bump settings version error: {e}"))?;
+
+        drop(conn);
+        self.provider_config_for(&cfg.provider_id)
+            .ok_or_else(|| format!("Provider config not found for {}", cfg.provider_id))
+    }
+
+    fn provider_config_for(&self, provider_id: &str) -> Option<ProviderConfigDto> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row(
+            "SELECT provider_id, base_url, api, auth_header FROM agent_provider_configs WHERE provider_id = ?1",
+            params![provider_id],
+            |row| {
+                Ok(ProviderConfigDto {
+                    provider_id: row.get(0)?,
+                    base_url: row.get(1)?,
+                    api: row.get(2)?,
+                    auth_header: row.get::<_, i64>(3)? == 1,
+                })
+            },
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
 }
 
 fn apply_migration_if_needed(
@@ -585,6 +699,30 @@ impl SettingsService {
         self.store.provider_auth_for(&req.provider_id)
     }
 
+    pub fn set_provider_config(
+        &self,
+        req: SetProviderConfigRequest,
+    ) -> Result<ProviderConfigDto, String> {
+        if req.base_url.trim().is_empty() {
+            return Err("Provider base URL cannot be empty".into());
+        }
+
+        let provider_id = req.provider_id.trim().to_string();
+        let api = req
+            .api
+            .unwrap_or_else(|| default_api_for_provider(&provider_id).to_string());
+        let auth_header = req
+            .auth_header
+            .unwrap_or_else(|| default_auth_header_for_provider(&provider_id));
+
+        self.store.set_provider_config(ProviderConfigDto {
+            provider_id,
+            base_url: req.base_url.trim().to_string(),
+            api,
+            auth_header,
+        })
+    }
+
     pub fn clear_provider_auth(&self, req: ProviderRequest) -> Result<ProviderAuthDto, String> {
         let (api_key_ref, oauth_token_ref) =
             self.store.clear_provider_auth_refs(&req.provider_id)?;
@@ -677,6 +815,18 @@ impl SettingsService {
     ) -> Result<(AgentServiceConfig, i64), String> {
         let settings = self.store.load_settings()?;
         let provider_id = settings.active_provider_id.clone();
+        if is_compatible_provider(&provider_id) {
+            let provider_cfg = self
+                .store
+                .provider_config_for(&provider_id)
+                .ok_or_else(|| {
+                    format!(
+                        "Provider '{}' requires base URL configuration in settings",
+                        provider_id
+                    )
+                })?;
+            ensure_pi_models_provider(&provider_cfg, &settings.active_model_id)?;
+        }
         let model_id = normalize_model_for_provider(&provider_id, &settings.active_model_id);
         base.provider = Some(provider_id.clone());
         base.model = Some(model_id);
@@ -708,6 +858,77 @@ impl SettingsService {
 
 fn secret_error(err: SecretStoreError) -> String {
     format!("Secret store error: {err}")
+}
+
+fn is_compatible_provider(provider_id: &str) -> bool {
+    provider_id == OPENAI_COMPAT_PROVIDER_ID || provider_id == ANTHROPIC_COMPAT_PROVIDER_ID
+}
+
+fn default_api_for_provider(provider_id: &str) -> &'static str {
+    match provider_id {
+        OPENAI_COMPAT_PROVIDER_ID => "openai-completions",
+        ANTHROPIC_COMPAT_PROVIDER_ID => "anthropic-messages",
+        _ => "openai-completions",
+    }
+}
+
+fn default_auth_header_for_provider(provider_id: &str) -> bool {
+    match provider_id {
+        OPENAI_COMPAT_PROVIDER_ID => true,
+        ANTHROPIC_COMPAT_PROVIDER_ID => false,
+        _ => true,
+    }
+}
+
+fn ensure_pi_models_provider(cfg: &ProviderConfigDto, model_id: &str) -> Result<(), String> {
+    let Some(home) = dirs::home_dir() else {
+        return Err("Cannot determine home directory".into());
+    };
+    let pi_dir = home.join(".pi");
+    std::fs::create_dir_all(&pi_dir).map_err(|e| format!("Create ~/.pi dir error: {e}"))?;
+    let models_path = pi_dir.join("models.json");
+
+    let mut root: serde_json::Value = if models_path.is_file() {
+        let content = std::fs::read_to_string(&models_path)
+            .map_err(|e| format!("Read ~/.pi/models.json error: {e}"))?;
+        serde_json::from_str(&content).map_err(|e| format!("Parse ~/.pi/models.json error: {e}"))?
+    } else {
+        serde_json::json!({ "providers": {} })
+    };
+
+    if !root.is_object() {
+        root = serde_json::json!({ "providers": {} });
+    }
+
+    let providers = root
+        .as_object_mut()
+        .expect("root object")
+        .entry("providers")
+        .or_insert_with(|| serde_json::json!({}));
+    if !providers.is_object() {
+        *providers = serde_json::json!({});
+    }
+
+    providers.as_object_mut().expect("providers object").insert(
+        cfg.provider_id.clone(),
+        serde_json::json!({
+            "baseUrl": cfg.base_url,
+            "api": cfg.api,
+            "authHeader": cfg.auth_header,
+            "models": [
+                {
+                    "id": model_id,
+                    "name": model_id
+                }
+            ]
+        }),
+    );
+
+    let serialized = serde_json::to_string_pretty(&root)
+        .map_err(|e| format!("Serialize ~/.pi/models.json error: {e}"))?;
+    std::fs::write(&models_path, serialized)
+        .map_err(|e| format!("Write ~/.pi/models.json error: {e}"))?;
+    Ok(())
 }
 
 fn default_db_path() -> Result<PathBuf, String> {

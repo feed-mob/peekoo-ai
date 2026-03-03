@@ -14,6 +14,13 @@ export const skillSchema = z.object({
   enabled: z.boolean(),
 });
 
+export const providerConfigSchema = z.object({
+  providerId: z.string(),
+  baseUrl: z.string(),
+  api: z.string(),
+  authHeader: z.boolean(),
+});
+
 export const agentSettingsSchema = z.object({
   activeProviderId: z.string(),
   activeModelId: z.string(),
@@ -21,6 +28,7 @@ export const agentSettingsSchema = z.object({
   maxToolIterations: z.number(),
   version: z.number(),
   providerAuth: z.array(providerAuthSchema),
+  providerConfigs: z.array(providerConfigSchema),
   skills: z.array(skillSchema),
 });
 
@@ -37,6 +45,7 @@ export const agentSettingsCatalogSchema = z.object({
 });
 
 export type ProviderAuth = z.infer<typeof providerAuthSchema>;
+export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export type SkillSettings = z.infer<typeof skillSchema>;
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 export type ProviderCatalog = z.infer<typeof providerCatalogSchema>;

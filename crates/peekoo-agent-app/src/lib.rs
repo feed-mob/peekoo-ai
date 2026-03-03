@@ -5,5 +5,6 @@ pub use application::AgentApplication;
 pub use settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
-    ProviderCatalogDto, ProviderRequest, SetApiKeyRequest, SettingsService, SkillDto,
+    ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest, SettingsService, SkillDto,
 };

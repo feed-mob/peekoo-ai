@@ -4,7 +4,8 @@
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    ProviderAuthDto, ProviderRequest, SetApiKeyRequest,
+    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest,
 };
 use serde::Serialize;
 use tauri::{Emitter, State, Window};
@@ -109,6 +110,14 @@ async fn agent_provider_auth_clear(
 }
 
 #[tauri::command]
+async fn agent_provider_config_set(
+    req: SetProviderConfigRequest,
+    state: State<'_, AgentState>,
+) -> Result<ProviderConfigDto, String> {
+    state.app.set_provider_config(req)
+}
+
+#[tauri::command]
 async fn agent_oauth_start(
     req: ProviderRequest,
     state: State<'_, AgentState>,
@@ -180,6 +189,7 @@ pub fn run() {
             agent_settings_catalog,
             agent_provider_auth_set_api_key,
             agent_provider_auth_clear,
+            agent_provider_config_set,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,

@@ -24,6 +24,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     refresh,
     updateSettings,
     saveApiKey,
+    setProviderConfig,
     clearAuth,
     startOauth,
     pollOauthStatus,
@@ -31,6 +32,8 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
 
   const [apiKey, setApiKey] = useState("");
   const [maxIterationsInput, setMaxIterationsInput] = useState("50");
+  const [compatBaseUrl, setCompatBaseUrl] = useState("");
+  const [customModelInput, setCustomModelInput] = useState("");
 
   useEffect(() => {
     void refresh();
@@ -45,6 +48,15 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     if (!settings) return undefined;
     return settings.providerAuth.find((item) => item.providerId === settings.activeProviderId);
   }, [settings]);
+
+  const activeProviderConfig = useMemo(() => {
+    if (!settings) return undefined;
+    return settings.providerConfigs.find((item) => item.providerId === settings.activeProviderId);
+  }, [settings]);
+
+  const isCompatibleProvider =
+    settings?.activeProviderId === "openai-compatible" ||
+    settings?.activeProviderId === "anthropic-compatible";
 
   const effectiveSkills = useMemo(() => {
     if (!settings || !catalog) return [];
@@ -63,6 +75,12 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       }
     }
   }, [selectedProvider, settings, updateSettings]);
+
+  useEffect(() => {
+    if (!settings) return;
+    setCompatBaseUrl(activeProviderConfig?.baseUrl ?? "");
+    setCustomModelInput(settings.activeModelId);
+  }, [activeProviderConfig?.baseUrl, settings?.activeModelId, settings?.activeProviderId]);
 
   if (isLoading && !settings) {
     return <div className="text-sm text-text-muted">Loading settings...</div>;
@@ -103,11 +121,46 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
           }}
         />
 
-        <ModelSelector
-          models={selectedProvider.models}
-          value={settings.activeModelId}
-          onChange={(modelId) => void updateSettings({ activeModelId: modelId })}
-        />
+        {selectedProvider.models.length > 0 ? (
+          <ModelSelector
+            models={selectedProvider.models}
+            value={settings.activeModelId}
+            onChange={(modelId) => void updateSettings({ activeModelId: modelId })}
+          />
+        ) : (
+          <label className="flex flex-col gap-1 text-sm text-text-secondary">
+            Model
+            <Input
+              type="text"
+              value={customModelInput}
+              onChange={(event) => setCustomModelInput(event.target.value)}
+              onBlur={() => {
+                if (!customModelInput.trim()) return;
+                if (customModelInput.trim() === settings.activeModelId) return;
+                void updateSettings({ activeModelId: customModelInput.trim() });
+              }}
+              placeholder="e.g. gpt-4.1-mini"
+              className="bg-space-deep border-glass-border"
+            />
+          </label>
+        )}
+
+        {isCompatibleProvider && (
+          <label className="flex flex-col gap-1 text-sm text-text-secondary">
+            Base URL
+            <Input
+              type="text"
+              value={compatBaseUrl}
+              onChange={(event) => setCompatBaseUrl(event.target.value)}
+              onBlur={() => {
+                if (!compatBaseUrl.trim()) return;
+                void setProviderConfig(settings.activeProviderId, compatBaseUrl.trim());
+              }}
+              placeholder="https://your-provider.example/v1"
+              className="bg-space-deep border-glass-border"
+            />
+          </label>
+        )}
 
         <label className="flex flex-col gap-1 text-sm text-text-secondary">
           Max Tool Iterations

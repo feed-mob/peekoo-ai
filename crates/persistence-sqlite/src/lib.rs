@@ -1,6 +1,8 @@
 pub const MIGRATION_0001_INIT: &str = include_str!("../migrations/0001_init.sql");
 pub const MIGRATION_0002_AGENT_SETTINGS: &str =
     include_str!("../migrations/0002_agent_settings.sql");
+pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
+    include_str!("../migrations/0003_provider_compat.sql");
 
 #[cfg(test)]
 mod tests {
@@ -18,5 +20,10 @@ mod tests {
         assert!(MIGRATION_0002_AGENT_SETTINGS.contains("CREATE TABLE agent_settings"));
         assert!(MIGRATION_0002_AGENT_SETTINGS.contains("CREATE TABLE agent_provider_auth"));
         assert!(MIGRATION_0002_AGENT_SETTINGS.contains("CREATE TABLE agent_skills"));
+    }
+
+    #[test]
+    fn migration_contains_provider_config_table() {
+        assert!(MIGRATION_0003_PROVIDER_COMPAT.contains("CREATE TABLE agent_provider_configs"));
     }
 }

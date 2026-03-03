@@ -6,8 +6,9 @@ use peekoo_agent::service::AgentService;
 
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
-    OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto, ProviderRequest,
-    SetApiKeyRequest, SettingsService,
+    OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
+    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
+    SettingsService,
 };
 
 pub struct AgentApplication {
@@ -149,6 +150,13 @@ impl AgentApplication {
 
     pub fn clear_provider_auth(&self, req: ProviderRequest) -> Result<ProviderAuthDto, String> {
         self.settings.clear_provider_auth(req)
+    }
+
+    pub fn set_provider_config(
+        &self,
+        req: SetProviderConfigRequest,
+    ) -> Result<ProviderConfigDto, String> {
+        self.settings.set_provider_config(req)
     }
 
     pub fn oauth_start(&self, req: ProviderRequest) -> Result<OauthStartResponse, String> {
