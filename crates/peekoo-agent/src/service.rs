@@ -127,7 +127,9 @@ impl AgentService {
 
             // Topic memory files
             let memories_dir = persona_dir.join("memories");
-            if memories_dir.is_dir() && let Ok(entries) = std::fs::read_dir(&memories_dir) {
+            if memories_dir.is_dir()
+                && let Ok(entries) = std::fs::read_dir(&memories_dir)
+            {
                 let mut mem_files: Vec<_> = entries
                     .filter_map(|r| r.ok())
                     .map(|e| e.path())
