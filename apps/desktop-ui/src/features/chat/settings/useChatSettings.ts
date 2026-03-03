@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-shell";
 import {
   type AgentSettings,
   agentSettingsSchema,
@@ -79,6 +80,8 @@ export function useChatSettings() {
       flowId: string;
       authorizeUrl: string;
     };
+
+    await open(response.authorizeUrl);
     setOauthFlowId(response.flowId);
     return response;
   }, []);

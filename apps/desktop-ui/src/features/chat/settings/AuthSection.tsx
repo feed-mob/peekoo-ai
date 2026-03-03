@@ -60,7 +60,7 @@ export function AuthSection({
             </Button>
           )}
           <p className="w-full text-xs text-text-muted">
-            For Codex login, run <code>pi auth login openai-codex</code> in a terminal, then click
+            Clicking Start OAuth opens your browser. After you finish login and return, click
             "Check OAuth Status".
           </p>
         </div>
