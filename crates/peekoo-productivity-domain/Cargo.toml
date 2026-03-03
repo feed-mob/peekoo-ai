@@ -1,5 +1,5 @@
 [package]
-name = "peekoo-core-domain"
+name = "peekoo-productivity-domain"
 version = "0.1.0"
 edition = "2024"
 

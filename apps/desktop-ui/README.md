@@ -1,13 +1,29 @@
 # Desktop UI
 
-React-based UI for the Tauri version of Peekoo.
+React + Vite frontend for the Peekoo desktop app.
 
-## Structure
+## Run
 
-- `src/main.tsx` - Main entry point
-- `src/features/chat/` - Chat interface
-- `src/features/pet/` - Pet visualization
+```bash
+cd apps/desktop-ui
+bun install
+bun run dev
+```
 
-## Note
+## Build
 
-This UI is for the **Tauri version only**. The GPUI version uses native Rust UI without React.
+```bash
+cd apps/desktop-ui
+bun run build
+```
+
+## Integration
+
+- Talks to Tauri commands from `apps/desktop-tauri/src-tauri/src/lib.rs`.
+- Agent behavior (providers/models/auth/settings) is backed by `crates/peekoo-agent-app`.
+
+## Main Areas
+
+- `src/features/chat/` chat experience and agent settings
+- `src/features/tasks/` tasks panel UI
+- `src/features/pomodoro/` pomodoro panel UI

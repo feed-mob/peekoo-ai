@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "crates/core-domain",
+  "crates/peekoo-productivity-domain",
   "crates/plugin-host",
   "crates/calendar-google",
   "crates/persistence-sqlite",

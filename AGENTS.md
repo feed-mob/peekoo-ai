@@ -67,11 +67,24 @@ npx tsc --noEmit
 
 ### Project Structure
 - `crates/`: Rust workspace crates
-  - `core-domain/`: Domain models and business logic
-  - `core-app/`: Application use cases
-  - Other crates for plugins, persistence, etc.
+  - `peekoo-productivity-domain/`: Task and pomodoro domain models/invariants
+  - `peekoo-agent/`: Agent runtime facade over the underlying SDK/session
+  - `peekoo-agent-auth/`: OAuth and provider auth protocol orchestration
+  - `peekoo-agent-app/`: Agent application orchestration and settings/use-case domain validation
+  - Other crates for plugins, persistence, security, and integrations
 - `apps/desktop-ui/`: React + Vite + TypeScript frontend
-- `apps/desktop-tauri/`: Tauri desktop app wrapper
+- `apps/desktop-tauri/src-tauri/`: Canonical Tauri desktop runtime crate
+
+### Agent-Centric Architecture
+- Dependency flow: `desktop-ui` -> `desktop-tauri` -> `peekoo-agent-app` -> (`peekoo-agent`, `peekoo-agent-auth`, `persistence-sqlite`, `security`).
+- `desktop-tauri` is a transport layer only; avoid embedding persistence, OAuth protocol, or runtime orchestration logic in command handlers.
+- `peekoo-agent` owns prompt/session runtime concerns; it must not depend on UI or Tauri crates.
+- `peekoo-agent-auth` owns OAuth/provider auth flow concerns only.
+
+### Deprecations
+- `core-app` has been removed and must not be reintroduced.
+- `core-domain` has been replaced by domain-specific crates and must not be reintroduced.
+- New application orchestration should live in domain-specific app crates (current: `peekoo-agent-app`).
 
 ### Git Conventions
 - Sign commits with GPG

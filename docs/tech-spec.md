@@ -3,7 +3,7 @@
 ## Stack
 - Desktop shell: Tauri v2
 - UI: React
-- Core: Rust crates (domain/app/plugins/calendar/persistence/security/event-bus)
+- Core: Rust crates (agent/app/productivity-domain/plugins/calendar/persistence/security/event-bus)
 - Plugin compatibility: MCP first + JS bridge whitelist
 
 ## Built-in Agent (v1)
@@ -23,4 +23,4 @@
 - Log redaction applied to secrets
 
 ## Milestone Status
-- Week 1 scaffold completed: workspace layout, core domain tests, plugin timeout/permission tests, schema migration baseline.
+- Week 1 scaffold completed: workspace layout, productivity domain tests, plugin timeout/permission tests, schema migration baseline.
