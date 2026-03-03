@@ -221,7 +221,7 @@ async fn agent_oauth_status(
     req: OauthStatusRequest,
     state: State<'_, AgentState>,
 ) -> Result<OauthStatusResponse, String> {
-    state.settings.oauth_status(req)
+    state.settings.oauth_status(req).await
 }
 
 #[tauri::command]

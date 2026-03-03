@@ -1,26 +1,16 @@
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::net::TcpListener;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Mutex;
 
-use base64::Engine;
 use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
 use peekoo_persistence_sqlite::{MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS};
 use peekoo_security::{KeyringSecretStore, SecretStore, SecretStoreError};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use sha2::Digest;
 use uuid::Uuid;
 
 const DEFAULT_PROVIDER: &str = "anthropic";
 const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
-const OPENAI_CODEX_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
-const OPENAI_CODEX_OAUTH_AUTHORIZE_URL: &str = "https://auth.openai.com/oauth/authorize";
-const OPENAI_CODEX_OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
-const OPENAI_CODEX_OAUTH_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
-const OPENAI_CODEX_OAUTH_SCOPES: &str = "openid profile email offline_access";
 
 fn models_for_provider(provider_id: &str) -> &'static [&'static str] {
     match provider_id {
@@ -177,15 +167,6 @@ pub struct OauthCancelResponse {
     pub cancelled: bool,
 }
 
-#[derive(Clone)]
-struct OauthFlow {
-    provider_id: String,
-    verifier: String,
-    auth_code: Option<String>,
-    status: String,
-    error: Option<String>,
-}
-
 pub struct SettingsStore {
     conn: Mutex<Connection>,
 }
@@ -193,15 +174,7 @@ pub struct SettingsStore {
 pub struct SettingsService {
     store: SettingsStore,
     secret_store: Box<dyn SecretStore>,
-    oauth_flows: Arc<Mutex<HashMap<String, OauthFlow>>>,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct OpenAiCodexTokenResponse {
-    access_token: String,
-    refresh_token: String,
-    expires_in: i64,
+    oauth: OAuthService,
 }
 
 impl SettingsStore {
@@ -294,7 +267,10 @@ impl SettingsStore {
             })
             .map_err(|e| format!("Query skill rows error: {e}"))?;
         let skills: Result<Vec<_>, _> = skill_rows.collect();
-        let skills = skills.map_err(|e| format!("Map skill rows error: {e}"))?;
+        let mut skills = skills.map_err(|e| format!("Map skill rows error: {e}"))?;
+        if skills.is_empty() {
+            skills = discover_skills();
+        }
 
         Ok(AgentSettingsDto {
             active_provider_id: row.0,
@@ -566,7 +542,7 @@ impl SettingsService {
         Ok(Self {
             store,
             secret_store: Box::new(KeyringSecretStore::new("peekoo-desktop")),
-            oauth_flows: Arc::new(Mutex::new(HashMap::new())),
+            oauth: OAuthService::new(),
         })
     }
 
@@ -624,151 +600,74 @@ impl SettingsService {
     }
 
     pub fn start_oauth(&self, req: ProviderRequest) -> Result<OauthStartResponse, String> {
-        let flow_id = Uuid::new_v4().to_string();
-        let (verifier, challenge) = generate_pkce();
-
-        let authorize_url = match req.provider_id.as_str() {
-            "openai-codex" => build_url_with_query(
-                OPENAI_CODEX_OAUTH_AUTHORIZE_URL,
-                &[
-                    ("response_type", "code"),
-                    ("client_id", OPENAI_CODEX_OAUTH_CLIENT_ID),
-                    ("redirect_uri", OPENAI_CODEX_OAUTH_REDIRECT_URI),
-                    ("scope", OPENAI_CODEX_OAUTH_SCOPES),
-                    ("code_challenge", &challenge),
-                    ("code_challenge_method", "S256"),
-                    ("state", &verifier),
-                    ("id_token_add_organizations", "true"),
-                    ("codex_cli_simplified_flow", "true"),
-                    ("originator", "pi"),
-                ],
-            ),
-            _ => {
-                return Err(format!(
-                    "OAuth not supported for provider {}",
-                    req.provider_id
-                ));
-            }
-        };
-
-        let mut lock = self
-            .oauth_flows
-            .lock()
-            .map_err(|e| format!("OAuth flow lock error: {e}"))?;
-        lock.insert(
-            flow_id.clone(),
-            OauthFlow {
-                provider_id: req.provider_id,
-                verifier,
-                auth_code: None,
-                status: "pending".into(),
-                error: None,
-            },
-        );
-        drop(lock);
-
-        spawn_oauth_callback_listener(self.oauth_flows.clone(), flow_id.clone());
+        let started = self
+            .oauth
+            .start(&req.provider_id)
+            .map_err(|e| format!("OAuth start error: {e}"))?;
 
         Ok(OauthStartResponse {
-            flow_id,
-            authorize_url,
+            flow_id: started.flow_id,
+            authorize_url: started.authorize_url,
             opened_browser: false,
         })
     }
 
-    pub fn oauth_status(&self, req: OauthStatusRequest) -> Result<OauthStatusResponse, String> {
-        let flow = {
-            let lock = self
-                .oauth_flows
-                .lock()
-                .map_err(|e| format!("OAuth flow lock error: {e}"))?;
-            lock.get(&req.flow_id).cloned()
-        };
+    pub async fn oauth_status(
+        &self,
+        req: OauthStatusRequest,
+    ) -> Result<OauthStatusResponse, String> {
+        let status = self
+            .oauth
+            .status(&req.flow_id)
+            .await
+            .map_err(|e| format!("OAuth status error: {e}"))?;
 
-        let Some(flow) = flow else {
-            return Ok(OauthStatusResponse {
-                status: "expired".into(),
-                provider_auth: None,
-                error: Some("OAuth flow not found".into()),
-            });
-        };
-
-        if let Some(error) = flow.error {
-            return Ok(OauthStatusResponse {
-                status: "failed".into(),
-                provider_auth: None,
-                error: Some(error),
-            });
-        }
-
-        if flow.status == "completed" {
-            let provider_auth = self.store.provider_auth_for(&flow.provider_id).ok();
-            return Ok(OauthStatusResponse {
-                status: "completed".into(),
-                provider_auth,
-                error: None,
-            });
-        }
-
-        let Some(auth_code) = flow.auth_code else {
-            return Ok(OauthStatusResponse {
-                status: "pending".into(),
-                provider_auth: None,
-                error: None,
-            });
-        };
-
-        match flow.provider_id.as_str() {
-            "openai-codex" => {
-                let token = exchange_openai_codex_token(&auth_code, &flow.verifier)?;
-                let token_ref = format!("peekoo/auth/openai-codex/oauth/{}", Uuid::new_v4());
-                self.secret_store
-                    .put(&token_ref, &token.access_token)
-                    .map_err(secret_error)?;
-
-                let expires_at = oauth_expires_at_iso(token.expires_in);
-                self.store.set_provider_auth_refs(
-                    "openai-codex",
-                    "oauth",
-                    None,
-                    Some(token_ref),
-                    Some(expires_at),
-                )?;
-
-                let mut lock = self
-                    .oauth_flows
-                    .lock()
-                    .map_err(|e| format!("OAuth flow lock error: {e}"))?;
-                if let Some(stored) = lock.get_mut(&req.flow_id) {
-                    stored.status = "completed".into();
-                    stored.auth_code = None;
-                }
-
-                let provider_auth = self.store.provider_auth_for("openai-codex")?;
-                Ok(OauthStatusResponse {
-                    status: "completed".into(),
-                    provider_auth: Some(provider_auth),
-                    error: None,
-                })
+        if let Some(access_token) = status.access_token {
+            if status.provider_id.is_empty() {
+                return Err("OAuth status missing provider id".to_string());
             }
-            _ => Ok(OauthStatusResponse {
-                status: "failed".into(),
-                provider_auth: None,
-                error: Some(format!(
-                    "OAuth not supported for provider {}",
-                    flow.provider_id
-                )),
-            }),
+            let token_ref = format!(
+                "peekoo/auth/{}/oauth/{}",
+                status.provider_id,
+                Uuid::new_v4()
+            );
+            self.secret_store
+                .put(&token_ref, &access_token)
+                .map_err(secret_error)?;
+            self.store.set_provider_auth_refs(
+                &status.provider_id,
+                "oauth",
+                None,
+                Some(token_ref),
+                status.expires_at,
+            )?;
+            let provider_auth = self.store.provider_auth_for(&status.provider_id)?;
+            return Ok(OauthStatusResponse {
+                status: OAuthFlowStatus::Completed.as_str().to_string(),
+                provider_auth: Some(provider_auth),
+                error: None,
+            });
         }
+
+        let provider_auth = if status.status == OAuthFlowStatus::Completed {
+            self.store.provider_auth_for(&status.provider_id).ok()
+        } else {
+            None
+        };
+
+        Ok(OauthStatusResponse {
+            status: status.status.as_str().to_string(),
+            provider_auth,
+            error: status.error,
+        })
     }
 
     pub fn cancel_oauth(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
-        let mut lock = self
-            .oauth_flows
-            .lock()
-            .map_err(|e| format!("OAuth flow lock error: {e}"))?;
         Ok(OauthCancelResponse {
-            cancelled: lock.remove(&req.flow_id).is_some(),
+            cancelled: self
+                .oauth
+                .cancel(&req.flow_id)
+                .map_err(|e| format!("OAuth cancel error: {e}"))?,
         })
     }
 
@@ -819,11 +718,28 @@ fn default_db_path() -> Result<PathBuf, String> {
 }
 
 fn discover_skills() -> Vec<SkillDto> {
+    use std::collections::HashSet;
+
     let mut out = Vec::new();
+    let mut seen = HashSet::new();
     let mut roots = Vec::new();
+
     if let Ok(current) = std::env::current_dir() {
-        roots.push(current.join(".peekoo").join("skills"));
+        let mut cursor = current;
+        loop {
+            let candidate = cursor.join(".peekoo").join("skills");
+            if candidate.is_dir() {
+                roots.push(candidate);
+                break;
+            }
+
+            let Some(parent) = cursor.parent() else {
+                break;
+            };
+            cursor = parent.to_path_buf();
+        }
     }
+
     if let Some(home) = dirs::home_dir() {
         roots.push(home.join(".peekoo").join("skills"));
     }
@@ -836,290 +752,46 @@ fn discover_skills() -> Vec<SkillDto> {
         if let Ok(entries) = std::fs::read_dir(root) {
             for entry in entries.filter_map(|x| x.ok()) {
                 let path = entry.path();
+
+                if path.is_dir() {
+                    let skill_md = path.join("SKILL.md");
+                    if skill_md.is_file() {
+                        let skill_id = path
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string();
+                        if seen.insert(skill_id.clone()) {
+                            out.push(SkillDto {
+                                skill_id,
+                                source_type: "path".into(),
+                                path: skill_md.to_string_lossy().to_string(),
+                                enabled: true,
+                            });
+                        }
+                    }
+                    continue;
+                }
+
                 if path.is_file() && path.extension().is_some_and(|ext| ext == "md") {
                     let skill_id = path
                         .file_stem()
                         .unwrap_or_default()
                         .to_string_lossy()
                         .to_string();
-                    out.push(SkillDto {
-                        skill_id,
-                        source_type: "path".into(),
-                        path: path.to_string_lossy().to_string(),
-                        enabled: true,
-                    });
+                    if seen.insert(skill_id.clone()) {
+                        out.push(SkillDto {
+                            skill_id,
+                            source_type: "path".into(),
+                            path: path.to_string_lossy().to_string(),
+                            enabled: true,
+                        });
+                    }
                 }
             }
         }
     }
     out
-}
-
-fn spawn_oauth_callback_listener(flows: Arc<Mutex<HashMap<String, OauthFlow>>>, flow_id: String) {
-    std::thread::spawn(move || {
-        let listener = match TcpListener::bind("127.0.0.1:1455") {
-            Ok(listener) => listener,
-            Err(err) => {
-                set_oauth_flow_error(
-                    &flows,
-                    &flow_id,
-                    format!("Failed to bind OAuth callback listener on 127.0.0.1:1455: {err}"),
-                );
-                return;
-            }
-        };
-
-        let _ = listener.set_nonblocking(true);
-        let started_at = std::time::Instant::now();
-
-        loop {
-            if started_at.elapsed() > Duration::from_secs(300) {
-                set_oauth_flow_error(&flows, &flow_id, "OAuth flow timed out".to_string());
-                return;
-            }
-
-            match listener.accept() {
-                Ok((mut stream, _addr)) => {
-                    let mut first_line = String::new();
-                    {
-                        let mut reader = BufReader::new(&mut stream);
-                        if reader.read_line(&mut first_line).is_err() {
-                            set_oauth_flow_error(
-                                &flows,
-                                &flow_id,
-                                "Failed to read OAuth callback request".to_string(),
-                            );
-                            return;
-                        }
-                    }
-
-                    let path = first_line
-                        .split_whitespace()
-                        .nth(1)
-                        .unwrap_or("/")
-                        .to_string();
-                    let query = path
-                        .split_once('?')
-                        .map(|(_, query)| query)
-                        .unwrap_or("")
-                        .split('#')
-                        .next()
-                        .unwrap_or("");
-
-                    let pairs = parse_query_pairs(query);
-                    let code = pairs
-                        .iter()
-                        .find_map(|(k, v)| (k == "code").then(|| v.clone()));
-                    let state = pairs
-                        .iter()
-                        .find_map(|(k, v)| (k == "state").then(|| v.clone()));
-                    let oauth_error = pairs
-                        .iter()
-                        .find_map(|(k, v)| (k == "error").then(|| v.clone()));
-
-                    let mut success = false;
-                    let mut message =
-                        "OAuth callback received. You can close this window.".to_string();
-
-                    {
-                        let mut lock = match flows.lock() {
-                            Ok(lock) => lock,
-                            Err(_) => return,
-                        };
-
-                        let Some(flow) = lock.get_mut(&flow_id) else {
-                            return;
-                        };
-
-                        if let Some(error) = oauth_error {
-                            flow.error = Some(format!("OAuth provider returned error: {error}"));
-                            flow.status = "failed".into();
-                            message = "OAuth failed. You can close this window.".to_string();
-                        } else if code.is_none() {
-                            flow.error = Some("Missing OAuth authorization code".to_string());
-                            flow.status = "failed".into();
-                            message = "OAuth failed. Missing authorization code.".to_string();
-                        } else if state.as_deref() != Some(flow.verifier.as_str()) {
-                            flow.error = Some("OAuth state mismatch".to_string());
-                            flow.status = "failed".into();
-                            message = "OAuth failed. State mismatch.".to_string();
-                        } else {
-                            flow.auth_code = code;
-                            flow.status = "code_received".into();
-                            success = true;
-                        }
-                    }
-
-                    let status_line = if success {
-                        "HTTP/1.1 200 OK"
-                    } else {
-                        "HTTP/1.1 400 Bad Request"
-                    };
-                    let body = format!(
-                        "<html><body><h2>{}</h2><p>Return to Peekoo.</p></body></html>",
-                        message
-                    );
-                    let response = format!(
-                        "{status_line}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                        body.len()
-                    );
-                    let _ = stream.write_all(response.as_bytes());
-                    let _ = stream.flush();
-                    return;
-                }
-                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(100));
-                }
-                Err(err) => {
-                    set_oauth_flow_error(
-                        &flows,
-                        &flow_id,
-                        format!("OAuth callback listener error: {err}"),
-                    );
-                    return;
-                }
-            }
-        }
-    });
-}
-
-fn set_oauth_flow_error(
-    flows: &Arc<Mutex<HashMap<String, OauthFlow>>>,
-    flow_id: &str,
-    error_message: String,
-) {
-    if let Ok(mut lock) = flows.lock()
-        && let Some(flow) = lock.get_mut(flow_id)
-    {
-        flow.status = "failed".into();
-        flow.error = Some(error_message);
-    }
-}
-
-fn generate_pkce() -> (String, String) {
-    let uuid1 = Uuid::new_v4();
-    let uuid2 = Uuid::new_v4();
-    let mut random = [0u8; 32];
-    random[..16].copy_from_slice(uuid1.as_bytes());
-    random[16..].copy_from_slice(uuid2.as_bytes());
-
-    let verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(random);
-    let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(sha2::Sha256::digest(verifier.as_bytes()));
-    (verifier, challenge)
-}
-
-fn build_url_with_query(base: &str, params: &[(&str, &str)]) -> String {
-    let mut url = String::with_capacity(base.len() + 128);
-    url.push_str(base);
-    url.push('?');
-
-    for (index, (key, value)) in params.iter().enumerate() {
-        if index > 0 {
-            url.push('&');
-        }
-        url.push_str(&percent_encode_component(key));
-        url.push('=');
-        url.push_str(&percent_encode_component(value));
-    }
-    url
-}
-
-fn percent_encode_component(value: &str) -> String {
-    let mut out = String::with_capacity(value.len());
-    for byte in value.as_bytes() {
-        match *byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                out.push(*byte as char)
-            }
-            b' ' => out.push_str("%20"),
-            other => {
-                let _ = std::fmt::Write::write_fmt(&mut out, format_args!("%{other:02X}"));
-            }
-        }
-    }
-    out
-}
-
-fn percent_decode_component(value: &str) -> Option<String> {
-    if !value.as_bytes().contains(&b'%') && !value.as_bytes().contains(&b'+') {
-        return Some(value.to_string());
-    }
-
-    let mut out = Vec::with_capacity(value.len());
-    let mut bytes = value.as_bytes().iter().copied();
-    while let Some(byte) = bytes.next() {
-        match byte {
-            b'+' => out.push(b' '),
-            b'%' => {
-                let hi = bytes.next()?;
-                let lo = bytes.next()?;
-                let hex_bytes = [hi, lo];
-                let hex = std::str::from_utf8(&hex_bytes).ok()?;
-                out.push(u8::from_str_radix(hex, 16).ok()?);
-            }
-            other => out.push(other),
-        }
-    }
-
-    String::from_utf8(out).ok()
-}
-
-fn parse_query_pairs(query: &str) -> Vec<(String, String)> {
-    query
-        .split('&')
-        .filter(|part| !part.trim().is_empty())
-        .filter_map(|part| {
-            let (key, value) = part.split_once('=').unwrap_or((part, ""));
-            let key = percent_decode_component(key.trim())?;
-            let value = percent_decode_component(value.trim())?;
-            Some((key, value))
-        })
-        .collect()
-}
-
-fn exchange_openai_codex_token(
-    authorization_code: &str,
-    verifier: &str,
-) -> Result<OpenAiCodexTokenResponse, String> {
-    let form_body = format!(
-        "grant_type=authorization_code&client_id={}&code={}&code_verifier={}&redirect_uri={}",
-        percent_encode_component(OPENAI_CODEX_OAUTH_CLIENT_ID),
-        percent_encode_component(authorization_code),
-        percent_encode_component(verifier),
-        percent_encode_component(OPENAI_CODEX_OAUTH_REDIRECT_URI)
-    );
-
-    let client = reqwest::blocking::Client::new();
-    let response = client
-        .post(OPENAI_CODEX_OAUTH_TOKEN_URL)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .header("Accept", "application/json")
-        .body(form_body)
-        .send()
-        .map_err(|e| format!("OpenAI Codex token exchange request failed: {e}"))?;
-
-    let status = response.status();
-    let body = response
-        .text()
-        .unwrap_or_else(|_| "<failed to read body>".to_string());
-    if !status.is_success() {
-        return Err(format!(
-            "OpenAI Codex token exchange failed ({status}): {body}"
-        ));
-    }
-
-    serde_json::from_str(&body)
-        .map_err(|e| format!("Invalid OpenAI Codex token response: {e}; body: {body}"))
-}
-
-fn oauth_expires_at_iso(expires_in_seconds: i64) -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    let expires = now.saturating_add(expires_in_seconds.max(0) as u64);
-    expires.to_string()
 }
 
 #[cfg(test)]
@@ -1148,38 +820,5 @@ mod tests {
         assert!(second.is_ok());
 
         let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn build_openai_codex_oauth_url_has_required_params() {
-        let (verifier, challenge) = generate_pkce();
-        let url = build_url_with_query(
-            OPENAI_CODEX_OAUTH_AUTHORIZE_URL,
-            &[
-                ("response_type", "code"),
-                ("client_id", OPENAI_CODEX_OAUTH_CLIENT_ID),
-                ("redirect_uri", OPENAI_CODEX_OAUTH_REDIRECT_URI),
-                ("scope", OPENAI_CODEX_OAUTH_SCOPES),
-                ("code_challenge", &challenge),
-                ("code_challenge_method", "S256"),
-                ("state", &verifier),
-            ],
-        );
-
-        assert!(url.starts_with(OPENAI_CODEX_OAUTH_AUTHORIZE_URL));
-        assert!(url.contains("response_type=code"));
-        assert!(url.contains("code_challenge_method=S256"));
-        assert!(url.contains("state="));
-    }
-
-    #[test]
-    fn parse_query_pairs_decodes_values() {
-        let pairs = parse_query_pairs("code=abc123&state=hello%20world");
-        assert!(pairs.iter().any(|(k, v)| k == "code" && v == "abc123"));
-        assert!(
-            pairs
-                .iter()
-                .any(|(k, v)| k == "state" && v == "hello world")
-        );
     }
 }

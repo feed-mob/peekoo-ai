@@ -22,6 +22,7 @@ peekoo-core-domain = { path = "../../../crates/core-domain" }
 peekoo-core-app = { path = "../../../crates/core-app" }
 peekoo-persistence-sqlite = { path = "../../../crates/persistence-sqlite" }
 peekoo-security = { path = "../../../crates/security" }
+peekoo-agent-auth = { path = "../../../crates/peekoo-agent-auth" }
 peekoo-event-bus = { path = "../../../crates/event-bus" }
 peekoo-plugin-host = { path = "../../../crates/plugin-host" }
 peekoo-agent = { path = "../../../crates/peekoo-agent" }
@@ -29,6 +30,3 @@ asupersync = "0.2"
 rusqlite = { version = "0.38" }
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
-base64 = "0.22"
-sha2 = "0.10"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

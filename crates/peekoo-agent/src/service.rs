@@ -3,11 +3,11 @@
 //! Provides a simplified API for creating sessions, sending prompts,
 //! and switching models at runtime.
 
+use pi::error::Result;
 use pi::sdk::{
     AgentEvent, AgentSessionHandle, AssistantMessage, ContentBlock, SessionOptions, SubscriptionId,
     create_agent_session,
 };
-use pi::error::Result;
 
 use crate::config::AgentServiceConfig;
 
@@ -69,7 +69,7 @@ impl AgentService {
                     if resolved_persona_dir.is_none() {
                         resolved_persona_dir = Some(path.clone());
                     }
-                    
+
                     // Only auto-discover skills if none explicitly set
                     if resolved_agent_skills.is_empty() {
                         let skills_dir = path.join("skills");
@@ -85,7 +85,7 @@ impl AgentService {
                         let _ = std::fs::create_dir_all(&workspace_dir);
                     }
                     config.working_directory = workspace_dir;
-                    
+
                     // If we found a config dir (either local or global), stop searching.
                     // The first match completely overrides any further ones
                     // to prevent mixing local personas with global skills.
@@ -113,7 +113,7 @@ impl AgentService {
 
             // Memory files (memory.md, MEMORY.md, and memories/*.md)
             let mut memory_parts = Vec::new();
-            
+
             // Core memory file
             for core_mem in &["memory.md", "MEMORY.md"] {
                 let path = persona_dir.join(core_mem);
@@ -141,7 +141,8 @@ impl AgentService {
                     for path in mem_files {
                         if let Ok(content) = std::fs::read_to_string(&path) {
                             if !content.trim().is_empty() {
-                                let title = path.file_stem()
+                                let title = path
+                                    .file_stem()
                                     .unwrap_or_default()
                                     .to_string_lossy()
                                     .replace(['_', '-'], " ");
@@ -166,7 +167,7 @@ impl AgentService {
 
         // 1c. Append agent skills (markdown skill instructions)
         let mut final_system_prompt = prompt_parts.join("\n\n");
-        
+
         if !resolved_agent_skills.is_empty() {
             let options = pi::resources::LoadSkillsOptions {
                 cwd: config.working_directory.clone(),
@@ -174,14 +175,14 @@ impl AgentService {
                 skill_paths: resolved_agent_skills,
                 include_defaults: false,
             };
-            
+
             let loaded = pi::resources::load_skills(options);
-            
+
             // Expose diagnostics/warnings to stderr if any failed to parse
             for diag in loaded.diagnostics {
                 eprintln!("Warning (Markdown Skill): {}", diag.message);
             }
-            
+
             if !loaded.skills.is_empty() {
                 let skills_prompt = pi::resources::format_skills_for_prompt(&loaded.skills);
                 if !final_system_prompt.is_empty() {
@@ -192,24 +193,37 @@ impl AgentService {
         }
 
         // 2. Determine LLM routing
-        let provider_id = config
-            .provider
-            .clone()
-            .unwrap_or_else(|| default_config.default_provider.clone().unwrap_or_else(|| "anthropic".to_string()));
-        let model_id = config
-            .model
-            .clone()
-            .unwrap_or_else(|| default_config.default_model.clone().unwrap_or_else(|| "claude-3-7-sonnet-latest".to_string()));
+        let provider_id = config.provider.clone().unwrap_or_else(|| {
+            default_config
+                .default_provider
+                .clone()
+                .unwrap_or_else(|| "anthropic".to_string())
+        });
+        let model_id = config.model.clone().unwrap_or_else(|| {
+            default_config
+                .default_model
+                .clone()
+                .unwrap_or_else(|| "claude-3-7-sonnet-latest".to_string())
+        });
 
         let options = SessionOptions {
             provider: Some(provider_id),
             model: Some(model_id),
             api_key: config.api_key.clone(),
-            system_prompt: if final_system_prompt.is_empty() { None } else { Some(final_system_prompt) },
+            system_prompt: if final_system_prompt.is_empty() {
+                None
+            } else {
+                Some(final_system_prompt)
+            },
             working_directory: Some(config.working_directory.clone()),
             max_tool_iterations: config.max_tool_iterations,
             no_session: true,
-            enabled_tools: Some(pi::sdk::BUILTIN_TOOL_NAMES.iter().map(|s| s.to_string()).collect()),
+            enabled_tools: Some(
+                pi::sdk::BUILTIN_TOOL_NAMES
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            ),
             ..Default::default()
         };
 
@@ -299,7 +313,7 @@ fn extract_text(msg: &AssistantMessage) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pi::model::{TextContent, ThinkingContent, Usage, StopReason};
+    use pi::model::{StopReason, TextContent, ThinkingContent, Usage};
 
     fn make_message(content: Vec<ContentBlock>) -> AssistantMessage {
         AssistantMessage {

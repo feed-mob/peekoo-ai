@@ -19,6 +19,8 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     isLoading,
     error,
     oauthFlowId,
+    oauthStatus,
+    oauthError,
     refresh,
     updateSettings,
     saveApiKey,
@@ -43,6 +45,11 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     if (!settings) return undefined;
     return settings.providerAuth.find((item) => item.providerId === settings.activeProviderId);
   }, [settings]);
+
+  const effectiveSkills = useMemo(() => {
+    if (!settings || !catalog) return [];
+    return settings.skills.length > 0 ? settings.skills : catalog.discoveredSkills;
+  }, [catalog, settings]);
 
   useEffect(() => {
     if (!settings || !selectedProvider) return;
@@ -133,6 +140,8 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
           apiKey={apiKey}
           setApiKey={setApiKey}
           oauthFlowRunning={oauthFlowId !== null}
+          oauthStatus={oauthStatus}
+          oauthError={oauthError}
           onSaveApiKey={async () => {
             if (!apiKey.trim()) return;
             await saveApiKey(settings.activeProviderId, apiKey.trim());
@@ -153,9 +162,9 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       <div className="space-y-2">
         <p className="text-sm font-medium text-text-primary">Skills</p>
         <SkillToggleList
-          skills={settings.skills}
+          skills={effectiveSkills}
           onToggle={(skillId, enabled) => {
-            const skills = settings.skills.map((skill) =>
+            const skills = effectiveSkills.map((skill) =>
               skill.skillId === skillId ? { ...skill, enabled } : skill
             );
             void updateSettings({ skills });

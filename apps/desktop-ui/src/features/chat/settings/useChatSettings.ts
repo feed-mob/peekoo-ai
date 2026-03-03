@@ -24,6 +24,10 @@ export function useChatSettings() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [oauthFlowId, setOauthFlowId] = useState<string | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<
+    "idle" | "pending" | "completed" | "failed" | "expired"
+  >("idle");
+  const [oauthError, setOauthError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -70,6 +74,9 @@ export function useChatSettings() {
       const filtered = prev.providerAuth.filter((item) => item.providerId !== providerId);
       return { ...prev, providerAuth: [...filtered, parsed], version: prev.version + 1 };
     });
+    setOauthFlowId(null);
+    setOauthStatus("idle");
+    setOauthError(null);
     return parsed;
   }, []);
 
@@ -83,6 +90,8 @@ export function useChatSettings() {
 
     await open(response.authorizeUrl);
     setOauthFlowId(response.flowId);
+    setOauthStatus("pending");
+    setOauthError(null);
     return response;
   }, []);
 
@@ -93,7 +102,18 @@ export function useChatSettings() {
     })) as {
       status: string;
       providerAuth?: ProviderAuth;
+      error?: string | null;
     };
+
+    const nextStatus =
+      response.status === "pending" ||
+      response.status === "completed" ||
+      response.status === "failed" ||
+      response.status === "expired"
+        ? response.status
+        : "failed";
+    setOauthStatus(nextStatus);
+    setOauthError(response.error ?? null);
 
     if (response.status === "completed" && response.providerAuth) {
       setSettings((prev) => {
@@ -106,6 +126,10 @@ export function useChatSettings() {
           version: prev.version + 1,
         };
       });
+      setOauthFlowId(null);
+    }
+
+    if (response.status === "failed" || response.status === "expired") {
       setOauthFlowId(null);
     }
 
@@ -124,6 +148,8 @@ export function useChatSettings() {
     isLoading,
     error,
     oauthFlowId,
+    oauthStatus,
+    oauthError,
     refresh,
     updateSettings,
     saveApiKey,
