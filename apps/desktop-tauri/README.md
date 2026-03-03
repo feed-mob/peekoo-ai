@@ -1,24 +1,32 @@
-# Desktop Tauri App
+# Desktop Tauri Runtime
 
-This is the Tauri-based desktop application for Peekoo.
+Tauri runtime for Peekoo desktop.
 
-## Comparison with GPUI
+## Canonical Runtime Crate
 
-| Feature | Tauri | GPUI |
-|---------|-------|------|
-| Plugin UI | ✅ Custom React components | ❌ Data-driven only |
-| Cross-platform | ✅ Windows/macOS/Linux | ❌ macOS/Linux only |
-| Maturity | ✅ Stable v2 | ❌ pre-1.0 |
-| Performance | WebView overhead | ✅ Native GPU |
-| Bundle size | ~600KB base | Smaller |
+Use `apps/desktop-tauri/src-tauri` as the Rust app entrypoint.
 
-## Testing
+## Development
 
-Compare both implementations:
 ```bash
-# Tauri version
-cargo run --bin peekoo-desktop-tauri
-
-# GPUI version  
-cargo run --bin peekoo-gpui-app
+just dev
 ```
+
+Or directly:
+
+```bash
+cd apps/desktop-tauri/src-tauri
+cargo tauri dev
+```
+
+## Build
+
+```bash
+just build
+```
+
+## Architecture
+
+- `desktop-tauri` is a transport layer.
+- Agent and settings orchestration lives in `crates/peekoo-agent-app`.
+- OAuth protocol concerns live in `crates/peekoo-agent-auth`.

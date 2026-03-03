@@ -1,47 +1,33 @@
 # AGENTS.md - desktop-tauri
 
 ## Overview
-Tauri desktop app shell for Peekoo AI. Provides the native desktop wrapper for the React frontend.
+Tauri transport layer for the Peekoo desktop app.
 
-## Tech Stack
-- **Framework**: Tauri v2 (Rust)
-- **Frontend**: React app (from desktop-ui)
-- **Build**: Cargo
+This package hosts command handlers and window/event wiring only. Business logic belongs in workspace crates, primarily `peekoo-agent-app`.
 
-## Status
-Currently minimal scaffold - placeholder implementation in `src/main.rs`.
+## Canonical Entry Point
+- Rust runtime crate: `apps/desktop-tauri/src-tauri`
+- Frontend host: `apps/desktop-ui`
+
+## Responsibilities
+- Register Tauri commands and map request/response DTOs.
+- Emit UI-facing events (`window.emit`) for streaming updates.
+- Delegate orchestration to `peekoo-agent-app`.
+
+## Non-Responsibilities
+- Do not implement provider OAuth protocol logic here.
+- Do not implement settings persistence logic here.
+- Do not implement agent runtime lifecycle policy here.
 
 ## Scripts
 ```bash
-# Development (requires desktop-ui dev server)
-tauri dev
+# Development (starts desktop-ui via tauri beforeDevCommand)
+cd apps/desktop-tauri/src-tauri && cargo tauri dev
 
-# Build production app
-tauri build
+# Build production desktop app
+cd apps/desktop-tauri/src-tauri && cargo tauri build
 ```
 
-## Project Structure
-```
-desktop-tauri/
-├── Cargo.toml           # Package manifest
-├── src/
-│   └── main.rs          # Entry point (currently placeholder)
-└── src-tauri/           # Tauri configuration (standard location)
-```
-
-## Dependencies
-See `Cargo.toml` - currently minimal. Will need:
-- `tauri` - Core Tauri framework
-- `tauri-plugin-shell` - Shell access
-- Peekoo workspace crates for business logic
-
-## Integration
-This app shell loads the `desktop-ui` frontend. Build process:
-1. Build `desktop-ui` to `dist/`
-2. Tauri bundles the dist files with the Rust binary
-
-## Future Work
-- Implement Tauri commands for backend communication
-- Add system tray integration
-- Implement global shortcuts
-- Window management (minimize to tray, etc.)
+## Dependency Boundary
+- Allowed direct app-layer dependency: `peekoo-agent-app`
+- Avoid direct coupling from this layer into lower-level persistence/security/auth crates.
