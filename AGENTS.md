@@ -67,10 +67,10 @@ npx tsc --noEmit
 
 ### Project Structure
 - `crates/`: Rust workspace crates
-  - `core-domain/`: Shared domain models and invariants
+  - `peekoo-productivity-domain/`: Task and pomodoro domain models/invariants
   - `peekoo-agent/`: Agent runtime facade over the underlying SDK/session
   - `peekoo-agent-auth/`: OAuth and provider auth protocol orchestration
-  - `peekoo-agent-app/`: Agent application orchestration and settings use cases
+  - `peekoo-agent-app/`: Agent application orchestration and settings/use-case domain validation
   - Other crates for plugins, persistence, security, and integrations
 - `apps/desktop-ui/`: React + Vite + TypeScript frontend
 - `apps/desktop-tauri/src-tauri/`: Canonical Tauri desktop runtime crate
@@ -83,6 +83,7 @@ npx tsc --noEmit
 
 ### Deprecations
 - `core-app` has been removed and must not be reintroduced.
+- `core-domain` has been replaced by domain-specific crates and must not be reintroduced.
 - New application orchestration should live in domain-specific app crates (current: `peekoo-agent-app`).
 
 ### Git Conventions

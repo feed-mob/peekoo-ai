@@ -13,6 +13,12 @@ pub struct OAuthService {
     flows: Arc<Mutex<HashMap<String, OAuthFlow>>>,
 }
 
+impl Default for OAuthService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OAuthService {
     pub fn new() -> Self {
         Self {

@@ -3,19 +3,19 @@
 ## Tauri Version (Current Focus)
 
 ### ✅ Completed
-- [x] Project structure setup (workspace with Tauri + GPUI parallel)
-- [x] Core Rust business logic crates (core-domain, core-app, plugin-host, etc.)
+- [x] Project structure setup (agent-first workspace)
+- [x] Core Rust business logic crates (`peekoo-agent`, `peekoo-agent-app`, `peekoo-agent-auth`, `peekoo-productivity-domain`, plugin-host, etc.)
 - [x] Tauri app scaffolding with Rust commands
 - [x] React UI components and styling
 - [x] Pet UI with animations and moods
 - [x] Tab-based navigation (Chat, Tasks, Pomodoro)
 - [x] Tauri commands (greet, get_pet_state, send_message, create_task)
 - [x] TypeScript and Vite configuration
-- [x] All core domain tests passing
+- [x] Productivity domain tests passing
 
 ### 🔧 In Progress
-- [ ] Integrate core-domain with Tauri commands
-  - Connect Task and Pomodoro types from core-domain
+- [ ] Integrate productivity domain with Tauri commands
+  - Connect Task and Pomodoro types from `peekoo-productivity-domain`
   - Implement actual task CRUD operations in Rust backend
   - Implement pomodoro state management in Rust backend
   - Wire up event bus for real-time updates

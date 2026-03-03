@@ -21,7 +21,7 @@ impl AgentApplication {
     pub fn new() -> Result<Self, String> {
         Ok(Self {
             agent: Mutex::new(None),
-            settings: SettingsService::default()?,
+            settings: SettingsService::new()?,
             agent_config_version: Mutex::new(None),
         })
     }
@@ -57,7 +57,7 @@ impl AgentApplication {
                 *version_guard = Some(settings_version);
             } else {
                 let current_version = self.settings.get_settings()?.version;
-                if (*version_guard).map_or(true, |version| version != current_version) {
+                if (*version_guard) != Some(current_version) {
                     let config = self.resolved_config()?;
                     let (config, settings_version) = self.settings.to_agent_config(config)?;
 

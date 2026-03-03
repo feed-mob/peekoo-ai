@@ -1,4 +1,6 @@
 mod catalog;
+#[allow(dead_code)]
+mod domain;
 mod dto;
 mod pi_models;
 mod skills;
@@ -33,7 +35,7 @@ pub struct SettingsService {
 }
 
 impl SettingsService {
-    pub fn default() -> Result<Self, String> {
+    pub fn new() -> Result<Self, String> {
         let db_path = default_db_path()?;
         let store = SettingsStore::from_path(&db_path)?;
         Ok(Self {

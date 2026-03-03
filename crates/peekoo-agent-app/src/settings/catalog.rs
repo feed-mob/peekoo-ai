@@ -29,10 +29,7 @@ pub fn default_model_for_provider(provider_id: &str) -> &'static str {
 }
 
 pub fn normalize_model_for_provider(provider_id: &str, model_id: &str) -> String {
-    if models_for_provider(provider_id)
-        .iter()
-        .any(|candidate| *candidate == model_id)
-    {
+    if models_for_provider(provider_id).contains(&model_id) {
         return model_id.to_string();
     }
     default_model_for_provider(provider_id).to_string()
