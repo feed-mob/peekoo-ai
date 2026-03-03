@@ -2,8 +2,8 @@
 name = "peekoo-desktop-tauri"
 version = "0.1.0"
 description = "Peekoo AI Desktop Pet - Tauri Version"
-edition = "2021"
-rust-version = "1.70"
+edition = "2024"
+rust-version = "1.85"
 
 [lib]
 name = "peekoo_desktop_tauri_lib"
@@ -22,3 +22,5 @@ peekoo-core-domain = { path = "../../../crates/core-domain" }
 peekoo-core-app = { path = "../../../crates/core-app" }
 peekoo-event-bus = { path = "../../../crates/event-bus" }
 peekoo-plugin-host = { path = "../../../crates/plugin-host" }
+peekoo-agent = { path = "../../../crates/peekoo-agent" }
+asupersync = "0.2"

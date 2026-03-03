@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "streamdown/styles.css";
 
 /* ─── Deep Space Dark Theme ─── */
 @theme {
