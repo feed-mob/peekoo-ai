@@ -4,8 +4,8 @@
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest,
+    PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest, TaskDto,
 };
 use serde::Serialize;
 use tauri::{Emitter, State, Window};
@@ -158,13 +158,44 @@ async fn agent_get_model(state: State<'_, AgentState>) -> Result<ModelInfo, Stri
 }
 
 #[tauri::command]
-async fn create_task(title: String, priority: String) -> Result<serde_json::Value, String> {
-    Ok(serde_json::json!({
-        "id": "task-123",
-        "title": title,
-        "priority": priority,
-        "status": "todo"
-    }))
+async fn create_task(
+    title: String,
+    priority: String,
+    state: State<'_, AgentState>,
+) -> Result<TaskDto, String> {
+    state.app.create_task(&title, &priority)
+}
+
+#[tauri::command]
+async fn pomodoro_start(
+    minutes: u32,
+    state: State<'_, AgentState>,
+) -> Result<PomodoroSessionDto, String> {
+    state.app.start_pomodoro(minutes)
+}
+
+#[tauri::command]
+async fn pomodoro_pause(
+    session_id: String,
+    state: State<'_, AgentState>,
+) -> Result<PomodoroSessionDto, String> {
+    state.app.pause_pomodoro(&session_id)
+}
+
+#[tauri::command]
+async fn pomodoro_resume(
+    session_id: String,
+    state: State<'_, AgentState>,
+) -> Result<PomodoroSessionDto, String> {
+    state.app.resume_pomodoro(&session_id)
+}
+
+#[tauri::command]
+async fn pomodoro_finish(
+    session_id: String,
+    state: State<'_, AgentState>,
+) -> Result<PomodoroSessionDto, String> {
+    state.app.finish_pomodoro(&session_id)
 }
 
 // ============================================================================
@@ -193,7 +224,11 @@ pub fn run() {
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
-            create_task
+            create_task,
+            pomodoro_start,
+            pomodoro_pause,
+            pomodoro_resume,
+            pomodoro_finish
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

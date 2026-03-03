@@ -4,6 +4,7 @@ use peekoo_agent::AgentEvent;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 
+use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -14,6 +15,7 @@ use crate::settings::{
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
+    productivity: ProductivityService,
     agent_config_version: Mutex<Option<i64>>,
 }
 
@@ -22,6 +24,7 @@ impl AgentApplication {
         Ok(Self {
             agent: Mutex::new(None),
             settings: SettingsService::new()?,
+            productivity: ProductivityService::new(),
             agent_config_version: Mutex::new(None),
         })
     }
@@ -172,6 +175,26 @@ impl AgentApplication {
 
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
+    }
+
+    pub fn create_task(&self, title: &str, priority: &str) -> Result<TaskDto, String> {
+        self.productivity.create_task(title, priority)
+    }
+
+    pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
+        self.productivity.start_pomodoro(minutes)
+    }
+
+    pub fn pause_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
+        self.productivity.pause_pomodoro(session_id)
+    }
+
+    pub fn resume_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
+        self.productivity.resume_pomodoro(session_id)
+    }
+
+    pub fn finish_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
+        self.productivity.finish_pomodoro(session_id)
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
