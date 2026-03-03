@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "crates/core-domain",
-  "crates/core-app",
   "crates/plugin-host",
   "crates/calendar-google",
   "crates/persistence-sqlite",
