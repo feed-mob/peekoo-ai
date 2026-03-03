@@ -1,5 +1,5 @@
 ---
-name: memory_manager
+name: memory-manager
 description: Update your long-term memory when you learn new user preferences, project context, or durable facts.
 ---
 

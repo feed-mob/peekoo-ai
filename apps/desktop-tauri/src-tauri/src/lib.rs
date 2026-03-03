@@ -6,8 +6,7 @@ use std::sync::Mutex;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use serde::Serialize;
-use tauri::State;
-
+use tauri::{Emitter, State, Window};
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -60,6 +59,7 @@ async fn get_sprite_state() -> Result<serde_json::Value, String> {
 #[tauri::command]
 async fn agent_prompt(
     message: String,
+    window: Window,
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
     // Take the agent out of the mutex briefly to avoid holding the lock
@@ -105,7 +105,9 @@ async fn agent_prompt(
         .build()
         .map_err(|e| format!("Runtime error: {e}"))?;
 
-    let result = runtime.block_on(agent.prompt(&message, |_event| {}));
+    let result = runtime.block_on(agent.prompt(&message, move |event| {
+        let _ = window.emit("agent-event", event);
+    }));
 
     // Put the agent back.
     {
