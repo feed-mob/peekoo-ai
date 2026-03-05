@@ -29,15 +29,19 @@ pub struct AgentServiceConfig {
     /// Working directory for file-system tools (read, write, bash, etc.).
     pub working_directory: PathBuf,
 
-    /// Path to a directory containing OpenClaw-style persona files.
+    /// Path to a directory containing startup instruction files.
     ///
     /// Supported files (all optional):
-    /// - `IDENTITY.md` — Name, role, background context
-    /// - `SOUL.md` — Core personality, values, behavioral guidelines
-    /// - `MEMORY.md` — Persistent facts, user preferences, project context
+    /// - `AGENTS.md` — Operating instructions and memory usage guidelines
+    /// - `SOUL.md` — Persona tone and behavioral boundaries
+    /// - `IDENTITY.md` — Agent name, vibe, and emoji
+    /// - `USER.md` — User profile and addressing preferences
+    /// - `memory.md` or `MEMORY.md` — Persistent facts, user preferences, project context
+    /// - `memories/*.md` — Additional topic-specific memory notes
     ///
     /// These are composed into the system prompt before any `system_prompt`
-    /// or `agent_skills` content.
+    /// or `agent_skills` content, in this order:
+    /// `AGENTS` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
     pub persona_dir: Option<PathBuf>,
 
     /// List of paths to markdown files containing AgentSkills (from agentskills.io).
