@@ -133,19 +133,24 @@ let config = AgentServiceConfig {
 };
 ```
 
-### OpenClaw-style Persona Files
+### Startup Instruction Files
 
 For richer agent personalities, you can use a directory of markdown files inspired by [OpenClaw](https://github.com/nichochar/open-claw):
 
 | File | Purpose |
 |------|---------|
-| `IDENTITY.md` | Name, role, background context |
-| `SOUL.md` | Core personality, values, behavioral guidelines |
-| `MEMORY.md` | Persistent facts, user preferences, project context |
+| `AGENTS.md` | Operating instructions and memory usage guidelines |
+| `SOUL.md` | Persona tone and behavioral boundaries |
+| `IDENTITY.md` | Agent name, vibe, and emoji |
+| `USER.md` | User profile and addressing preferences |
+| `memory.md` or `MEMORY.md` | Persistent facts, user preferences, project context |
+| `memories/*.md` | Additional topic-specific memory notes |
 
 All files are **optional**. They are composed into the system prompt in this order:
 
-`IDENTITY` → `SOUL` → `MEMORY` → `system_prompt` → `agent_skills`
+`AGENTS` → `SOUL` → `IDENTITY` → `USER` → `MEMORY` → `system_prompt` → `agent_skills`
+
+This support is additive and backward compatible with existing `IDENTITY` / `SOUL` / memory-only setups.
 
 ```rust
 use std::path::PathBuf;
@@ -171,7 +176,7 @@ By default (`auto_discover: true`), `peekoo-agent` will automatically search for
 Because Peekoo acts as a persistent desktop assistant sprite, its execution workspace is isolated from the directory where the application binary was launched. When Peekoo discovers a valid `.peekoo/` configuration (whether locally or via `PEEKOO_CONFIG_DIR`), it will automatically set its `working_directory` for file-system tools to the `workspace/` subdirectory *inside* that config folder (e.g., `~/.peekoo/workspace/`).
 
 If found, it automatically uses/creates:
-- **Persona:** `IDENTITY.md`, `SOUL.md`, `memory.md`, and `memories/*.md` within the config dir.
+- **Startup instructions:** `IDENTITY.md`, `SOUL.md`, `memory.md` (or `MEMORY.md`), `memories/*.md`, `AGENTS.md`, and `USER.md` within the config dir.
 - **Skills:** Any markdown files or `SKILL.md` subdirectories inside the `skills/` folder.
 - **Tools Execution:** `.peekoo/workspace/` is created as the isolated sandbox.
 
