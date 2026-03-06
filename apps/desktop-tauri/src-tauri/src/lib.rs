@@ -210,16 +210,15 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
-            if let Some(mut data_dir) = dirs::data_local_dir() {
-                data_dir.push("com.peekoo.desktop");
-                data_dir.push("WebView2");
-                if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    eprintln!("warning: failed to create WebView2 data dir: {e}");
-                }
-                // SAFETY: Called at the start of `run()` before `tauri::Builder`
-                // is constructed, so no other threads are running yet.
-                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
+            // Use temp directory to avoid permission issues
+            let mut data_dir = std::env::temp_dir();
+            data_dir.push("peekoo-webview2");
+            if let Err(e) = std::fs::create_dir_all(&data_dir) {
+                eprintln!("warning: failed to create WebView2 data dir: {e}");
             }
+            // SAFETY: Called at the start of `run()` before `tauri::Builder`
+            // is constructed, so no other threads are running yet.
+            unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
         }
     }
 

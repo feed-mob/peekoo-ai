@@ -246,8 +246,8 @@ fn secret_error(err: SecretStoreError) -> String {
 }
 
 fn default_db_path() -> Result<PathBuf, String> {
-    let Some(home) = dirs::home_dir() else {
-        return Err("Cannot determine home directory".into());
-    };
-    Ok(home.join(".peekoo").join("peekoo.sqlite"))
+    // 在开发模式下，使用临时目录来避免权限问题
+    let temp_dir = std::env::temp_dir();
+    let db_path = temp_dir.join("peekoo-dev.sqlite");
+    Ok(db_path)
 }

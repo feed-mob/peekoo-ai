@@ -26,6 +26,7 @@ impl SettingsStore {
         }
 
         let conn = Connection::open(path).map_err(|e| format!("Open settings db error: {e}"))?;
+        
         conn.execute(
             "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
             [],
