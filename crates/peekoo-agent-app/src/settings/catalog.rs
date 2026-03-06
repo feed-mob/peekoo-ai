@@ -29,6 +29,14 @@ pub fn default_model_for_provider(provider_id: &str) -> &'static str {
 }
 
 pub fn normalize_model_for_provider(provider_id: &str, model_id: &str) -> String {
+    if is_compatible_provider(provider_id) {
+        let trimmed = model_id.trim();
+        if trimmed.is_empty() {
+            return default_model_for_provider(provider_id).to_string();
+        }
+        return trimmed.to_string();
+    }
+
     if models_for_provider(provider_id).contains(&model_id) {
         return model_id.to_string();
     }
@@ -113,5 +121,13 @@ mod tests {
     fn normalize_model_falls_back_for_invalid_pair() {
         let normalized = normalize_model_for_provider("openai-codex", "claude-sonnet-4-6");
         assert_eq!(normalized, "gpt-5.3-codex");
+    }
+
+    #[test]
+    fn normalize_model_keeps_custom_model_for_compatible_providers() {
+        let anthropic = normalize_model_for_provider(ANTHROPIC_COMPAT_PROVIDER_ID, "glm-5");
+        let openai = normalize_model_for_provider(OPENAI_COMPAT_PROVIDER_ID, "deepseek-chat");
+        assert_eq!(anthropic, "glm-5");
+        assert_eq!(openai, "deepseek-chat");
     }
 }

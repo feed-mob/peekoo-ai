@@ -4,6 +4,13 @@ import {
   buildKeyedSpriteSheet,
   type ChromaKeyOptions,
 } from "./chromaKey";
+import {
+  buildAtlasGrid,
+  getFrameRect,
+  trimFrameTop,
+  validateAtlas,
+  type SpriteAtlasGrid,
+} from "./spriteAtlas";
 
 interface SpriteAnimationProps {
   animation?: AnimationType;
@@ -18,8 +25,6 @@ interface SpriteAnimationProps {
 const SPRITE_CONFIG = {
   columns: 8,
   rows: 7,
-  frameWidth: 276,
-  frameHeight: 274,
   imageSrc: "/sprite.png",
 };
 
@@ -32,6 +37,11 @@ const ANIMATION_ROWS: Record<AnimationType, number> = {
   reminder: 4,  // Row 4: Reminder
   sleepy: 5,    // Row 5: Sleepy/Rest
   dragging: 6,  // Row 6: Dragging
+};
+
+const ROW_TOP_TRIM_PIXELS: Partial<Record<number, number>> = {
+  4: 9,
+  5: 12,
 };
 
 export default function SpriteAnimation({
@@ -48,17 +58,37 @@ export default function SpriteAnimation({
   const animationRef = useRef<number>();
   const currentRowRef = useRef(ANIMATION_ROWS[animation]);
   const lastFrameTimeRef = useRef<number>(0);
+  const atlasRef = useRef<SpriteAtlasGrid | null>(null);
 
   // Load sprite sheet
   useEffect(() => {
     const img = new Image();
     img.src = SPRITE_CONFIG.imageSrc;
     img.onload = () => {
+      const atlas = buildAtlasGrid(
+        img.width,
+        img.height,
+        SPRITE_CONFIG.columns,
+        SPRITE_CONFIG.rows,
+      );
+      atlasRef.current = atlas;
+
+      if (import.meta.env.DEV) {
+        const validation = validateAtlas(atlas, img.width, img.height);
+        if (validation.warnings.length > 0 || validation.errors.length > 0) {
+          console.warn("[SpriteAnimation] atlas validation", validation);
+        }
+      }
+
       sourceRef.current =
         chromaKey === false ? img : buildKeyedSpriteSheet(img, chromaKey);
+
       if (canvasRef.current) {
-        canvasRef.current.width = SPRITE_CONFIG.frameWidth * scale;
-        canvasRef.current.height = SPRITE_CONFIG.frameHeight * scale;
+        canvasRef.current.width = Math.max(1, Math.round(atlas.nominalFrameWidth * scale));
+        canvasRef.current.height = Math.max(
+          1,
+          Math.round(atlas.nominalFrameHeight * scale),
+        );
       }
     };
   }, [scale, chromaKey]);
@@ -73,7 +103,7 @@ export default function SpriteAnimation({
   // Animation loop
   useEffect(() => {
     const animate = (currentTime: number) => {
-      if (!canvasRef.current || !sourceRef.current) {
+      if (!canvasRef.current || !sourceRef.current || !atlasRef.current) {
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
@@ -92,16 +122,18 @@ export default function SpriteAnimation({
       if (currentTime - lastFrameTimeRef.current >= frameInterval) {
         const row = currentRowRef.current;
         const col = frameRef.current;
-        const sx = col * SPRITE_CONFIG.frameWidth;
-        const sy = row * SPRITE_CONFIG.frameHeight;
+        const sourceFrame = trimFrameTop(
+          getFrameRect(atlasRef.current, row, col),
+          ROW_TOP_TRIM_PIXELS[row] ?? 0,
+        );
 
         ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
         ctx.drawImage(
           sourceRef.current,
-          sx,
-          sy,
-          SPRITE_CONFIG.frameWidth,
-          SPRITE_CONFIG.frameHeight,
+          sourceFrame.sx,
+          sourceFrame.sy,
+          sourceFrame.sw,
+          sourceFrame.sh,
           0,
           0,
           canvasRef.current.width,

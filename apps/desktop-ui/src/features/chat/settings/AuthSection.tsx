@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ProviderAuth, ProviderCatalog } from "@/types/agent-settings";
@@ -31,9 +32,29 @@ export function AuthSection({
 }: AuthSectionProps) {
   const supportsApiKey = provider.authModes.includes("api_key");
   const supportsOauth = provider.authModes.includes("oauth");
+  const isApiKeyConfigured = auth?.authMode === "api_key" && auth.configured;
   const isOauthConnected = auth?.authMode === "oauth" && auth.configured;
   const oauthPrimaryLabel = isOauthConnected ? "Reconnect OAuth" : "Connect OAuth";
   const oauthStatusLabel = isOauthConnected ? "Connected" : "Not connected";
+
+  const [isEditingKey, setIsEditingKey] = useState(false);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
+  const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) return;
+    try {
+      await onSaveApiKey();
+      setApiKeyError(null);
+      setIsEditingKey(false);
+    } catch (error) {
+      setApiKeyError(String(error));
+    }
+  };
+
+  useEffect(() => {
+    setIsEditingKey(false);
+    setApiKeyError(null);
+  }, [auth?.providerId]);
 
   return (
     <div className="space-y-2 rounded-md border border-glass-border p-3">
@@ -48,16 +69,38 @@ export function AuthSection({
 
       {supportsApiKey && (
         <div className="space-y-2">
-          <Input
-            value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
-            type="password"
-            placeholder="Enter API key"
-            className="bg-space-deep border-glass-border"
-          />
-          <Button size="sm" onClick={() => void onSaveApiKey()}>
-            Save API Key
-          </Button>
+          {isApiKeyConfigured && !isEditingKey ? (
+            <>
+              <p className="text-xs text-emerald-300">API key saved</p>
+              <Button size="sm" variant="secondary" onClick={() => setIsEditingKey(true)}>
+                Update API Key
+              </Button>
+            </>
+          ) : (
+            <>
+              <Input
+                value={apiKey}
+                onChange={(event) => {
+                  setApiKeyError(null);
+                  setApiKey(event.target.value);
+                }}
+                type="password"
+                placeholder="Enter API key"
+                className="bg-space-deep border-glass-border"
+              />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={() => void handleSaveApiKey()}>
+                  Save API Key
+                </Button>
+                {isEditingKey && (
+                  <Button size="sm" variant="ghost" onClick={() => setIsEditingKey(false)}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+              {apiKeyError ? <p className="text-xs text-danger">{apiKeyError}</p> : null}
+            </>
+          )}
         </div>
       )}
 
