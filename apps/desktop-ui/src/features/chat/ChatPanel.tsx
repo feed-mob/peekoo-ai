@@ -8,6 +8,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { emitPetReaction } from "@/lib/pet-events";
 import type {
   Message,
   AgentEvent,
@@ -102,6 +103,8 @@ export function ChatPanel() {
     streamingIdRef.current = (Date.now() + 1).toString();
     toolStatusRef.current = new Map();
 
+    void emitPetReaction("chat-message");
+
     // Listen for agent events
     const unlisten = await listen<AgentEvent>("agent-event", (ev) => {
       const event = ev.payload;
@@ -141,6 +144,8 @@ export function ChatPanel() {
       }
     });
 
+    void emitPetReaction("ai-processing", { sticky: true });
+
     try {
       const result = await invoke<{ response: string }>("agent_prompt", {
         message: input,
@@ -163,6 +168,8 @@ export function ChatPanel() {
         updated[idx] = finalMsg;
         return updated;
       });
+
+      void emitPetReaction("agent-result");
     } catch (err) {
       const errorMessage: Message = {
         id: (Date.now() + 2).toString(),
@@ -170,6 +177,7 @@ export function ChatPanel() {
         text: `Error: ${err}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
+      void emitPetReaction("agent-result");
     } finally {
       unlisten();
       streamingIdRef.current = null;

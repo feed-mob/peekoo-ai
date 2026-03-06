@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Sprite } from "@/components/sprite/Sprite";
 import { SpriteActionMenu } from "@/components/sprite/SpriteActionMenu";
 import { useSpriteState } from "@/hooks/use-sprite-state";
@@ -16,14 +16,32 @@ export default function SpriteView() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
+  const moodResetTimerRef = useRef<number | null>(null);
 
-  const handleMoodChange = useCallback((mood: string) => {
-    setMoodOverride(mood);
-    const timer = setTimeout(() => {
-      setMoodOverride(null);
-    }, MOOD_OVERRIDE_DURATION_MS);
-    return () => clearTimeout(timer);
+  const clearMoodResetTimer = useCallback(() => {
+    if (moodResetTimerRef.current !== null) {
+      window.clearTimeout(moodResetTimerRef.current);
+      moodResetTimerRef.current = null;
+    }
   }, []);
+
+  const handleMoodChange = useCallback((mood: string, sticky: boolean) => {
+    clearMoodResetTimer();
+    setMoodOverride(mood);
+
+    if (!sticky) {
+      moodResetTimerRef.current = window.setTimeout(() => {
+        setMoodOverride(null);
+        moodResetTimerRef.current = null;
+      }, MOOD_OVERRIDE_DURATION_MS);
+    }
+  }, [clearMoodResetTimer]);
+
+  useEffect(() => {
+    return () => {
+      clearMoodResetTimer();
+    };
+  }, [clearMoodResetTimer]);
 
   useSpriteReactions({ onMoodChange: handleMoodChange });
 
