@@ -27,10 +27,10 @@ const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
 // Map animation names from backend to animation types (backward compatibility)
 const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
   bounce: "happy",
-  bounceFast: "happy",    // Was "excited", now maps to happy
+  bounceFast: "happy",
   pulse: "idle",
-  pulseFast: "happy",     // Was "excited", now maps to happy
-  shake: "reminder",      // Was "angry", maps to reminder as a neutral alert
+  pulseFast: "happy",
+  shake: "reminder",
   sway: "happy",
   idle: "idle",
   working: "working",
