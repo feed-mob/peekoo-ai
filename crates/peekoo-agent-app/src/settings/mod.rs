@@ -482,7 +482,10 @@ mod tests {
             .provider_auth
             .iter()
             .find(|entry| entry.provider_id == "anthropic-compatible");
-        assert!(auth.is_none(), "auth row should not be created on failed save");
+        assert!(
+            auth.is_none(),
+            "auth row should not be created on failed save"
+        );
 
         let _ = std::fs::remove_file(&db_path);
     }
