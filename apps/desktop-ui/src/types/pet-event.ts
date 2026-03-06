@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const PetReactionTriggerSchema = z.enum([
   "chat-message",
+  "ai-processing",    // AI is actively thinking/processing a response
   "task-completed",
   "pomodoro-started",
   "pomodoro-break",

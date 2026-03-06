@@ -14,24 +14,25 @@ interface SpriteAnimationProps {
   className?: string;
 }
 
-// Sprite sheet configuration (matches manifest.json)
+// Sprite sheet configuration
+// sprite.png is 1024x896 (8 cols × 7 rows = 128×128 per frame)
 const SPRITE_CONFIG = {
   columns: 8,
   rows: 7,
-  frameWidth: 552,
-  frameHeight: 548,
-  imageSrc: "/sprite.jpg",
+  frameWidth: 128,
+  frameHeight: 128,
+  imageSrc: "/sprite.png",
 };
 
-// Animation row mapping
+// Animation row mapping (matches new sprite sheet layout)
 const ANIMATION_ROWS: Record<AnimationType, number> = {
-  idle: 0,
-  happy: 1,
-  excited: 2,
-  sleepy: 3,
-  working: 4,
-  angry: 5,
-  dragging: 6,
+  idle: 0,      // Row 0: Idle/Peek
+  happy: 1,     // Row 1: Happy/Celebrate
+  working: 2,   // Row 2: Working/Focus
+  thinking: 3,  // Row 3: Thinking
+  reminder: 4,  // Row 4: Reminder
+  sleepy: 5,    // Row 5: Sleepy/Rest
+  dragging: 6,  // Row 6: Dragging
 };
 
 export default function SpriteAnimation({
