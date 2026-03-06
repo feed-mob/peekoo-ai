@@ -132,6 +132,7 @@ export default function SpriteAnimation({
       className={`sprite-animation ${className}`}
       style={{
         imageRendering: "pixelated",
+        pointerEvents: "none",
       }}
     />
   );
