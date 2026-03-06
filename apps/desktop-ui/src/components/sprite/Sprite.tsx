@@ -96,7 +96,7 @@ export function Sprite({ state, randomTrigger = 0 }: SpriteProps) {
       <SpriteAnimation
         animation={getAnimationType()}
         frameRate={8}
-        scale={0.85}
+        scale={0.40}
         chromaKey={SPRITE_CHROMA_KEY}
         onFrameChange={() => {
           // Optional: Log frame changes for debugging
