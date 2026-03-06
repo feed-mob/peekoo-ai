@@ -9,7 +9,7 @@ peekoo-agent-auth = { path = "../peekoo-agent-auth" }
 peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
 peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
 peekoo-security = { path = "../security" }
-asupersync = "0.2"
+asupersync = "=0.2.5"
 rusqlite = { version = "0.38" }
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
