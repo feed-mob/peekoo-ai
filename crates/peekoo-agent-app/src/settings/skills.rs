@@ -23,8 +23,12 @@ pub fn discover_skills() -> Vec<SkillDto> {
         }
     }
 
-    if let Some(home) = dirs::home_dir() {
-        roots.push(home.join(".peekoo").join("skills"));
+    if let Ok(global_skills_dir) = peekoo_paths::peekoo_global_skills_dir() {
+        roots.push(global_skills_dir);
+    }
+
+    if let Some(legacy_home) = peekoo_paths::peekoo_legacy_home_dir_if_distinct() {
+        roots.push(legacy_home.join("skills"));
     }
 
     for root in roots {

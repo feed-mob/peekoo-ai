@@ -5013,7 +5013,7 @@ name = "peekoo-agent"
 version = "0.1.0"
 dependencies = [
  "asupersync",
- "dirs",
+ "peekoo-paths",
  "pi_agent_rust",
 ]
 
@@ -5022,9 +5022,9 @@ name = "peekoo-agent-app"
 version = "0.1.0"
 dependencies = [
  "asupersync",
- "dirs",
  "peekoo-agent",
  "peekoo-agent-auth",
+ "peekoo-paths",
  "peekoo-persistence-sqlite",
  "peekoo-productivity-domain",
  "peekoo-security",
@@ -5076,6 +5076,13 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "peekoo-paths"
+version = "0.1.0"
+dependencies = [
+ "dirs",
 ]
 
 [[package]]
