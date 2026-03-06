@@ -6,16 +6,16 @@ How the desktop pet's sprite sheet animation works end-to-end — from asset to 
 
 ## Overview
 
-The pet character is rendered by playing frames from a single JPEG sprite sheet (`public/sprite.jpg`). A magenta (`#FF00FF`) background is removed at load time via a chroma-key pass on a hidden canvas, producing a transparent character rendered on top of the desktop.
+The pet character is rendered by playing frames from a PNG sprite sheet (`public/sprite.png`). A magenta-ish background is removed at load time via a chroma-key pass on a hidden canvas, producing a transparent character rendered on top of the desktop.
 
 ---
 
 ## Sprite Sheet Layout
 
 ```
-sprite.jpg  —  4416 × 3840 px  —  8 columns × 7 rows  —  56 frames total
-frameWidth  = 4416 / 8 = 552 px
-frameHeight = 3840 / 7 = 548 px
+sprite.png  —  1024 × 896 px  —  8 columns × 7 rows  —  56 frames total
+frameWidth  = 1024 / 8 = 128 px
+frameHeight = 896  / 7 = 128 px
 ```
 
 ### Row → Animation mapping

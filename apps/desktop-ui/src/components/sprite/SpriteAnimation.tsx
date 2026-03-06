@@ -14,13 +14,14 @@ interface SpriteAnimationProps {
   className?: string;
 }
 
-// Sprite sheet configuration (matches manifest.json)
+// Sprite sheet configuration
+// sprite.png is 1024x896 (8 cols × 7 rows = 128×128 per frame)
 const SPRITE_CONFIG = {
   columns: 8,
   rows: 7,
-  frameWidth: 552,
-  frameHeight: 548,
-  imageSrc: "/sprite.jpg",
+  frameWidth: 128,
+  frameHeight: 128,
+  imageSrc: "/sprite.png",
 };
 
 // Animation row mapping (matches new sprite sheet layout)
