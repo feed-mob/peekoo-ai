@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { PanelLabel } from "@/types/window";
 import { PANEL_WINDOW_CONFIGS, PANEL_LABELS } from "@/types/window";
+import { emitPetReaction } from "@/lib/pet-events";
 
 interface PanelWindowState {
   isOpen: boolean;
@@ -32,6 +33,7 @@ export function usePanelWindows() {
     if (existing) {
       await existing.setFocus();
       setPanels((prev) => ({ ...prev, [label]: { isOpen: true } }));
+      void emitPetReaction("panel-opened");
       return;
     }
 
@@ -59,6 +61,7 @@ export function usePanelWindows() {
 
     webview.once("tauri://created", () => {
       setPanels((prev) => ({ ...prev, [label]: { isOpen: true } }));
+      void emitPetReaction("panel-opened");
     });
 
     webview.once("tauri://error", (e) => {

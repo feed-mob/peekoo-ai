@@ -18,6 +18,7 @@ const SPRITE_CHROMA_KEY = {
 const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
   happy: "happy",
   sad: "sleepy",        // Sleepy/rest is the closest to sad/down states
+  working: "working",   // Focus state used during active pomodoro sessions
   thinking: "thinking", // Now has a dedicated animation row
   idle: "idle",
   tired: "sleepy",

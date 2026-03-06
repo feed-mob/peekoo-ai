@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { emitPetReaction } from "@/lib/pet-events";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
 
@@ -18,12 +19,20 @@ export function PomodoroPanel() {
   };
 
   const toggleTimer = useCallback(() => {
-    setIsActive((prev) => !prev);
-  }, []);
+    const nextIsActive = !isActive;
+    setIsActive(nextIsActive);
+
+    if (nextIsActive) {
+      void emitPetReaction("pomodoro-started", { sticky: true });
+    } else {
+      void emitPetReaction("pomodoro-break");
+    }
+  }, [isActive]);
 
   const resetTimer = useCallback(() => {
     setIsActive(false);
     setTimeLeft(mode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60);
+    void emitPetReaction("pomodoro-break");
   }, [mode]);
 
   const switchMode = useCallback(() => {
@@ -31,6 +40,10 @@ export function PomodoroPanel() {
     setMode(newMode);
     setTimeLeft(newMode === "work" ? WORK_MINUTES * 60 : BREAK_MINUTES * 60);
     setIsActive(false);
+
+    if (newMode === "break") {
+      void emitPetReaction("pomodoro-break");
+    }
   }, [mode]);
 
   useEffect(() => {
@@ -44,6 +57,7 @@ export function PomodoroPanel() {
       setIsActive(false);
       if (mode === "work") {
         setCompletedSessions((prev) => prev + 1);
+        void emitPetReaction("pomodoro-completed");
       }
     }
 

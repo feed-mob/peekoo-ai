@@ -1,7 +1,7 @@
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { emitTo } from "@tauri-apps/api/event";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { emitPetReaction } from "@/lib/pet-events";
 
 interface PanelShellProps {
   title: string;
@@ -10,7 +10,7 @@ interface PanelShellProps {
 
 export function PanelShell({ title, children }: PanelShellProps) {
   const handleClose = async () => {
-    await emitTo("main", "pet:react", { trigger: "panel-closed" });
+    await emitPetReaction("panel-closed");
     const win = getCurrentWindow();
     await win.close();
   };

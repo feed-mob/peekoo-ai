@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Task } from "@/types/task";
+import { emitPetReaction } from "@/lib/pet-events";
 import { TaskItem } from "./TaskItem";
 import { TaskInput } from "./TaskInput";
 
@@ -22,9 +23,15 @@ export function TasksPanel() {
   };
 
   const toggleTask = (id: string) => {
+    const shouldCelebrate = tasks.some((task) => task.id === id && !task.completed);
+
     setTasks(tasks.map(task =>
       task.id === id ? { ...task, completed: !task.completed } : task
     ));
+
+    if (shouldCelebrate) {
+      void emitPetReaction("task-completed");
+    }
   };
 
   const deleteTask = (id: string) => {

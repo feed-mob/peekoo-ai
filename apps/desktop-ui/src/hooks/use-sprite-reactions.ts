@@ -6,6 +6,7 @@ import { PetReactionEventSchema, type PetReactionTrigger } from "@/types/pet-eve
 const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
   "chat-message": "thinking",      // AI received a message, entering thinking state
   "ai-processing": "thinking",     // AI is actively processing/generating a response
+  "agent-result": "reminder",      // AI finished and produced a result
   "task-completed": "happy",       // Celebrate task completion
   "pomodoro-started": "working",   // Enter focus/working mode
   "pomodoro-break": "idle",        // Resting between sessions
@@ -15,15 +16,15 @@ const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
 };
 
 interface UseSpriteReactionsOptions {
-  onMoodChange?: (mood: string) => void;
+  onMoodChange?: (mood: string, sticky: boolean) => void;
 }
 
 export function useSpriteReactions({ onMoodChange }: UseSpriteReactionsOptions = {}) {
   const handleReaction = useCallback(
-    (trigger: PetReactionTrigger) => {
+    (trigger: PetReactionTrigger, sticky: boolean) => {
       const mood = TRIGGER_TO_MOOD[trigger];
       if (mood) {
-        onMoodChange?.(mood);
+        onMoodChange?.(mood, sticky);
       }
     },
     [onMoodChange],
@@ -34,7 +35,7 @@ export function useSpriteReactions({ onMoodChange }: UseSpriteReactionsOptions =
       const parsed = PetReactionEventSchema.safeParse(event.payload);
       if (!parsed.success) return;
 
-      handleReaction(parsed.data.trigger);
+      handleReaction(parsed.data.trigger, parsed.data.sticky ?? false);
     });
 
     return () => {
