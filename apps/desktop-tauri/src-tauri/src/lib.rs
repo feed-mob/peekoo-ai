@@ -204,6 +204,25 @@ async fn pomodoro_finish(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // On Windows, WebView2 defaults to writing its data next to the executable,
+    // which is typically inside Program Files and not writable. Set an explicit
+    // user-writable path before Tauri initialises the webview.
+    #[cfg(target_os = "windows")]
+    {
+        if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
+            if let Some(mut data_dir) = dirs::data_local_dir() {
+                data_dir.push("com.peekoo.desktop");
+                data_dir.push("WebView2");
+                if let Err(e) = std::fs::create_dir_all(&data_dir) {
+                    eprintln!("warning: failed to create WebView2 data dir: {e}");
+                }
+                // SAFETY: Called at the start of `run()` before `tauri::Builder`
+                // is constructed, so no other threads are running yet.
+                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
+            }
+        }
+    }
+
     let agent_state = AgentState::new();
 
     tauri::Builder::default()
