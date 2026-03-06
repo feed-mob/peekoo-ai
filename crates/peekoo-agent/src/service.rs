@@ -59,9 +59,12 @@ impl AgentService {
             // 2. Next: Local working directory (crawled up to workspace root)
             search_paths.push(config.working_directory.join(".peekoo"));
 
-            // 3. Last fallback: Global ~/.peekoo
-            if let Some(home) = dirs::home_dir() {
-                search_paths.push(home.join(".peekoo"));
+            // 3. Last fallback: global peekoo config dir, then legacy ~/.peekoo
+            if let Ok(global_dir) = peekoo_paths::peekoo_global_config_dir() {
+                search_paths.push(global_dir);
+            }
+            if let Some(legacy_home) = peekoo_paths::peekoo_legacy_home_dir_if_distinct() {
+                search_paths.push(legacy_home);
             }
 
             for path in search_paths {

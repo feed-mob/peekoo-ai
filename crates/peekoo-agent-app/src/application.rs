@@ -3,6 +3,7 @@ use std::sync::Mutex;
 use peekoo_agent::AgentEvent;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
+use peekoo_paths::ensure_windows_pi_agent_env;
 
 use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
@@ -21,6 +22,7 @@ pub struct AgentApplication {
 
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
+        ensure_windows_pi_agent_env()?;
         Ok(Self {
             agent: Mutex::new(None),
             settings: SettingsService::new()?,
