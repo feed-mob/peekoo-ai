@@ -52,9 +52,9 @@ async fn greet(name: String) -> Result<String, String> {
 #[tauri::command]
 async fn get_sprite_state() -> Result<serde_json::Value, String> {
     Ok(serde_json::json!({
-        "mood": "happy",
+        "mood": "idle",
         "message": "Welcome to Peekoo! Your AI desktop sprite is ready to help you!",
-        "animation": "happy"
+        "animation": "idle"
     }))
 }
 

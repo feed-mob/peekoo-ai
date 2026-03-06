@@ -23,15 +23,15 @@ const SPRITE_CONFIG = {
   imageSrc: "/sprite.jpg",
 };
 
-// Animation row mapping
+// Animation row mapping (matches new sprite sheet layout)
 const ANIMATION_ROWS: Record<AnimationType, number> = {
-  idle: 0,
-  happy: 1,
-  excited: 2,
-  sleepy: 3,
-  working: 4,
-  angry: 5,
-  dragging: 6,
+  idle: 0,      // Row 0: Idle/Peek
+  happy: 1,     // Row 1: Happy/Celebrate
+  working: 2,   // Row 2: Working/Focus
+  thinking: 3,  // Row 3: Thinking
+  reminder: 4,  // Row 4: Reminder
+  sleepy: 5,    // Row 5: Sleepy/Rest
+  dragging: 6,  // Row 6: Dragging
 };
 
 export default function SpriteAnimation({

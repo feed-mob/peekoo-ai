@@ -14,30 +14,32 @@ const SPRITE_CHROMA_KEY = {
   },
 };
 
-// Map mood states to sprite animation types
+// Map mood states to sprite animation types (new sprite sheet layout)
 const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
   happy: "happy",
-  sad: "angry",      // Using angry for sad/emotional states
-  excited: "excited",
-  thinking: "working",
+  sad: "sleepy",        // Sleepy/rest is the closest to sad/down states
+  thinking: "thinking", // Now has a dedicated animation row
   idle: "idle",
   tired: "sleepy",
-  surprised: "angry", // Using angry row for surprised
+  reminder: "reminder", // Direct mapping to reminder animation row
 };
 
-// Map animation names from backend to animation types
+// Map animation names from backend to animation types (backward compatibility)
 const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
   bounce: "happy",
-  bounceFast: "excited",
+  bounceFast: "happy",    // Was "excited", now maps to happy
   pulse: "idle",
-  pulseFast: "excited",
-  shake: "angry",
+  pulseFast: "happy",     // Was "excited", now maps to happy
+  shake: "reminder",      // Was "angry", maps to reminder as a neutral alert
   sway: "happy",
   idle: "idle",
+  working: "working",
+  thinking: "thinking",
+  reminder: "reminder",
 };
 
-// Random animation types (rows 1-5): happy, excited, sleepy, working, angry
-const RANDOM_ANIMATIONS: AnimationType[] = ["happy", "excited", "sleepy", "working", "angry"];
+// Random animation types (rows 1-6, excluding idle and dragging)
+const RANDOM_ANIMATIONS: AnimationType[] = ["happy", "working", "thinking", "reminder", "sleepy"];
 
 interface SpriteProps {
   state?: SpriteState;

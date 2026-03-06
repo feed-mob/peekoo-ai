@@ -4,6 +4,10 @@ import { SpriteActionMenu } from "@/components/sprite/SpriteActionMenu";
 import { useSpriteState } from "@/hooks/use-sprite-state";
 import { usePanelWindows } from "@/hooks/use-panel-windows";
 import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
+import type { SpriteState } from "@/types/sprite";
+
+// Duration (ms) a reaction-triggered mood override stays active before reverting
+const MOOD_OVERRIDE_DURATION_MS = 3000;
 
 export default function SpriteView() {
   const spriteState = useSpriteState();
@@ -11,8 +15,21 @@ export default function SpriteView() {
     usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
+  const [moodOverride, setMoodOverride] = useState<string | null>(null);
 
-  useSpriteReactions();
+  const handleMoodChange = useCallback((mood: string) => {
+    setMoodOverride(mood);
+    const timer = setTimeout(() => {
+      setMoodOverride(null);
+    }, MOOD_OVERRIDE_DURATION_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useSpriteReactions({ onMoodChange: handleMoodChange });
+
+  const effectiveSpriteState: SpriteState = moodOverride
+    ? { ...spriteState, mood: moodOverride }
+    : spriteState;
 
   // Left click: trigger random animation
   const handleSpriteClick = useCallback(() => {
@@ -54,7 +71,7 @@ export default function SpriteView() {
           onContextMenu={handleContextMenu}
           className="cursor-pointer"
         >
-          <Sprite state={spriteState} randomTrigger={randomTrigger} />
+          <Sprite state={effectiveSpriteState} randomTrigger={randomTrigger} />
         </div>
 
         <SpriteActionMenu
