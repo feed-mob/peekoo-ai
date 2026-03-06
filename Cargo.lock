@@ -5060,6 +5060,7 @@ dependencies = [
 name = "peekoo-desktop-tauri"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "peekoo-agent-app",
  "serde",
  "serde_json",
