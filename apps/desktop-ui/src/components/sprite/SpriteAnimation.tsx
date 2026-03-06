@@ -18,9 +18,9 @@ interface SpriteAnimationProps {
 const SPRITE_CONFIG = {
   columns: 8,
   rows: 7,
-  frameWidth: 128,
-  frameHeight: 128,
-  imageSrc: "/sprite.jpg",
+  frameWidth: 276,
+  frameHeight: 274,
+  imageSrc: "/sprite.png",
 };
 
 // Animation row mapping (matches new sprite sheet layout)
