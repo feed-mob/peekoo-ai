@@ -196,9 +196,7 @@ impl SettingsStore {
             )
             .map_err(|e| format!("Read current provider error: {e}"))?;
 
-        let effective_provider = active_provider_id
-            .clone()
-            .unwrap_or(current_provider);
+        let effective_provider = active_provider_id.clone().unwrap_or(current_provider);
         let provider_changed = active_provider_id.is_some();
 
         if let Some(provider) = active_provider_id {
@@ -276,7 +274,13 @@ impl SettingsStore {
             .map_err(|e| format!("Settings lock error: {e}"))?;
         conn.execute(
             SQL_UPSERT_PROVIDER_AUTH,
-            params![provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at],
+            params![
+                provider_id,
+                auth_mode,
+                api_key_ref,
+                oauth_token_ref,
+                oauth_expires_at
+            ],
         )
         .map_err(|e| format!("Upsert provider auth row error: {e}"))?;
 
