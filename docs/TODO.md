@@ -19,6 +19,12 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
+- [ ] Plugin system foundation
+  - `peekoo-plugin-host` crate with manifest parsing, runtime wrapper, registry, permissions, and state store
+  - Tauri commands for plugin listing, tool calls, panel discovery, and panel HTML loading
+  - Frontend hooks for plugin metadata and dynamic plugin panels
+  - Example plugins: `example-minimal`, `health-reminders`
+
 - [ ] Implement Tasks component with full CRUD
   - Connect to create_task Tauri command
   - Display task list with filters

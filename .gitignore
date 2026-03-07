@@ -1,4 +1,6 @@
 /target/
+plugins/*/target/
+plugins/*/Cargo.lock
 
 # JavaScript/TypeScript build artifacts
 **/node_modules/

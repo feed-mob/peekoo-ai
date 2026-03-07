@@ -14,7 +14,7 @@ const CLICK_TIME_THRESHOLD_MS = 150;
 
 export default function SpriteView() {
   const spriteState = useSpriteState();
-  const { panels, togglePanel, expandForMenu, shrinkToSprite } =
+  const { panels, pluginPanels, togglePanel, expandForMenu, shrinkToSprite } =
     usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
@@ -124,6 +124,7 @@ export default function SpriteView() {
           panels={panels}
           onTogglePanel={handleTogglePanel}
           isOpen={menuOpen}
+          pluginPanels={pluginPanels}
         />
       </div>
     </div>

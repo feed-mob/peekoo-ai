@@ -4,8 +4,8 @@
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, TaskDto,
+    PluginPanelDto, PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto,
+    ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, TaskDto,
 };
 use serde::Serialize;
 use tauri::{Emitter, State, Window};
@@ -198,6 +198,48 @@ async fn pomodoro_finish(
     state.app.finish_pomodoro(&session_id)
 }
 
+#[tauri::command]
+async fn plugins_list(state: State<'_, AgentState>) -> Result<Vec<PluginSummaryDto>, String> {
+    state.app.list_plugins()
+}
+
+#[tauri::command]
+async fn plugin_panels_list(state: State<'_, AgentState>) -> Result<Vec<PluginPanelDto>, String> {
+    state.app.list_plugin_panels()
+}
+
+#[tauri::command]
+async fn plugin_call_tool(
+    tool_name: String,
+    args_json: String,
+    state: State<'_, AgentState>,
+) -> Result<String, String> {
+    state.app.call_plugin_tool(&tool_name, &args_json)
+}
+
+#[tauri::command]
+async fn plugin_query_data(
+    plugin_key: String,
+    provider_name: String,
+    state: State<'_, AgentState>,
+) -> Result<String, String> {
+    state.app.query_plugin_data(&plugin_key, &provider_name)
+}
+
+#[tauri::command]
+async fn plugin_panel_html(label: String, state: State<'_, AgentState>) -> Result<String, String> {
+    state.app.plugin_panel_html(&label)
+}
+
+#[tauri::command]
+async fn plugin_dispatch_event(
+    event_name: String,
+    payload_json: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.dispatch_plugin_event(&event_name, &payload_json)
+}
+
 // ============================================================================
 // App Entry
 // ============================================================================
@@ -247,7 +289,13 @@ pub fn run() {
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
-            pomodoro_finish
+            pomodoro_finish,
+            plugins_list,
+            plugin_panels_list,
+            plugin_call_tool,
+            plugin_query_data,
+            plugin_panel_html,
+            plugin_dispatch_event
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
