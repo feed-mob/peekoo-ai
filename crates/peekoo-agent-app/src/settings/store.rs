@@ -12,6 +12,16 @@ use crate::settings::catalog::{
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
 };
+
+const DEFAULT_MAX_TOOL_ITERATIONS: i64 = 50;
+const AUTH_MODE_NONE: &str = "none";
+const AUTH_MODE_API_KEY: &str = "api_key";
+const AUTH_MODE_OAUTH: &str = "oauth";
+const SQL_UPSERT_PROVIDER_AUTH: &str = concat!(
+    "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, datetime('now'))",
+    " ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = excluded.api_key_ref, oauth_token_ref = excluded.oauth_token_ref, oauth_expires_at = excluded.oauth_expires_at, updated_at = datetime('now')"
+);
+
 use crate::settings::skills::discover_skills;
 
 pub(crate) struct SettingsStore {
@@ -47,7 +57,10 @@ impl SettingsStore {
         )?;
 
         conn.execute(
-            "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, 50, 1, datetime('now'))",
+            &format!(
+                "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
+                DEFAULT_MAX_TOOL_ITERATIONS
+            ),
             params![DEFAULT_PROVIDER, DEFAULT_MODEL],
         )
         .map_err(|e| format!("Insert default agent settings error: {e}"))?;
@@ -185,7 +198,7 @@ impl SettingsStore {
 
         let effective_provider = active_provider_id
             .clone()
-            .unwrap_or_else(|| current_provider.clone());
+            .unwrap_or(current_provider);
         let provider_changed = active_provider_id.is_some();
 
         if let Some(provider) = active_provider_id {
@@ -262,8 +275,7 @@ impl SettingsStore {
             .lock()
             .map_err(|e| format!("Settings lock error: {e}"))?;
         conn.execute(
-            "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, datetime('now'))
-             ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = excluded.api_key_ref, oauth_token_ref = excluded.oauth_token_ref, oauth_expires_at = excluded.oauth_expires_at, updated_at = datetime('now')",
+            SQL_UPSERT_PROVIDER_AUTH,
             params![provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at],
         )
         .map_err(|e| format!("Upsert provider auth row error: {e}"))?;
@@ -296,9 +308,9 @@ impl SettingsStore {
             .unwrap_or((None, None));
 
         conn.execute(
-            "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, 'none', NULL, NULL, NULL, NULL, NULL, datetime('now'))
-             ON CONFLICT(provider_id) DO UPDATE SET auth_mode = 'none', api_key_ref = NULL, oauth_token_ref = NULL, oauth_expires_at = NULL, updated_at = datetime('now')",
-            params![provider_id],
+            "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, NULL, NULL, NULL, NULL, NULL, datetime('now'))
+             ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = NULL, oauth_token_ref = NULL, oauth_expires_at = NULL, updated_at = datetime('now')",
+            params![provider_id, AUTH_MODE_NONE],
         )
         .map_err(|e| format!("Clear provider auth row error: {e}"))?;
 
@@ -341,8 +353,8 @@ impl SettingsStore {
             .lock()
             .map_err(|e| format!("Settings lock error: {e}"))?;
         conn.query_row(
-            "SELECT api_key_ref FROM agent_provider_auth WHERE provider_id = ?1 AND auth_mode = 'api_key'",
-            params![provider_id],
+            "SELECT api_key_ref FROM agent_provider_auth WHERE provider_id = ?1 AND auth_mode = ?2",
+            params![provider_id, AUTH_MODE_API_KEY],
             |row| row.get::<_, Option<String>>(0),
         )
         .optional()
@@ -359,8 +371,8 @@ impl SettingsStore {
             .lock()
             .map_err(|e| format!("Settings lock error: {e}"))?;
         conn.query_row(
-            "SELECT oauth_token_ref FROM agent_provider_auth WHERE provider_id = ?1 AND auth_mode = 'oauth'",
-            params![provider_id],
+            "SELECT oauth_token_ref FROM agent_provider_auth WHERE provider_id = ?1 AND auth_mode = ?2",
+            params![provider_id, AUTH_MODE_OAUTH],
             |row| row.get::<_, Option<String>>(0),
         )
         .optional()
