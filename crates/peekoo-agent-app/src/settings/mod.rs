@@ -6,7 +6,7 @@ mod pi_models;
 mod skills;
 mod store;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
@@ -37,6 +37,7 @@ pub struct SettingsService {
 impl SettingsService {
     pub fn new() -> Result<Self, String> {
         let db_path = default_db_path()?;
+        migrate_legacy_settings_db_if_needed(&db_path)?;
         let store = SettingsStore::from_path(&db_path)?;
         Ok(Self {
             store,
@@ -246,8 +247,78 @@ fn secret_error(err: SecretStoreError) -> String {
 }
 
 fn default_db_path() -> Result<PathBuf, String> {
-    // 在开发模式下，使用临时目录来避免权限问题
-    let temp_dir = std::env::temp_dir();
-    let db_path = temp_dir.join("peekoo-dev.sqlite");
-    Ok(db_path)
+    peekoo_paths::peekoo_settings_db_path()
+}
+
+fn migrate_legacy_settings_db_if_needed(target_db_path: &Path) -> Result<(), String> {
+    migrate_settings_db_if_needed(target_db_path, peekoo_paths::peekoo_legacy_home_dir())
+}
+
+fn migrate_settings_db_if_needed(
+    target_db_path: &Path,
+    legacy_root: Option<PathBuf>,
+) -> Result<(), String> {
+    if target_db_path.exists() {
+        return Ok(());
+    }
+
+    let Some(legacy_root) = legacy_root else {
+        return Ok(());
+    };
+    let legacy_db_path = legacy_root.join("peekoo.sqlite");
+    if !legacy_db_path.is_file() {
+        return Ok(());
+    }
+
+    if let Some(parent) = target_db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Create settings db dir error ({}): {e}", parent.display()))?;
+    }
+
+    std::fs::copy(&legacy_db_path, target_db_path).map_err(|e| {
+        format!(
+            "Migrate settings db error ({} -> {}): {e}",
+            legacy_db_path.display(),
+            target_db_path.display()
+        )
+    })?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_db_path_uses_shared_paths_crate() {
+        let expected = peekoo_paths::peekoo_settings_db_path().expect("shared db path");
+        let actual = default_db_path().expect("settings db path");
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn migration_copies_legacy_db_when_target_missing() {
+        let temp = std::env::temp_dir().join(format!(
+            "peekoo-settings-migration-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let legacy_root = temp.join("legacy");
+        let target_root = temp.join("target");
+        std::fs::create_dir_all(&legacy_root).expect("create legacy root");
+        std::fs::create_dir_all(&target_root).expect("create target root");
+
+        let legacy_db = legacy_root.join("peekoo.sqlite");
+        std::fs::write(&legacy_db, b"legacy-db").expect("write legacy db");
+        let target_db = target_root.join("peekoo.sqlite");
+
+        migrate_settings_db_if_needed(&target_db, Some(legacy_root)).expect("migrate db");
+        let copied = std::fs::read(&target_db).expect("read copied db");
+        assert_eq!(copied, b"legacy-db");
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
 }

@@ -9,6 +9,7 @@ members = [
   "crates/peekoo-agent",
   "crates/peekoo-agent-auth",
   "crates/peekoo-agent-app",
+  "crates/peekoo-paths",
   "apps/desktop-tauri/src-tauri",
 ]
 resolver = "2"

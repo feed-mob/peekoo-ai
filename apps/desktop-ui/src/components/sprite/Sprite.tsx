@@ -4,13 +4,13 @@ import type { AnimationType, SpriteState } from "@/types/sprite";
 
 const SPRITE_CHROMA_KEY = {
   targetColor: [255, 0, 255] as const,
-  minRbOverG: 38,
-  threshold: 84,
-  softness: 64,
+  minRbOverG: 32,
+  threshold: 100,
+  softness: 80,
   spillSuppression: {
     enabled: true,
-    threshold: 230,
-    strength: 0.78,
+    threshold: 260,
+    strength: 0.90,
   },
 };
 
@@ -45,9 +45,10 @@ const RANDOM_ANIMATIONS: AnimationType[] = ["happy", "working", "thinking", "rem
 interface SpriteProps {
   state?: SpriteState;
   randomTrigger?: number;
+  animationOverride?: AnimationType | null;
 }
 
-export function Sprite({ state, randomTrigger = 0 }: SpriteProps) {
+export function Sprite({ state, randomTrigger = 0, animationOverride = null }: SpriteProps) {
   const spriteState: SpriteState = state || {
     mood: "happy",
     message: "Welcome! Your AI desktop sprite is ready to help you!",
@@ -74,7 +75,11 @@ export function Sprite({ state, randomTrigger = 0 }: SpriteProps) {
 
   // Determine animation type from mood or animation state
   const getAnimationType = (): AnimationType => {
-    // If override is active, use it
+    // External override (e.g. dragging) takes highest priority
+    if (animationOverride) {
+      return animationOverride;
+    }
+    // If internal override is active (e.g. random click animation), use it
     if (overrideAnimation) {
       return overrideAnimation;
     }
