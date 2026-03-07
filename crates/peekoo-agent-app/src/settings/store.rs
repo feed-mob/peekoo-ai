@@ -4,10 +4,10 @@ use std::sync::Mutex;
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
+    default_model_for_provider, normalize_model_for_provider, DEFAULT_MODEL, DEFAULT_PROVIDER,
 };
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
@@ -164,6 +164,16 @@ impl SettingsStore {
             max_tool_iterations,
             skills,
         } = patch;
+
+        let active_provider_id = active_provider_id
+            .map(|provider_id| validate_non_empty_setting("Active provider id", provider_id))
+            .transpose()?;
+        let active_model_id = active_model_id
+            .map(|model_id| validate_non_empty_setting("Active model id", model_id))
+            .transpose()?;
+        if max_tool_iterations == Some(0) {
+            return Err("Max tool iterations must be greater than 0".to_string());
+        }
 
         let current_provider: String = conn
             .query_row(
@@ -457,19 +467,97 @@ fn sqlite_table_exists(conn: &Connection, table_name: &str) -> Result<bool, Stri
     Ok(exists)
 }
 
+fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{field_name} cannot be empty"));
+    }
+    Ok(trimmed.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use uuid::Uuid;
 
+    fn temp_db_path() -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("peekoo-settings-{}.sqlite", Uuid::new_v4()))
+    }
+
+    fn new_store() -> (SettingsStore, std::path::PathBuf) {
+        let path = temp_db_path();
+        let store = SettingsStore::from_path(&path).expect("create settings store");
+        (store, path)
+    }
+
     #[test]
     fn from_path_is_idempotent_with_existing_db() {
-        let path = std::env::temp_dir().join(format!("peekoo-settings-{}.sqlite", Uuid::new_v4()));
+        let path = temp_db_path();
         let first = SettingsStore::from_path(&path);
         assert!(first.is_ok());
 
         let second = SettingsStore::from_path(&path);
         assert!(second.is_ok());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn apply_patch_rejects_empty_provider_id() {
+        let (store, path) = new_store();
+
+        let result = store.apply_patch(AgentSettingsPatchDto {
+            active_provider_id: Some("   ".into()),
+            active_model_id: None,
+            system_prompt: None,
+            max_tool_iterations: None,
+            skills: None,
+        });
+
+        match result {
+            Ok(_) => panic!("empty provider should fail"),
+            Err(err) => assert_eq!(err, "Active provider id cannot be empty"),
+        }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn apply_patch_rejects_empty_model_id() {
+        let (store, path) = new_store();
+
+        let result = store.apply_patch(AgentSettingsPatchDto {
+            active_provider_id: None,
+            active_model_id: Some("\n\t ".into()),
+            system_prompt: None,
+            max_tool_iterations: None,
+            skills: None,
+        });
+
+        match result {
+            Ok(_) => panic!("empty model should fail"),
+            Err(err) => assert_eq!(err, "Active model id cannot be empty"),
+        }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn apply_patch_rejects_zero_max_tool_iterations() {
+        let (store, path) = new_store();
+
+        let result = store.apply_patch(AgentSettingsPatchDto {
+            active_provider_id: None,
+            active_model_id: None,
+            system_prompt: None,
+            max_tool_iterations: Some(0),
+            skills: None,
+        });
+
+        match result {
+            Ok(_) => panic!("zero max tool iterations should fail"),
+            Err(err) => assert_eq!(err, "Max tool iterations must be greater than 0"),
+        }
 
         let _ = std::fs::remove_file(path);
     }

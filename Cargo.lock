@@ -5050,13 +5050,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peekoo-calendar-google"
-version = "0.1.0"
-dependencies = [
- "url",
-]
-
-[[package]]
 name = "peekoo-desktop-tauri"
 version = "0.1.0"
 dependencies = [
@@ -5070,15 +5063,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "peekoo-event-bus"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "peekoo-paths"
 version = "0.1.0"
 dependencies = [
@@ -5088,17 +5072,6 @@ dependencies = [
 [[package]]
 name = "peekoo-persistence-sqlite"
 version = "0.1.0"
-
-[[package]]
-name = "peekoo-plugin-host"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "tokio",
-]
 
 [[package]]
 name = "peekoo-productivity-domain"

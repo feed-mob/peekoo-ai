@@ -11,7 +11,6 @@ pub const OPENAI_CODEX_OAUTH_SCOPES: &str = "openid profile email offline_access
 #[derive(Deserialize)]
 pub struct OpenAiCodexTokenResponse {
     pub access_token: String,
-    pub refresh_token: String,
     pub expires_in: i64,
 }
 
