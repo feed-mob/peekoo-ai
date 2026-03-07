@@ -1,6 +1,4 @@
 mod catalog;
-#[allow(dead_code)]
-mod domain;
 mod dto;
 mod pi_models;
 mod skills;

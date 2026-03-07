@@ -31,13 +31,13 @@ just clean
 cd apps/desktop-ui && bun install
 
 # Run dev server
-bun run dev
+cd apps/desktop-ui && bun run dev
 
 # Build for production
-bun run build
+cd apps/desktop-ui && bun run build
 
 # Type check
-npx tsc --noEmit
+cd apps/desktop-ui && npx tsc --noEmit
 ```
 
 ## Code Style Guidelines
@@ -56,6 +56,7 @@ npx tsc --noEmit
 - **Error Handling**: Use `thiserror` for custom error types, prefer `Result<T, E>` over panics
 - **Types**: Be explicit with types, avoid `impl Trait` in public APIs unless necessary
 - **Documentation**: Document public APIs with `///` doc comments
+- **Safety**: Avoid `unsafe` Rust; if absolutely necessary, document why and get explicit approval
 - **Testing**: Use `#[cfg(test)]` modules, write unit tests for domain logic
 
 ### TypeScript/React
@@ -71,12 +72,14 @@ npx tsc --noEmit
   - `peekoo-agent/`: Agent runtime facade over the underlying SDK/session
   - `peekoo-agent-auth/`: OAuth and provider auth protocol orchestration
   - `peekoo-agent-app/`: Agent application orchestration and settings/use-case domain validation
-  - Other crates for plugins, persistence, security, and integrations
+  - `persistence-sqlite/`: Embedded SQLite migrations used by the app layer
+  - `security/`: Secret-store abstractions and fallback implementations
+  - `peekoo-paths/`: Shared filesystem/path helpers for app and agent crates
 - `apps/desktop-ui/`: React + Vite + TypeScript frontend
 - `apps/desktop-tauri/src-tauri/`: Canonical Tauri desktop runtime crate
 
 ### Agent-Centric Architecture
-- Dependency flow: `desktop-ui` -> `desktop-tauri` -> `peekoo-agent-app` -> (`peekoo-agent`, `peekoo-agent-auth`, `persistence-sqlite`, `security`).
+- Dependency flow: `desktop-ui` -> `desktop-tauri` -> `peekoo-agent-app` -> (`peekoo-agent`, `peekoo-agent-auth`, `peekoo-productivity-domain`, `persistence-sqlite`, `security`, `peekoo-paths`).
 - `desktop-tauri` is a transport layer only; avoid embedding persistence, OAuth protocol, or runtime orchestration logic in command handlers.
 - `peekoo-agent` owns prompt/session runtime concerns; it must not depend on UI or Tauri crates.
 - `peekoo-agent-auth` owns OAuth/provider auth flow concerns only.

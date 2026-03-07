@@ -16,7 +16,7 @@ AI agent service - wraps the `pi_agent_rust` library (v0.1.7) and provides a sim
 - `AgentServiceConfig` - Configuration with provider, model, skills, and persona loading
 
 ## Dependencies
-- `dirs = "6.0.0"` - Directory discovery
+- `peekoo-paths` - Shared path discovery for agent config and model locations
 - `pi = { package = "pi_agent_rust", version = "0.1.7" }` - Core agent library
 
 ## Testing

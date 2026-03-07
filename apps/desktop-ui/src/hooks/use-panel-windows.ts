@@ -3,7 +3,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { PanelLabel } from "@/types/window";
-import { PANEL_WINDOW_CONFIGS, PANEL_LABELS } from "@/types/window";
+import { PANEL_WINDOW_CONFIGS } from "@/types/window";
 import { emitPetReaction } from "@/lib/pet-events";
 
 interface PanelWindowState {
@@ -103,15 +103,10 @@ export function usePanelWindows() {
     await win.setSize(new LogicalSize(SPRITE_SIZE.width, SPRITE_SIZE.height));
   }, []);
 
-  const hasAnyOpen = PANEL_LABELS.some((label) => panels[label].isOpen);
-
   return {
     panels,
-    openPanel,
-    closePanel,
     togglePanel,
     expandForMenu,
     shrinkToSprite,
-    hasAnyOpen,
   };
 }

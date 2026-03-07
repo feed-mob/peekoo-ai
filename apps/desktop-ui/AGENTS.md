@@ -8,7 +8,7 @@ React + Vite + TypeScript frontend for Peekoo AI desktop pet. Features chat, tas
 - **Build**: Vite 5
 - **Styling**: Tailwind CSS v4 + tailwindcss-animate
 - **Animations**: Framer Motion + React Spring
-- **UI Primitives**: Radix UI (checkbox, scroll-area, separator, tooltip, slot)
+- **UI Primitives**: Radix UI (checkbox, scroll-area, slot)
 - **Icons**: Lucide React
 - **Validation**: Zod
 - **Markdown Streaming**: streamdown
@@ -22,55 +22,14 @@ bun run build   # Production build (runs tsc + vite build)
 bun run preview # Preview production build
 ```
 
-## Project Structure
-```
-src/
-├── main.tsx                    # Entry point
-├── index.css                   # Tailwind CSS entry + custom styles
-├── features/
-│   ├── chat/                   # Chat feature
-│   │   ├── ChatPanel.tsx
-│   │   └── ChatMessage.tsx
-│   ├── tasks/                  # Tasks feature
-│   │   ├── TasksPanel.tsx
-│   │   ├── TaskInput.tsx
-│   │   └── TaskItem.tsx
-│   └── pomodoro/               # Pomodoro timer feature
-│       ├── PomodoroPanel.tsx
-│       ├── TimerControls.tsx
-│       └── TimerDisplay.tsx
-├── components/
-│   ├── ui/                     # UI primitives (shadcn-style)
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   ├── checkbox.tsx
-│   │   ├── input.tsx
-│   │   ├── scroll-area.tsx
-│   │   ├── separator.tsx
-│   │   ├── tooltip.tsx
-│   │   └── badge.tsx
-│   ├── panels/                 # Panel components
-│   │   └── PanelShell.tsx
-│   └── sprite/                 # AI pet character
-│       ├── Sprite.tsx
-│       ├── SpriteAnimation.tsx
-│       ├── SpriteActionMenu.tsx
-│       └── chromaKey.ts
-├── hooks/
-│   ├── use-sprite-state.ts     # Sprite state management
-│   ├── use-panel-windows.ts    # Panel window management
-│   └── use-sprite-reactions.ts # Sprite reaction triggers
-├── lib/
-│   └── utils.ts                # Utility functions (cn, etc.)
-├── routing/
-│   └── (routes if needed)
-└── types/
-    ├── panel.ts                # Panel type definitions
-    ├── sprite.ts               # Sprite type definitions
-    ├── chat.ts                 # Chat message types
-    ├── task.ts                 # Task type definitions
-    └── window.ts               # Window state types
-```
+## Architecture
+- `features/` — Domain features (chat, tasks, pomodoro), each self-contained with components and hooks
+- `components/ui/` — Reusable shadcn-style UI primitives
+- `components/sprite/` — AI pet character rendering and animation
+- `hooks/` — Shared custom hooks (sprite state, panel windows, reactions)
+- `views/` — Top-level window views, resolved by window label via `routing/resolve-view.tsx`
+- `types/` — Shared TypeScript type definitions
+- `lib/` — Utility functions
 
 ## Key Conventions
 
@@ -87,19 +46,12 @@ src/
 ### State Management
 - React hooks for local state
 - Custom hooks in `hooks/` for shared logic
-- Tauri API for desktop integration
+- Tauri API for desktop integration and multi-window behavior
 
 ### Type Safety
 - Explicit TypeScript types over `any`
 - Zod for runtime validation
 - Type definitions in `types/`
-
-## Dependencies to Note
-- `@tauri-apps/api` - Desktop app integration
-- `framer-motion` / `@react-spring/web` - Animations
-- `streamdown` - Markdown streaming for chat
-- `lucide-react` - Icons
-- `zod` - Schema validation
 
 ## Build Output
 Vite builds to `dist/` directory, which is consumed by the Tauri app shell.

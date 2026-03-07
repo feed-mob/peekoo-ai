@@ -2,70 +2,53 @@
 
 ## Tauri Version (Current Focus)
 
-### ✅ Completed
-- [x] Project structure setup (workspace with Tauri + GPUI parallel)
-- [x] Core Rust business logic crates (core-domain, core-app, plugin-host, etc.)
-- [x] Tauri app scaffolding with Rust commands
+### Completed
+- [x] Project structure setup (agent-first workspace)
+- [x] Core Rust business logic crates (`peekoo-agent`, `peekoo-agent-app`, `peekoo-agent-auth`, `peekoo-productivity-domain`, `persistence-sqlite`, `security`, `peekoo-paths`)
+- [x] Tauri app scaffolding with 19 Rust commands (`greet`, `get_sprite_state`, `agent_prompt`, `agent_set_model`, `agent_get_model`, `agent_settings_get`, `agent_settings_update`, `agent_settings_catalog`, `agent_provider_auth_set_api_key`, `agent_provider_auth_clear`, `agent_provider_config_set`, `agent_oauth_start`, `agent_oauth_status`, `agent_oauth_cancel`, `create_task`, `pomodoro_start`, `pomodoro_pause`, `pomodoro_resume`, `pomodoro_finish`)
 - [x] React UI components and styling
 - [x] Pet UI with animations and moods
 - [x] Tab-based navigation (Chat, Tasks, Pomodoro)
-- [x] Tauri commands (greet, get_pet_state, send_message, create_task)
 - [x] TypeScript and Vite configuration
-- [x] All core domain tests passing
+- [x] Productivity domain tests passing
+- [x] Agent service wrapping pi_agent_rust with persona file loading, skills, and auto-discovery
+- [x] Chat panel with settings UI (provider/model selection, auth, skills)
+- [x] Streaming responses via agent_prompt with Tauri event emission
+- [x] Pomodoro backend commands (start/pause/resume/finish) wired to AgentApplication
+- [x] Security crate with KeyringSecretStore, FileSecretStore, FallbackSecretStore
+- [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
-### 🔧 In Progress
-- [ ] Integrate core-domain with Tauri commands
-  - Connect Task and Pomodoro types from core-domain
-  - Implement actual task CRUD operations in Rust backend
-  - Implement pomodoro state management in Rust backend
-  - Wire up event bus for real-time updates
-
-- [ ] Implement Chat component with real AI integration
-  - Connect to LLM backend (OpenAI/Anthropic/etc.)
-  - Implement streaming responses
-  - Store conversation history in SQLite
-  - Add tool execution hooks
-
+### In Progress
 - [ ] Implement Tasks component with full CRUD
   - Connect to create_task Tauri command
   - Display task list with filters
   - Implement task completion animations
-  - Connect to event bus for updates
+  - Connect to backend-driven refresh/update flow
 
-- [ ] Implement Pomodoro timer
-  - Actual countdown timer logic
-  - Start/Pause/Reset functionality
-  - Session tracking in database
+- [ ] Implement Pomodoro timer UI
+  - Actual countdown timer logic in frontend
+  - Session tracking display
   - Notification triggers
 
-- [ ] Add plugin system integration
-  - Plugin discovery and loading
-  - Permission management UI
-  - MCP server integration
-  - JS bridge for OpenCode/OpenClaw plugins
+- [ ] Store conversation history in SQLite
+  - Persist chat sessions across app restarts
+  - Load previous conversations
 
-- [ ] Implement Google Calendar integration
-  - OAuth PKCE flow
-  - Token storage via OS keychain
-  - Calendar sync service
-  - Bi-directional sync with peekoo tasks
-
-### 📋 Planned (GPUI Version)
+### Planned (GPUI Version)
 - [ ] Implement GPUI native UI as alternative
   - Native Rust window with pet animations
   - Event-driven architecture
   - Compare performance with Tauri version
   - Test on macOS/Linux only
 
-### 🎯 Polish
+### Polish
 - [ ] Add system tray icon
 - [ ] Global keyboard shortcuts
 - [ ] Sound effects for events
 - [ ] Desktop notifications
 - [ ] Dark mode theme
-- [ ] Settings panel
 
-### 🔧 Testing
+### Testing
 - [ ] End-to-end integration tests
 - [ ] Performance benchmarking
 - [ ] Cross-platform testing (Windows/macOS/Linux for Tauri)
@@ -74,5 +57,5 @@
 
 ---
 
-**Last updated**: 2026-02-14
+**Last updated**: 2026-03-07
 **Status**: Tauri MVP implementation in progress
