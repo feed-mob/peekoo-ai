@@ -218,7 +218,11 @@ impl AgentApplication {
             .map_err(|e| e.to_string())
     }
 
-    pub fn query_plugin_data(&self, plugin_key: &str, provider_name: &str) -> Result<String, String> {
+    pub fn query_plugin_data(
+        &self,
+        plugin_key: &str,
+        provider_name: &str,
+    ) -> Result<String, String> {
         self.plugin_registry
             .query_data(plugin_key, provider_name)
             .map_err(|e| e.to_string())
@@ -267,7 +271,8 @@ impl AgentApplication {
         event_name: &str,
         payload_json: &str,
     ) -> Result<(), String> {
-        self.plugin_registry.dispatch_event(event_name, payload_json);
+        self.plugin_registry
+            .dispatch_event(event_name, payload_json);
         Ok(())
     }
 
@@ -328,7 +333,9 @@ impl AgentApplication {
 
         let plugin_prompt = lines.join("\n");
         config.system_prompt = match config.system_prompt.take() {
-            Some(existing) if !existing.trim().is_empty() => Some(format!("{existing}\n\n{plugin_prompt}")),
+            Some(existing) if !existing.trim().is_empty() => {
+                Some(format!("{existing}\n\n{plugin_prompt}"))
+            }
             _ => Some(plugin_prompt),
         };
 

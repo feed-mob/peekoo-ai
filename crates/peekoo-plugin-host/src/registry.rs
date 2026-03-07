@@ -166,9 +166,7 @@ impl PluginRegistry {
                 .events
                 .as_ref()
                 .is_some_and(|e| e.subscribe.iter().any(|s| s == event_name));
-            if subscribes
-                && let Err(e) = instance.handle_event(event_name, payload_json)
-            {
+            if subscribes && let Err(e) = instance.handle_event(event_name, payload_json) {
                 tracing::warn!(
                     plugin = key.as_str(),
                     event = event_name,
@@ -315,9 +313,11 @@ impl PluginRegistry {
 
 /// Start a background thread that emits `timer:tick` events every 60 seconds.
 pub fn start_tick_timer(registry: Arc<PluginRegistry>) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_secs(60));
-        let payload = serde_json::json!({});
-        registry.dispatch_event("timer:tick", &payload.to_string());
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(Duration::from_secs(60));
+            let payload = serde_json::json!({});
+            registry.dispatch_event("timer:tick", &payload.to_string());
+        }
     });
 }
