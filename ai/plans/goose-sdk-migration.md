@@ -72,9 +72,9 @@ Assessment of whether **Block’s Goose** SDK can replace **Pi Agent Rust** (`pi
    - Use tokio async throughout: e.g. `AgentService::new(config).await` and `agent.prompt(...).await` (or equivalent) on the Goose-backed service.
    - Keep the same Tauri commands (`agent_prompt`, `agent_set_model`, `agent_get_model`) with the same signatures; only the implementation inside `peekoo-agent` changes.
 
-4. **core-app**  
-   - `AgentUseCases` continues to depend on `AgentService` and `AgentServiceConfig`; no change if the public API of `peekoo-agent` is unchanged.
-   - If you add a “backend” enum (Pi vs Goose), core-app might select it via config or feature; otherwise it stays backend-agnostic.
+4. **peekoo-agent-app**  
+   - `AgentApplication` continues to depend on `AgentService` and `AgentServiceConfig`; no change if the public API of `peekoo-agent` is unchanged.
+   - If you add a "backend" enum (Pi vs Goose), peekoo-agent-app might select it via config or feature; otherwise it stays backend-agnostic.
 
 5. **Testing**  
    - Reuse or adapt existing `peekoo-agent` tests for the Goose backend (e.g. `extract_text`-style helpers and any session/prompt tests).
@@ -98,4 +98,4 @@ Assessment of whether **Block’s Goose** SDK can replace **Pi Agent Rust** (`pi
 - [Block Goose](https://github.com/block/goose) — main repo  
 - [Goose agent example](https://github.com/block/goose/blob/main/crates/goose/examples/agent.rs)  
 - [Pi Agent Rust](https://github.com/Dicklesworthstone/pi_agent_rust)  
-- Peekoo usage: `crates/peekoo-agent`, `apps/desktop-tauri/src-tauri/src/lib.rs`, `crates/core-app/src/agent_use_cases.rs`
+- Peekoo usage: `crates/peekoo-agent`, `apps/desktop-tauri/src-tauri/src/lib.rs`, `crates/peekoo-agent-app`
