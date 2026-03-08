@@ -22,7 +22,7 @@ pub use error::PluginError;
 pub use events::{EventBus, PluginEvent};
 pub use manifest::{PluginManifest, ToolDefinition, UiPanelDef};
 pub use permissions::PermissionStore;
-pub use registry::{start_tick_timer, PluginRegistry};
+pub use registry::{PluginRegistry, start_tick_timer};
 pub use runtime::PluginInstance;
 pub use state::PluginStateStore;
 pub use tools::{PluginToolBridge, PluginToolSpec};
