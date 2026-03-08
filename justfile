@@ -12,9 +12,16 @@ build:
 build-appimage:
     cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build --bundles appimage
 
+# Install all dependencies (frontend + Rust tools)
+setup: install install-tools
+
 # Install frontend dependencies with bun
 install:
     cd ./apps/desktop-ui && bun install
+
+# Install required Rust CLI tools
+install-tools:
+    cargo install tauri-cli --version "^2"
 
 # Check Rust code without building
 check:

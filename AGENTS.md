@@ -99,6 +99,9 @@ cd apps/desktop-ui && npx tsc --noEmit
 
 ### Running the Desktop App
 ```bash
+# First-time setup: install frontend deps + cargo-tauri CLI tool
+just setup
+
 # Start dev mode (runs both frontend and Tauri)
 just dev
 ```

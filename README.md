@@ -31,8 +31,8 @@ AI-powered desktop pet built with Tauri v2, React, and Rust. A small, transparen
 ## Getting Started
 
 ```bash
-# Install frontend dependencies
-just install
+# Install all dependencies (frontend + Rust CLI tools like cargo-tauri)
+just setup
 
 # Run in development mode
 just dev
@@ -41,6 +41,9 @@ just dev
 ## Commands
 
 ```bash
+just setup        # Install all dependencies (frontend + Rust tools)
+just install      # Install frontend dependencies only
+just install-tools # Install required Rust CLI tools (cargo-tauri)
 just dev          # Run desktop app in dev mode
 just build        # Production build
 just check        # Check Rust code
