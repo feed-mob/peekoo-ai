@@ -18,3 +18,6 @@ plugins/*/Cargo.lock
 .idea/
 .vscode/
 .opencode/plans/
+
+# Development log files
+/logs/

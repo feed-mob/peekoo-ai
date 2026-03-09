@@ -1,8 +1,8 @@
 # Peekoo AI Development Commands
 
-# Run Tauri desktop app in development mode
+# Run Tauri desktop app in development mode (trace logging by default)
 dev:
-    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev
+    RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev
 
 # Build Tauri desktop app for production
 build:
