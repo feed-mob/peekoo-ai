@@ -211,7 +211,7 @@ impl AgentApplication {
     pub fn list_plugin_panels(&self) -> Result<Vec<PluginPanelDto>, String> {
         Ok(self
             .plugin_registry
-            .all_ui_panels()
+            .all_discovered_ui_panels()
             .into_iter()
             .map(|(plugin_key, panel)| PluginPanelDto::from_panel(plugin_key, panel))
             .collect())

@@ -27,15 +27,15 @@ export function PluginStoreCatalog({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <div className="flex items-center justify-between rounded-2xl border border-glass-border bg-glass/60 px-4 py-3">
-        <div>
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Plugin Store</p>
           <h2 className="mt-1 text-base font-semibold text-text-primary">
             Available from GitHub
           </h2>
         </div>
-        <Button size="sm" variant="ghost" onClick={onRefresh}>
+        <Button size="sm" variant="ghost" className="shrink-0" onClick={onRefresh}>
           Refresh
         </Button>
       </div>
@@ -58,47 +58,48 @@ export function PluginStoreCatalog({
             return (
               <section
                 key={plugin.pluginKey}
-                className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel"
+                className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel overflow-hidden"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-space-overlay text-glow-cyan">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-space-overlay text-glow-cyan">
                       <Puzzle size={18} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-text-primary">{plugin.name}</h3>
+                        <h3 className="truncate text-sm font-semibold text-text-primary">{plugin.name}</h3>
                         <Badge variant={plugin.installed ? "default" : "outline"}>
                           {plugin.installed ? "Installed" : "Available"}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-xs text-text-muted">
+                      <p className="mt-1 truncate text-xs text-text-muted">
                         {plugin.pluginKey} · v{plugin.version}
                         {plugin.author ? ` · ${plugin.author}` : ""}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     {plugin.installed ? (
                       <Button
-                        size="sm"
+                        size="icon"
                         variant="outline"
                         className="text-danger border-danger/30 hover:bg-danger/10"
+                        title="Remove plugin"
                         onClick={() => void onUninstall(plugin.pluginKey)}
                         disabled={installing}
                       >
                         {installing ? (
                           <Loader2 size={14} className="animate-spin" />
                         ) : (
-                          <Trash2 size={14} />
+                          <Trash2 size={16} />
                         )}
-                        Remove
                       </Button>
                     ) : (
                       <Button
                         size="sm"
                         variant="default"
+                        className="shrink-0"
                         onClick={() => void onInstall(plugin.pluginKey)}
                         disabled={installing}
                       >
@@ -114,7 +115,7 @@ export function PluginStoreCatalog({
                 </div>
 
                 {plugin.description ? (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">{plugin.description}</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary break-words">{plugin.description}</p>
                 ) : null}
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted">

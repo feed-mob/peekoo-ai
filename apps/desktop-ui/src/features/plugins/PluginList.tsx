@@ -1,6 +1,5 @@
 import { Puzzle, Wrench, LayoutPanelTop, RefreshCcw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import type { PluginPanel, PluginSummary } from "@/types/plugin";
 
 interface PluginListProps {
@@ -27,7 +26,7 @@ export function PluginList({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <div className="flex items-center justify-between rounded-2xl border border-glass-border bg-glass/60 px-4 py-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Plugin System</p>
@@ -59,21 +58,16 @@ export function PluginList({
             return (
               <section
                 key={plugin.pluginDir}
-                className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel"
+                className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel overflow-hidden"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-space-overlay text-glow-cyan">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-space-overlay text-glow-cyan">
                       <Puzzle size={18} />
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-semibold text-text-primary">{plugin.name}</h3>
-                        <Badge variant={plugin.enabled ? "default" : "outline"}>
-                          {plugin.enabled ? "Loaded" : "Discovered"}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 text-xs text-text-muted">
+                    <div className="min-w-0">
+                      <h3 className="truncate text-sm font-semibold text-text-primary">{plugin.name}</h3>
+                      <p className="mt-1 truncate text-xs text-text-muted">
                         {plugin.pluginKey} · v{plugin.version}
                         {plugin.author ? ` · ${plugin.author}` : ""}
                       </p>
@@ -82,19 +76,19 @@ export function PluginList({
 
                   {onRemove ? (
                     <Button
-                      size="sm"
+                      size="icon"
                       variant="outline"
                       className="text-danger border-danger/30 hover:bg-danger/10 shrink-0"
+                      title="Remove plugin"
                       onClick={() => void onRemove(plugin.pluginKey)}
                     >
-                      <Trash2 size={14} />
-                      Remove
+                      <Trash2 size={16} />
                     </Button>
                   ) : null}
                 </div>
 
                 {plugin.description ? (
-                  <p className="mt-3 text-sm leading-6 text-text-secondary">{plugin.description}</p>
+                  <p className="mt-3 text-sm leading-6 text-text-secondary break-words">{plugin.description}</p>
                 ) : null}
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted md:grid-cols-3">
@@ -110,12 +104,12 @@ export function PluginList({
                     </div>
                     <div className="mt-1 text-sm font-medium text-text-primary">{plugin.panelCount}</div>
                   </div>
-                  <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2 col-span-2 md:col-span-1">
-                    <div className="text-text-secondary">Location</div>
-                    <div className="mt-1 truncate text-sm font-medium text-text-primary">
-                      {plugin.pluginDir}
-                    </div>
-                  </div>
+                  <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2 col-span-2 md:col-span-1 min-w-0">
+                     <div className="text-text-secondary">Location</div>
+                     <div className="mt-1 text-sm font-medium text-text-primary break-all">
+                       {plugin.pluginDir}
+                     </div>
+                   </div>
                 </div>
 
                 {pluginPanels.length > 0 ? (

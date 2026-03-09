@@ -287,9 +287,7 @@ async fn plugin_dispatch_event(
 }
 
 #[tauri::command]
-async fn plugin_store_catalog(
-    state: State<'_, AgentState>,
-) -> Result<Vec<StorePluginDto>, String> {
+async fn plugin_store_catalog(state: State<'_, AgentState>) -> Result<Vec<StorePluginDto>, String> {
     state.app.store_catalog()
 }
 

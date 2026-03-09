@@ -4,6 +4,7 @@ pub mod productivity;
 pub mod settings;
 
 pub use application::AgentApplication;
+pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
 pub use plugin::{PluginNotificationDto, PluginPanelDto, PluginSummaryDto};
 pub use productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 pub use settings::{
@@ -12,4 +13,3 @@ pub use settings::{
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
     SetProviderConfigRequest, SettingsService, SkillDto,
 };
-pub use peekoo_plugin_store::{PluginSource, StorePluginDto};

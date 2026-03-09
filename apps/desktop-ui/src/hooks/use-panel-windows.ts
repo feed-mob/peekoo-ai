@@ -75,7 +75,7 @@ export async function closePanelWindow(label: PanelLabel): Promise<void> {
 }
 
 export function usePanelWindows() {
-  const { panels: pluginPanels } = usePlugins();
+  const { plugins: installedPlugins, panels: pluginPanels } = usePlugins();
   const [panels, setPanels] = useState<PanelWindowStates>(INITIAL_STATE);
 
   const openPanel = useCallback(async (label: PanelLabel) => {
@@ -123,6 +123,7 @@ export function usePanelWindows() {
   return {
     panels,
     pluginPanels,
+    installedPlugins,
     togglePanel,
   };
 }

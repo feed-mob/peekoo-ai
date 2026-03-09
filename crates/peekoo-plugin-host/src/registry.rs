@@ -222,18 +222,49 @@ impl PluginRegistry {
         panels
     }
 
-    /// Resolve the HTML entry path for a panel label.
-    pub fn panel_entry_path(&self, label: &str) -> Option<PathBuf> {
-        let plugins = self.plugins.lock().ok()?;
-        for instance in plugins.values() {
-            if let Some(ui_block) = &instance.manifest.ui {
+    /// Return all UI panel definitions across all discovered plugins (on-disk),
+    /// not just runtime-loaded ones.
+    pub fn all_discovered_ui_panels(&self) -> Vec<(String, UiPanelDef)> {
+        let mut panels = Vec::new();
+        for (_, manifest) in self.discover() {
+            if let Some(ui_block) = &manifest.ui {
                 for panel in &ui_block.panels {
-                    if panel.label == label {
-                        return Some(instance.plugin_dir.join(&panel.entry));
+                    panels.push((manifest.plugin.key.clone(), panel.clone()));
+                }
+            }
+        }
+        panels
+    }
+
+    /// Resolve the HTML entry path for a panel label.
+    ///
+    /// Checks loaded plugins first, then falls back to discovered plugins
+    /// so panels remain accessible even when the WASM runtime failed to load.
+    pub fn panel_entry_path(&self, label: &str) -> Option<PathBuf> {
+        // Check loaded plugins first (fast path).
+        if let Ok(plugins) = self.plugins.lock() {
+            for instance in plugins.values() {
+                if let Some(ui_block) = &instance.manifest.ui {
+                    for panel in &ui_block.panels {
+                        if panel.label == label {
+                            return Some(instance.plugin_dir.join(&panel.entry));
+                        }
                     }
                 }
             }
         }
+
+        // Fall back to discovered plugins (on-disk manifests).
+        for (plugin_dir, manifest) in self.discover() {
+            if let Some(ui_block) = &manifest.ui {
+                for panel in &ui_block.panels {
+                    if panel.label == label {
+                        return Some(plugin_dir.join(&panel.entry));
+                    }
+                }
+            }
+        }
+
         None
     }
 
