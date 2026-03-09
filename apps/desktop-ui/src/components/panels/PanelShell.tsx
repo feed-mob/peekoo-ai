@@ -37,7 +37,7 @@ export function PanelShell({ title, children }: PanelShellProps) {
       </div>
 
       {/* Panel content */}
-      <div className="flex-1 p-panel-padding overflow-y-auto">{children}</div>
+      <div className="flex-1 min-w-0 p-panel-padding overflow-y-auto overflow-x-hidden">{children}</div>
     </div>
   );
 }

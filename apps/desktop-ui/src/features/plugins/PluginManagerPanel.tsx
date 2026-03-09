@@ -32,7 +32,7 @@ export function PluginManagerPanel() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col min-w-0">
       <div className="flex items-center gap-2 px-2 py-2 border-b border-glass-border shrink-0">
         <button
           onClick={() => setActiveTab("installed")}
@@ -59,7 +59,7 @@ export function PluginManagerPanel() {
         </button>
       </div>
 
-      <ScrollArea className="flex-1 pr-2">
+      <ScrollArea className="flex-1 min-w-0">
         {activeTab === "installed" ? (
           <PluginList
             plugins={plugins}

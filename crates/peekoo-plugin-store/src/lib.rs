@@ -92,7 +92,6 @@ impl PluginStoreService {
             .map_err(|e| format!("Failed to parse GitHub API response: {e}"))?;
 
         let local_plugins = registry.discover();
-        let loaded_keys = registry.loaded_keys();
 
         let mut store_plugins = Vec::new();
 
@@ -104,7 +103,7 @@ impl PluginStoreService {
             match self.fetch_plugin_metadata(&item.name) {
                 Ok(manifest) => {
                     let (installed, source) =
-                        self.check_installation(&manifest.plugin.key, &local_plugins, &loaded_keys);
+                        self.check_installation(&manifest.plugin.key, &local_plugins);
                     let tool_count = manifest
                         .tools
                         .as_ref()
@@ -170,9 +169,7 @@ impl PluginStoreService {
         };
 
         let local_plugins = registry.discover();
-        let loaded_keys = registry.loaded_keys();
-        let (installed, source) =
-            self.check_installation(&plugin_key_loaded, &local_plugins, &loaded_keys);
+        let (installed, source) = self.check_installation(&plugin_key_loaded, &local_plugins);
 
         let tool_count = manifest
             .tools
@@ -229,7 +226,6 @@ impl PluginStoreService {
         &self,
         plugin_key: &str,
         local_plugins: &[(PathBuf, PluginManifest)],
-        loaded_keys: &[String],
     ) -> (bool, PluginSource) {
         let global_plugins_dir = peekoo_global_data_dir()
             .map(|d| d.join("plugins"))
@@ -242,8 +238,7 @@ impl PluginStoreService {
                 } else {
                     PluginSource::Workspace
                 };
-                let installed = loaded_keys.iter().any(|k| k == plugin_key);
-                return (installed, source);
+                return (true, source);
             }
         }
 
@@ -424,9 +419,7 @@ mod tests {
     fn check_installation_returns_not_installed_when_not_in_registry() {
         let store = make_store();
         let local_plugins: Vec<(PathBuf, PluginManifest)> = vec![];
-        let loaded_keys: Vec<String> = vec![];
-        let (installed, source) =
-            store.check_installation("unknown-plugin", &local_plugins, &loaded_keys);
+        let (installed, source) = store.check_installation("unknown-plugin", &local_plugins);
         assert!(!installed);
         assert_eq!(source, PluginSource::None);
     }
@@ -448,10 +441,8 @@ wasm = "plugin.wasm"
         // Simulate a workspace path (not under global plugins dir)
         let workspace_dir = PathBuf::from("/home/user/myproject/plugins/my-plugin");
         let local_plugins = vec![(workspace_dir, manifest)];
-        let loaded_keys = vec!["my-plugin".to_string()];
 
-        let (installed, source) =
-            store.check_installation("my-plugin", &local_plugins, &loaded_keys);
+        let (installed, source) = store.check_installation("my-plugin", &local_plugins);
         assert!(installed);
         assert_eq!(source, PluginSource::Workspace);
     }
@@ -476,11 +467,39 @@ wasm = "plugin.wasm"
             .join("plugins")
             .join("store-plugin");
         let local_plugins = vec![(global_dir, manifest)];
-        let loaded_keys = vec!["store-plugin".to_string()];
 
-        let (installed, source) =
-            store.check_installation("store-plugin", &local_plugins, &loaded_keys);
+        let (installed, source) = store.check_installation("store-plugin", &local_plugins);
         assert!(installed);
+        assert_eq!(source, PluginSource::Store);
+    }
+
+    #[test]
+    fn check_installation_treats_discovered_but_not_loaded_plugin_as_installed() {
+        // A plugin that exists on disk (returned by discover()) but failed to
+        // load into the runtime should still be considered "installed".
+        let store = make_store();
+        let manifest = parse_manifest(
+            r#"
+[plugin]
+key = "broken-plugin"
+name = "Broken Plugin"
+version = "1.0.0"
+wasm = "plugin.wasm"
+"#,
+        )
+        .unwrap();
+
+        let global_dir = peekoo_global_data_dir()
+            .unwrap()
+            .join("plugins")
+            .join("broken-plugin");
+        let local_plugins = vec![(global_dir, manifest)];
+
+        let (installed, source) = store.check_installation("broken-plugin", &local_plugins);
+        assert!(
+            installed,
+            "discovered plugin should be installed=true even if not loaded"
+        );
         assert_eq!(source, PluginSource::Store);
     }
 

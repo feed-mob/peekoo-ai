@@ -50,7 +50,7 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
   "panel-plugins": {
     label: "panel-plugins",
     title: "Peekoo Plugins",
-    width: 420,
-    height: 560,
+    width: 500,
+    height: 600,
   },
 };

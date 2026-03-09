@@ -25,7 +25,7 @@ const CLICK_TIME_THRESHOLD_MS = 150;
 export default function SpriteView() {
   const spriteState = useSpriteState();
   const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
-  const { panels, pluginPanels, togglePanel } = usePanelWindows();
+  const { panels, pluginPanels, installedPlugins, togglePanel } = usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
@@ -174,6 +174,7 @@ export default function SpriteView() {
           onTogglePanel={handleTogglePanel}
           isOpen={menuOpen}
           pluginPanels={pluginPanels}
+          installedPlugins={installedPlugins}
         />
         <SpriteBubble
           payload={bubblePayload}
