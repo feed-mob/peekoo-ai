@@ -74,7 +74,7 @@ export function SpriteActionMenu({
               : isPanelOpen;
 
             return (
-              <motion.button
+              <motion.div
                 key={item.label}
                 initial={{ opacity: 0, scale: 0, x: 0, y: 0 }}
                 animate={{ opacity: 1, scale: 1, x: item.x, y: item.y }}
@@ -85,25 +85,7 @@ export function SpriteActionMenu({
                   stiffness: 400,
                   damping: 25,
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (isPluginsButton) {
-                    if (pluginPanels.length === 0) {
-                      onTogglePanel("panel-plugins");
-                    } else {
-                      setPluginsPopupOpen((prev) => !prev);
-                    }
-                  } else {
-                    onTogglePanel(item.label);
-                  }
-                }}
-                aria-label={item.name}
-                className={cn(
-                  "group absolute pointer-events-auto flex h-[38px] w-[38px] items-center justify-center rounded-full border transition-colors cursor-pointer",
-                  isActive
-                    ? "bg-glow-blue/20 border-glow-blue/40 text-glow-blue"
-                    : "bg-glass border-glass-border text-text-secondary hover:text-text-primary hover:bg-space-overlay",
-                )}
+                className="absolute"
               >
                 {isPluginsButton && pluginsPopupOpen && pluginsItem && (
                   <motion.div
@@ -158,18 +140,36 @@ export function SpriteActionMenu({
                   </motion.div>
                 )}
 
-                <span
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (isPluginsButton) {
+                      setPluginsPopupOpen((prev) => !prev);
+                    } else {
+                      onTogglePanel(item.label);
+                    }
+                  }}
+                  aria-label={item.name}
                   className={cn(
-                    "pointer-events-none absolute bottom-full mb-2 whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium opacity-0 shadow-panel transition-all duration-150 group-hover:-translate-y-0.5 group-hover:opacity-100 group-focus-visible:-translate-y-0.5 group-focus-visible:opacity-100",
+                    "group pointer-events-auto flex h-[38px] w-[38px] items-center justify-center rounded-full border transition-colors cursor-pointer",
                     isActive
-                      ? "bg-space-overlay border-glow-blue/40 text-text-primary"
-                      : "bg-glass border-glass-border text-text-secondary",
+                      ? "bg-glow-blue/20 border-glow-blue/40 text-glow-blue"
+                      : "bg-glass border-glass-border text-text-secondary hover:text-text-primary hover:bg-space-overlay",
                   )}
                 >
-                  {item.name}
-                </span>
-                <Icon size={16} />
-              </motion.button>
+                  <span
+                    className={cn(
+                      "pointer-events-none absolute bottom-full mb-2 whitespace-nowrap rounded-full border px-2 py-1 text-xs font-medium opacity-0 shadow-panel transition-all duration-150 group-hover:-translate-y-0.5 group-hover:opacity-100 group-focus-visible:-translate-y-0.5 group-focus-visible:opacity-100",
+                      isActive
+                        ? "bg-space-overlay border-glow-blue/40 text-text-primary"
+                        : "bg-glass border-glass-border text-text-secondary",
+                    )}
+                  >
+                    {item.name}
+                  </span>
+                  <Icon size={16} />
+                </button>
+              </motion.div>
             );
           })}
       </AnimatePresence>

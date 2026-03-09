@@ -1,23 +1,89 @@
+import { useState } from "react";
 import { openPanelWindow } from "@/hooks/use-panel-windows";
 import { usePlugins } from "@/hooks/use-plugins";
+import { usePluginStore } from "@/hooks/use-plugin-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PluginList } from "./PluginList";
+import { PluginStoreCatalog } from "./PluginStoreCatalog";
+
+type TabKey = "installed" | "store";
 
 export function PluginManagerPanel() {
   const { plugins, panels, isLoading, error, refresh } = usePlugins();
+  const {
+    catalog,
+    isLoading: isStoreLoading,
+    error: storeError,
+    fetchCatalog,
+    install,
+    uninstall,
+    isInstalling,
+  } = usePluginStore();
+  const [activeTab, setActiveTab] = useState<TabKey>("installed");
+
+  const handleInstall = async (pluginKey: string) => {
+    await install(pluginKey);
+    await refresh();
+  };
+
+  const handleUninstall = async (pluginKey: string) => {
+    await uninstall(pluginKey);
+    await refresh();
+  };
 
   return (
-    <ScrollArea className="h-full pr-2">
-      <PluginList
-        plugins={plugins}
-        panels={panels}
-        isLoading={isLoading}
-        error={error}
-        onRefresh={() => void refresh()}
-        onOpenPanel={(label) => {
-          void openPanelWindow(label, panels);
-        }}
-      />
-    </ScrollArea>
+    <div className="h-full flex flex-col">
+      <div className="flex items-center gap-2 px-2 py-2 border-b border-glass-border shrink-0">
+        <button
+          onClick={() => setActiveTab("installed")}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            activeTab === "installed"
+              ? "bg-glass text-text-primary"
+              : "text-text-muted hover:text-text-secondary"
+          }`}
+        >
+          Installed
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab("store");
+            void fetchCatalog();
+          }}
+          className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+            activeTab === "store"
+              ? "bg-glass text-text-primary"
+              : "text-text-muted hover:text-text-secondary"
+          }`}
+        >
+          Store
+        </button>
+      </div>
+
+      <ScrollArea className="flex-1 pr-2">
+        {activeTab === "installed" ? (
+          <PluginList
+            plugins={plugins}
+            panels={panels}
+            isLoading={isLoading}
+            error={error}
+            onRefresh={() => void refresh()}
+            onOpenPanel={(label) => {
+              void openPanelWindow(label, panels);
+            }}
+            onRemove={handleUninstall}
+          />
+        ) : (
+          <PluginStoreCatalog
+            catalog={catalog}
+            isLoading={isStoreLoading}
+            error={storeError}
+            onInstall={handleInstall}
+            onUninstall={handleUninstall}
+            isInstalling={isInstalling}
+            onRefresh={fetchCatalog}
+          />
+        )}
+      </ScrollArea>
+    </div>
   );
 }
