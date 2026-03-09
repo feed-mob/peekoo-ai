@@ -59,6 +59,10 @@ pub fn peekoo_global_skills_dir() -> Result<PathBuf, String> {
     Ok(peekoo_global_config_dir()?.join("skills"))
 }
 
+pub fn peekoo_log_dir() -> Result<PathBuf, String> {
+    Ok(peekoo_global_data_dir()?.join("logs"))
+}
+
 pub fn pi_agent_dir() -> Result<PathBuf, String> {
     if let Some(override_dir) = std::env::var_os("PI_CODING_AGENT_DIR") {
         return Ok(PathBuf::from(override_dir));
@@ -114,6 +118,13 @@ mod tests {
         let data = peekoo_global_data_dir().expect("peekoo data dir");
         let db = peekoo_settings_db_path().expect("peekoo settings db path");
         assert_eq!(db, data.join("peekoo.sqlite"));
+    }
+
+    #[test]
+    fn log_dir_is_inside_data_dir() {
+        let data = peekoo_global_data_dir().expect("peekoo data dir");
+        let logs = peekoo_log_dir().expect("peekoo log dir");
+        assert_eq!(logs, data.join("logs"));
     }
 
     #[test]

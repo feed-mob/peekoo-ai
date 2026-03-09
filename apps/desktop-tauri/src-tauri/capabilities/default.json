@@ -17,6 +17,7 @@
     "core:event:allow-emit-to",
     "core:event:allow-listen",
     "shell:allow-open",
-    "notification:default"
+    "notification:default",
+    "log:default"
   ]
 }

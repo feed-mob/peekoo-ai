@@ -8,8 +8,11 @@ use peekoo_agent_app::{
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, TaskDto,
 };
 use serde::Serialize;
+use std::env;
+use std::path::PathBuf;
 use std::process::Command;
 use tauri::{AppHandle, Emitter, LogicalSize, State, Window};
+use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
@@ -288,9 +291,6 @@ async fn plugin_dispatch_event(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // On Windows, WebView2 defaults to writing its data next to the executable,
-    // which is typically inside Program Files and not writable. Set an explicit
-    // user-writable path before Tauri initialises the webview.
     #[cfg(target_os = "windows")]
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
@@ -300,16 +300,41 @@ pub fn run() {
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     eprintln!("warning: failed to create WebView2 data dir: {e}");
                 }
-                // SAFETY: Called at the start of `run()` before `tauri::Builder`
-                // is constructed, so no other threads are running yet.
                 unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
             }
         }
     }
 
+    let default_level = env::var("RUST_LOG")
+        .ok()
+        .and_then(|v| v.parse::<log::LevelFilter>().ok())
+        .unwrap_or(log::LevelFilter::Error);
+
+    let file_target = if cfg!(debug_assertions) {
+        let log_dir = env::var("PEEKOO_PROJECT_ROOT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+            .join("logs");
+        let _ = std::fs::create_dir_all(&log_dir);
+        Target::new(TargetKind::Folder {
+            path: log_dir,
+            file_name: None,
+        })
+    } else {
+        Target::new(TargetKind::LogDir { file_name: None })
+    };
+
     let agent_state = AgentState::new();
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(default_level)
+                .targets([file_target, Target::new(TargetKind::Stdout)])
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .build(),
+        )
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .manage(agent_state)
