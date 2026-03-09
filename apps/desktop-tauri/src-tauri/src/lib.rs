@@ -5,7 +5,8 @@ use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
     PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto,
-    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, TaskDto,
+    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, StorePluginDto,
+    TaskDto,
 };
 use serde::Serialize;
 use std::env;
@@ -285,6 +286,29 @@ async fn plugin_dispatch_event(
     state.app.dispatch_plugin_event(&event_name, &payload_json)
 }
 
+#[tauri::command]
+async fn plugin_store_catalog(
+    state: State<'_, AgentState>,
+) -> Result<Vec<StorePluginDto>, String> {
+    state.app.store_catalog()
+}
+
+#[tauri::command]
+async fn plugin_store_install(
+    plugin_key: String,
+    state: State<'_, AgentState>,
+) -> Result<StorePluginDto, String> {
+    state.app.store_install(&plugin_key)
+}
+
+#[tauri::command]
+async fn plugin_store_uninstall(
+    plugin_key: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.store_uninstall(&plugin_key)
+}
+
 // ============================================================================
 // App Entry
 // ============================================================================
@@ -364,7 +388,10 @@ pub fn run() {
             plugin_call_tool,
             plugin_query_data,
             plugin_panel_html,
-            plugin_dispatch_event
+            plugin_dispatch_event,
+            plugin_store_catalog,
+            plugin_store_install,
+            plugin_store_uninstall
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

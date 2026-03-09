@@ -11,6 +11,7 @@ peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
 peekoo-security = { path = "../security" }
 peekoo-paths = { path = "../peekoo-paths" }
 peekoo-plugin-host = { path = "../peekoo-plugin-host" }
+peekoo-plugin-store = { path = "../peekoo-plugin-store" }
 asupersync = "=0.2.5"
 rusqlite = { version = "0.38" }
 uuid = { version = "1", features = ["v4"] }

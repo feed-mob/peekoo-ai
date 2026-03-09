@@ -1,5 +1,6 @@
 /target/
 plugins/*/target/
+!plugins/*/target/wasm32-unknown-unknown/release/*.wasm
 plugins/*/Cargo.lock
 
 # JavaScript/TypeScript build artifacts

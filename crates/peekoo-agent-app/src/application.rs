@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use peekoo_agent::AgentEvent;
@@ -19,6 +18,7 @@ use crate::settings::{
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
 };
+use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
@@ -26,6 +26,7 @@ pub struct AgentApplication {
     productivity: ProductivityService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: PluginToolBridge,
+    plugin_store: PluginStoreService,
     agent_config_version: Mutex<Option<i64>>,
 }
 
@@ -42,6 +43,7 @@ impl AgentApplication {
             productivity: ProductivityService::new(),
             plugin_tools: PluginToolBridge::new(Arc::clone(&plugin_registry)),
             plugin_registry,
+            plugin_store: PluginStoreService::new(),
             agent_config_version: Mutex::new(None),
         })
     }
@@ -287,6 +289,20 @@ impl AgentApplication {
         Ok(())
     }
 
+    pub fn store_catalog(&self) -> Result<Vec<StorePluginDto>, String> {
+        self.plugin_store.fetch_catalog(&self.plugin_registry)
+    }
+
+    pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.plugin_store
+            .install_plugin(plugin_key, &self.plugin_registry)
+    }
+
+    pub fn store_uninstall(&self, plugin_key: &str) -> Result<(), String> {
+        self.plugin_store
+            .uninstall_plugin(plugin_key, &self.plugin_registry)
+    }
+
     /// Build a fresh `AgentService` from current settings + plugin prompt.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
@@ -358,22 +374,14 @@ fn create_plugin_registry() -> Result<Arc<PluginRegistry>, String> {
     let db_path = peekoo_paths::peekoo_settings_db_path()?;
     let db_conn = Connection::open(&db_path).map_err(|e| format!("Open plugin db error: {e}"))?;
 
-    let mut plugin_dirs = Vec::new();
     let global_plugins_dir = peekoo_paths::peekoo_global_data_dir()?.join("plugins");
     if !global_plugins_dir.exists() {
         std::fs::create_dir_all(&global_plugins_dir)
             .map_err(|e| format!("Create plugin dir error: {e}"))?;
     }
-    plugin_dirs.push(global_plugins_dir);
-
-    if let Some(workspace_plugins_dir) = discover_workspace_plugins_dir()
-        && !plugin_dirs.iter().any(|dir| dir == &workspace_plugins_dir)
-    {
-        plugin_dirs.push(workspace_plugins_dir);
-    }
 
     Ok(Arc::new(PluginRegistry::new(
-        plugin_dirs,
+        vec![global_plugins_dir],
         Arc::new(Mutex::new(db_conn)),
     )))
 }
@@ -387,19 +395,6 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
                 dir = %plugin_dir.display(),
                 "Skipping plugin during startup: {err}"
             ),
-        }
-    }
-}
-
-fn discover_workspace_plugins_dir() -> Option<PathBuf> {
-    let mut current = std::env::current_dir().ok()?;
-    loop {
-        let candidate = current.join("plugins");
-        if candidate.is_dir() {
-            return Some(candidate);
-        }
-        if !current.pop() {
-            return None;
         }
     }
 }

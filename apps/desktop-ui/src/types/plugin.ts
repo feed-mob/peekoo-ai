@@ -21,5 +21,18 @@ export const pluginPanelSchema = z.object({
   entry: z.string(),
 });
 
+export const storePluginSchema = z.object({
+  pluginKey: z.string(),
+  name: z.string(),
+  version: z.string(),
+  author: z.string().nullable().optional(),
+  description: z.string().nullable().optional(),
+  toolCount: z.number(),
+  panelCount: z.number(),
+  installed: z.boolean(),
+  source: z.string(),
+});
+
 export type PluginSummary = z.infer<typeof pluginSummarySchema>;
 export type PluginPanel = z.infer<typeof pluginPanelSchema>;
+export type StorePlugin = z.infer<typeof storePluginSchema>;

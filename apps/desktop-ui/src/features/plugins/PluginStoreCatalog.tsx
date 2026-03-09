@@ -1,42 +1,41 @@
-import { Puzzle, Wrench, LayoutPanelTop, RefreshCcw, Trash2 } from "lucide-react";
+import { Puzzle, Wrench, LayoutPanelTop, Download, Trash2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import type { PluginPanel, PluginSummary } from "@/types/plugin";
+import type { StorePlugin } from "@/types/plugin";
 
-interface PluginListProps {
-  plugins: PluginSummary[];
-  panels: PluginPanel[];
+interface PluginStoreCatalogProps {
+  catalog: StorePlugin[];
   isLoading: boolean;
   error: string | null;
+  onInstall: (pluginKey: string) => Promise<void>;
+  onUninstall: (pluginKey: string) => Promise<void>;
+  isInstalling: (pluginKey: string) => boolean;
   onRefresh: () => void;
-  onOpenPanel: (label: string) => void;
-  onRemove?: (pluginKey: string) => Promise<void>;
 }
 
-export function PluginList({
-  plugins,
-  panels,
+export function PluginStoreCatalog({
+  catalog,
   isLoading,
   error,
+  onInstall,
+  onUninstall,
+  isInstalling,
   onRefresh,
-  onOpenPanel,
-  onRemove,
-}: PluginListProps) {
-  if (isLoading && plugins.length === 0) {
-    return <div className="text-sm text-text-muted">Loading plugins...</div>;
+}: PluginStoreCatalogProps) {
+  if (isLoading && catalog.length === 0) {
+    return <div className="text-sm text-text-muted">Loading plugin store...</div>;
   }
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between rounded-2xl border border-glass-border bg-glass/60 px-4 py-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Plugin System</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Plugin Store</p>
           <h2 className="mt-1 text-base font-semibold text-text-primary">
-            Installed Plugins
+            Available from GitHub
           </h2>
         </div>
         <Button size="sm" variant="ghost" onClick={onRefresh}>
-          <RefreshCcw size={14} />
           Refresh
         </Button>
       </div>
@@ -47,18 +46,18 @@ export function PluginList({
         </div>
       ) : null}
 
-      {plugins.length === 0 ? (
+      {catalog.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-glass-border bg-glass/30 px-4 py-6 text-sm text-text-secondary">
-          No plugins installed yet. Browse the Store tab to install plugins.
+          No plugins available in the store.
         </div>
       ) : (
         <div className="space-y-3">
-          {plugins.map((plugin) => {
-            const pluginPanels = panels.filter((panel) => panel.pluginKey === plugin.pluginKey);
+          {catalog.map((plugin) => {
+            const installing = isInstalling(plugin.pluginKey);
 
             return (
               <section
-                key={plugin.pluginDir}
+                key={plugin.pluginKey}
                 className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel"
               >
                 <div className="flex items-start justify-between gap-3">
@@ -69,8 +68,8 @@ export function PluginList({
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="text-sm font-semibold text-text-primary">{plugin.name}</h3>
-                        <Badge variant={plugin.enabled ? "default" : "outline"}>
-                          {plugin.enabled ? "Loaded" : "Discovered"}
+                        <Badge variant={plugin.installed ? "default" : "outline"}>
+                          {plugin.installed ? "Installed" : "Available"}
                         </Badge>
                       </div>
                       <p className="mt-1 text-xs text-text-muted">
@@ -80,24 +79,51 @@ export function PluginList({
                     </div>
                   </div>
 
-                  {onRemove ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-danger border-danger/30 hover:bg-danger/10 shrink-0"
-                      onClick={() => void onRemove(plugin.pluginKey)}
-                    >
-                      <Trash2 size={14} />
-                      Remove
-                    </Button>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {plugin.installed ? (
+                      plugin.source === "store" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-danger border-danger/30 hover:bg-danger/10"
+                          onClick={() => void onUninstall(plugin.pluginKey)}
+                          disabled={installing}
+                        >
+                          {installing ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                          Remove
+                        </Button>
+                      ) : (
+                        <Badge variant="outline" className="text-text-muted">
+                          Workspace
+                        </Badge>
+                      )
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => void onInstall(plugin.pluginKey)}
+                        disabled={installing}
+                      >
+                        {installing ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Download size={14} />
+                        )}
+                        Install
+                      </Button>
+                    )}
+                  </div>
                 </div>
 
                 {plugin.description ? (
                   <p className="mt-3 text-sm leading-6 text-text-secondary">{plugin.description}</p>
                 ) : null}
 
-                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted md:grid-cols-3">
+                <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted">
                   <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2">
                     <div className="flex items-center gap-2 text-text-secondary">
                       <Wrench size={12} /> Tools
@@ -110,34 +136,7 @@ export function PluginList({
                     </div>
                     <div className="mt-1 text-sm font-medium text-text-primary">{plugin.panelCount}</div>
                   </div>
-                  <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2 col-span-2 md:col-span-1">
-                    <div className="text-text-secondary">Location</div>
-                    <div className="mt-1 truncate text-sm font-medium text-text-primary">
-                      {plugin.pluginDir}
-                    </div>
-                  </div>
                 </div>
-
-                {pluginPanels.length > 0 ? (
-                  <div className="mt-4 space-y-2">
-                    <p className="text-xs uppercase tracking-[0.16em] text-text-muted">
-                      Open panels
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {pluginPanels.map((panel) => (
-                        <Button
-                          key={panel.label}
-                          size="sm"
-                          variant="outline"
-                          className="bg-space-deep/50"
-                          onClick={() => onOpenPanel(panel.label)}
-                        >
-                          {panel.title}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </section>
             );
           })}
