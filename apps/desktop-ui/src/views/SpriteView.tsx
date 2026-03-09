@@ -1,10 +1,20 @@
 import { useState, useCallback, useEffect, useRef } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sprite } from "@/components/sprite/Sprite";
 import { SpriteActionMenu } from "@/components/sprite/SpriteActionMenu";
+import { SpriteBubble } from "@/components/sprite/SpriteBubble";
+import { useSpriteBubble } from "@/hooks/use-sprite-bubble";
+import { getSpriteWindowSize } from "@/lib/sprite-bubble-layout";
 import { useSpriteState } from "@/hooks/use-sprite-state";
 import { usePanelWindows } from "@/hooks/use-panel-windows";
 import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
+import {
+  SPRITE_BUBBLE_DURATION_MS,
+  SPRITE_BUBBLE_EVENT,
+  SpriteBubblePayloadSchema,
+} from "@/types/sprite-bubble";
 import type { AnimationType, SpriteState } from "@/types/sprite";
 
 // Duration (ms) a reaction-triggered mood override stays active before reverting
@@ -14,8 +24,8 @@ const CLICK_TIME_THRESHOLD_MS = 150;
 
 export default function SpriteView() {
   const spriteState = useSpriteState();
-  const { panels, togglePanel, expandForMenu, shrinkToSprite } =
-    usePanelWindows();
+  const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
+  const { panels, pluginPanels, togglePanel } = usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
@@ -44,8 +54,50 @@ export default function SpriteView() {
   useEffect(() => {
     return () => {
       clearMoodResetTimer();
+      clearBubble();
     };
-  }, [clearMoodResetTimer]);
+  }, [clearBubble, clearMoodResetTimer]);
+
+  // Track the previous extraTop so we can compute the delta for position adjustment.
+  const prevExtraTopRef = useRef(0);
+
+  // Auto-expand/shrink the main window when bubble visibility or menu state changes.
+  // We invoke a Rust command instead of JS setSize() because resizable:false blocks the JS API.
+  useEffect(() => {
+    const nextSize = getSpriteWindowSize({
+      menuOpen,
+      bubbleOpen: bubblePayload !== null && bubbleVisible,
+    });
+    const deltaTop = nextSize.extraTop - prevExtraTopRef.current;
+    prevExtraTopRef.current = nextSize.extraTop;
+    void invoke("resize_sprite_window", {
+      width: nextSize.width,
+      height: nextSize.height,
+      deltaTop,
+    });
+  }, [bubblePayload, bubbleVisible, menuOpen]);
+
+  useEffect(() => {
+    const unlisten = listen(SPRITE_BUBBLE_EVENT, (event) => {
+      const parsed = SpriteBubblePayloadSchema.safeParse(event.payload);
+      if (!parsed.success) {
+        return;
+      }
+
+      showBubble(parsed.data);
+
+      clearMoodResetTimer();
+      setMoodOverride("reminder");
+      moodResetTimerRef.current = window.setTimeout(() => {
+        setMoodOverride(null);
+        moodResetTimerRef.current = null;
+      }, SPRITE_BUBBLE_DURATION_MS);
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [clearMoodResetTimer, showBubble]);
 
   useSpriteReactions({ onMoodChange: handleMoodChange });
 
@@ -84,22 +136,19 @@ export default function SpriteView() {
       e.preventDefault();
       if (menuOpen) {
         setMenuOpen(false);
-        await shrinkToSprite();
       } else {
-        await expandForMenu();
         setMenuOpen(true);
       }
     },
-    [menuOpen, expandForMenu, shrinkToSprite],
+    [menuOpen],
   );
 
   const handleTogglePanel = useCallback(
     async (label: Parameters<typeof togglePanel>[0]) => {
       await togglePanel(label);
       setMenuOpen(false);
-      await shrinkToSprite();
     },
-    [togglePanel, shrinkToSprite],
+    [togglePanel],
   );
 
   return (
@@ -124,6 +173,11 @@ export default function SpriteView() {
           panels={panels}
           onTogglePanel={handleTogglePanel}
           isOpen={menuOpen}
+          pluginPanels={pluginPanels}
+        />
+        <SpriteBubble
+          payload={bubblePayload}
+          visible={bubbleVisible}
         />
       </div>
     </div>

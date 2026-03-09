@@ -49,6 +49,25 @@ clean:
 icon SOURCE:
     cd ./apps/desktop-tauri/src-tauri/ && cargo tauri icon {{SOURCE}}
 
+# Build a plugin to WASM
+plugin-build name:
+    cargo build --release --target wasm32-unknown-unknown --manifest-path plugins/{{name}}/Cargo.toml
+
+# Install a plugin into the local Peekoo plugin dir
+plugin-install name:
+    mkdir -p ~/.peekoo/plugins/{{name}}
+    cp plugins/{{name}}/peekoo-plugin.toml ~/.peekoo/plugins/{{name}}/
+    cp plugins/{{name}}/target/wasm32-unknown-unknown/release/$(echo {{name}} | tr '-' '_').wasm ~/.peekoo/plugins/{{name}}/
+    if [ -d plugins/{{name}}/ui ]; then cp -r plugins/{{name}}/ui ~/.peekoo/plugins/{{name}}/; fi
+
+# Build and install a plugin
+plugin name: (plugin-build name) (plugin-install name)
+
+# Build all plugin examples
+plugin-build-all:
+    just plugin-build example-minimal
+    just plugin-build health-reminders
+
 # List all available commands
 list:
     @just --list

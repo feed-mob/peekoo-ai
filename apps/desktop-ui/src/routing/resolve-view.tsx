@@ -1,10 +1,12 @@
 import { lazy, Suspense } from "react";
-import { WindowLabelSchema } from "@/types/window";
+import { WindowLabelSchema, BUILTIN_PANEL_LABELS } from "@/types/window";
 
 const SpriteView = lazy(() => import("@/views/SpriteView"));
 const ChatView = lazy(() => import("@/views/ChatView"));
 const TasksView = lazy(() => import("@/views/TasksView"));
 const PomodoroView = lazy(() => import("@/views/PomodoroView"));
+const PluginsView = lazy(() => import("@/views/PluginsView"));
+const PluginPanelView = lazy(() => import("@/views/PluginPanelView"));
 
 function UnknownView({ label }: { label: string }) {
   return (
@@ -15,6 +17,13 @@ function UnknownView({ label }: { label: string }) {
 }
 
 function viewForLabel(label: string) {
+  if (
+    label.startsWith("panel-") &&
+    !(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)
+  ) {
+    return <PluginPanelView />;
+  }
+
   const parsed = WindowLabelSchema.safeParse(label);
   if (!parsed.success) return <UnknownView label={label} />;
 
@@ -27,6 +36,8 @@ function viewForLabel(label: string) {
       return <TasksView />;
     case "panel-pomodoro":
       return <PomodoroView />;
+    case "panel-plugins":
+      return <PluginsView />;
   }
 }
 

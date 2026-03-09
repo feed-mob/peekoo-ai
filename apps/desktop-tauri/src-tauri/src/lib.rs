@@ -4,11 +4,13 @@
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, TaskDto,
+    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto,
+    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, TaskDto,
 };
 use serde::Serialize;
-use tauri::{Emitter, State, Window};
+use std::process::Command;
+use tauri::{AppHandle, Emitter, LogicalSize, State, Window};
+use tauri_plugin_notification::NotificationExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -40,6 +42,37 @@ struct ModelInfo {
 // ============================================================================
 // Tauri Commands
 // ============================================================================
+
+/// Resize the sprite window from Rust, bypassing the `resizable: false` JS restriction.
+/// The window is intentionally non-resizable by the user but we need programmatic control.
+/// `delta_top` shifts the window vertically in logical pixels (positive = move up, negative = move down).
+#[tauri::command]
+async fn resize_sprite_window(
+    width: f64,
+    height: f64,
+    delta_top: f64,
+    window: Window,
+) -> Result<(), String> {
+    if delta_top.abs() > 0.5 {
+        let pos = window
+            .outer_position()
+            .map_err(|e| format!("get position error: {e}"))?;
+        let scale = window
+            .scale_factor()
+            .map_err(|e| format!("scale error: {e}"))?;
+        let logical_y = pos.y as f64 / scale - delta_top;
+        let physical_y = (logical_y * scale).round() as i32;
+        window
+            .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+                x: pos.x,
+                y: physical_y,
+            }))
+            .map_err(|e| format!("set position error: {e}"))?;
+    }
+    window
+        .set_size(LogicalSize::new(width, height))
+        .map_err(|e| format!("resize error: {e}"))
+}
 
 #[tauri::command]
 async fn greet(name: String) -> Result<String, String> {
@@ -198,6 +231,57 @@ async fn pomodoro_finish(
     state.app.finish_pomodoro(&session_id)
 }
 
+#[tauri::command]
+async fn plugins_list(state: State<'_, AgentState>) -> Result<Vec<PluginSummaryDto>, String> {
+    state.app.list_plugins()
+}
+
+#[tauri::command]
+async fn plugin_panels_list(state: State<'_, AgentState>) -> Result<Vec<PluginPanelDto>, String> {
+    state.app.list_plugin_panels()
+}
+
+#[tauri::command]
+async fn plugin_call_tool(
+    tool_name: String,
+    args_json: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let result = state.app.call_plugin_tool(&tool_name, &args_json)?;
+
+    for notification in state.app.drain_plugin_notifications() {
+        show_plugin_notification(&app, &notification)?;
+        app.emit_to("main", "sprite:bubble", &notification)
+            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+async fn plugin_query_data(
+    plugin_key: String,
+    provider_name: String,
+    state: State<'_, AgentState>,
+) -> Result<String, String> {
+    state.app.query_plugin_data(&plugin_key, &provider_name)
+}
+
+#[tauri::command]
+async fn plugin_panel_html(label: String, state: State<'_, AgentState>) -> Result<String, String> {
+    state.app.plugin_panel_html(&label)
+}
+
+#[tauri::command]
+async fn plugin_dispatch_event(
+    event_name: String,
+    payload_json: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.dispatch_plugin_event(&event_name, &payload_json)
+}
+
 // ============================================================================
 // App Entry
 // ============================================================================
@@ -226,9 +310,11 @@ pub fn run() {
     let agent_state = AgentState::new();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .manage(agent_state)
         .invoke_handler(tauri::generate_handler![
+            resize_sprite_window,
             greet,
             get_sprite_state,
             agent_prompt,
@@ -247,8 +333,54 @@ pub fn run() {
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
-            pomodoro_finish
+            pomodoro_finish,
+            plugins_list,
+            plugin_panels_list,
+            plugin_call_tool,
+            plugin_query_data,
+            plugin_panel_html,
+            plugin_dispatch_event
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn show_plugin_notification(
+    app: &AppHandle,
+    notification: &PluginNotificationDto,
+) -> Result<(), String> {
+    match app
+        .notification()
+        .builder()
+        .title(&notification.title)
+        .body(&notification.body)
+        .show()
+    {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            #[cfg(target_os = "linux")]
+            {
+                if send_linux_notification_fallback(notification).is_ok() {
+                    return Ok(());
+                }
+            }
+
+            Err(format!("Notification error: {err}"))
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Result<(), String> {
+    let status = Command::new("notify-send")
+        .arg(&notification.title)
+        .arg(&notification.body)
+        .status()
+        .map_err(|e| format!("notify-send launch error: {e}"))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("notify-send exited with status {status}"))
+    }
 }

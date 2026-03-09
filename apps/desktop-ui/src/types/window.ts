@@ -1,21 +1,24 @@
 import { z } from "zod";
 
-export const WindowLabelSchema = z.enum([
-  "main",
+export const BUILTIN_PANEL_LABELS = [
   "panel-chat",
   "panel-tasks",
   "panel-pomodoro",
-]);
+  "panel-plugins",
+] as const;
+
+export const WindowLabelSchema = z.string().refine(
+  (value) => value === "main" || value.startsWith("panel-"),
+  { message: "Expected main or a panel-* window label" },
+);
 export type WindowLabel = z.infer<typeof WindowLabelSchema>;
 
-export const PanelLabelSchema = z.enum([
-  "panel-chat",
-  "panel-tasks",
-  "panel-pomodoro",
-]);
+export const PanelLabelSchema = z
+  .string()
+  .refine((value) => value.startsWith("panel-"), {
+    message: "Expected a panel-* label",
+  });
 export type PanelLabel = z.infer<typeof PanelLabelSchema>;
-
-export const PANEL_LABELS = PanelLabelSchema.options;
 
 export const PanelWindowConfigSchema = z.object({
   label: PanelLabelSchema,
@@ -25,7 +28,7 @@ export const PanelWindowConfigSchema = z.object({
 });
 export type PanelWindowConfig = z.infer<typeof PanelWindowConfigSchema>;
 
-export const PANEL_WINDOW_CONFIGS: Record<PanelLabel, PanelWindowConfig> = {
+export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
   "panel-chat": {
     label: "panel-chat",
     title: "Peekoo Chat",
@@ -43,5 +46,11 @@ export const PANEL_WINDOW_CONFIGS: Record<PanelLabel, PanelWindowConfig> = {
     title: "Peekoo Pomodoro",
     width: 300,
     height: 380,
+  },
+  "panel-plugins": {
+    label: "panel-plugins",
+    title: "Peekoo Plugins",
+    width: 420,
+    height: 560,
   },
 };

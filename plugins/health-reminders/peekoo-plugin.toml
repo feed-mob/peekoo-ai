@@ -1,0 +1,46 @@
+[plugin]
+key = "health-reminders"
+name = "Health Reminders"
+version = "0.1.0"
+author = "Peekoo Team"
+description = "Water, eye-rest, and stand-up reminders for the desktop pet."
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-unknown-unknown/release/health_reminders.wasm"
+
+[permissions]
+required = ["timer", "notifications", "state:read", "state:write"]
+optional = ["agent:register-tool"]
+
+[[tools.definitions]]
+name = "health_get_status"
+description = "Get current health reminder timer status"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "health_configure"
+description = "Configure reminder intervals in minutes"
+parameters = '{"type":"object","properties":{"water_interval_min":{"type":"integer"},"eye_rest_interval_min":{"type":"integer"},"standup_interval_min":{"type":"integer"}},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "health_dismiss"
+description = "Dismiss a due reminder and reset its timer"
+parameters = '{"type":"object","properties":{"reminder_type":{"type":"string"}},"required":["reminder_type"]}'
+return_type = "object"
+
+[events]
+subscribe = ["timer:tick", "pomodoro:finished"]
+emit = ["health:reminder-due"]
+
+[[data.providers]]
+name = "health_reminder_status"
+description = "Current state of reminder timers"
+schema = '{"type":"object"}'
+
+[[ui.panels]]
+label = "panel-health"
+title = "Health"
+width = 360
+height = 460
+entry = "ui/panel.html"
