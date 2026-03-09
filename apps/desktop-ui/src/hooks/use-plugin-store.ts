@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { storePluginSchema, type StorePlugin } from "@/types/plugin";
 
 export function usePluginStore() {
@@ -7,8 +7,11 @@ export function usePluginStore() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState<Set<string>>(new Set());
+  const fetchingRef = useRef(false);
 
   const fetchCatalog = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
     setIsLoading(true);
     setError(null);
     try {
@@ -18,6 +21,7 @@ export function usePluginStore() {
       setError(String(err));
     } finally {
       setIsLoading(false);
+      fetchingRef.current = false;
     }
   }, []);
 
@@ -71,7 +75,10 @@ export function usePluginStore() {
     }
   }, []);
 
-  const isInstalling = (pluginKey: string) => installing.has(pluginKey);
+  const isInstalling = useCallback(
+    (pluginKey: string) => installing.has(pluginKey),
+    [installing],
+  );
 
   return {
     catalog,

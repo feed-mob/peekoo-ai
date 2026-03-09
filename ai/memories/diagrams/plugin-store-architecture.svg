@@ -1,0 +1,213 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 944.5664999999999 1365.8999999999999" width="944.5664999999999" height="1365.8999999999999" style="--bg:#1a1b26;--fg:#a9b1d6;--line:#3d59a1;--accent:#7aa2f7;--muted:#565f89;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 85%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="5" refX="7" refY="2.5" orient="auto">
+    <polygon points="0 0, 8 2.5, 0 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="5" refX="1" refY="2.5" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.5, 8 5" fill="var(--_arrow)" stroke="var(--_arrow)" stroke-width="0.75" stroke-linejoin="round" />
+  </marker>
+</defs>
+<g class="subgraph" data-id="Frontend" data-label="Frontend (desktop-ui)">
+  <rect x="291.607125" y="40" width="366.2" height="335" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="291.607125" y="40" width="366.2" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="303.607125" y="54" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Frontend (desktop-ui)</text>
+</g>
+<g class="subgraph" data-id="Tauri" data-label="Tauri Layer">
+  <rect x="141.78630000000004" y="503.3" width="720.99" height="96.9" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="141.78630000000004" y="503.3" width="720.99" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="153.78630000000004" y="517.3" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">Tauri Layer</text>
+</g>
+<g class="subgraph" data-id="App" data-label="App Layer (peekoo-agent-app)">
+  <rect x="370.337" y="660.2" width="348.416" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="370.337" y="660.2" width="348.416" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="382.337" y="674.2" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">App Layer (peekoo-agent-app)</text>
+</g>
+<g class="subgraph" data-id="Store" data-label="peekoo-plugin-store crate">
+  <rect x="40" y="902" width="686.5335" height="181.8" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="40" y="902" width="686.5335" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="52" y="916" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">peekoo-plugin-store crate</text>
+</g>
+<g class="subgraph" data-id="External" data-label="External">
+  <rect x="142.82433333333333" y="1212.1" width="564.3430000000001" height="113.80000000000001" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <rect x="142.82433333333333" y="1212.1" width="564.3430000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+  <text x="154.82433333333333" y="1226.1" font-size="12" font-weight="600" fill="var(--_text-sec)" dy="4.199999999999999">External</text>
+</g>
+<polyline class="edge" data-from="HPS" data-to="CMD_CATALOG" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="fetch" points="517.534375,359 517.534375,417 449.5303000000001,417 449.5303000000001,485.3 377.64530000000013,485.3 377.6453000000001,547.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="HPS" data-to="CMD_INSTALL" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="install" points="558.958625,359 558.958625,417 567.6373000000001,417 567.6373000000001,547.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="HPS" data-to="CMD_UNINSTALL" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="uninstall" points="600.382875,359 600.382875,417 685.3225,417 685.3225,485.3 760.5933000000001,485.3 760.5933,547.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="HP" data-to="CMD_LIST" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="list" points="377.85862499999996,359 377.85862499999996,417 300.77182500000004,417 300.77182500000004,485.3 212.10630000000003,485.3 212.10630000000003,547.3" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="CMD_CATALOG" data-to="AA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="377.6453000000001,584.1999999999999 377.6453000000001,644.2 551.9549999999999,644.2 551.9549999999999,704.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="CMD_INSTALL" data-to="AA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="567.6373,584.1999999999999 567.6373,644.2 551.9549999999999,644.2 551.9549999999999,704.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="CMD_UNINSTALL" data-to="AA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="760.5933,584.1999999999999 760.5933,644.2 551.9549999999999,644.2 551.9549999999999,704.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="CMD_LIST" data-to="AA" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="212.10630000000003,584.1999999999999 212.10630000000003,644.2 551.9549999999999,644.2 551.9549999999999,704.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PSS" data-to="FETCH" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="465.851,826 465.851,886 288.08549999999997,886 288.08549999999997,946" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PSS" data-to="DL" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="465.851,826 465.851,886 462.51649999999995,886 462.51649999999995,946" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PSS" data-to="UNINST" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="465.851,826 465.851,886 643.6165,886 643.6165,946" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="FETCH" data-to="GH" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="GET /repos/.../contents/plugins" points="268.0028333333333,982.9 268.00283333333334,1125.8 140.08683333333332,1125.8 140.08683333333332,1194.1 221.29533333333333,1194.1 221.29533333333333,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="FETCH" data-to="RAW" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="GET raw/.../peekoo-plugin.toml" points="308.1681666666666,982.9 308.1681666666666,1125.8 305.26683333333324,1125.8 305.26683333333324,1194.1 378.60766666666666,1194.1 378.60766666666666,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="DL" data-to="RAW" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="GET raw/.../files" points="433.7888333333333,982.9 433.7888333333333,1194.1 445.44900000000007,1194.1 445.449,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="DL" data-to="FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="write" points="491.2441666666666,982.9 491.2441666666666,1125.8 577.5875333333333,1125.8 577.5875333333333,1194.1 570.4657333333334,1194.1 570.4657333333333,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="UNINST" data-to="FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="delete" points="643.6165,982.9 643.6165,1125.8 624.8095333333334,1125.8 624.8095333333334,1194.1 600.6411333333334,1194.1 600.6411333333333,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PR" data-to="FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="load from" points="616.4943333333333,826 616.4943333333333,872 780.5335,872 780.5335,1182.1 630.8165333333334,1182.1 630.8165333333333,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PR" data-to="FS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="discover" points="659.6236666666666,826 659.6236666666666,860 844.8575,860 844.8575,1194.1 660.9919333333333,1194.1 660.9919333333332,1256.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PM" data-to="PL" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Installed tab" points="440.54545833333333,120.9 440.54545833333333,132.9 377.85862499999996,132.9 377.85862499999996,237.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PM" data-to="PS" data-style="solid" data-arrow-start="false" data-arrow-end="true" data-label="Store tab" points="496.2717916666667,120.9 496.2717916666667,132.9 558.958625,132.9 558.958625,237.2" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PS" data-to="HPS" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="558.958625,274.1 558.958625,322.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="PL" data-to="HP" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="377.85862499999996,274.1 377.85862499999996,322.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="AA" data-to="PSS" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="551.9549999999999,741.1 551.9549999999999,765.1 465.851,765.1 465.851,789.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="AA" data-to="PR" data-style="solid" data-arrow-start="false" data-arrow-end="true" points="551.9549999999999,741.1 551.9549999999999,765.1 638.059,765.1 638.059,789.1" fill="none" stroke="var(--_line)" stroke-width="1" marker-end="url(#arrowhead)" />
+<polyline class="edge" data-from="DTO" data-to="ENUM" data-style="solid" data-arrow-start="false" data-arrow-end="false" points="134.40249999999997,982.9 134.4025,1030.9" fill="none" stroke="var(--_line)" stroke-width="1" />
+<g class="edge-label" data-from="HPS" data-to="CMD_CATALOG" data-label="fetch">
+  <rect x="429.0303000000001" y="424" width="40.221999999999994" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="449.1413000000001" y="439.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">fetch</text>
+</g>
+<g class="edge-label" data-from="HPS" data-to="CMD_INSTALL" data-label="install">
+  <rect x="545.1373000000001" y="424" width="44.974000000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="567.6243000000001" y="439.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">install</text>
+</g>
+<g class="edge-label" data-from="HPS" data-to="CMD_UNINSTALL" data-label="uninstall">
+  <rect x="656.8225" y="424" width="56.85400000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="685.2495" y="439.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">uninstall</text>
+</g>
+<g class="edge-label" data-from="HP" data-to="CMD_LIST" data-label="list">
+  <rect x="285.27182500000004" y="424" width="30.718000000000004" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="300.630825" y="439.15" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">list</text>
+</g>
+<g class="edge-label" data-from="FETCH" data-to="GH" data-label="GET /repos/.../contents/plugins">
+  <rect x="58.08683333333333" y="1132.8" width="163.17999999999998" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="139.67683333333332" y="1147.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">GET /repos/.../contents/plugins</text>
+</g>
+<g class="edge-label" data-from="FETCH" data-to="RAW" data-label="GET raw/.../peekoo-plugin.toml">
+  <rect x="225.26683333333327" y="1132.8" width="159.022" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="304.77783333333326" y="1147.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">GET raw/.../peekoo-plugin.toml</text>
+</g>
+<g class="edge-label" data-from="DL" data-to="RAW" data-label="GET raw/.../files">
+  <rect x="388.2888333333333" y="1132.8" width="90.71200000000002" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="433.6448333333333" y="1147.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">GET raw/.../files</text>
+</g>
+<g class="edge-label" data-from="DL" data-to="FS" data-label="write">
+  <rect x="557.0875333333333" y="1132.8" width="40.221999999999994" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="577.1985333333333" y="1147.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">write</text>
+</g>
+<g class="edge-label" data-from="UNINST" data-to="FS" data-label="delete">
+  <rect x="601.3095333333334" y="1132.8" width="46.162" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="624.3905333333335" y="1147.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">delete</text>
+</g>
+<g class="edge-label" data-from="PR" data-to="FS" data-label="load from">
+  <rect x="750.5335" y="1144.8" width="59.824" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="780.4455" y="1159.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">load from</text>
+</g>
+<g class="edge-label" data-from="PR" data-to="FS" data-label="discover">
+  <rect x="814.3574999999998" y="1156.8" width="60.418000000000006" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="844.5664999999999" y="1171.95" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">discover</text>
+</g>
+<g class="edge-label" data-from="PM" data-to="PL" data-label="Installed tab">
+  <rect x="341.35862499999996" y="163.9" width="72.89200000000001" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="377.804625" y="179.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Installed tab</text>
+</g>
+<g class="edge-label" data-from="PM" data-to="PS" data-label="Store tab">
+  <rect x="528.958625" y="163.9" width="59.824000000000005" height="30.3" rx="2" ry="2" fill="var(--bg)" stroke="var(--_inner-stroke)" stroke-width="1" />
+  <text x="558.870625" y="179.05" text-anchor="middle" font-size="11" font-weight="400" fill="var(--_text-sec)" dy="3.8499999999999996">Store tab</text>
+</g>
+<g class="node" data-id="PM" data-label="PluginManagerPanel" data-shape="rectangle">
+  <rect x="384.819125" y="84" width="167.17899999999997" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="468.408625" y="102.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginManagerPanel</text>
+</g>
+<g class="node" data-id="PS" data-label="PluginStoreCatalog" data-shape="rectangle">
+  <rect x="480.92662499999994" y="237.2" width="156.06400000000002" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="558.958625" y="255.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginStoreCatalog</text>
+</g>
+<g class="node" data-id="PL" data-label="PluginList" data-shape="rectangle">
+  <rect x="327.243625" y="237.2" width="101.22999999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="377.858625" y="255.64999999999998" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginList</text>
+</g>
+<g class="node" data-id="HPS" data-label="usePluginStore hook" data-shape="rectangle">
+  <rect x="476.110125" y="322.1" width="165.697" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="558.958625" y="340.55" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">usePluginStore hook</text>
+</g>
+<g class="node" data-id="HP" data-label="usePlugins hook" data-shape="rectangle">
+  <rect x="307.607125" y="322.1" width="140.503" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="377.85862499999996" y="340.55" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">usePlugins hook</text>
+</g>
+<g class="node" data-id="CMD_CATALOG" data-label="plugin_store_catalog" data-shape="rectangle">
+  <rect x="294.4263000000001" y="547.3" width="166.438" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="377.6453000000001" y="565.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">plugin_store_catalog</text>
+</g>
+<g class="node" data-id="CMD_INSTALL" data-label="plugin_store_install" data-shape="rectangle">
+  <rect x="488.8643" y="547.3" width="157.546" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="567.6373" y="565.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">plugin_store_install</text>
+</g>
+<g class="node" data-id="CMD_UNINSTALL" data-label="plugin_store_uninstall" data-shape="rectangle">
+  <rect x="674.4103" y="547.3" width="172.36599999999996" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="760.5933" y="565.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">plugin_store_uninstall</text>
+</g>
+<g class="node" data-id="CMD_LIST" data-label="plugins_list" data-shape="rectangle">
+  <rect x="157.78630000000004" y="547.3" width="108.64000000000001" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="212.10630000000003" y="565.75" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">plugins_list</text>
+</g>
+<g class="node" data-id="AA" data-label="AgentApplication" data-shape="rectangle">
+  <rect x="481.33299999999997" y="704.2" width="141.244" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="551.9549999999999" y="722.6500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">AgentApplication</text>
+</g>
+<g class="node" data-id="PSS" data-label="PluginStoreService" data-shape="rectangle">
+  <rect x="386.337" y="789.1" width="159.028" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="465.851" y="807.5500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginStoreService</text>
+</g>
+<g class="node" data-id="PR" data-label="PluginRegistry" data-shape="rectangle">
+  <rect x="573.365" y="789.1" width="129.388" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="638.059" y="807.5500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginRegistry</text>
+</g>
+<g class="node" data-id="DTO" data-label="StorePluginDto" data-shape="rectangle">
+  <rect x="68.96749999999999" y="946" width="130.87" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="134.40249999999997" y="964.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">StorePluginDto</text>
+</g>
+<g class="node" data-id="ENUM" data-label="PluginSource enum" data-shape="rectangle">
+  <rect x="56" y="1030.9" width="156.805" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="134.4025" y="1049.3500000000001" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">PluginSource enum</text>
+</g>
+<g class="node" data-id="FETCH" data-label="fetch_catalog" data-shape="rectangle">
+  <rect x="227.83749999999998" y="946" width="120.49599999999998" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="288.08549999999997" y="964.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">fetch_catalog</text>
+</g>
+<g class="node" data-id="DL" data-label="download_plugin_files" data-shape="rectangle">
+  <rect x="376.33349999999996" y="946" width="172.36599999999999" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="462.51649999999995" y="964.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">download_plugin_files</text>
+</g>
+<g class="node" data-id="UNINST" data-label="uninstall_plugin" data-shape="rectangle">
+  <rect x="576.6995" y="946" width="133.834" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="643.6165" y="964.45" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">uninstall_plugin</text>
+</g>
+<g class="node" data-id="GH" data-label="GitHub API
+api.github.com" data-shape="rectangle">
+  <rect x="158.82433333333333" y="1256.1" width="124.942" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="221.29533333333333" y="1283" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="221.29533333333333" dy="-3.9000000000000012">GitHub API</tspan><tspan x="221.29533333333333" dy="16.900000000000002">api.github.com</tspan></text>
+</g>
+<g class="node" data-id="RAW" data-label="GitHub Raw
+raw.githubusercontent.com" data-shape="rectangle">
+  <rect x="311.76633333333336" y="1256.1" width="200.52399999999997" height="53.800000000000004" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="412.02833333333336" y="1283" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)"><tspan x="412.02833333333336" dy="-3.9000000000000012">GitHub Raw</tspan><tspan x="412.02833333333336" dy="16.900000000000002">raw.githubusercontent.com</tspan></text>
+</g>
+<g class="node" data-id="FS" data-label="~/.peekoo/plugins/" data-shape="rectangle">
+  <rect x="540.2903333333334" y="1256.1" width="150.877" height="36.900000000000006" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+  <text x="615.7288333333333" y="1274.55" text-anchor="middle" font-size="13" font-weight="500" fill="var(--_text)" dy="4.55">~/.peekoo/plugins/</text>
+</g>
+</svg>

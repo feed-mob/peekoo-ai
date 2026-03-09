@@ -12,4 +12,4 @@ pub use settings::{
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
     SetProviderConfigRequest, SettingsService, SkillDto,
 };
-pub use peekoo_plugin_store::StorePluginDto;
+pub use peekoo_plugin_store::{PluginSource, StorePluginDto};

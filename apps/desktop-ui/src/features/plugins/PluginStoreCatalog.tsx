@@ -81,26 +81,20 @@ export function PluginStoreCatalog({
 
                   <div className="flex items-center gap-2">
                     {plugin.installed ? (
-                      plugin.source === "store" ? (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-danger border-danger/30 hover:bg-danger/10"
-                          onClick={() => void onUninstall(plugin.pluginKey)}
-                          disabled={installing}
-                        >
-                          {installing ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={14} />
-                          )}
-                          Remove
-                        </Button>
-                      ) : (
-                        <Badge variant="outline" className="text-text-muted">
-                          Workspace
-                        </Badge>
-                      )
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-danger border-danger/30 hover:bg-danger/10"
+                        onClick={() => void onUninstall(plugin.pluginKey)}
+                        disabled={installing}
+                      >
+                        {installing ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Trash2 size={14} />
+                        )}
+                        Remove
+                      </Button>
                     ) : (
                       <Button
                         size="sm"

@@ -144,11 +144,7 @@ export function SpriteActionMenu({
                   onClick={(e) => {
                     e.stopPropagation();
                     if (isPluginsButton) {
-                      if (pluginPanels.length === 0) {
-                        onTogglePanel("panel-plugins");
-                      } else {
-                        setPluginsPopupOpen((prev) => !prev);
-                      }
+                      setPluginsPopupOpen((prev) => !prev);
                     } else {
                       onTogglePanel(item.label);
                     }

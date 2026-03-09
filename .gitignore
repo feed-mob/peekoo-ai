@@ -1,5 +1,9 @@
 /target/
 plugins/*/target/
+!plugins/*/target/wasm32-unknown-unknown/
+plugins/*/target/wasm32-unknown-unknown/**
+!plugins/*/target/wasm32-unknown-unknown/release/
+plugins/*/target/wasm32-unknown-unknown/release/**
 !plugins/*/target/wasm32-unknown-unknown/release/*.wasm
 plugins/*/Cargo.lock
 

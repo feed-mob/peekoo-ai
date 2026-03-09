@@ -22,6 +22,18 @@ const GITHUB_API_CONTENTS_URL: &str =
 const GITHUB_RAW_BASE_URL: &str =
     "https://raw.githubusercontent.com/feed-mob/peekoo-ai/master/plugins";
 
+/// Where a plugin was installed from.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginSource {
+    /// Installed from the remote store into `~/.peekoo/plugins/`.
+    Store,
+    /// Discovered in a workspace `plugins/` directory.
+    Workspace,
+    /// Not installed.
+    None,
+}
+
 /// DTO describing a plugin available in the remote store.
 ///
 /// The `installed` flag and `source` field are cross-referenced against the
@@ -38,9 +50,8 @@ pub struct StorePluginDto {
     pub panel_count: usize,
     /// Whether the plugin is currently installed locally.
     pub installed: bool,
-    /// `"store"` — installed via the store, `"workspace"` — found in a
-    /// workspace `plugins/` directory, `"none"` — not installed.
-    pub source: String,
+    /// Origin of the installation.
+    pub source: PluginSource,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,11 +153,21 @@ impl PluginStoreService {
 
         let manifest = self.fetch_plugin_metadata(plugin_key)?;
 
-        self.download_plugin_files(plugin_key, &dest_dir)?;
+        let install_result = self
+            .download_plugin_files(plugin_key, &dest_dir)
+            .and_then(|()| {
+                registry
+                    .install_plugin(&dest_dir)
+                    .map_err(|e| format!("Failed to load plugin: {e}"))
+            });
 
-        let plugin_key_loaded = registry
-            .install_plugin(&dest_dir)
-            .map_err(|e| format!("Failed to load plugin: {e}"))?;
+        let plugin_key_loaded = match install_result {
+            Ok(key) => key,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&dest_dir);
+                return Err(e);
+            }
+        };
 
         let local_plugins = registry.discover();
         let loaded_keys = registry.loaded_keys();
@@ -209,7 +230,7 @@ impl PluginStoreService {
         plugin_key: &str,
         local_plugins: &[(PathBuf, PluginManifest)],
         loaded_keys: &[String],
-    ) -> (bool, String) {
+    ) -> (bool, PluginSource) {
         let global_plugins_dir = peekoo_global_data_dir()
             .map(|d| d.join("plugins"))
             .unwrap_or_default();
@@ -217,16 +238,16 @@ impl PluginStoreService {
         for (plugin_dir, manifest) in local_plugins {
             if manifest.plugin.key == plugin_key {
                 let source = if plugin_dir.starts_with(&global_plugins_dir) {
-                    "store".to_string()
+                    PluginSource::Store
                 } else {
-                    "workspace".to_string()
+                    PluginSource::Workspace
                 };
                 let installed = loaded_keys.iter().any(|k| k == plugin_key);
                 return (installed, source);
             }
         }
 
-        (false, "none".to_string())
+        (false, PluginSource::None)
     }
 
     fn fetch_plugin_metadata(&self, plugin_key: &str) -> Result<PluginManifest, String> {
@@ -260,7 +281,14 @@ impl PluginStoreService {
             .into_json()
             .map_err(|e| format!("Failed to parse plugin contents: {e}"))?;
 
-        self.download_directory_recursive(plugin_key, "", dest_dir, &contents)?;
+        const MAX_RECURSION_DEPTH: u32 = 10;
+        self.download_directory_recursive(
+            plugin_key,
+            "",
+            dest_dir,
+            &contents,
+            MAX_RECURSION_DEPTH,
+        )?;
 
         Ok(())
     }
@@ -271,7 +299,12 @@ impl PluginStoreService {
         sub_path: &str,
         dest_dir: &Path,
         contents: &[GitHubContent],
+        depth: u32,
     ) -> Result<(), String> {
+        if depth == 0 {
+            return Err("Maximum directory recursion depth exceeded".to_string());
+        }
+
         for item in contents {
             match item.content_type.as_str() {
                 "file" => {
@@ -323,6 +356,7 @@ impl PluginStoreService {
                         &sub_dir_path,
                         dest_dir,
                         &sub_contents,
+                        depth - 1,
                     )?;
                 }
                 _ => {}
@@ -357,7 +391,7 @@ mod tests {
             tool_count: 2,
             panel_count: 1,
             installed: true,
-            source: "store".to_string(),
+            source: PluginSource::Store,
         };
 
         let json = serde_json::to_string(&dto).unwrap();
@@ -377,7 +411,7 @@ mod tests {
             tool_count: 0,
             panel_count: 0,
             installed: false,
-            source: "none".to_string(),
+            source: PluginSource::None,
         };
 
         let json = serde_json::to_string(&dto).unwrap();
@@ -394,7 +428,7 @@ mod tests {
         let (installed, source) =
             store.check_installation("unknown-plugin", &local_plugins, &loaded_keys);
         assert!(!installed);
-        assert_eq!(source, "none");
+        assert_eq!(source, PluginSource::None);
     }
 
     #[test]
@@ -419,7 +453,7 @@ wasm = "plugin.wasm"
         let (installed, source) =
             store.check_installation("my-plugin", &local_plugins, &loaded_keys);
         assert!(installed);
-        assert_eq!(source, "workspace");
+        assert_eq!(source, PluginSource::Workspace);
     }
 
     #[test]
@@ -447,7 +481,7 @@ wasm = "plugin.wasm"
         let (installed, source) =
             store.check_installation("store-plugin", &local_plugins, &loaded_keys);
         assert!(installed);
-        assert_eq!(source, "store");
+        assert_eq!(source, PluginSource::Store);
     }
 
     #[test]
