@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { LogicalSize } from "@tauri-apps/api/dpi";
 import type { PanelLabel } from "@/types/window";
 import { PANEL_WINDOW_CONFIGS } from "@/types/window";
 import { emitPetReaction } from "@/lib/pet-events";
@@ -22,8 +21,6 @@ const INITIAL_STATE: PanelWindowStates = {
   "panel-plugins": { isOpen: false },
 };
 
-const SPRITE_SIZE = { width: 200, height: 250 };
-const MENU_SIZE = { width: 300, height: 350 };
 const PANEL_OFFSET_X = 20;
 
 function resolvePanelConfig(
@@ -123,21 +120,9 @@ export function usePanelWindows() {
     [openPanel, closePanel],
   );
 
-  const expandForMenu = useCallback(async () => {
-    const win = getCurrentWindow();
-    await win.setSize(new LogicalSize(MENU_SIZE.width, MENU_SIZE.height));
-  }, []);
-
-  const shrinkToSprite = useCallback(async () => {
-    const win = getCurrentWindow();
-    await win.setSize(new LogicalSize(SPRITE_SIZE.width, SPRITE_SIZE.height));
-  }, []);
-
   return {
     panels,
     pluginPanels,
     togglePanel,
-    expandForMenu,
-    shrinkToSprite,
   };
 }

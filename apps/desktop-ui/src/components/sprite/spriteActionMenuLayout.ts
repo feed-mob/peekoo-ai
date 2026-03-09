@@ -1,5 +1,4 @@
 import type { PanelLabel } from "@/types/window";
-import type { PluginPanel } from "@/types/plugin";
 
 export interface SpriteActionMenuItem {
   label: PanelLabel;
@@ -47,13 +46,6 @@ function horizontalRow(
   }));
 }
 
-export function getSpriteActionMenuItems(
-  pluginPanels: PluginPanel[],
-): SpriteActionMenuItem[] {
-  const dynamicItems: MenuItemDefinition[] = pluginPanels.map((panel) => ({
-    label: panel.label,
-    name: panel.title,
-  }));
-
-  return horizontalRow([...MENU_ITEM_DEFINITIONS, ...dynamicItems]);
+export function getSpriteActionMenuItems(): SpriteActionMenuItem[] {
+  return horizontalRow(MENU_ITEM_DEFINITIONS);
 }

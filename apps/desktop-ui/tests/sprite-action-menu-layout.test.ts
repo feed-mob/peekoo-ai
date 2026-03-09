@@ -3,7 +3,7 @@ import { getSpriteActionMenuItems } from "../src/components/sprite/spriteActionM
 
 describe("getSpriteActionMenuItems", () => {
   test("returns all four built-in items in order: Chat, Tasks, Pomodoro, Plugins", () => {
-    const items = getSpriteActionMenuItems([]);
+    const items = getSpriteActionMenuItems();
     const labels = items.map((item) => item.label);
 
     expect(labels).toEqual([
@@ -15,7 +15,7 @@ describe("getSpriteActionMenuItems", () => {
   });
 
   test("places all items on the same horizontal row below the sprite center", () => {
-    const items = getSpriteActionMenuItems([]);
+    const items = getSpriteActionMenuItems();
 
     const yValues = items.map((item) => item.y);
     const allSameY = yValues.every((y) => y === yValues[0]);
@@ -25,7 +25,7 @@ describe("getSpriteActionMenuItems", () => {
   });
 
   test("items are evenly spaced left-to-right, centered on x=0", () => {
-    const items = getSpriteActionMenuItems([]);
+    const items = getSpriteActionMenuItems();
     const xs = items.map((item) => item.x);
 
     // centered: first + last should sum to ~0
@@ -38,17 +38,5 @@ describe("getSpriteActionMenuItems", () => {
     for (const gap of gaps) {
       expect(gap).toBeCloseTo(firstGap, 5);
     }
-  });
-
-  test("appends dynamic plugin panels to the row", () => {
-    const pluginPanels = [
-      { label: "plugin-panel-health" as const, title: "Health", pluginKey: "health-reminders" },
-    ];
-
-    const items = getSpriteActionMenuItems(pluginPanels as any);
-
-    expect(items).toHaveLength(5);
-    expect(items[4].label).toBe("plugin-panel-health");
-    expect(items[4].y).toBe(items[0].y);
   });
 });

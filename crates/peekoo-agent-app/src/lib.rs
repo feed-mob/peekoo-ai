@@ -4,7 +4,7 @@ pub mod productivity;
 pub mod settings;
 
 pub use application::AgentApplication;
-pub use plugin::{PluginPanelDto, PluginSummaryDto};
+pub use plugin::{PluginNotificationDto, PluginPanelDto, PluginSummaryDto};
 pub use productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 pub use settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,

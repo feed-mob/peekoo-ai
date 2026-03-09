@@ -8,7 +8,10 @@ use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
 use rusqlite::Connection;
 
-use crate::plugin::{PluginPanelDto, PluginSummaryDto, manifest_to_summary};
+use crate::plugin::{
+    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, manifest_to_summary,
+    plugin_notification_from_event,
+};
 use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
@@ -216,6 +219,14 @@ impl AgentApplication {
         self.plugin_tools
             .call_tool(tool_name, args_json)
             .map_err(|e| e.to_string())
+    }
+
+    pub fn drain_plugin_notifications(&self) -> Vec<PluginNotificationDto> {
+        self.plugin_registry
+            .drain_events()
+            .into_iter()
+            .filter_map(plugin_notification_from_event)
+            .collect()
     }
 
     pub fn query_plugin_data(
