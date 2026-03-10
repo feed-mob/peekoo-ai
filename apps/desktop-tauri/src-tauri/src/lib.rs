@@ -3,9 +3,9 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto,
-    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto,
-    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
+    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
+    PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
     SetProviderConfigRequest, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
@@ -361,7 +361,9 @@ async fn plugin_dispatch_event(
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    state.app.dispatch_plugin_event(&event_name, &payload_json)?;
+    state
+        .app
+        .dispatch_plugin_event(&event_name, &payload_json)?;
     flush_plugin_notifications(&app, &state)
 }
 
@@ -556,14 +558,37 @@ pub fn run() {
             state.app.start_plugin_runtime();
 
             let app_handle = app.handle().clone();
+            let shutdown = state.app.shutdown_token();
             tauri::async_runtime::spawn(async move {
+                let mut consecutive_errors: u32 = 0;
                 loop {
-                    let state = app_handle.state::<AgentState>();
-                    if let Err(err) = flush_plugin_notifications(&app_handle, &state) {
-                        tracing::warn!("Background notification flush error: {err}");
+                    let delay = if consecutive_errors > 0 {
+                        Duration::from_millis(250 * u64::from(consecutive_errors.min(16)))
+                    } else {
+                        Duration::from_millis(250)
+                    };
+
+                    tokio::select! {
+                        _ = shutdown.cancelled() => break,
+                        _ = tokio::time::sleep(delay) => {}
                     }
-                    tokio::time::sleep(Duration::from_millis(250)).await;
+
+                    let state = app_handle.state::<AgentState>();
+                    match flush_plugin_notifications(&app_handle, &state) {
+                        Ok(()) => {
+                            consecutive_errors = 0;
+                        }
+                        Err(err) => {
+                            consecutive_errors = consecutive_errors.saturating_add(1);
+                            tracing::warn!(
+                                consecutive_errors,
+                                "Background notification flush error: {err}"
+                            );
+                        }
+                    }
                 }
+
+                tracing::info!("Background notification loop stopped");
             });
 
             Ok(())

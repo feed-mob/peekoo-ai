@@ -50,13 +50,17 @@ fn validate_value(field: &ConfigFieldDef, value: &Value) -> Result<(), PluginErr
                 )));
             };
 
-            if let Some(min) = field.min && (number as f64) < min {
+            if let Some(min) = field.min
+                && (number as f64) < min
+            {
                 return Err(PluginError::Internal(format!(
                     "Config field '{}' must be >= {}",
                     field.key, min
                 )));
             }
-            if let Some(max) = field.max && (number as f64) > max {
+            if let Some(max) = field.max
+                && (number as f64) > max
+            {
                 return Err(PluginError::Internal(format!(
                     "Config field '{}' must be <= {}",
                     field.key, max

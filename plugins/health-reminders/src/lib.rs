@@ -144,13 +144,13 @@ pub fn on_event(input: String) -> FnResult<String> {
                 handle_schedule_fired(key);
             }
         }
-        "pomodoro:started" => {
+        "pomodoro:started" | "pomodoro:resumed" => {
             set_pomodoro_active(true);
             if load_config().suppress_during_pomodoro {
                 cancel_all_schedules();
             }
         }
-        "pomodoro:finished" | "pomodoro:paused" | "pomodoro:resumed" => {
+        "pomodoro:finished" | "pomodoro:paused" => {
             set_pomodoro_active(false);
             sync_schedules();
         }
@@ -171,13 +171,13 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
     let mut config = load_config();
 
     if let Some(value) = patch["water_interval_min"].as_u64() {
-        config.water_interval_min = value as u32;
+        config.water_interval_min = (value as u32).clamp(5, 180);
     }
     if let Some(value) = patch["eye_rest_interval_min"].as_u64() {
-        config.eye_rest_interval_min = value as u32;
+        config.eye_rest_interval_min = (value as u32).clamp(5, 120);
     }
     if let Some(value) = patch["standup_interval_min"].as_u64() {
-        config.standup_interval_min = value as u32;
+        config.standup_interval_min = (value as u32).clamp(10, 180);
     }
     if let Some(value) = patch["suppress_during_pomodoro"].as_bool() {
         config.suppress_during_pomodoro = value;

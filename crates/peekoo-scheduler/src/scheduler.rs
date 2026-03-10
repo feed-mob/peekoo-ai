@@ -58,7 +58,10 @@ impl Scheduler {
         }
 
         let interval = Duration::from_secs(interval_secs);
-        let mut entries = self.entries.lock().expect("scheduler entries lock poisoned");
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("scheduler entries lock poisoned");
         entries.retain(|entry| !(entry.owner == owner && entry.key == key));
         entries.push(ScheduleEntry {
             owner: owner.to_string(),
@@ -74,14 +77,20 @@ impl Scheduler {
     }
 
     pub fn cancel(&self, owner: &str, key: &str) {
-        let mut entries = self.entries.lock().expect("scheduler entries lock poisoned");
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("scheduler entries lock poisoned");
         entries.retain(|entry| !(entry.owner == owner && entry.key == key));
         drop(entries);
         self.wake.notify_one();
     }
 
     pub fn cancel_all(&self, owner: &str) {
-        let mut entries = self.entries.lock().expect("scheduler entries lock poisoned");
+        let mut entries = self
+            .entries
+            .lock()
+            .expect("scheduler entries lock poisoned");
         entries.retain(|entry| entry.owner != owner);
         drop(entries);
         self.wake.notify_one();
@@ -129,28 +138,34 @@ impl Scheduler {
 
             runtime.block_on(async move {
                 loop {
-                    let next_wait = {
+                    // Register the wake listener *before* releasing the entries
+                    // lock so that a concurrent `set()` / `cancel()` that calls
+                    // `notify_one()` between the lock-drop and the `select!`
+                    // poll is never lost.
+                    let (next_wait, notified) = {
                         let entries = entries.lock().expect("scheduler entries lock poisoned");
-                        entries.first().map(|entry| {
+                        let notified = wake.notified();
+                        let wait = entries.first().map(|entry| {
                             entry
                                 .next_fire_at
                                 .checked_duration_since(Instant::now())
                                 .unwrap_or(Duration::ZERO)
-                        })
+                        });
+                        (wait, notified)
                     };
 
                     match next_wait {
                         Some(wait) => {
                             tokio::select! {
                                 _ = shutdown.cancelled() => break,
-                                _ = wake.notified() => continue,
+                                _ = notified => continue,
                                 _ = tokio::time::sleep(wait) => {}
                             }
                         }
                         None => {
                             tokio::select! {
                                 _ = shutdown.cancelled() => break,
-                                _ = wake.notified() => continue,
+                                _ = notified => continue,
                             }
                         }
                     }

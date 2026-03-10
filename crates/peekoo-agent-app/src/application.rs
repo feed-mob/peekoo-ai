@@ -9,6 +9,7 @@ use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
 use peekoo_scheduler::Scheduler;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
+use tokio_util::sync::CancellationToken;
 
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
@@ -32,6 +33,7 @@ pub struct AgentApplication {
     plugin_store: PluginStoreService,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
+    shutdown_token: CancellationToken,
     agent_config_version: Mutex<Option<i64>>,
 }
 
@@ -40,6 +42,7 @@ impl AgentApplication {
         ensure_windows_pi_agent_env()?;
         let settings = SettingsService::new()?;
         let (plugin_registry, notifications, notification_receiver) = create_plugin_registry()?;
+        let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
         Ok(Self {
@@ -51,6 +54,7 @@ impl AgentApplication {
             plugin_store: PluginStoreService::new(),
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
+            shutdown_token,
             agent_config_version: Mutex::new(None),
         })
     }
@@ -285,7 +289,10 @@ impl AgentApplication {
         notifications
     }
 
-    pub fn plugin_config_schema(&self, plugin_key: &str) -> Result<Vec<PluginConfigFieldDto>, String> {
+    pub fn plugin_config_schema(
+        &self,
+        plugin_key: &str,
+    ) -> Result<Vec<PluginConfigFieldDto>, String> {
         self.plugin_registry
             .config_schema(plugin_key)
             .map(|fields| {
@@ -370,7 +377,8 @@ impl AgentApplication {
         event_name: &str,
         payload_json: &str,
     ) -> Result<(), String> {
-        self.plugin_registry.dispatch_event(event_name, payload_json);
+        self.plugin_registry
+            .dispatch_event(event_name, payload_json);
         Ok(())
     }
 
@@ -380,6 +388,10 @@ impl AgentApplication {
 
     pub fn is_dnd(&self) -> bool {
         self.notifications.is_dnd()
+    }
+
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown_token.clone()
     }
 
     pub fn store_catalog(&self) -> Result<Vec<StorePluginDto>, String> {
@@ -468,7 +480,14 @@ impl AgentApplication {
     }
 }
 
-fn create_plugin_registry() -> Result<(Arc<PluginRegistry>, Arc<NotificationService>, UnboundedReceiver<Notification>), String> {
+fn create_plugin_registry() -> Result<
+    (
+        Arc<PluginRegistry>,
+        Arc<NotificationService>,
+        UnboundedReceiver<Notification>,
+    ),
+    String,
+> {
     let db_path = peekoo_paths::peekoo_settings_db_path()?;
     let db_conn = Connection::open(&db_path).map_err(|e| format!("Open plugin db error: {e}"))?;
 

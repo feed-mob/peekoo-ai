@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Notification {
@@ -40,10 +40,10 @@ impl NotificationService {
     }
 
     pub fn set_dnd(&self, active: bool) {
-        self.dnd_active.store(active, Ordering::Relaxed);
+        self.dnd_active.store(active, Ordering::Release);
     }
 
     pub fn is_dnd(&self) -> bool {
-        self.dnd_active.load(Ordering::Relaxed)
+        self.dnd_active.load(Ordering::Acquire)
     }
 }

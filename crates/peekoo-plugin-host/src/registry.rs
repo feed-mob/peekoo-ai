@@ -30,6 +30,7 @@ pub struct PluginRegistry {
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
     scheduler_started: AtomicBool,
+    scheduler_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
 
 impl PluginRegistry {
@@ -52,6 +53,7 @@ impl PluginRegistry {
             scheduler,
             notifications,
             scheduler_started: AtomicBool::new(false),
+            scheduler_handle: Mutex::new(None),
         }
     }
 
@@ -85,7 +87,11 @@ impl PluginRegistry {
         let manifest = manifest::load_manifest(&manifest_path)?;
         let key = manifest.plugin.key.clone();
 
-        if self.loaded_keys().iter().any(|loaded_key| loaded_key == &key) {
+        if self
+            .loaded_keys()
+            .iter()
+            .any(|loaded_key| loaded_key == &key)
+        {
             return Ok(key);
         }
 
@@ -228,7 +234,11 @@ impl PluginRegistry {
                 .as_ref()
                 .is_some_and(|events| events.subscribe.iter().any(|name| name == event_name));
             if subscribes && let Err(e) = instance.handle_event(event_name, payload_json) {
-                tracing::warn!(plugin = key.as_str(), event = event_name, "Event handler error: {e}");
+                tracing::warn!(
+                    plugin = key.as_str(),
+                    event = event_name,
+                    "Event handler error: {e}"
+                );
             }
         }
 
@@ -368,12 +378,18 @@ impl PluginRegistry {
         }
 
         let registry = Arc::clone(self);
-        let _task = self.scheduler.start(move |owner, key| {
+        let handle = self.scheduler.start(move |owner, key| {
             let payload = serde_json::json!({ "key": key });
-            if let Err(err) = registry.dispatch_event_to_plugin(&owner, "schedule:fired", &payload.to_string()) {
+            if let Err(err) =
+                registry.dispatch_event_to_plugin(&owner, "schedule:fired", &payload.to_string())
+            {
                 tracing::warn!(plugin = owner.as_str(), "Scheduler dispatch error: {err}");
             }
         });
+
+        if let Ok(mut guard) = self.scheduler_handle.lock() {
+            *guard = Some(handle);
+        }
     }
 
     pub fn notifications(&self) -> Arc<NotificationService> {

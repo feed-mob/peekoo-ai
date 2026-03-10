@@ -17,8 +17,15 @@ async fn fires_repeating_schedules_and_reports_remaining_time() {
     tokio::time::sleep(std::time::Duration::from_millis(2200)).await;
 
     let entries = fired.lock().unwrap().clone();
-    assert!(entries.len() >= 2, "expected at least two firings, got {entries:?}");
-    assert!(entries.iter().all(|entry| entry == &("health-reminders".to_string(), "water".to_string())));
+    assert!(
+        entries.len() >= 2,
+        "expected at least two firings, got {entries:?}"
+    );
+    assert!(
+        entries
+            .iter()
+            .all(|entry| entry == &("health-reminders".to_string(), "water".to_string()))
+    );
 
     let listed = scheduler.list("health-reminders");
     assert_eq!(listed.len(), 1);

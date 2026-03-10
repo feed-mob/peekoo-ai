@@ -19,9 +19,9 @@ pub mod runtime;
 pub mod state;
 pub mod tools;
 
+pub use config::{resolved_config_map, set_config_field};
 pub use error::PluginError;
 pub use events::{EventBus, PluginEvent};
-pub use config::{resolved_config_map, set_config_field};
 pub use manifest::{ConfigFieldDef, ConfigFieldType, PluginManifest, ToolDefinition, UiPanelDef};
 pub use permissions::PermissionStore;
 pub use registry::PluginRegistry;
