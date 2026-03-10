@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
+use peekoo_notifications::Notification;
+use peekoo_plugin_host::{ConfigFieldDef, PluginManifest, UiPanelDef};
 use serde::Serialize;
-
-use peekoo_plugin_host::{PluginEvent, PluginManifest, UiPanelDef};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +35,14 @@ pub struct PluginNotificationDto {
     pub source_plugin: String,
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginConfigFieldDto {
+    pub plugin_key: String,
+    #[serde(flatten)]
+    pub field: ConfigFieldDef,
 }
 
 impl PluginPanelDto {
@@ -72,53 +80,30 @@ pub fn manifest_to_summary(
     }
 }
 
-pub fn plugin_notification_from_event(event: PluginEvent) -> Option<PluginNotificationDto> {
-    if event.event != "plugin:notification" {
-        return None;
+pub fn plugin_notification_from_message(notification: Notification) -> PluginNotificationDto {
+    PluginNotificationDto {
+        source_plugin: notification.source,
+        title: notification.title,
+        body: notification.body,
     }
-
-    let title = event.payload.get("title")?.as_str()?.to_string();
-    let body = event.payload.get("body")?.as_str()?.to_string();
-
-    Some(PluginNotificationDto {
-        source_plugin: event.source_plugin,
-        title,
-        body,
-    })
 }
 
 #[cfg(test)]
 mod tests {
-    use peekoo_plugin_host::PluginEvent;
-    use serde_json::json;
+    use peekoo_notifications::Notification;
 
-    use super::plugin_notification_from_event;
-
-    #[test]
-    fn converts_notification_event_payload() {
-        let notification = plugin_notification_from_event(PluginEvent {
-            source_plugin: "test-notification".to_string(),
-            event: "plugin:notification".to_string(),
-            payload: json!({
-                "title": "Test Notification",
-                "body": "Hello from plugin"
-            }),
-        })
-        .expect("notification should parse");
-
-        assert_eq!(notification.source_plugin, "test-notification");
-        assert_eq!(notification.title, "Test Notification");
-        assert_eq!(notification.body, "Hello from plugin");
-    }
+    use super::plugin_notification_from_message;
 
     #[test]
-    fn ignores_non_notification_events() {
-        let notification = plugin_notification_from_event(PluginEvent {
-            source_plugin: "health-reminders".to_string(),
-            event: "health:reminder-due".to_string(),
-            payload: json!({ "reminder_type": "water" }),
+    fn converts_notification_message_payload() {
+        let notification = plugin_notification_from_message(Notification {
+            source: "health-reminders".to_string(),
+            title: "Drink water".to_string(),
+            body: "Time for a break".to_string(),
         });
 
-        assert!(notification.is_none());
+        assert_eq!(notification.source_plugin, "health-reminders");
+        assert_eq!(notification.title, "Drink water");
+        assert_eq!(notification.body, "Time for a break");
     }
 }

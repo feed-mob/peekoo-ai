@@ -3,15 +3,16 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto,
-    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, StorePluginDto,
-    TaskDto,
+    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto,
+    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto,
+    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,
     menu::MenuBuilder,
@@ -272,32 +273,48 @@ async fn create_task(
 async fn pomodoro_start(
     minutes: u32,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<PomodoroSessionDto, String> {
-    state.app.start_pomodoro(minutes)
+    let session = state.app.start_pomodoro(minutes)?;
+    state.app.dispatch_plugin_event("pomodoro:started", "{}")?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_pause(
     session_id: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<PomodoroSessionDto, String> {
-    state.app.pause_pomodoro(&session_id)
+    let session = state.app.pause_pomodoro(&session_id)?;
+    state.app.dispatch_plugin_event("pomodoro:paused", "{}")?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_resume(
     session_id: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<PomodoroSessionDto, String> {
-    state.app.resume_pomodoro(&session_id)
+    let session = state.app.resume_pomodoro(&session_id)?;
+    state.app.dispatch_plugin_event("pomodoro:resumed", "{}")?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_finish(
     session_id: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<PomodoroSessionDto, String> {
-    state.app.finish_pomodoro(&session_id)
+    let session = state.app.finish_pomodoro(&session_id)?;
+    state.app.dispatch_plugin_event("pomodoro:finished", "{}")?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(session)
 }
 
 #[tauri::command]
@@ -318,12 +335,7 @@ async fn plugin_call_tool(
     app: AppHandle,
 ) -> Result<String, String> {
     let result = state.app.call_plugin_tool(&tool_name, &args_json)?;
-
-    for notification in state.app.drain_plugin_notifications() {
-        show_plugin_notification(&app, &notification)?;
-        app.emit_to("main", "sprite:bubble", &notification)
-            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
-    }
+    flush_plugin_notifications(&app, &state)?;
 
     Ok(result)
 }
@@ -347,8 +359,47 @@ async fn plugin_dispatch_event(
     event_name: String,
     payload_json: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<(), String> {
-    state.app.dispatch_plugin_event(&event_name, &payload_json)
+    state.app.dispatch_plugin_event(&event_name, &payload_json)?;
+    flush_plugin_notifications(&app, &state)
+}
+
+#[tauri::command]
+async fn plugin_config_schema(
+    plugin_key: String,
+    state: State<'_, AgentState>,
+) -> Result<Vec<PluginConfigFieldDto>, String> {
+    state.app.plugin_config_schema(&plugin_key)
+}
+
+#[tauri::command]
+async fn plugin_config_get(
+    plugin_key: String,
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    state.app.plugin_config_values(&plugin_key)
+}
+
+#[tauri::command]
+async fn plugin_config_set(
+    plugin_key: String,
+    key: String,
+    value: serde_json::Value,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.plugin_config_set(&plugin_key, &key, value)
+}
+
+#[tauri::command]
+async fn dnd_get(state: State<'_, AgentState>) -> Result<bool, String> {
+    Ok(state.app.is_dnd())
+}
+
+#[tauri::command]
+async fn dnd_set(active: bool, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.set_dnd(active);
+    Ok(())
 }
 
 #[tauri::command]
@@ -500,6 +551,23 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .manage(agent_state)
+        .setup(|app| {
+            let state = app.state::<AgentState>();
+            state.app.start_plugin_runtime();
+
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let state = app_handle.state::<AgentState>();
+                    if let Err(err) = flush_plugin_notifications(&app_handle, &state) {
+                        tracing::warn!("Background notification flush error: {err}");
+                    }
+                    tokio::time::sleep(Duration::from_millis(250)).await;
+                }
+            });
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             resize_sprite_window,
             greet,
@@ -527,6 +595,11 @@ pub fn run() {
             plugin_query_data,
             plugin_panel_html,
             plugin_dispatch_event,
+            plugin_config_schema,
+            plugin_config_get,
+            plugin_config_set,
+            dnd_get,
+            dnd_set,
             plugin_enable,
             plugin_disable,
             plugin_store_catalog,
@@ -561,6 +634,16 @@ fn show_plugin_notification(
             Err(format!("Notification error: {err}"))
         }
     }
+}
+
+fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(), String> {
+    for notification in state.app.drain_plugin_notifications() {
+        show_plugin_notification(app, &notification)?;
+        app.emit_to("main", "sprite:bubble", &notification)
+            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
+    }
+
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

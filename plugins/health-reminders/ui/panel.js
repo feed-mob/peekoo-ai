@@ -1,4 +1,5 @@
 const statusRoot = document.getElementById("status");
+const summaryRoot = document.getElementById("summary");
 const refreshButton = document.getElementById("refreshButton");
 
 async function callTool(toolName, args = {}) {
@@ -14,35 +15,63 @@ async function callTool(toolName, args = {}) {
   }
 }
 
+function formatSeconds(seconds) {
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} min`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder === 0 ? `${hours} hr` : `${hours} hr ${remainder} min`;
+}
+
 function renderStatus(status) {
+  summaryRoot.innerHTML = "";
   statusRoot.innerHTML = "";
+
+  const pill = document.createElement("div");
+  pill.className = `pill ${status.pomodoro_active ? "active" : ""}`;
+  pill.textContent = status.pomodoro_active
+    ? "Pomodoro suppression active"
+    : "Reminders running";
+  summaryRoot.appendChild(pill);
 
   status.reminders.forEach((item) => {
     const card = document.createElement("article");
     card.className = "card";
 
+    const titleRow = document.createElement("div");
+    titleRow.className = "title-row";
+
     const title = document.createElement("h2");
     title.textContent = item.reminder_type.replaceAll("_", " ");
 
+    const state = document.createElement("span");
+    state.className = `state ${item.active ? "ready" : "paused"}`;
+    state.textContent = item.active ? "Scheduled" : "Paused";
+
+    titleRow.append(title, state);
+
     const meta = document.createElement("p");
     meta.className = "meta";
-    meta.textContent = `${item.minutes_since_last}/${item.interval_min} min`;
+    meta.textContent = item.active
+      ? `Next reminder in ${formatSeconds(item.time_remaining_secs)}`
+      : "Waiting for reminders to resume";
 
-    const progress = document.createElement("div");
-    progress.className = "progress";
-    const bar = document.createElement("div");
-    bar.className = `bar ${item.is_due ? "due" : ""}`;
-    bar.style.width = `${Math.min(100, (item.minutes_since_last / item.interval_min) * 100)}%`;
-    progress.appendChild(bar);
+    const interval = document.createElement("p");
+    interval.className = "interval";
+    interval.textContent = `Every ${item.interval_min} min`;
 
     const dismiss = document.createElement("button");
-    dismiss.textContent = item.is_due ? "Dismiss" : "Reset";
+    dismiss.textContent = "Reset timer";
+    dismiss.disabled = !item.active;
     dismiss.addEventListener("click", async () => {
       await callTool("health_dismiss", { reminder_type: item.reminder_type });
       await refresh();
     });
 
-    card.append(title, meta, progress, dismiss);
+    card.append(titleRow, meta, interval, dismiss);
     statusRoot.appendChild(card);
   });
 }

@@ -3,13 +3,16 @@ use std::sync::{Arc, Mutex};
 use peekoo_agent::AgentEvent;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
+use peekoo_notifications::{Notification, NotificationService};
 use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
+use peekoo_scheduler::Scheduler;
 use rusqlite::Connection;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 use crate::plugin::{
-    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, manifest_to_summary,
-    plugin_notification_from_event,
+    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
+    manifest_to_summary, plugin_notification_from_message,
 };
 use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
@@ -27,6 +30,8 @@ pub struct AgentApplication {
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: PluginToolBridge,
     plugin_store: PluginStoreService,
+    notifications: Arc<NotificationService>,
+    notification_receiver: Mutex<UnboundedReceiver<Notification>>,
     agent_config_version: Mutex<Option<i64>>,
 }
 
@@ -34,7 +39,7 @@ impl AgentApplication {
     pub fn new() -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
         let settings = SettingsService::new()?;
-        let plugin_registry = create_plugin_registry()?;
+        let (plugin_registry, notifications, notification_receiver) = create_plugin_registry()?;
         install_discovered_plugins(&plugin_registry);
 
         Ok(Self {
@@ -44,8 +49,14 @@ impl AgentApplication {
             plugin_tools: PluginToolBridge::new(Arc::clone(&plugin_registry)),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
+            notifications,
+            notification_receiver: Mutex::new(notification_receiver),
             agent_config_version: Mutex::new(None),
         })
+    }
+
+    pub fn start_plugin_runtime(&self) {
+        self.plugin_registry.start_scheduler();
     }
 
     pub async fn prompt_streaming<F>(&self, message: &str, on_event: F) -> Result<String, String>
@@ -258,11 +269,52 @@ impl AgentApplication {
     }
 
     pub fn drain_plugin_notifications(&self) -> Vec<PluginNotificationDto> {
+        let mut receiver = match self.notification_receiver.lock() {
+            Ok(receiver) => receiver,
+            Err(err) => {
+                tracing::warn!("Notification receiver lock error: {err}");
+                return Vec::new();
+            }
+        };
+
+        let mut notifications = Vec::new();
+        while let Ok(notification) = receiver.try_recv() {
+            notifications.push(plugin_notification_from_message(notification));
+        }
+
+        notifications
+    }
+
+    pub fn plugin_config_schema(&self, plugin_key: &str) -> Result<Vec<PluginConfigFieldDto>, String> {
         self.plugin_registry
-            .drain_events()
-            .into_iter()
-            .filter_map(plugin_notification_from_event)
-            .collect()
+            .config_schema(plugin_key)
+            .map(|fields| {
+                fields
+                    .into_iter()
+                    .map(|field| PluginConfigFieldDto {
+                        plugin_key: plugin_key.to_string(),
+                        field,
+                    })
+                    .collect()
+            })
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn plugin_config_values(&self, plugin_key: &str) -> Result<serde_json::Value, String> {
+        self.plugin_registry
+            .config_values(plugin_key)
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn plugin_config_set(
+        &self,
+        plugin_key: &str,
+        key: &str,
+        value: serde_json::Value,
+    ) -> Result<(), String> {
+        self.plugin_registry
+            .set_config_value(plugin_key, key, value)
+            .map_err(|e| e.to_string())
     }
 
     pub fn query_plugin_data(
@@ -318,9 +370,16 @@ impl AgentApplication {
         event_name: &str,
         payload_json: &str,
     ) -> Result<(), String> {
-        self.plugin_registry
-            .dispatch_event(event_name, payload_json);
+        self.plugin_registry.dispatch_event(event_name, payload_json);
         Ok(())
+    }
+
+    pub fn set_dnd(&self, active: bool) {
+        self.notifications.set_dnd(active);
+    }
+
+    pub fn is_dnd(&self) -> bool {
+        self.notifications.is_dnd()
     }
 
     pub fn store_catalog(&self) -> Result<Vec<StorePluginDto>, String> {
@@ -409,7 +468,7 @@ impl AgentApplication {
     }
 }
 
-fn create_plugin_registry() -> Result<Arc<PluginRegistry>, String> {
+fn create_plugin_registry() -> Result<(Arc<PluginRegistry>, Arc<NotificationService>, UnboundedReceiver<Notification>), String> {
     let db_path = peekoo_paths::peekoo_settings_db_path()?;
     let db_conn = Connection::open(&db_path).map_err(|e| format!("Open plugin db error: {e}"))?;
 
@@ -419,10 +478,17 @@ fn create_plugin_registry() -> Result<Arc<PluginRegistry>, String> {
             .map_err(|e| format!("Create plugin dir error: {e}"))?;
     }
 
-    Ok(Arc::new(PluginRegistry::new(
+    let scheduler = Arc::new(Scheduler::new());
+    let (notifications, receiver) = NotificationService::new();
+    let notifications = Arc::new(notifications);
+    let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
         Arc::new(Mutex::new(db_conn)),
-    )))
+        scheduler,
+        Arc::clone(&notifications),
+    ));
+
+    Ok((registry, notifications, receiver))
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
@@ -473,7 +539,9 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use peekoo_notifications::NotificationService;
     use peekoo_plugin_host::PluginRegistry;
+    use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::install_discovered_plugins;
@@ -514,9 +582,14 @@ mod tests {
             .join("../../plugins")
             .join(plugin_name);
 
+        let scheduler = Arc::new(Scheduler::new());
+        let (notifications, _receiver) = NotificationService::new();
+
         Arc::new(PluginRegistry::new(
             vec![plugin_dir],
             Arc::new(Mutex::new(conn)),
+            scheduler,
+            Arc::new(notifications),
         ))
     }
 

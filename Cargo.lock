@@ -5744,16 +5744,19 @@ dependencies = [
  "asupersync",
  "peekoo-agent",
  "peekoo-agent-auth",
+ "peekoo-notifications",
  "peekoo-paths",
  "peekoo-persistence-sqlite",
  "peekoo-plugin-host",
  "peekoo-plugin-store",
  "peekoo-productivity-domain",
+ "peekoo-scheduler",
  "peekoo-security",
  "rusqlite",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -5786,6 +5789,17 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-notification",
  "tauri-plugin-shell",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "peekoo-notifications"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -5804,6 +5818,8 @@ name = "peekoo-plugin-host"
 version = "0.1.0"
 dependencies = [
  "extism",
+ "peekoo-notifications",
+ "peekoo-scheduler",
  "rusqlite",
  "serde",
  "serde_json",
@@ -5833,6 +5849,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "peekoo-scheduler"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

@@ -34,6 +34,24 @@ export const storePluginSchema = z.object({
   hasUpdate: z.boolean(),
 });
 
+export const pluginConfigOptionSchema = z.object({
+  value: z.string(),
+  label: z.string(),
+});
+
+export const pluginConfigFieldSchema = z.object({
+  pluginKey: z.string(),
+  key: z.string(),
+  label: z.string(),
+  description: z.string().nullable().optional(),
+  type: z.enum(["integer", "boolean", "string", "select"]),
+  default: z.unknown(),
+  min: z.number().nullable().optional(),
+  max: z.number().nullable().optional(),
+  options: pluginConfigOptionSchema.array().nullable().optional(),
+});
+
 export type PluginSummary = z.infer<typeof pluginSummarySchema>;
 export type PluginPanel = z.infer<typeof pluginPanelSchema>;
 export type StorePlugin = z.infer<typeof storePluginSchema>;
+export type PluginConfigField = z.infer<typeof pluginConfigFieldSchema>;
