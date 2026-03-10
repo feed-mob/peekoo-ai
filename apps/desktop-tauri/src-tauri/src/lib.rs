@@ -15,6 +15,7 @@ use std::process::Command;
 use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,
+    image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
@@ -506,6 +507,7 @@ pub fn run() {
     let agent_state = AgentState::new();
 
     tauri::Builder::default()
+        .manage(agent_state)
         .setup(|app| {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
@@ -524,6 +526,23 @@ pub fn run() {
 
             if let Some(icon) = app.default_window_icon().cloned() {
                 tray_builder = tray_builder.icon(icon);
+            } else {
+                // Fallback tray icon to ensure we always have a visible icon even
+                // when no bundled window icon is configured (common in dev).
+                //
+                // This uses a small 16x16 RGBA image with a simple colored square.
+                const SIZE: u32 = 16;
+                const PIXELS: usize = (SIZE * SIZE * 4) as usize;
+                let mut rgba = Vec::with_capacity(PIXELS);
+                // Solid teal-like color with full opacity.
+                for _ in 0..(SIZE * SIZE) {
+                    rgba.push(0x1a); // R
+                    rgba.push(0xa3); // G
+                    rgba.push(0xff); // B
+                    rgba.push(0xff); // A
+                }
+                let image = Image::new_owned(rgba, SIZE, SIZE);
+                tray_builder = tray_builder.icon(image);
             }
 
             #[cfg(target_os = "macos")]
@@ -532,28 +551,7 @@ pub fn run() {
             }
 
             let _ = tray_builder.build(app)?;
-            Ok(())
-        })
-        .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                if window.label() == MAIN_WINDOW_LABEL {
-                    api.prevent_close();
-                    let _ = window.hide();
-                }
-            }
-        })
-        .plugin(
-            tauri_plugin_log::Builder::new()
-                .level(default_level)
-                .targets([file_target, Target::new(TargetKind::Stdout)])
-                .max_file_size(5_000_000)
-                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
-                .build(),
-        )
-        .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_shell::init())
-        .manage(agent_state)
-        .setup(|app| {
+
             let state = app.state::<AgentState>();
             state.app.start_plugin_runtime();
 
@@ -593,6 +591,24 @@ pub fn run() {
 
             Ok(())
         })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == MAIN_WINDOW_LABEL {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(default_level)
+                .targets([file_target, Target::new(TargetKind::Stdout)])
+                .max_file_size(5_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(5))
+                .build(),
+        )
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             resize_sprite_window,
             greet,
