@@ -12,12 +12,22 @@ use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
-use tauri::{AppHandle, Emitter, LogicalSize, State, Window};
+use tauri::{
+    AppHandle, Emitter, LogicalSize, Manager, State, Window,
+    menu::MenuBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconEvent},
+};
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const TRAY_ICON_ID: &str = "main-tray";
+const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
+const TRAY_QUIT_MENU_ID: &str = "quit";
+const TRAY_TOOLTIP: &str = "Peekoo";
 
 struct AgentState {
     app: AgentApplication,
@@ -41,6 +51,61 @@ struct AgentResponse {
 struct ModelInfo {
     provider: String,
     model: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MainWindowVisibilityAction {
+    Hide,
+    ShowAndFocus,
+}
+
+fn next_main_window_visibility_action(is_visible: bool) -> MainWindowVisibilityAction {
+    if is_visible {
+        MainWindowVisibilityAction::Hide
+    } else {
+        MainWindowVisibilityAction::ShowAndFocus
+    }
+}
+
+fn apply_main_window_visibility_action(app: &AppHandle, action: MainWindowVisibilityAction) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        match action {
+            MainWindowVisibilityAction::Hide => {
+                let _ = window.hide();
+            }
+            MainWindowVisibilityAction::ShowAndFocus => {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+    }
+}
+
+fn toggle_main_window_visibility(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let is_visible = window.is_visible().unwrap_or(true);
+        let action = next_main_window_visibility_action(is_visible);
+        apply_main_window_visibility_action(app, action);
+    }
+}
+
+fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
+    match menu_id {
+        TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
+        TRAY_QUIT_MENU_ID => app.exit(0),
+        _ => {}
+    }
+}
+
+fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
+    if let TrayIconEvent::Click {
+        button: MouseButton::Left,
+        button_state: MouseButtonState::Down,
+        ..
+    } = event
+    {
+        toggle_main_window_visibility(app);
+    }
 }
 
 // ============================================================================
@@ -366,6 +431,42 @@ pub fn run() {
     let agent_state = AgentState::new();
 
     tauri::Builder::default()
+        .setup(|app| {
+            let tray_menu = MenuBuilder::new(app)
+                .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
+                .separator()
+                .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
+                .build()?;
+
+            let mut tray_builder = tauri::tray::TrayIconBuilder::with_id(TRAY_ICON_ID)
+                .menu(&tray_menu)
+                .tooltip(TRAY_TOOLTIP)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| handle_tray_menu_event(app, event.id().as_ref()))
+                .on_tray_icon_event(|tray, event| {
+                    handle_tray_icon_event(tray.app_handle(), &event)
+                });
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                tray_builder = tray_builder.icon_as_template(true);
+            }
+
+            let _ = tray_builder.build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == MAIN_WINDOW_LABEL {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(default_level)
@@ -450,5 +551,26 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
         Ok(())
     } else {
         Err(format!("notify-send exited with status {status}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MainWindowVisibilityAction, next_main_window_visibility_action};
+
+    #[test]
+    fn visible_window_hides_on_toggle() {
+        assert_eq!(
+            next_main_window_visibility_action(true),
+            MainWindowVisibilityAction::Hide
+        );
+    }
+
+    #[test]
+    fn hidden_window_shows_and_focuses_on_toggle() {
+        assert_eq!(
+            next_main_window_visibility_action(false),
+            MainWindowVisibilityAction::ShowAndFocus
+        );
     }
 }
