@@ -28,8 +28,6 @@ const GITHUB_RAW_BASE_URL: &str =
 pub enum PluginSource {
     /// Installed from the remote store into `~/.peekoo/plugins/`.
     Store,
-    /// Discovered in a workspace `plugins/` directory.
-    Workspace,
     /// Not installed.
     None,
 }
@@ -210,9 +208,8 @@ impl PluginStoreService {
 
         info!(plugin = plugin_key, "Uninstalling plugin");
 
-        registry
-            .unload_plugin(plugin_key)
-            .map_err(|e| format!("Failed to unload plugin: {e}"))?;
+        // Best-effort unload - plugin may not be in memory if initialization failed
+        let _ = registry.unload_plugin(plugin_key);
 
         std::fs::remove_dir_all(&plugin_dir)
             .map_err(|e| format!("Failed to remove plugin directory: {e}"))?;
@@ -227,21 +224,11 @@ impl PluginStoreService {
         plugin_key: &str,
         local_plugins: &[(PathBuf, PluginManifest)],
     ) -> (bool, PluginSource) {
-        let global_plugins_dir = peekoo_global_data_dir()
-            .map(|d| d.join("plugins"))
-            .unwrap_or_default();
-
-        for (plugin_dir, manifest) in local_plugins {
+        for (_, manifest) in local_plugins {
             if manifest.plugin.key == plugin_key {
-                let source = if plugin_dir.starts_with(&global_plugins_dir) {
-                    PluginSource::Store
-                } else {
-                    PluginSource::Workspace
-                };
-                return (true, source);
+                return (true, PluginSource::Store);
             }
         }
-
         (false, PluginSource::None)
     }
 
@@ -422,29 +409,6 @@ mod tests {
         let (installed, source) = store.check_installation("unknown-plugin", &local_plugins);
         assert!(!installed);
         assert_eq!(source, PluginSource::None);
-    }
-
-    #[test]
-    fn check_installation_detects_workspace_plugin() {
-        let store = make_store();
-        let manifest = parse_manifest(
-            r#"
-[plugin]
-key = "my-plugin"
-name = "My Plugin"
-version = "1.0.0"
-wasm = "plugin.wasm"
-"#,
-        )
-        .unwrap();
-
-        // Simulate a workspace path (not under global plugins dir)
-        let workspace_dir = PathBuf::from("/home/user/myproject/plugins/my-plugin");
-        let local_plugins = vec![(workspace_dir, manifest)];
-
-        let (installed, source) = store.check_installation("my-plugin", &local_plugins);
-        assert!(installed);
-        assert_eq!(source, PluginSource::Workspace);
     }
 
     #[test]

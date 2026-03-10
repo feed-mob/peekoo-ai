@@ -86,7 +86,7 @@ export function SpriteActionMenu({
     return tx;
   }, [pluginsItem]);
 
-  const showPopup = isOpen && pluginsPopupOpen && installedPlugins.length > 0;
+  const showPopup = isOpen && pluginsPopupOpen;
 
   return (
     <div

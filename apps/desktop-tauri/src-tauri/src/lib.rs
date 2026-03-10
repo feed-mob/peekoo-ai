@@ -294,17 +294,23 @@ async fn plugin_store_catalog(state: State<'_, AgentState>) -> Result<Vec<StoreP
 #[tauri::command]
 async fn plugin_store_install(
     plugin_key: String,
+    window: Window,
     state: State<'_, AgentState>,
 ) -> Result<StorePluginDto, String> {
-    state.app.store_install(&plugin_key)
+    let result = state.app.store_install(&plugin_key)?;
+    let _ = window.emit("plugins-changed", ());
+    Ok(result)
 }
 
 #[tauri::command]
 async fn plugin_store_uninstall(
     plugin_key: String,
+    window: Window,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.store_uninstall(&plugin_key)
+    state.app.store_uninstall(&plugin_key)?;
+    let _ = window.emit("plugins-changed", ());
+    Ok(())
 }
 
 // ============================================================================
