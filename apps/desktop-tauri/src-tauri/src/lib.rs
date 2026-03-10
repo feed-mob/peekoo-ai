@@ -480,6 +480,8 @@ pub fn run() {
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     eprintln!("warning: failed to create WebView2 data dir: {e}");
                 }
+                // SAFETY: Called at the start of `run()` before `tauri::Builder`
+                // is constructed, so no other threads are running yet.
                 unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
             }
         }
