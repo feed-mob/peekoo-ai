@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use peekoo_agent::AgentEvent;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
-use peekoo_notifications::{Notification, NotificationService};
+use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
 use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
 use peekoo_scheduler::Scheduler;
@@ -33,6 +33,7 @@ pub struct AgentApplication {
     plugin_store: PluginStoreService,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
+    peek_badges: Arc<PeekBadgeService>,
     shutdown_token: CancellationToken,
     agent_config_version: Mutex<Option<i64>>,
 }
@@ -41,7 +42,8 @@ impl AgentApplication {
     pub fn new() -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
         let settings = SettingsService::new()?;
-        let (plugin_registry, notifications, notification_receiver) = create_plugin_registry()?;
+        let (plugin_registry, notifications, notification_receiver, peek_badges) =
+            create_plugin_registry()?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -54,6 +56,7 @@ impl AgentApplication {
             plugin_store: PluginStoreService::new(),
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
+            peek_badges,
             shutdown_token,
             agent_config_version: Mutex::new(None),
         })
@@ -289,6 +292,11 @@ impl AgentApplication {
         notifications
     }
 
+    /// Return the merged peek-badge list if any plugin pushed an update since the last call.
+    pub fn take_peek_badges_if_changed(&self) -> Option<Vec<PeekBadgeItem>> {
+        self.peek_badges.take_if_changed()
+    }
+
     pub fn plugin_config_schema(
         &self,
         plugin_key: &str,
@@ -486,6 +494,7 @@ fn create_plugin_registry() -> Result<
         Arc<PluginRegistry>,
         Arc<NotificationService>,
         UnboundedReceiver<Notification>,
+        Arc<PeekBadgeService>,
     ),
     String,
 > {
@@ -501,14 +510,16 @@ fn create_plugin_registry() -> Result<
     let scheduler = Arc::new(Scheduler::new());
     let (notifications, receiver) = NotificationService::new();
     let notifications = Arc::new(notifications);
+    let peek_badges = Arc::new(PeekBadgeService::new());
     let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
         Arc::new(Mutex::new(db_conn)),
         scheduler,
         Arc::clone(&notifications),
+        Arc::clone(&peek_badges),
     ));
 
-    Ok((registry, notifications, receiver))
+    Ok((registry, notifications, receiver, peek_badges))
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
@@ -559,7 +570,7 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use peekoo_notifications::NotificationService;
+    use peekoo_notifications::{NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
@@ -610,6 +621,7 @@ mod tests {
             Arc::new(Mutex::new(conn)),
             scheduler,
             Arc::new(notifications),
+            Arc::new(PeekBadgeService::new()),
         ))
     }
 

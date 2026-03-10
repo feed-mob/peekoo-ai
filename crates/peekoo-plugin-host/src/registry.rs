@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use peekoo_notifications::NotificationService;
+use peekoo_notifications::{NotificationService, PeekBadgeService};
 use peekoo_scheduler::Scheduler;
 use rusqlite::{Connection, OptionalExtension};
 
@@ -29,6 +29,7 @@ pub struct PluginRegistry {
     db_conn: Arc<Mutex<Connection>>,
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
+    peek_badges: Arc<PeekBadgeService>,
     scheduler_started: AtomicBool,
     scheduler_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
@@ -39,6 +40,7 @@ impl PluginRegistry {
         db_conn: Arc<Mutex<Connection>>,
         scheduler: Arc<Scheduler>,
         notifications: Arc<NotificationService>,
+        peek_badges: Arc<PeekBadgeService>,
     ) -> Self {
         let permissions = PermissionStore::new(Arc::clone(&db_conn));
         let state = PluginStateStore::new(Arc::clone(&db_conn));
@@ -52,6 +54,7 @@ impl PluginRegistry {
             db_conn,
             scheduler,
             notifications,
+            peek_badges,
             scheduler_started: AtomicBool::new(false),
             scheduler_handle: Mutex::new(None),
         }
@@ -104,6 +107,7 @@ impl PluginRegistry {
             &self.event_bus,
             &self.scheduler,
             &self.notifications,
+            &self.peek_badges,
             manifest
                 .config
                 .as_ref()
@@ -400,6 +404,10 @@ impl PluginRegistry {
         Arc::clone(&self.scheduler)
     }
 
+    pub fn peek_badges(&self) -> Arc<PeekBadgeService> {
+        Arc::clone(&self.peek_badges)
+    }
+
     pub fn config_schema(&self, plugin_key: &str) -> Result<Vec<ConfigFieldDef>, PluginError> {
         Ok(self
             .manifest_for(plugin_key)
@@ -490,7 +498,7 @@ impl PluginRegistry {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use peekoo_notifications::NotificationService;
+    use peekoo_notifications::{NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -535,6 +543,7 @@ mod tests {
             Arc::new(Mutex::new(conn)),
             scheduler,
             Arc::new(notifications),
+            Arc::new(PeekBadgeService::new()),
         )
     }
 

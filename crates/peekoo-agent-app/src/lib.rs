@@ -4,6 +4,7 @@ pub mod productivity;
 pub mod settings;
 
 pub use application::AgentApplication;
+pub use peekoo_notifications::PeekBadgeItem;
 pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
 pub use plugin::{PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto};
 pub use productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
