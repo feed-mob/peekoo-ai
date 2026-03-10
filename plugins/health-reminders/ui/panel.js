@@ -1,6 +1,14 @@
 const statusRoot = document.getElementById("status");
 const summaryRoot = document.getElementById("summary");
 const refreshButton = document.getElementById("refreshButton");
+const POLL_INTERVAL_MS = 30000;
+const COUNTDOWN_TICK_MS = 1000;
+
+let pollIntervalId = null;
+let countdownIntervalId = null;
+let lastStatusSnapshot = null;
+let lastStatusSnapshotAt = 0;
+let refreshPromise = null;
 
 async function callTool(toolName, args = {}) {
   try {
@@ -16,6 +24,10 @@ async function callTool(toolName, args = {}) {
 }
 
 function formatSeconds(seconds) {
+  if (seconds <= 0) {
+    return "now";
+  }
+
   const minutes = Math.ceil(seconds / 60);
   if (minutes <= 1) {
     return "~1 min";
@@ -28,6 +40,10 @@ function formatSeconds(seconds) {
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return remainder === 0 ? `~${hours} hr` : `~${hours} hr ${remainder} min`;
+}
+
+function nextDueText(seconds) {
+  return seconds <= 0 ? "Due now" : `Next in ${formatSeconds(seconds)}`;
 }
 
 function summaryContent(status) {
@@ -54,7 +70,10 @@ function summaryContent(status) {
   return {
     className: "pill",
     title: "Reminders running",
-    subtitle: `${labelFor(nextReminder.reminder_type)} next in ${formatSeconds(nextReminder.time_remaining_secs)}.`,
+    subtitle:
+      nextReminder.time_remaining_secs <= 0
+        ? `${labelFor(nextReminder.reminder_type)} due now.`
+        : `${labelFor(nextReminder.reminder_type)} next in ${formatSeconds(nextReminder.time_remaining_secs)}.`,
   };
 }
 
@@ -114,7 +133,7 @@ function renderStatus(status) {
     const nextDue = document.createElement("p");
     nextDue.className = "next-due";
     nextDue.textContent = item.active
-      ? `Next in ${formatSeconds(item.time_remaining_secs)}`
+      ? nextDueText(item.time_remaining_secs)
       : status.pomodoro_active
         ? "Paused during pomodoro"
         : "Waiting for reminders to resume";
@@ -139,11 +158,82 @@ function renderStatus(status) {
   });
 }
 
-async function refresh() {
-  const status = await callTool("health_get_status");
-  if (status) {
-    renderStatus(status);
+function countdownStatus(status, elapsedSeconds) {
+  return {
+    ...status,
+    reminders: status.reminders.map((item) => ({
+      ...item,
+      time_remaining_secs: item.active
+        ? Math.max(0, item.time_remaining_secs - elapsedSeconds)
+        : item.time_remaining_secs,
+    })),
+  };
+}
+
+function renderLiveStatus() {
+  if (!lastStatusSnapshot) {
+    return;
   }
+
+  const elapsedSeconds = Math.floor((Date.now() - lastStatusSnapshotAt) / 1000);
+  renderStatus(countdownStatus(lastStatusSnapshot, elapsedSeconds));
+}
+
+function hasDueReminder() {
+  if (!lastStatusSnapshot) {
+    return false;
+  }
+
+  const elapsedSeconds = Math.floor((Date.now() - lastStatusSnapshotAt) / 1000);
+  return lastStatusSnapshot.reminders.some(
+    (item) => item.active && item.time_remaining_secs - elapsedSeconds <= 0,
+  );
+}
+
+async function refresh() {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = callTool("health_get_status")
+    .then((status) => {
+      if (status) {
+        lastStatusSnapshot = status;
+        lastStatusSnapshotAt = Date.now();
+        renderLiveStatus();
+        startPolling();
+        startCountdown();
+      }
+    })
+    .finally(() => {
+      refreshPromise = null;
+    });
+
+  return refreshPromise;
+}
+
+function startPolling() {
+  if (pollIntervalId !== null) {
+    clearInterval(pollIntervalId);
+  }
+
+  pollIntervalId = setInterval(() => {
+    void refresh();
+  }, POLL_INTERVAL_MS);
+}
+
+function startCountdown() {
+  if (countdownIntervalId !== null) {
+    clearInterval(countdownIntervalId);
+  }
+
+  countdownIntervalId = setInterval(() => {
+    if (hasDueReminder()) {
+      return refresh();
+    }
+
+    renderLiveStatus();
+  }, COUNTDOWN_TICK_MS);
 }
 
 refreshButton.addEventListener("click", () => {
