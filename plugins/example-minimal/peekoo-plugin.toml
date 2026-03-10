@@ -5,7 +5,7 @@ version = "0.1.0"
 author = "Peekoo Team"
 description = "Smallest possible Peekoo plugin with one tool export."
 min_peekoo_version = "0.1.0"
-wasm = "target/wasm32-unknown-unknown/release/example_minimal.wasm"
+wasm = "target/wasm32-wasip1/release/example_minimal.wasm"
 
 [permissions]
 required = ["state:read", "state:write"]
