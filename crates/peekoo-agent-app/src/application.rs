@@ -480,6 +480,7 @@ impl AgentApplication {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn create_plugin_registry() -> Result<
     (
         Arc<PluginRegistry>,

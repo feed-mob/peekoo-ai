@@ -15,6 +15,7 @@ body {
 
 .panel {
   padding: 20px;
+  max-width: 720px;
 }
 
 .header {
@@ -22,7 +23,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .eyebrow {
@@ -40,7 +41,7 @@ h1 {
 
 .subtitle {
   margin: 0;
-  max-width: 240px;
+  max-width: 280px;
   color: #a3b8d5;
   font-size: 13px;
   line-height: 1.5;
@@ -49,11 +50,28 @@ h1 {
 .summary,
 .status {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .summary {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+}
+
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding: 0 4px;
+  color: #7f96b7;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.list-header p {
+  margin: 0;
 }
 
 .pill,
@@ -65,6 +83,9 @@ h1 {
 }
 
 .pill {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   padding: 12px 14px;
   color: #9dd7ff;
   font-size: 13px;
@@ -75,24 +96,56 @@ h1 {
   color: #ffd37e;
 }
 
+.pill.quiet {
+  color: #d3ddf0;
+}
+
+.pill-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.06);
+}
+
+.pill-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.pill-copy strong,
+.pill-copy span {
+  display: block;
+}
+
+.pill-copy span {
+  color: #9baecc;
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .card {
-  padding: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 16px;
+  padding: 16px;
 }
 
 .title-row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .card h2 {
   margin: 0;
   text-transform: capitalize;
-  font-size: 18px;
+  font-size: 20px;
 }
 
 .state {
+  align-self: flex-start;
   border-radius: 999px;
   padding: 4px 10px;
   font-size: 11px;
@@ -111,15 +164,27 @@ h1 {
   color: #ffd37e;
 }
 
+.card-copy {
+  display: grid;
+  gap: 2px;
+}
+
 .meta,
 .interval {
-  margin: 10px 0 0;
+  margin: 0;
   color: #99aeca;
   font-size: 13px;
 }
 
 .interval {
   color: #d7f2ff;
+  font-weight: 600;
+}
+
+.next-due {
+  color: #eef4ff;
+  font-size: 15px;
+  font-weight: 600;
 }
 
 button {
@@ -130,13 +195,24 @@ button {
   color: #10203a;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .card button {
-  margin-top: 14px;
+  align-self: center;
 }
 
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+@media (max-width: 620px) {
+  .card {
+    grid-template-columns: 1fr;
+  }
+
+  .card button {
+    justify-self: flex-start;
+  }
 }

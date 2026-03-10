@@ -12,5 +12,6 @@ serde_json = "1"
 tracing = "0.1"
 ureq = { version = "2", features = ["json"] }
 
-[dev-dependencies]
+peekoo-notifications = { path = "../peekoo-notifications" }
+peekoo-scheduler = { path = "../peekoo-scheduler" }
 rusqlite = { version = "0.38" }

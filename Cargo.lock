@@ -5835,8 +5835,10 @@ dependencies = [
 name = "peekoo-plugin-store"
 version = "0.1.0"
 dependencies = [
+ "peekoo-notifications",
  "peekoo-paths",
  "peekoo-plugin-host",
+ "peekoo-scheduler",
  "rusqlite",
  "semver",
  "serde",
