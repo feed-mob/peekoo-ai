@@ -1,10 +1,8 @@
 /target/
-plugins/*/target/
-!plugins/*/target/wasm32-unknown-unknown/
-plugins/*/target/wasm32-unknown-unknown/**
-!plugins/*/target/wasm32-unknown-unknown/release/
-plugins/*/target/wasm32-unknown-unknown/release/**
-!plugins/*/target/wasm32-unknown-unknown/release/*.wasm
+plugins/*/target/**
+!plugins/*/target/wasm32-wasip1/
+!plugins/*/target/wasm32-wasip1/release/
+!plugins/*/target/wasm32-wasip1/release/*.wasm
 plugins/*/Cargo.lock
 
 # JavaScript/TypeScript build artifacts

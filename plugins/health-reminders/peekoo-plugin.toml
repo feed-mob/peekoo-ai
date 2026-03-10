@@ -5,7 +5,7 @@ version = "0.1.0"
 author = "Peekoo Team"
 description = "Water, eye-rest, and stand-up reminders for the desktop pet."
 min_peekoo_version = "0.1.0"
-wasm = "target/wasm32-unknown-unknown/release/health_reminders.wasm"
+wasm = "target/wasm32-wasip1/release/health_reminders.wasm"
 
 [permissions]
 required = ["scheduler", "notifications", "state:read", "state:write"]
