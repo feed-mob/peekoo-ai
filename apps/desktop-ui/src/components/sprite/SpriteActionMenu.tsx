@@ -50,6 +50,13 @@ export function SpriteActionMenu({
   installedPlugins = [],
 }: SpriteActionMenuProps) {
   const [pluginsPopupOpen, setPluginsPopupOpen] = useState(false);
+  const enabledPlugins = installedPlugins.filter((plugin) => {
+    if (!plugin.enabled) {
+      return false;
+    }
+
+    return pluginPanels.some((panel) => panel.pluginKey === plugin.pluginKey);
+  });
 
   const items: MenuItemConfig[] = getSpriteActionMenuItems().map((item) => {
     return {
@@ -146,7 +153,7 @@ export function SpriteActionMenu({
                     <span className="text-xs font-medium whitespace-nowrap">Plugins</span>
                   </button>
 
-                  {installedPlugins.map((plugin) => {
+                  {enabledPlugins.map((plugin) => {
                     const uiPanel = pluginPanels.find(
                       (p) => p.pluginKey === plugin.pluginKey,
                     );

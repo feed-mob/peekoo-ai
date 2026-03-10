@@ -1,4 +1,5 @@
-import { Puzzle, Wrench, LayoutPanelTop, RefreshCcw, Trash2 } from "lucide-react";
+import { Loader2, LayoutPanelTop, Puzzle, RefreshCcw, Trash2, Wrench } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { PluginPanel, PluginSummary } from "@/types/plugin";
 
@@ -9,6 +10,8 @@ interface PluginListProps {
   error: string | null;
   onRefresh: () => void;
   onOpenPanel: (label: string) => void;
+  onToggleEnabled: (pluginKey: string, enabled: boolean) => Promise<void>;
+  isToggling: (pluginKey: string) => boolean;
   onRemove?: (pluginKey: string) => Promise<void>;
 }
 
@@ -19,6 +22,8 @@ export function PluginList({
   error,
   onRefresh,
   onOpenPanel,
+  onToggleEnabled,
+  isToggling,
   onRemove,
 }: PluginListProps) {
   if (isLoading && plugins.length === 0) {
@@ -54,6 +59,7 @@ export function PluginList({
         <div className="space-y-3">
           {plugins.map((plugin) => {
             const pluginPanels = panels.filter((panel) => panel.pluginKey === plugin.pluginKey);
+            const toggling = isToggling(plugin.pluginKey);
 
             return (
               <section
@@ -66,7 +72,12 @@ export function PluginList({
                       <Puzzle size={18} />
                     </div>
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-text-primary">{plugin.name}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="truncate text-sm font-semibold text-text-primary">{plugin.name}</h3>
+                        <Badge variant={plugin.enabled ? "default" : "outline"}>
+                          {plugin.enabled ? "Enabled" : "Disabled"}
+                        </Badge>
+                      </div>
                       <p className="mt-1 truncate text-xs text-text-muted">
                         {plugin.pluginKey} · v{plugin.version}
                         {plugin.author ? ` · ${plugin.author}` : ""}
@@ -74,17 +85,30 @@ export function PluginList({
                     </div>
                   </div>
 
-                  {onRemove ? (
+                  <div className="flex shrink-0 items-center gap-2">
                     <Button
-                      size="icon"
-                      variant="outline"
-                      className="text-danger border-danger/30 hover:bg-danger/10 shrink-0"
-                      title="Remove plugin"
-                      onClick={() => void onRemove(plugin.pluginKey)}
+                      size="sm"
+                      variant={plugin.enabled ? "outline" : "default"}
+                      className={plugin.enabled ? "bg-space-deep/50" : undefined}
+                      onClick={() => void onToggleEnabled(plugin.pluginKey, !plugin.enabled)}
+                      disabled={toggling}
                     >
-                      <Trash2 size={16} />
+                      {toggling ? <Loader2 size={14} className="animate-spin" /> : null}
+                      {plugin.enabled ? "Disable" : "Enable"}
                     </Button>
-                  ) : null}
+                    {onRemove ? (
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="text-danger border-danger/30 hover:bg-danger/10 shrink-0"
+                        title="Remove plugin"
+                        onClick={() => void onRemove(plugin.pluginKey)}
+                        disabled={toggling}
+                      >
+                        <Trash2 size={16} />
+                      </Button>
+                    ) : null}
+                  </div>
                 </div>
 
                 {plugin.description ? (
@@ -131,6 +155,12 @@ export function PluginList({
                       ))}
                     </div>
                   </div>
+                ) : null}
+
+                {!plugin.enabled ? (
+                  <p className="mt-4 text-xs text-text-muted">
+                    Enable this plugin to open its panels and use its runtime capabilities.
+                  </p>
                 ) : null}
               </section>
             );

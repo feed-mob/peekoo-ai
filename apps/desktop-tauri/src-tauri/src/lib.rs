@@ -352,6 +352,28 @@ async fn plugin_dispatch_event(
 }
 
 #[tauri::command]
+async fn plugin_enable(
+    plugin_key: String,
+    window: Window,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.enable_plugin(&plugin_key)?;
+    let _ = window.emit("plugins-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn plugin_disable(
+    plugin_key: String,
+    window: Window,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.disable_plugin(&plugin_key)?;
+    let _ = window.emit("plugins-changed", ());
+    Ok(())
+}
+
+#[tauri::command]
 async fn plugin_store_catalog(state: State<'_, AgentState>) -> Result<Vec<StorePluginDto>, String> {
     state.app.store_catalog()
 }
@@ -505,6 +527,8 @@ pub fn run() {
             plugin_query_data,
             plugin_panel_html,
             plugin_dispatch_event,
+            plugin_enable,
+            plugin_disable,
             plugin_store_catalog,
             plugin_store_install,
             plugin_store_update,

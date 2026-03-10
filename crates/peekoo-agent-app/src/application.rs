@@ -195,26 +195,60 @@ impl AgentApplication {
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
-        let loaded = self.plugin_registry.loaded_keys();
         let plugins = self
             .plugin_registry
             .discover()
             .into_iter()
-            .map(|(plugin_dir, manifest)| {
-                let enabled = loaded.iter().any(|key| key == &manifest.plugin.key);
-                manifest_to_summary(&manifest, plugin_dir, enabled)
-            })
-            .collect();
+            .map(
+                |(plugin_dir, manifest)| -> Result<PluginSummaryDto, String> {
+                    self.plugin_registry
+                        .sync_plugin_registration(&plugin_dir)
+                        .map_err(|e| e.to_string())?;
+                    let enabled = self
+                        .plugin_registry
+                        .is_plugin_enabled(&manifest.plugin.key)
+                        .map_err(|e| e.to_string())?;
+                    Ok(manifest_to_summary(&manifest, plugin_dir, enabled))
+                },
+            )
+            .collect::<Result<Vec<_>, String>>()?;
         Ok(plugins)
     }
 
     pub fn list_plugin_panels(&self) -> Result<Vec<PluginPanelDto>, String> {
         Ok(self
             .plugin_registry
-            .all_discovered_ui_panels()
+            .all_ui_panels()
             .into_iter()
             .map(|(plugin_key, panel)| PluginPanelDto::from_panel(plugin_key, panel))
             .collect())
+    }
+
+    pub fn enable_plugin(&self, plugin_key: &str) -> Result<(), String> {
+        let plugin_dir = self
+            .plugin_registry
+            .discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
+            .ok_or_else(|| format!("Plugin not found: {plugin_key}"))?;
+
+        self.plugin_registry
+            .install_plugin(&plugin_dir)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    pub fn disable_plugin(&self, plugin_key: &str) -> Result<(), String> {
+        self.plugin_registry
+            .set_plugin_enabled(plugin_key, false)
+            .map_err(|e| e.to_string())?;
+
+        match self.plugin_registry.unload_plugin(plugin_key) {
+            Ok(()) | Err(peekoo_plugin_host::PluginError::NotFound(_)) => Ok(()),
+            Err(err) => Err(err.to_string()),
+        }
     }
 
     pub fn call_plugin_tool(&self, tool_name: &str, args_json: &str) -> Result<String, String> {
@@ -393,6 +427,37 @@ fn create_plugin_registry() -> Result<Arc<PluginRegistry>, String> {
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
     for (plugin_dir, manifest) in plugin_registry.discover() {
+        let enabled = match plugin_registry.sync_plugin_registration(&plugin_dir) {
+            Ok(_) => match plugin_registry.is_plugin_enabled(&manifest.plugin.key) {
+                Ok(enabled) => enabled,
+                Err(err) => {
+                    tracing::warn!(
+                        plugin = manifest.plugin.key.as_str(),
+                        dir = %plugin_dir.display(),
+                        "Skipping plugin during startup: {err}"
+                    );
+                    continue;
+                }
+            },
+            Err(err) => {
+                tracing::warn!(
+                    plugin = manifest.plugin.key.as_str(),
+                    dir = %plugin_dir.display(),
+                    "Skipping plugin during startup: {err}"
+                );
+                continue;
+            }
+        };
+
+        if !enabled {
+            tracing::info!(
+                plugin = manifest.plugin.key.as_str(),
+                dir = %plugin_dir.display(),
+                "Plugin discovered but left disabled during startup"
+            );
+            continue;
+        }
+
         match plugin_registry.install_plugin(&plugin_dir) {
             Ok(key) => tracing::info!(plugin = key.as_str(), "Plugin installed and loaded"),
             Err(err) => tracing::warn!(
@@ -401,5 +466,76 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
                 "Skipping plugin during startup: {err}"
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use peekoo_plugin_host::PluginRegistry;
+    use rusqlite::Connection;
+
+    use super::install_discovered_plugins;
+
+    fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE plugins (
+              id TEXT PRIMARY KEY,
+              plugin_key TEXT NOT NULL,
+              version TEXT NOT NULL,
+              plugin_type TEXT NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              manifest_json TEXT NOT NULL,
+              installed_at TEXT NOT NULL
+            );
+
+            CREATE TABLE plugin_permissions (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              capability TEXT NOT NULL,
+              granted INTEGER NOT NULL
+            );
+
+            CREATE TABLE plugin_state (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              state_key TEXT NOT NULL,
+              value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("plugin schema");
+
+        let plugin_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins")
+            .join(plugin_name);
+
+        Arc::new(PluginRegistry::new(
+            vec![plugin_dir],
+            Arc::new(Mutex::new(conn)),
+        ))
+    }
+
+    #[test]
+    fn startup_skips_loading_plugins_marked_disabled() {
+        let registry = test_registry("health-reminders");
+        let plugin_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/health-reminders");
+
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("plugin should register");
+        registry
+            .set_plugin_enabled("health-reminders", false)
+            .expect("plugin should disable");
+
+        install_discovered_plugins(&registry);
+
+        assert!(registry.loaded_keys().is_empty());
+        assert!(registry.all_ui_panels().is_empty());
     }
 }

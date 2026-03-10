@@ -13,6 +13,7 @@ export function usePlugins() {
   const [panels, setPanels] = useState<PluginPanel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<Set<string>>(new Set());
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -43,11 +44,43 @@ export function usePlugins() {
     };
   }, [refresh]);
 
+  const setPluginEnabled = useCallback(async (pluginKey: string, enabled: boolean) => {
+    setToggling((prev) => new Set(prev).add(pluginKey));
+    setError(null);
+    try {
+      await invoke(enabled ? "plugin_enable" : "plugin_disable", { pluginKey });
+      setPlugins((prev) =>
+        prev.map((plugin) =>
+          plugin.pluginKey === pluginKey ? { ...plugin, enabled } : plugin,
+        ),
+      );
+      if (!enabled) {
+        setPanels((prev) => prev.filter((panel) => panel.pluginKey !== pluginKey));
+      }
+    } catch (err) {
+      setError(String(err));
+      throw err;
+    } finally {
+      setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(pluginKey);
+        return next;
+      });
+    }
+  }, []);
+
+  const isToggling = useCallback(
+    (pluginKey: string) => toggling.has(pluginKey),
+    [toggling],
+  );
+
   return {
     plugins,
     panels,
     isLoading,
     error,
     refresh,
+    setPluginEnabled,
+    isToggling,
   };
 }

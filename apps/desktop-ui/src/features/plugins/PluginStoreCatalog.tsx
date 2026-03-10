@@ -1,4 +1,4 @@
-import { Puzzle, Wrench, LayoutPanelTop, Download, Trash2, Loader2 } from "lucide-react";
+import { Download, LayoutPanelTop, Loader2, Puzzle, RefreshCcw, Trash2, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { StorePlugin } from "@/types/plugin";
@@ -8,6 +8,7 @@ interface PluginStoreCatalogProps {
   isLoading: boolean;
   error: string | null;
   onInstall: (pluginKey: string) => Promise<void>;
+  onUpdate: (pluginKey: string) => Promise<void>;
   onUninstall: (pluginKey: string) => Promise<void>;
   isInstalling: (pluginKey: string) => boolean;
   onRefresh: () => void;
@@ -18,6 +19,7 @@ export function PluginStoreCatalog({
   isLoading,
   error,
   onInstall,
+  onUpdate,
   onUninstall,
   isInstalling,
   onRefresh,
@@ -36,6 +38,7 @@ export function PluginStoreCatalog({
           </h2>
         </div>
         <Button size="sm" variant="ghost" className="shrink-0" onClick={onRefresh}>
+          <RefreshCcw size={14} />
           Refresh
         </Button>
       </div>
@@ -71,6 +74,7 @@ export function PluginStoreCatalog({
                         <Badge variant={plugin.installed ? "default" : "outline"}>
                           {plugin.installed ? "Installed" : "Available"}
                         </Badge>
+                        {plugin.hasUpdate ? <Badge variant="secondary">Update available</Badge> : null}
                       </div>
                       <p className="mt-1 truncate text-xs text-text-muted">
                         {plugin.pluginKey} · v{plugin.version}
@@ -81,20 +85,38 @@ export function PluginStoreCatalog({
 
                   <div className="flex shrink-0 items-center gap-2">
                     {plugin.installed ? (
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="text-danger border-danger/30 hover:bg-danger/10"
-                        title="Remove plugin"
-                        onClick={() => void onUninstall(plugin.pluginKey)}
-                        disabled={installing}
-                      >
-                        {installing ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : (
-                          <Trash2 size={16} />
-                        )}
-                      </Button>
+                      <>
+                        {plugin.hasUpdate ? (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="shrink-0"
+                            onClick={() => void onUpdate(plugin.pluginKey)}
+                            disabled={installing}
+                          >
+                            {installing ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <RefreshCcw size={14} />
+                            )}
+                            Update
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="text-danger border-danger/30 hover:bg-danger/10"
+                          title="Remove plugin"
+                          onClick={() => void onUninstall(plugin.pluginKey)}
+                          disabled={installing}
+                        >
+                          {installing ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
+                        </Button>
+                      </>
                     ) : (
                       <Button
                         size="sm"
