@@ -1,18 +1,6 @@
 import { useState, useEffect } from "react";
 import SpriteAnimation from "./SpriteAnimation";
-import type { AnimationType, SpriteState } from "@/types/sprite";
-
-const SPRITE_CHROMA_KEY = {
-  targetColor: [255, 0, 255] as const,
-  minRbOverG: 32,
-  threshold: 100,
-  softness: 80,
-  spillSuppression: {
-    enabled: true,
-    threshold: 260,
-    strength: 0.90,
-  },
-};
+import type { AnimationType, SpriteState, SpriteManifest } from "@/types/sprite";
 
 // Map mood states to sprite animation types (new sprite sheet layout)
 const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
@@ -24,6 +12,7 @@ const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
   tired: "sleepy",
   reminder: "reminder", // Direct mapping to reminder animation row
 };
+
 
 // Map animation names from backend to animation types (backward compatibility)
 const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
@@ -56,6 +45,16 @@ export function Sprite({ state, randomTrigger = 0, animationOverride = null }: S
   };
 
   const [overrideAnimation, setOverrideAnimation] = useState<AnimationType | null>(null);
+  const [activeSpriteId] = useState("dark-cat");
+  const [manifest, setManifest] = useState<SpriteManifest | null>(null);
+
+  // Load sprite manifest
+  useEffect(() => {
+    fetch(`/sprites/${activeSpriteId}/manifest.json`)
+      .then((res) => res.json())
+      .then((data: SpriteManifest) => setManifest(data))
+      .catch((err) => console.error("Failed to load sprite manifest", err));
+  }, [activeSpriteId]);
 
   // Trigger random animation when randomTrigger changes
   useEffect(() => {
@@ -96,13 +95,21 @@ export function Sprite({ state, randomTrigger = 0, animationOverride = null }: S
     return "idle";
   };
 
+  if (!manifest) {
+    return null;
+  }
+
   return (
     <div className="flex items-center justify-center">
       <SpriteAnimation
         animation={getAnimationType()}
-        frameRate={8}
-        scale={0.40}
-        chromaKey={SPRITE_CHROMA_KEY}
+        frameRate={manifest.frameRate || 8}
+        scale={manifest.scale ?? 0.40}
+        chromaKey={manifest.chromaKey}
+        imageSrc={`/sprites/${activeSpriteId}/${manifest.image}`}
+        columns={manifest.layout.columns}
+        rows={manifest.layout.rows}
+        pixelArt={manifest.chromaKey.pixelArt}
         onFrameChange={() => {
           // Optional: Log frame changes for debugging
         }}
