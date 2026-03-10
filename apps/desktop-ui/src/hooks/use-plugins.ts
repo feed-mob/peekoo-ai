@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import {
   type PluginPanel,
@@ -32,6 +33,14 @@ export function usePlugins() {
 
   useEffect(() => {
     void refresh();
+
+    const unlisten = listen("plugins-changed", () => {
+      void refresh();
+    });
+
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
   }, [refresh]);
 
   return {
