@@ -244,10 +244,11 @@ fn host_schedule_set(
     let key = req["key"].as_str().unwrap_or_default();
     let interval_secs = req["interval_secs"].as_u64().unwrap_or_default();
     let repeat = req["repeat"].as_bool().unwrap_or(true);
+    let delay_secs = req["delay_secs"].as_u64();
 
     let ok = ctx
         .scheduler
-        .set(&ctx.plugin_key, key, interval_secs, repeat)
+        .set(&ctx.plugin_key, key, interval_secs, repeat, delay_secs)
         .is_ok();
     write_output(
         plugin,

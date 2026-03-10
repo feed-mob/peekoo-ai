@@ -46,18 +46,26 @@ impl Scheduler {
         }
     }
 
+    /// Register a schedule entry.
+    ///
+    /// `delay_secs` overrides how long until the *first* fire. Subsequent
+    /// repeat fires always use `interval_secs`. Pass `None` to use the full
+    /// interval for the first fire (the original behaviour).  Pass `Some(0)`
+    /// to fire as soon as possible.
     pub fn set(
         &self,
         owner: &str,
         key: &str,
         interval_secs: u64,
         repeat: bool,
+        delay_secs: Option<u64>,
     ) -> Result<(), SchedulerError> {
         if interval_secs == 0 {
             return Err(SchedulerError::ZeroInterval);
         }
 
         let interval = Duration::from_secs(interval_secs);
+        let first_delay = Duration::from_secs(delay_secs.unwrap_or(interval_secs));
         let mut entries = self
             .entries
             .lock()
@@ -68,7 +76,7 @@ impl Scheduler {
             key: key.to_string(),
             interval,
             repeat,
-            next_fire_at: Instant::now() + interval,
+            next_fire_at: Instant::now() + first_delay,
         });
         entries.sort_by_key(|entry| entry.next_fire_at);
         drop(entries);
