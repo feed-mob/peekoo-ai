@@ -5820,6 +5820,7 @@ dependencies = [
  "peekoo-paths",
  "peekoo-plugin-host",
  "rusqlite",
+ "semver",
  "serde",
  "serde_json",
  "tracing",

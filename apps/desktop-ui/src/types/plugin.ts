@@ -31,6 +31,7 @@ export const storePluginSchema = z.object({
   panelCount: z.number(),
   installed: z.boolean(),
   source: z.enum(["store", "none"]),
+  hasUpdate: z.boolean(),
 });
 
 export type PluginSummary = z.infer<typeof pluginSummarySchema>;

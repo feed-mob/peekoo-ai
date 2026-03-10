@@ -51,6 +51,32 @@ export function usePluginStore() {
     }
   }, []);
 
+  const update = useCallback(async (pluginKey: string) => {
+    setInstalling((prev) => new Set(prev).add(pluginKey));
+    setError(null);
+    try {
+      const rawPlugin = await invoke("plugin_store_update", { pluginKey });
+      const updatedPlugin = storePluginSchema.parse(rawPlugin);
+      setCatalog((prev) =>
+        prev.map((p) =>
+          p.pluginKey === pluginKey
+            ? { ...updatedPlugin, hasUpdate: false }
+            : p
+        )
+      );
+      return updatedPlugin;
+    } catch (err) {
+      setError(String(err));
+      throw err;
+    } finally {
+      setInstalling((prev) => {
+        const next = new Set(prev);
+        next.delete(pluginKey);
+        return next;
+      });
+    }
+  }, []);
+
   const uninstall = useCallback(async (pluginKey: string) => {
     setInstalling((prev) => new Set(prev).add(pluginKey));
     setError(null);
@@ -86,6 +112,7 @@ export function usePluginStore() {
     error,
     fetchCatalog,
     install,
+    update,
     uninstall,
     isInstalling,
   };
