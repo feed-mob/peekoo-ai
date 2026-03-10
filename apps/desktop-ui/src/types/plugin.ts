@@ -30,7 +30,7 @@ export const storePluginSchema = z.object({
   toolCount: z.number(),
   panelCount: z.number(),
   installed: z.boolean(),
-  source: z.string(),
+  source: z.enum(["store", "none"]),
 });
 
 export type PluginSummary = z.infer<typeof pluginSummarySchema>;
