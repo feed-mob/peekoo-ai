@@ -686,6 +686,15 @@ fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(),
             .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
     }
 
+    flush_peek_badges(app, state)?;
+    Ok(())
+}
+
+fn flush_peek_badges(app: &AppHandle, state: &AgentState) -> Result<(), String> {
+    if let Some(badges) = state.app.take_peek_badges_if_changed() {
+        app.emit_to("main", "sprite:peek-badges", &badges)
+            .map_err(|e| format!("Peek badge emit error: {e}"))?;
+    }
     Ok(())
 }
 

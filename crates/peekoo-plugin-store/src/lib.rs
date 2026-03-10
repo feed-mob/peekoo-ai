@@ -451,7 +451,7 @@ fn is_newer_version(remote: &str, local: &str) -> bool {
 mod tests {
     use std::sync::Mutex;
 
-    use peekoo_notifications::NotificationService;
+    use peekoo_notifications::{NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -583,6 +583,7 @@ wasm = "plugin.wasm"
                 Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
                 scheduler,
                 Arc::new(notifications),
+                Arc::new(PeekBadgeService::new()),
             )),
         );
         assert!(result.is_err());
@@ -642,6 +643,7 @@ wasm = "plugin.wasm"
                 Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
                 scheduler,
                 Arc::new(notifications),
+                Arc::new(PeekBadgeService::new()),
             )),
         );
         assert!(result.is_err());

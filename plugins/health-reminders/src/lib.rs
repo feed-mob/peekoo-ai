@@ -84,6 +84,16 @@ struct ConfigGetResponse {
     value: Value,
 }
 
+#[derive(Serialize, Deserialize)]
+struct PeekBadgeItem {
+    label: String,
+    value: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    icon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    countdown_secs: Option<u64>,
+}
+
 #[host_fn]
 extern "ExtismHost" {
     fn peekoo_state_get(input: Json<StateGetRequest>) -> Json<StateGetResponse>;
@@ -95,6 +105,7 @@ extern "ExtismHost" {
     fn peekoo_schedule_cancel(input: Json<ScheduleCancelRequest>) -> Json<Value>;
     fn peekoo_schedule_get(input: Json<ScheduleGetRequest>) -> Json<ScheduleGetResponse>;
     fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
+    fn peekoo_set_peek_badge(input: String) -> Json<Value>;
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -129,6 +140,7 @@ struct DismissInput {
 pub fn plugin_init(_input: String) -> FnResult<String> {
     ensure_default_state();
     sync_schedules();
+    push_peek_badges();
     log_info("Health reminders plugin initialized");
     Ok(r#"{"status":"ok"}"#.to_string())
 }
@@ -157,6 +169,7 @@ pub fn on_event(input: String) -> FnResult<String> {
         _ => {}
     }
 
+    push_peek_badges();
     Ok(r#"{"ok":true}"#.to_string())
 }
 
@@ -185,6 +198,7 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
 
     save_config(&config);
     sync_schedules();
+    push_peek_badges();
     Ok(serde_json::to_string(&load_status())?)
 }
 
@@ -192,6 +206,7 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
 pub fn tool_health_dismiss(input: String) -> FnResult<String> {
     let args: DismissInput = serde_json::from_str(&input)?;
     reset_schedule(&args.reminder_type);
+    push_peek_badges();
     Ok(serde_json::to_string(&load_status())?)
 }
 
@@ -382,6 +397,63 @@ fn emit_event(event: &str, payload: Value) {
             payload,
         }))
     };
+}
+
+fn push_peek_badges() {
+    let status = load_status();
+    let icon_for = |reminder_type: &str| -> &str {
+        match reminder_type {
+            "water" => "droplet",
+            "eye_rest" => "eye",
+            "standup" => "person-standing",
+            _ => "activity",
+        }
+    };
+
+    let items: Vec<PeekBadgeItem> = status
+        .reminders
+        .iter()
+        .filter(|reminder| reminder.active)
+        .map(|reminder| PeekBadgeItem {
+            label: reminder
+                .reminder_type
+                .replace('_', " ")
+                .split_whitespace()
+                .map(|word| {
+                    let mut chars = word.chars();
+                    match chars.next() {
+                        Some(first) => first.to_uppercase().to_string() + chars.as_str(),
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+            value: format_countdown(reminder.time_remaining_secs),
+            icon: Some(icon_for(&reminder.reminder_type).to_string()),
+            countdown_secs: Some(reminder.time_remaining_secs),
+        })
+        .collect();
+
+    let json = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
+    let _ = unsafe { peekoo_set_peek_badge(json) };
+}
+
+fn format_countdown(seconds: u64) -> String {
+    if seconds == 0 {
+        return "now".to_string();
+    }
+    let minutes = (seconds + 59) / 60; // ceil
+    if minutes < 60 {
+        format!("~{minutes} min")
+    } else {
+        let hours = minutes / 60;
+        let remainder = minutes % 60;
+        if remainder == 0 {
+            format!("~{hours} hr")
+        } else {
+            format!("~{hours} hr {remainder} min")
+        }
+    }
 }
 
 fn notify(title: &str, body: &str) {

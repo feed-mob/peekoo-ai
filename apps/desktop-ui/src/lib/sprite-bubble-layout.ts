@@ -26,20 +26,45 @@ export const SPRITE_BUBBLE_WINDOW_SIZE = {
 /** Width of the speech bubble. */
 export const BUBBLE_WIDTH = 180;
 
+/** Height of a single collapsed peek badge. */
+export const PEEK_BADGE_HEIGHT = 36;
+
+/** Vertical padding around the badge area. */
+export const PEEK_BADGE_PADDING = 8;
+
+/** Height of each row in the expanded badge list. */
+export const PEEK_BADGE_ROW_HEIGHT = 28;
+
+export function peekBadgeExtraHeight(itemCount: number, expanded: boolean): number {
+  if (itemCount === 0) return 0;
+  if (!expanded) return PEEK_BADGE_HEIGHT + PEEK_BADGE_PADDING;
+  return itemCount * PEEK_BADGE_ROW_HEIGHT + PEEK_BADGE_PADDING * 2;
+}
+
 interface SpriteWindowState {
   menuOpen: boolean;
   bubbleOpen: boolean;
+  peekBadgeItemCount: number;
+  peekBadgeExpanded: boolean;
 }
 
 export function getSpriteWindowSize(state: SpriteWindowState) {
+  const badgeExtra =
+    state.bubbleOpen || state.menuOpen
+      ? 0
+      : peekBadgeExtraHeight(state.peekBadgeItemCount, state.peekBadgeExpanded);
+
   return {
     width: SPRITE_WIDTH,
     height: Math.max(
       SPRITE_WINDOW_SIZE.height,
       state.menuOpen ? SPRITE_MENU_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
       state.bubbleOpen ? SPRITE_BUBBLE_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
+      SPRITE_WINDOW_SIZE.height + badgeExtra,
     ),
     /** How much the window grows upward (positive = window top moves up). */
-    extraTop: state.bubbleOpen ? BUBBLE_EXTRA_HEIGHT : 0,
+    extraTop: state.bubbleOpen
+      ? BUBBLE_EXTRA_HEIGHT
+      : badgeExtra,
   };
 }

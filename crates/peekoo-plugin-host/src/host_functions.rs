@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use extism::{CurrentPlugin, Error, Function, UserData, Val, ValType};
-use peekoo_notifications::{Notification, NotificationService};
+use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
 
 use crate::config::resolved_config_map;
@@ -16,6 +16,7 @@ struct HostContext {
     event_bus: Arc<EventBus>,
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
+    peek_badges: Arc<PeekBadgeService>,
     config_fields: Vec<ConfigFieldDef>,
 }
 
@@ -25,6 +26,7 @@ pub fn build_host_functions(
     event_bus: &Arc<EventBus>,
     scheduler: &Arc<Scheduler>,
     notifications: &Arc<NotificationService>,
+    peek_badges: &Arc<PeekBadgeService>,
     config_fields: Vec<ConfigFieldDef>,
 ) -> Vec<Function> {
     let ctx = HostContext {
@@ -33,6 +35,7 @@ pub fn build_host_functions(
         event_bus: Arc::clone(event_bus),
         scheduler: Arc::clone(scheduler),
         notifications: Arc::clone(notifications),
+        peek_badges: Arc::clone(peek_badges),
         config_fields,
     };
 
@@ -97,8 +100,15 @@ pub fn build_host_functions(
             "peekoo_config_get",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx),
+            UserData::new(ctx.clone()),
             host_config_get,
+        ),
+        Function::new(
+            "peekoo_set_peek_badge",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_set_peek_badge,
         ),
     ]
 }
@@ -307,6 +317,23 @@ fn host_config_get(
     };
 
     write_output(plugin, outputs, &response.to_string())?;
+    Ok(())
+}
+
+fn host_set_peek_badge(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    let input_str = read_input(plugin, inputs)?;
+    let items: Vec<PeekBadgeItem> = serde_json::from_str(&input_str).unwrap_or_default();
+
+    ctx.peek_badges.set(&ctx.plugin_key, items);
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)?;
     Ok(())
 }
 

@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Sprite } from "@/components/sprite/Sprite";
 import { SpriteActionMenu } from "@/components/sprite/SpriteActionMenu";
 import { SpriteBubble } from "@/components/sprite/SpriteBubble";
+import { SpritePeekBadge } from "@/components/sprite/SpritePeekBadge";
+import { usePeekBadge } from "@/hooks/use-peek-badge";
 import { useSpriteBubble } from "@/hooks/use-sprite-bubble";
 import { getSpriteWindowSize } from "@/lib/sprite-bubble-layout";
 import { useSpriteState } from "@/hooks/use-sprite-state";
@@ -25,6 +27,7 @@ const CLICK_TIME_THRESHOLD_MS = 150;
 export default function SpriteView() {
   const spriteState = useSpriteState();
   const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
+  const { items: badgeItems, currentItem: badgeCurrentItem, expanded: badgeExpanded, toggleExpanded: toggleBadgeExpanded, collapse: collapseBadge } = usePeekBadge();
   const { panels, pluginPanels, installedPlugins, togglePanel } = usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [randomTrigger, setRandomTrigger] = useState(0);
@@ -67,6 +70,8 @@ export default function SpriteView() {
     const nextSize = getSpriteWindowSize({
       menuOpen,
       bubbleOpen: bubblePayload !== null && bubbleVisible,
+      peekBadgeItemCount: badgeItems.length,
+      peekBadgeExpanded: badgeExpanded,
     });
     const deltaTop = nextSize.extraTop - prevExtraTopRef.current;
     prevExtraTopRef.current = nextSize.extraTop;
@@ -75,7 +80,7 @@ export default function SpriteView() {
       height: nextSize.height,
       deltaTop,
     });
-  }, [bubblePayload, bubbleVisible, menuOpen]);
+  }, [bubblePayload, bubbleVisible, menuOpen, badgeItems.length, badgeExpanded]);
 
   useEffect(() => {
     const unlisten = listen(SPRITE_BUBBLE_EVENT, (event) => {
@@ -84,6 +89,7 @@ export default function SpriteView() {
         return;
       }
 
+      collapseBadge();
       showBubble(parsed.data);
 
       clearMoodResetTimer();
@@ -97,7 +103,7 @@ export default function SpriteView() {
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [clearMoodResetTimer, showBubble]);
+  }, [clearMoodResetTimer, collapseBadge, showBubble]);
 
   useSpriteReactions({ onMoodChange: handleMoodChange });
 
@@ -175,6 +181,13 @@ export default function SpriteView() {
           isOpen={menuOpen}
           pluginPanels={pluginPanels}
           installedPlugins={installedPlugins}
+        />
+        <SpritePeekBadge
+          items={badgeItems}
+          currentItem={badgeCurrentItem}
+          expanded={badgeExpanded}
+          visible={!menuOpen && !(bubblePayload !== null && bubbleVisible) && badgeItems.length > 0}
+          onToggle={toggleBadgeExpanded}
         />
         <SpriteBubble
           payload={bubblePayload}
