@@ -1,0 +1,24 @@
+{
+  "id": "cute-dog",
+  "name": "Cute Dog",
+  "description": "A cute alternative AI pet.",
+  "image": "sprite.png",
+  "layout": {
+    "columns": 8,
+    "rows": 7
+  },
+  "scale": 0.40,
+  "frameRate": 6,
+  "chromaKey": {
+    "targetColor": [255, 0, 255],
+    "minRbOverG": 32,
+    "threshold": 100,
+    "softness": 80,
+    "spillSuppression": {
+      "enabled": true,
+      "threshold": 260,
+      "strength": 0.90
+    },
+    "pixelArt": false
+  }
+}

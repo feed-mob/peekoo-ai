@@ -12,3 +12,30 @@ export interface SpriteState {
   message: string;
   animation: string;
 }
+
+export interface SpriteManifest {
+  id: string;
+  name: string;
+  description: string;
+  image: string;
+  layout: {
+    columns: number;
+    rows: number;
+  };
+  scale?: number;
+  frameRate?: number;
+  chromaKey: {
+    targetColor: readonly [number, number, number];
+    minRbOverG: number;
+    threshold: number;
+    softness: number;
+    spillSuppression: {
+      enabled: boolean;
+      threshold: number;
+      strength: number;
+    };
+    stripDarkFringe?: boolean;
+    pixelArt?: boolean;
+  };
+}
+

@@ -1,0 +1,25 @@
+{
+  "id": "dark-cat",
+  "name": "Dark Cat",
+  "description": "Default dark-themed AI pet.",
+  "image": "sprite.png",
+  "layout": {
+    "columns": 8,
+    "rows": 7
+  },
+  "scale": 0.25,
+  "frameRate": 5,
+  "chromaKey": {
+    "targetColor": [255, 0, 255],
+    "minRbOverG": 5,
+    "threshold": 200,
+    "softness": 20,
+    "spillSuppression": {
+      "enabled": true,
+      "threshold": 300,
+      "strength": 1.0
+    },
+    "stripDarkFringe": true,
+    "pixelArt": false
+  }
+}

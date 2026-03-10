@@ -12,6 +12,7 @@ export interface ChromaKeyOptions {
   threshold: number;
   softness: number;
   spillSuppression: SpillSuppressionOptions;
+  stripDarkFringe?: boolean;
 }
 
 export const DEFAULT_CHROMA_KEY_OPTIONS: ChromaKeyOptions = {
@@ -24,6 +25,7 @@ export const DEFAULT_CHROMA_KEY_OPTIONS: ChromaKeyOptions = {
     threshold: 130,
     strength: 0.45,
   },
+  stripDarkFringe: false,
 };
 
 function clampByte(value: number): number {
@@ -40,6 +42,7 @@ function mergeOptions(options?: Partial<ChromaKeyOptions>): ChromaKeyOptions {
     minRbOverG: options.minRbOverG ?? DEFAULT_CHROMA_KEY_OPTIONS.minRbOverG,
     threshold: options.threshold ?? DEFAULT_CHROMA_KEY_OPTIONS.threshold,
     softness: options.softness ?? DEFAULT_CHROMA_KEY_OPTIONS.softness,
+    stripDarkFringe: options.stripDarkFringe ?? DEFAULT_CHROMA_KEY_OPTIONS.stripDarkFringe,
     spillSuppression: {
       enabled:
         options.spillSuppression?.enabled ??
@@ -120,6 +123,13 @@ export function applyChromaKeyToImageData(
     const b = data[i + 2];
 
     if (!isMagentaCandidate(r, g, b, options.minRbOverG)) {
+      continue;
+    }
+
+    if (options.stripDarkFringe) {
+      // For this specific case, any "Magenta Candidate" is safe to remove
+      // because the sprite (black cat) contains NO purple hues.
+      data[i + 3] = 0;
       continue;
     }
 

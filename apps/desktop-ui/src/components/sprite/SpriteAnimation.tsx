@@ -19,14 +19,11 @@ interface SpriteAnimationProps {
   chromaKey?: false | Partial<ChromaKeyOptions>;
   onFrameChange?: (frameIndex: number) => void;
   className?: string;
+  imageSrc: string;
+  columns: number;
+  rows: number;
+  pixelArt?: boolean;
 }
-
-// Sprite sheet configuration
-const SPRITE_CONFIG = {
-  columns: 8,
-  rows: 7,
-  imageSrc: "/sprite.png",
-};
 
 // Animation row mapping (matches new sprite sheet layout)
 const ANIMATION_ROWS: Record<AnimationType, number> = {
@@ -51,6 +48,10 @@ export default function SpriteAnimation({
   chromaKey,
   onFrameChange,
   className = "",
+  imageSrc,
+  columns,
+  rows,
+  pixelArt = false, // Default to false (smooth illustration)
 }: SpriteAnimationProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sourceRef = useRef<CanvasImageSource | null>(null);
@@ -63,13 +64,13 @@ export default function SpriteAnimation({
   // Load sprite sheet
   useEffect(() => {
     const img = new Image();
-    img.src = SPRITE_CONFIG.imageSrc;
+    img.src = imageSrc;
     img.onload = () => {
       const atlas = buildAtlasGrid(
         img.width,
         img.height,
-        SPRITE_CONFIG.columns,
-        SPRITE_CONFIG.rows,
+        columns,
+        rows,
       );
       atlasRef.current = atlas;
 
@@ -84,14 +85,27 @@ export default function SpriteAnimation({
         chromaKey === false ? img : buildKeyedSpriteSheet(img, chromaKey);
 
       if (canvasRef.current) {
-        canvasRef.current.width = Math.max(1, Math.round(atlas.nominalFrameWidth * scale));
-        canvasRef.current.height = Math.max(
-          1,
-          Math.round(atlas.nominalFrameHeight * scale),
-        );
+        // Use window.devicePixelRatio for crisp rendering on high-DPI displays
+        const dpr = window.devicePixelRatio || 1;
+        const displayWidth = Math.max(1, Math.round(atlas.nominalFrameWidth * scale));
+        const displayHeight = Math.max(1, Math.round(atlas.nominalFrameHeight * scale));
+
+        canvasRef.current.width = displayWidth * dpr;
+        canvasRef.current.height = displayHeight * dpr;
+        
+        // Scale context to match dpr
+        const ctx = canvasRef.current.getContext("2d");
+        if (ctx) {
+           ctx.scale(dpr, dpr);
+        }
+        
+        // Set CSS size
+        canvasRef.current.style.width = `${displayWidth}px`;
+        canvasRef.current.style.height = `${displayHeight}px`;
       }
     };
-  }, [scale, chromaKey]);
+  }, [scale, chromaKey, imageSrc, columns, rows]);
+
 
   // Update row when animation changes
   useEffect(() => {
@@ -113,9 +127,16 @@ export default function SpriteAnimation({
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
-
+      
+      const dpr = window.devicePixelRatio || 1;
+      
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
+      
+      // Ensure we are drawing to the full resolution
+      // No need to set scale here if we did it in initialization or resetTransform before drawing
+      // Actually, standard practice for animation loops:
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Reset to base scale with DPR
 
       const frameInterval = 1000 / frameRate;
       
@@ -127,7 +148,11 @@ export default function SpriteAnimation({
           ROW_TOP_TRIM_PIXELS[row] ?? 0,
         );
 
-        ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        // Clear using logical coordinates
+        const displayWidth = parseFloat(canvasRef.current.style.width || "0");
+        const displayHeight = parseFloat(canvasRef.current.style.height || "0");
+        
+        ctx.clearRect(0, 0, displayWidth, displayHeight);
         ctx.drawImage(
           sourceRef.current,
           sourceFrame.sx,
@@ -136,11 +161,11 @@ export default function SpriteAnimation({
           sourceFrame.sh,
           0,
           0,
-          canvasRef.current.width,
-          canvasRef.current.height
+          displayWidth,
+          displayHeight
         );
 
-        frameRef.current = (frameRef.current + 1) % SPRITE_CONFIG.columns;
+        frameRef.current = (frameRef.current + 1) % columns;
         lastFrameTimeRef.current = currentTime;
         
         onFrameChange?.(frameRef.current);
@@ -156,14 +181,14 @@ export default function SpriteAnimation({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [frameRate, onFrameChange]);
+  }, [frameRate, onFrameChange, columns]);
 
   return (
     <canvas
       ref={canvasRef}
       className={`sprite-animation ${className}`}
       style={{
-        imageRendering: "pixelated",
+        imageRendering: pixelArt ? "pixelated" : "auto",
         pointerEvents: "none",
       }}
     />
