@@ -303,6 +303,17 @@ async fn plugin_store_install(
 }
 
 #[tauri::command]
+async fn plugin_store_update(
+    plugin_key: String,
+    window: Window,
+    state: State<'_, AgentState>,
+) -> Result<StorePluginDto, String> {
+    let result = state.app.store_update(&plugin_key)?;
+    let _ = window.emit("plugins-changed", ());
+    Ok(result)
+}
+
+#[tauri::command]
 async fn plugin_store_uninstall(
     plugin_key: String,
     window: Window,
@@ -395,6 +406,7 @@ pub fn run() {
             plugin_dispatch_event,
             plugin_store_catalog,
             plugin_store_install,
+            plugin_store_update,
             plugin_store_uninstall
         ])
         .run(tauri::generate_context!())

@@ -298,6 +298,11 @@ impl AgentApplication {
             .install_plugin(plugin_key, &self.plugin_registry)
     }
 
+    pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.plugin_store
+            .update_plugin(plugin_key, &self.plugin_registry)
+    }
+
     pub fn store_uninstall(&self, plugin_key: &str) -> Result<(), String> {
         self.plugin_store
             .uninstall_plugin(plugin_key, &self.plugin_registry)

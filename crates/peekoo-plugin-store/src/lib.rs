@@ -50,6 +50,8 @@ pub struct StorePluginDto {
     pub installed: bool,
     /// Origin of the installation.
     pub source: PluginSource,
+    /// Whether a newer version is available in the store.
+    pub has_update: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -100,26 +102,15 @@ impl PluginStoreService {
 
             match self.fetch_plugin_metadata(&item.name) {
                 Ok(manifest) => {
-                    let (installed, source) =
-                        self.check_installation(&manifest.plugin.key, &local_plugins);
-                    let tool_count = manifest
-                        .tools
-                        .as_ref()
-                        .map(|t| t.definitions.len())
-                        .unwrap_or(0);
-                    let panel_count = manifest.ui.as_ref().map(|u| u.panels.len()).unwrap_or(0);
+                    let local_version = local_plugins
+                        .iter()
+                        .find(|(_, m)| m.plugin.key == manifest.plugin.key)
+                        .map(|(_, m)| m.plugin.version.as_str());
+                    let has_update = local_version
+                        .map(|lv| is_newer_version(&manifest.plugin.version, lv))
+                        .unwrap_or(false);
 
-                    store_plugins.push(StorePluginDto {
-                        plugin_key: manifest.plugin.key,
-                        name: manifest.plugin.name,
-                        version: manifest.plugin.version,
-                        author: manifest.plugin.author,
-                        description: manifest.plugin.description,
-                        tool_count,
-                        panel_count,
-                        installed,
-                        source,
-                    });
+                    store_plugins.push(self.build_dto(manifest, &local_plugins, has_update));
                 }
                 Err(e) => {
                     warn!(
@@ -155,38 +146,71 @@ impl PluginStoreService {
             .and_then(|()| {
                 registry
                     .install_plugin(&dest_dir)
+                    .map(|_| ())
                     .map_err(|e| format!("Failed to load plugin: {e}"))
             });
 
-        let plugin_key_loaded = match install_result {
-            Ok(key) => key,
-            Err(e) => {
-                let _ = std::fs::remove_dir_all(&dest_dir);
-                return Err(e);
-            }
-        };
+        if let Err(e) = install_result {
+            let _ = std::fs::remove_dir_all(&dest_dir);
+            return Err(e);
+        }
 
         let local_plugins = registry.discover();
-        let (installed, source) = self.check_installation(&plugin_key_loaded, &local_plugins);
+        Ok(self.build_dto(manifest, &local_plugins, false))
+    }
 
-        let tool_count = manifest
-            .tools
-            .as_ref()
-            .map(|t| t.definitions.len())
-            .unwrap_or(0);
-        let panel_count = manifest.ui.as_ref().map(|u| u.panels.len()).unwrap_or(0);
+    /// Update an installed plugin to the latest version from GitHub.
+    ///
+    /// Returns an error if the plugin is not installed. If the remote version
+    /// is not newer than the installed version, returns `Ok` with the current
+    /// plugin state (no update performed).
+    pub fn update_plugin(
+        &self,
+        plugin_key: &str,
+        registry: &Arc<PluginRegistry>,
+    ) -> Result<StorePluginDto, String> {
+        let dest_dir = peekoo_global_data_dir()?.join("plugins").join(plugin_key);
 
-        Ok(StorePluginDto {
-            plugin_key: manifest.plugin.key,
-            name: manifest.plugin.name,
-            version: manifest.plugin.version,
-            author: manifest.plugin.author,
-            description: manifest.plugin.description,
-            tool_count,
-            panel_count,
-            installed,
-            source,
-        })
+        if !dest_dir.exists() {
+            return Err(format!("Plugin {plugin_key} is not installed"));
+        }
+
+        let local_plugins = registry.discover();
+        let local_version = local_plugins
+            .iter()
+            .find(|(_, m)| m.plugin.key == plugin_key)
+            .map(|(_, m)| m.plugin.version.as_str())
+            .unwrap_or("0.0.0");
+
+        let remote_manifest = self.fetch_plugin_metadata(plugin_key)?;
+
+        if !is_newer_version(&remote_manifest.plugin.version, local_version) {
+            return Ok(self.build_dto(remote_manifest, &local_plugins, false));
+        }
+
+        info!(
+            plugin = plugin_key,
+            from = local_version,
+            to = remote_manifest.plugin.version.as_str(),
+            "Updating plugin from store"
+        );
+
+        // Best-effort unload before replacing files.
+        let _ = registry.unload_plugin(plugin_key);
+
+        self.with_backup_guard(&dest_dir, || {
+            self.download_plugin_files(plugin_key, &dest_dir)?;
+            registry
+                .install_plugin(&dest_dir)
+                .map(|_| ())
+                .map_err(|e| format!("Failed to load updated plugin: {e}"))
+        })?;
+
+        let local_plugins = registry.discover();
+
+        info!(plugin = plugin_key, "Plugin updated successfully");
+
+        Ok(self.build_dto(remote_manifest, &local_plugins, false))
     }
 
     /// Unload a plugin from the registry and delete its directory from
@@ -230,6 +254,70 @@ impl PluginStoreService {
             }
         }
         (false, PluginSource::None)
+    }
+
+    fn build_dto(
+        &self,
+        manifest: PluginManifest,
+        local_plugins: &[(PathBuf, PluginManifest)],
+        has_update: bool,
+    ) -> StorePluginDto {
+        let (installed, source) = self.check_installation(&manifest.plugin.key, local_plugins);
+        let tool_count = manifest
+            .tools
+            .as_ref()
+            .map(|t| t.definitions.len())
+            .unwrap_or(0);
+        let panel_count = manifest.ui.as_ref().map(|u| u.panels.len()).unwrap_or(0);
+
+        StorePluginDto {
+            plugin_key: manifest.plugin.key,
+            name: manifest.plugin.name,
+            version: manifest.plugin.version,
+            author: manifest.plugin.author,
+            description: manifest.plugin.description,
+            tool_count,
+            panel_count,
+            installed,
+            source,
+            has_update,
+        }
+    }
+
+    /// Perform an operation within a backup/restore guard.
+    ///
+    /// Renames `dest_dir` to `<dest_dir>.old` before calling `operation`.
+    /// On failure the backup is restored; on success it is removed.
+    fn with_backup_guard<F>(&self, dest_dir: &Path, operation: F) -> Result<(), String>
+    where
+        F: FnOnce() -> Result<(), String>,
+    {
+        let backup_dir = dest_dir.with_extension("old");
+
+        if backup_dir.exists() {
+            std::fs::remove_dir_all(&backup_dir)
+                .map_err(|e| format!("Failed to remove stale backup: {e}"))?;
+        }
+
+        std::fs::rename(dest_dir, &backup_dir)
+            .map_err(|e| format!("Failed to backup plugin directory: {e}"))?;
+
+        if let Err(e) = operation() {
+            // Attempt cleanup of the partial new directory before restoring.
+            if dest_dir.exists() {
+                let _ = std::fs::remove_dir_all(dest_dir);
+            }
+            if let Err(restore_err) = std::fs::rename(&backup_dir, dest_dir) {
+                warn!("Failed to restore backup after failure: {restore_err}");
+            }
+            return Err(e);
+        }
+
+        if let Err(e) = std::fs::remove_dir_all(&backup_dir) {
+            warn!("Failed to remove backup directory: {e}");
+        }
+
+        Ok(())
     }
 
     fn fetch_plugin_metadata(&self, plugin_key: &str) -> Result<PluginManifest, String> {
@@ -349,6 +437,16 @@ impl PluginStoreService {
     }
 }
 
+fn is_newer_version(remote: &str, local: &str) -> bool {
+    let remote_ver = semver::Version::parse(remote).ok();
+    let local_ver = semver::Version::parse(local).ok();
+
+    match (remote_ver, local_ver) {
+        (Some(remote), Some(local)) => remote > local,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
@@ -374,12 +472,14 @@ mod tests {
             panel_count: 1,
             installed: true,
             source: PluginSource::Store,
+            has_update: false,
         };
 
         let json = serde_json::to_string(&dto).unwrap();
         assert!(json.contains("pluginKey"));
         assert!(json.contains("toolCount"));
         assert!(json.contains("panelCount"));
+        assert!(json.contains("hasUpdate"));
     }
 
     #[test]
@@ -394,12 +494,14 @@ mod tests {
             panel_count: 0,
             installed: false,
             source: PluginSource::None,
+            has_update: false,
         };
 
         let json = serde_json::to_string(&dto).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed["installed"], false);
         assert_eq!(parsed["source"], "none");
+        assert_eq!(parsed["hasUpdate"], false);
     }
 
     #[test]
@@ -483,5 +585,57 @@ wasm = "plugin.wasm"
             msg.contains("not installed in the store directory"),
             "unexpected error: {msg}"
         );
+    }
+
+    #[test]
+    fn is_newer_version_detects_major_update() {
+        assert!(is_newer_version("2.0.0", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "2.0.0"));
+    }
+
+    #[test]
+    fn is_newer_version_detects_minor_update() {
+        assert!(is_newer_version("1.1.0", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "1.1.0"));
+    }
+
+    #[test]
+    fn is_newer_version_detects_patch_update() {
+        assert!(is_newer_version("1.0.1", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "1.0.1"));
+    }
+
+    #[test]
+    fn is_newer_version_returns_false_for_same_version() {
+        assert!(!is_newer_version("1.0.0", "1.0.0"));
+    }
+
+    #[test]
+    fn is_newer_version_handles_pre_release() {
+        assert!(is_newer_version("1.0.0", "1.0.0-alpha"));
+        assert!(is_newer_version("1.0.0-beta.2", "1.0.0-beta.1"));
+        assert!(!is_newer_version("1.0.0-alpha", "1.0.0"));
+    }
+
+    #[test]
+    fn is_newer_version_handles_invalid_versions() {
+        assert!(!is_newer_version("invalid", "1.0.0"));
+        assert!(!is_newer_version("1.0.0", "invalid"));
+        assert!(!is_newer_version("invalid", "invalid"));
+    }
+
+    #[test]
+    fn update_plugin_returns_error_when_not_installed() {
+        let store = make_store();
+        let result = store.update_plugin(
+            "nonexistent-plugin",
+            &Arc::new(PluginRegistry::new(
+                vec![],
+                Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
+            )),
+        );
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(msg.contains("is not installed"), "unexpected error: {msg}");
     }
 }
