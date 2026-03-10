@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 
 use crate::error::PluginError;
 use crate::events::EventBus;
@@ -78,6 +78,14 @@ impl PluginRegistry {
         let manifest = manifest::load_manifest(&manifest_path)?;
         let key = manifest.plugin.key.clone();
 
+        if self
+            .loaded_keys()
+            .iter()
+            .any(|loaded_key| loaded_key == &key)
+        {
+            return Ok(key);
+        }
+
         // Ensure the plugin row exists in the DB so permission / state queries work.
         self.ensure_plugin_row(&key, &manifest)?;
 
@@ -116,8 +124,61 @@ impl PluginRegistry {
 
         self.ensure_plugin_row(&key, &manifest)?;
         self.permissions.grant_all_required(&key, &manifest)?;
+        self.set_plugin_enabled(&key, true)?;
 
         self.load_plugin(plugin_dir)
+    }
+
+    /// Ensure a discovered plugin has a backing row in the database.
+    pub fn sync_plugin_registration(
+        &self,
+        plugin_dir: &Path,
+    ) -> Result<PluginManifest, PluginError> {
+        let manifest_path = plugin_dir.join("peekoo-plugin.toml");
+        let manifest = manifest::load_manifest(&manifest_path)?;
+        self.ensure_plugin_row(&manifest.plugin.key, &manifest)?;
+        Ok(manifest)
+    }
+
+    /// Read the persisted enabled state for a plugin.
+    pub fn is_plugin_enabled(&self, plugin_key: &str) -> Result<bool, PluginError> {
+        let conn = self
+            .db_conn
+            .lock()
+            .map_err(|e| PluginError::Internal(e.to_string()))?;
+
+        let enabled = conn
+            .query_row(
+                "SELECT enabled FROM plugins WHERE plugin_key = ?1",
+                rusqlite::params![plugin_key],
+                |row| row.get::<_, bool>(0),
+            )
+            .optional()
+            .map_err(|e| PluginError::Internal(e.to_string()))?
+            .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+
+        Ok(enabled)
+    }
+
+    /// Persist the enabled state for a plugin.
+    pub fn set_plugin_enabled(&self, plugin_key: &str, enabled: bool) -> Result<(), PluginError> {
+        let conn = self
+            .db_conn
+            .lock()
+            .map_err(|e| PluginError::Internal(e.to_string()))?;
+
+        let updated = conn
+            .execute(
+                "UPDATE plugins SET enabled = ?2 WHERE plugin_key = ?1",
+                rusqlite::params![plugin_key, enabled],
+            )
+            .map_err(|e| PluginError::Internal(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(PluginError::NotFound(plugin_key.to_string()));
+        }
+
+        Ok(())
     }
 
     /// Unload a plugin by key.
@@ -351,4 +412,90 @@ pub fn start_tick_timer(registry: Arc<PluginRegistry>) {
             registry.dispatch_event("timer:tick", &payload.to_string());
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::{Arc, Mutex};
+
+    use rusqlite::Connection;
+
+    use super::PluginRegistry;
+
+    fn test_registry(plugin_dirs: Vec<std::path::PathBuf>) -> PluginRegistry {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE plugins (
+              id TEXT PRIMARY KEY,
+              plugin_key TEXT NOT NULL,
+              version TEXT NOT NULL,
+              plugin_type TEXT NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              manifest_json TEXT NOT NULL,
+              installed_at TEXT NOT NULL
+            );
+
+            CREATE TABLE plugin_permissions (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              capability TEXT NOT NULL,
+              granted INTEGER NOT NULL
+            );
+
+            CREATE TABLE plugin_state (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              state_key TEXT NOT NULL,
+              value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("plugin schema");
+
+        PluginRegistry::new(plugin_dirs, Arc::new(Mutex::new(conn)))
+    }
+
+    fn sample_plugin_dir(name: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins")
+            .join(name)
+    }
+
+    #[test]
+    fn discovered_plugin_defaults_to_enabled_when_registered() {
+        let plugin_dir = sample_plugin_dir("health-reminders");
+        let registry = test_registry(vec![plugin_dir.clone()]);
+
+        let manifest = registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("plugin should register");
+
+        assert_eq!(manifest.plugin.key, "health-reminders");
+        assert!(
+            registry
+                .is_plugin_enabled("health-reminders")
+                .expect("enabled state should exist")
+        );
+    }
+
+    #[test]
+    fn disabling_plugin_persists_enabled_state() {
+        let plugin_dir = sample_plugin_dir("health-reminders");
+        let registry = test_registry(vec![plugin_dir.clone()]);
+
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("plugin should register");
+        registry
+            .set_plugin_enabled("health-reminders", false)
+            .expect("plugin should disable");
+
+        assert!(
+            !registry
+                .is_plugin_enabled("health-reminders")
+                .expect("enabled state should exist")
+        );
+    }
 }

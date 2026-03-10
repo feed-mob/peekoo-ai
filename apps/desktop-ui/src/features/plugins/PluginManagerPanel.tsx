@@ -9,13 +9,14 @@ import { PluginStoreCatalog } from "./PluginStoreCatalog";
 type TabKey = "installed" | "store";
 
 export function PluginManagerPanel() {
-  const { plugins, panels, isLoading, error, refresh } = usePlugins();
+  const { plugins, panels, isLoading, error, refresh, setPluginEnabled, isToggling } = usePlugins();
   const {
     catalog,
     isLoading: isStoreLoading,
     error: storeError,
     fetchCatalog,
     install,
+    update,
     uninstall,
     isInstalling,
   } = usePluginStore();
@@ -29,6 +30,17 @@ export function PluginManagerPanel() {
   const handleUninstall = async (pluginKey: string) => {
     await uninstall(pluginKey);
     await refresh();
+  };
+
+  const handleToggle = async (pluginKey: string, enabled: boolean) => {
+    await setPluginEnabled(pluginKey, enabled);
+    await refresh();
+  };
+
+  const handleUpdate = async (pluginKey: string) => {
+    await update(pluginKey);
+    await refresh();
+    await fetchCatalog();
   };
 
   return (
@@ -70,6 +82,8 @@ export function PluginManagerPanel() {
             onOpenPanel={(label) => {
               void openPanelWindow(label, panels);
             }}
+            onToggleEnabled={handleToggle}
+            isToggling={isToggling}
             onRemove={handleUninstall}
           />
         ) : (
@@ -78,6 +92,7 @@ export function PluginManagerPanel() {
             isLoading={isStoreLoading}
             error={storeError}
             onInstall={handleInstall}
+            onUpdate={handleUpdate}
             onUninstall={handleUninstall}
             isInstalling={isInstalling}
             onRefresh={fetchCatalog}
