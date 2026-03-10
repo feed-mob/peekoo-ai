@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "jujutsu": {
+      "source": "danverbraganza/jujutsu-skill",
+      "sourceType": "github",
+      "computedHash": "a8365f07bde1477f7c9d5753beb36a519a53bd9d1a2d398fc70db1af45d44a99"
+    },
     "rust-async-patterns": {
       "source": "wshobson/agents",
       "sourceType": "github",

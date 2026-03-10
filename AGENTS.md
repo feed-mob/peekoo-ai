@@ -89,7 +89,9 @@ cd apps/desktop-ui && npx tsc --noEmit
 - `core-domain` has been replaced by domain-specific crates and must not be reintroduced.
 - New application orchestration should live in domain-specific app crates (current: `peekoo-agent-app`).
 
-### Git Conventions
+### Version Control
+- If a `.jj/` directory exists, use **Jujutsu (jj)** commands instead of git — raw git commands can corrupt jj state
+- Otherwise, use standard git
 - Sign commits with GPG
 - Use conventional commits format: `type(scope): subject`
 - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
