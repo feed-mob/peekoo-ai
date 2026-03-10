@@ -1,0 +1,36 @@
+name: PR Release Label
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened, labeled, unlabeled, ready_for_review]
+
+jobs:
+  require-release-label:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release note label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const allowedLabels = new Set([
+              'feature',
+              'feat',
+              'fix',
+              'docs',
+              'test',
+              'tests',
+              'chore',
+              'ci',
+              'refactor',
+              'skip-changelog'
+            ])
+
+            const labels = context.payload.pull_request.labels.map((label) => label.name)
+            const hasReleaseLabel = labels.some((label) => allowedLabels.has(label))
+
+            if (!hasReleaseLabel) {
+              core.setFailed(
+                'Add one release-note label before merge: feature, feat, fix, docs, test, tests, chore, ci, refactor, or skip-changelog.'
+              )
+            }

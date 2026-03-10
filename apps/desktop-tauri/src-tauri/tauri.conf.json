@@ -35,8 +35,22 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns",
+      "icons/icon.png"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "windows": {
+        "installMode": "passive"
+      },
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg5MjBGREMxMkM0RjdBNkIKUldScmVrOHN3ZjBnaVN5KzVNd3RHM01VOUYzUVNlam9EOHJGU01YNnpEeWhrdnQ4ZlM3aFMvU3QK",
+      "endpoints": [
+        "https://github.com/feed-mob/peekoo-ai/releases/latest/download/latest.json"
+      ]
+    }
   }
 }
