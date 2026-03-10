@@ -27,6 +27,12 @@ struct BadgeState {
     dirty: bool,
 }
 
+impl Default for PeekBadgeService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PeekBadgeService {
     pub fn new() -> Self {
         Self {

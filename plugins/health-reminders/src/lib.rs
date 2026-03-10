@@ -48,6 +48,8 @@ struct ScheduleSetRequest {
     key: String,
     interval_secs: u64,
     repeat: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    delay_secs: Option<u64>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -231,6 +233,12 @@ fn handle_schedule_fired(key: &str) {
         _ => return,
     };
 
+    // The scheduler auto-repeats, so persist the new fire-at timestamp
+    // so that the countdown survives app restarts.
+    if let Some(schedule) = schedule_get(key) {
+        save_timer_started_at(key, schedule.interval_secs, None);
+    }
+
     notify(title, body);
     emit_event("health:reminder-due", json!({ "reminder_type": key }));
 }
@@ -242,9 +250,60 @@ fn sync_schedules() {
         return;
     }
 
-    schedule_set(WATER_KEY, u64::from(config.water_interval_min) * 60);
-    schedule_set(EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60);
-    schedule_set(STANDUP_KEY, u64::from(config.standup_interval_min) * 60);
+    let reminders = [
+        (WATER_KEY, u64::from(config.water_interval_min) * 60),
+        (EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60),
+        (STANDUP_KEY, u64::from(config.standup_interval_min) * 60),
+    ];
+
+    let now = current_epoch_secs();
+    for (key, interval_secs) in reminders {
+        // Health reminders skip missed timers rather than firing immediately
+        // on restart -- the user doesn't need a stale "drink water" alert.
+        let delay = compute_remaining_delay(key, interval_secs, now, false);
+        schedule_set_with_delay(key, interval_secs, delay);
+    }
+}
+
+/// Compute the initial delay for a timer based on persisted state.
+///
+/// Returns `None` (use full interval) when there is no stored timestamp or
+/// when the stored interval differs from the current config (interval was
+/// changed while the app was closed).  Returns `Some(remaining)` when a
+/// valid persisted fire-at epoch exists.
+///
+/// When the timer is overdue (fire_at <= now) and `fire_if_overdue` is
+/// false, the missed reminder is skipped and the delay is set to the
+/// remaining time in the *next* cycle.  For example, if a 45-min timer was
+/// overdue by 2 min, the delay is 43 min -- not the full 45 min and not 0.
+fn compute_remaining_delay(
+    key: &str,
+    interval_secs: u64,
+    now_epoch: u64,
+    fire_if_overdue: bool,
+) -> Option<u64> {
+    let (fire_at, stored_interval) = load_timer_fire_at(key)?;
+
+    // If the configured interval changed, ignore the stored timestamp and
+    // start fresh with the new interval.
+    if stored_interval != interval_secs {
+        return None;
+    }
+
+    if fire_at <= now_epoch {
+        if fire_if_overdue {
+            Some(0)
+        } else {
+            // Skip the missed reminder and compute how far into the next
+            // cycle we are so the delay accounts for elapsed time.
+            let overdue = now_epoch - fire_at;
+            let into_next_cycle = overdue % interval_secs;
+            let remaining = interval_secs - into_next_cycle;
+            Some(remaining)
+        }
+    } else {
+        Some(fire_at - now_epoch)
+    }
 }
 
 fn cancel_all_schedules() {
@@ -323,6 +382,32 @@ fn set_pomodoro_active(active: bool) {
     state_set(POMODORO_ACTIVE_KEY, json!(active));
 }
 
+/// Persist the wall-clock epoch when the timer for `key` will next fire.
+///
+/// We store `fire_at = now + effective_delay` so that on restart we can
+/// compute `remaining = fire_at - now`.
+fn save_timer_started_at(key: &str, interval_secs: u64, delay_secs: Option<u64>) {
+    let effective_delay = delay_secs.unwrap_or(interval_secs);
+    let fire_at = current_epoch_secs() + effective_delay;
+    state_set(&format!("timer_fire_at:{key}"), json!(fire_at));
+    state_set(&format!("timer_interval:{key}"), json!(interval_secs));
+}
+
+/// Load the persisted next-fire epoch for `key`.
+/// Returns `(fire_at_epoch, interval_secs)` if both values exist.
+fn load_timer_fire_at(key: &str) -> Option<(u64, u64)> {
+    let fire_at = state_get(&format!("timer_fire_at:{key}"))?.as_u64()?;
+    let interval = state_get(&format!("timer_interval:{key}"))?.as_u64()?;
+    Some((fire_at, interval))
+}
+
+fn current_epoch_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 fn config_get() -> Value {
     unsafe { peekoo_config_get(Json(ConfigGetRequest { key: None })) }
         .ok()
@@ -341,13 +426,19 @@ fn schedule_get(key: &str) -> Option<ScheduleInfo> {
 }
 
 fn schedule_set(key: &str, interval_secs: u64) {
+    schedule_set_with_delay(key, interval_secs, None);
+}
+
+fn schedule_set_with_delay(key: &str, interval_secs: u64, delay_secs: Option<u64>) {
     let _ = unsafe {
         peekoo_schedule_set(Json(ScheduleSetRequest {
             key: key.to_string(),
             interval_secs,
             repeat: true,
+            delay_secs,
         }))
     };
+    save_timer_started_at(key, interval_secs, delay_secs);
 }
 
 fn schedule_cancel(key: &str) {
