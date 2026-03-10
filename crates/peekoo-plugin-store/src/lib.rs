@@ -451,6 +451,8 @@ fn is_newer_version(remote: &str, local: &str) -> bool {
 mod tests {
     use std::sync::Mutex;
 
+    use peekoo_notifications::NotificationService;
+    use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::*;
@@ -572,11 +574,15 @@ wasm = "plugin.wasm"
     #[test]
     fn uninstall_returns_error_when_plugin_not_in_global_dir() {
         let store = make_store();
+        let scheduler = Arc::new(Scheduler::new());
+        let (notifications, _receiver) = NotificationService::new();
         let result = store.uninstall_plugin(
             "nonexistent-plugin",
             &Arc::new(PluginRegistry::new(
                 vec![],
                 Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
+                scheduler,
+                Arc::new(notifications),
             )),
         );
         assert!(result.is_err());
@@ -627,11 +633,15 @@ wasm = "plugin.wasm"
     #[test]
     fn update_plugin_returns_error_when_not_installed() {
         let store = make_store();
+        let scheduler = Arc::new(Scheduler::new());
+        let (notifications, _receiver) = NotificationService::new();
         let result = store.update_plugin(
             "nonexistent-plugin",
             &Arc::new(PluginRegistry::new(
                 vec![],
                 Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
+                scheduler,
+                Arc::new(notifications),
             )),
         );
         assert!(result.is_err());

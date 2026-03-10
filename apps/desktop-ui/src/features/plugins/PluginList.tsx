@@ -2,6 +2,7 @@ import { Loader2, LayoutPanelTop, Puzzle, RefreshCcw, Trash2, Wrench } from "luc
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { PluginPanel, PluginSummary } from "@/types/plugin";
+import { PluginConfigPanel } from "./PluginConfigPanel";
 
 interface PluginListProps {
   plugins: PluginSummary[];
@@ -156,12 +157,13 @@ export function PluginList({
                     </div>
                   </div>
                 ) : null}
-
                 {!plugin.enabled ? (
                   <p className="mt-4 text-xs text-text-muted">
                     Enable this plugin to open its panels and use its runtime capabilities.
                   </p>
                 ) : null}
+
+                <PluginConfigPanel pluginKey={plugin.pluginKey} />
               </section>
             );
           })}

@@ -1,11 +1,12 @@
 use std::path::Path;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 use crate::error::PluginError;
 
 /// Top-level plugin manifest parsed from `peekoo-plugin.toml`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PluginManifest {
     pub plugin: PluginMeta,
     pub permissions: Option<PermissionsBlock>,
@@ -13,10 +14,11 @@ pub struct PluginManifest {
     pub events: Option<EventsBlock>,
     pub data: Option<DataBlock>,
     pub ui: Option<UiBlock>,
+    pub config: Option<ConfigBlock>,
 }
 
 /// Core plugin metadata.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PluginMeta {
     /// Unique identifier (kebab-case).
     pub key: String,
@@ -31,7 +33,7 @@ pub struct PluginMeta {
     pub wasm: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PermissionsBlock {
     #[serde(default)]
     pub required: Vec<String>,
@@ -39,7 +41,7 @@ pub struct PermissionsBlock {
     pub optional: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ToolsBlock {
     pub definitions: Vec<ToolDefinition>,
 }
@@ -54,7 +56,7 @@ pub struct ToolDefinition {
     pub return_type: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct EventsBlock {
     /// Events this plugin wants to receive.
     #[serde(default)]
@@ -64,12 +66,12 @@ pub struct EventsBlock {
     pub emit: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DataBlock {
     pub providers: Vec<DataProviderDef>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct DataProviderDef {
     pub name: String,
     pub description: String,
@@ -77,9 +79,42 @@ pub struct DataProviderDef {
     pub schema: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct UiBlock {
     pub panels: Vec<UiPanelDef>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConfigBlock {
+    pub fields: Vec<ConfigFieldDef>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfigFieldType {
+    Integer,
+    Boolean,
+    String,
+    Select,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConfigOptionDef {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ConfigFieldDef {
+    pub key: String,
+    pub label: String,
+    pub description: Option<String>,
+    #[serde(rename = "type")]
+    pub field_type: ConfigFieldType,
+    pub default: Value,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub options: Option<Vec<ConfigOptionDef>>,
 }
 
 /// Declaration of a UI panel provided by the plugin.
@@ -173,6 +208,20 @@ title = "Health Reminders"
 width = 320
 height = 400
 entry = "ui/panel.html"
+
+[[config.fields]]
+key = "water_interval_min"
+label = "Water reminder interval"
+type = "integer"
+default = 45
+min = 5
+max = 180
+
+[[config.fields]]
+key = "suppress_during_pomodoro"
+label = "Suppress during pomodoro"
+type = "boolean"
+default = true
 "#;
         let m = parse_manifest(toml).unwrap();
         assert_eq!(m.plugin.key, "health-reminders");
@@ -197,6 +246,12 @@ entry = "ui/panel.html"
         let ui = m.ui.as_ref().unwrap();
         assert_eq!(ui.panels.len(), 1);
         assert_eq!(ui.panels[0].width, 320);
+
+        let config = m.config.as_ref().unwrap();
+        assert_eq!(config.fields.len(), 2);
+        assert_eq!(config.fields[0].key, "water_interval_min");
+        assert_eq!(config.fields[0].field_type, ConfigFieldType::Integer);
+        assert_eq!(config.fields[1].field_type, ConfigFieldType::Boolean);
     }
 
     #[test]

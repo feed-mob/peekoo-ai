@@ -8,7 +8,7 @@ min_peekoo_version = "0.1.0"
 wasm = "target/wasm32-unknown-unknown/release/health_reminders.wasm"
 
 [permissions]
-required = ["timer", "notifications", "state:read", "state:write"]
+required = ["scheduler", "notifications", "state:read", "state:write"]
 optional = ["agent:register-tool"]
 
 [[tools.definitions]]
@@ -30,8 +30,42 @@ parameters = '{"type":"object","properties":{"reminder_type":{"type":"string"}},
 return_type = "object"
 
 [events]
-subscribe = ["timer:tick", "pomodoro:finished"]
+subscribe = ["schedule:fired", "pomodoro:started", "pomodoro:finished", "pomodoro:paused", "pomodoro:resumed"]
 emit = ["health:reminder-due"]
+
+[[config.fields]]
+key = "water_interval_min"
+label = "Water reminder interval"
+description = "Minutes between water reminders"
+type = "integer"
+default = 45
+min = 5
+max = 180
+
+[[config.fields]]
+key = "eye_rest_interval_min"
+label = "Eye rest interval"
+description = "Minutes between eye rest reminders"
+type = "integer"
+default = 20
+min = 5
+max = 120
+
+[[config.fields]]
+key = "standup_interval_min"
+label = "Stand up interval"
+description = "Minutes between stand-up reminders"
+type = "integer"
+default = 60
+min = 10
+max = 180
+
+[[config.fields]]
+key = "suppress_during_pomodoro"
+label = "Suppress during pomodoro"
+description = "Pause health reminders while a pomodoro is active"
+type = "boolean"
+default = true
 
 [[data.providers]]
 name = "health_reminder_status"
