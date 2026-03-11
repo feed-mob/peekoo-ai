@@ -11,7 +11,7 @@ const COUNTDOWN_TICK_MS = 1000;
 
 function formatCountdown(seconds: number): string {
   if (seconds <= 0) return "now";
-  const minutes = Math.ceil(seconds / 60);
+  const minutes = Math.max(1, Math.floor(seconds / 60));
   if (minutes < 60) return `~${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
