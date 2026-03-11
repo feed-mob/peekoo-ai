@@ -298,7 +298,10 @@ mod tests {
             "timestamp": 0
         });
         let dto = json_value_to_dto(&value).expect("should produce dto");
-        assert_eq!(dto.text, "```rust\nfn main() {\n    println!(\"hi\");\n}\n```");
+        assert_eq!(
+            dto.text,
+            "```rust\nfn main() {\n    println!(\"hi\");\n}\n```"
+        );
     }
 
     #[test]

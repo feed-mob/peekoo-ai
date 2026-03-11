@@ -131,8 +131,10 @@ impl AgentApplication {
 
         {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-            if should_restore_agent(generation, self.conversation_generation.load(Ordering::SeqCst))
-            {
+            if should_restore_agent(
+                generation,
+                self.conversation_generation.load(Ordering::SeqCst),
+            ) {
                 *guard = Some(agent);
             }
         }
@@ -451,7 +453,8 @@ impl AgentApplication {
         }
 
         // Slow path: load from disk.
-        let result = conversation::load_last_session(&self.session_dir, &self.workspace_dir).await?;
+        let result =
+            conversation::load_last_session(&self.session_dir, &self.workspace_dir).await?;
 
         // Stash the path so the next prompt resumes this session.
         if let Some(ref dto) = result {
@@ -601,7 +604,6 @@ fn resolve_workspace_dir() -> PathBuf {
 fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {
     captured_generation == current_generation
 }
-
 
 #[allow(clippy::type_complexity)]
 fn create_plugin_registry() -> Result<
