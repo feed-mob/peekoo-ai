@@ -16,8 +16,11 @@
     "core:event:default",
     "core:event:allow-emit-to",
     "core:event:allow-listen",
+    "dialog:default",
     "shell:allow-open",
     "notification:default",
-    "log:default"
+    "log:default",
+    "process:default",
+    "updater:default"
   ]
 }

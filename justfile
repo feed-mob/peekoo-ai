@@ -6,7 +6,7 @@ dev:
 
 # Build Tauri desktop app for production
 build:
-    cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build
+    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build
 
 # Build AppImage with linuxdeploy strip workaround
 build-appimage:
@@ -30,6 +30,15 @@ check:
 # Run all tests
 test:
     cargo test
+    python -m unittest tests.test_release
+
+# Bump release versions without creating git refs
+release-bump version:
+    python ./scripts/release.py {{version}}
+
+# Create and push a signed release commit + tag
+release version:
+    python ./scripts/release.py {{version}} --commit --push
 
 # Format all code
 fmt:

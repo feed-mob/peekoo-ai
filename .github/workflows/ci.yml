@@ -21,8 +21,8 @@ jobs:
             librsvg2-dev \
             libssl-dev
 
-      - name: Install stable Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -35,6 +35,9 @@ jobs:
 
       - name: Test workspace
         run: cargo test --workspace
+
+      - name: Test release tooling
+        run: python -m unittest tests.test_release
 
   desktop-ui:
     runs-on: ubuntu-latest
