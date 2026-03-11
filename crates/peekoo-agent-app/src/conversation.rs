@@ -153,12 +153,11 @@ fn extract_text_from_blocks(content: &serde_json::Value) -> Option<String> {
     let blocks = content.as_array()?;
     let mut parts = Vec::new();
     for block in blocks {
-        if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-            if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                if !text.is_empty() {
-                    parts.push(text.to_string());
-                }
-            }
+        if block.get("type").and_then(|t| t.as_str()) == Some("text")
+            && let Some(text) = block.get("text").and_then(|t| t.as_str())
+            && !text.is_empty()
+        {
+            parts.push(text.to_string());
         }
     }
     if parts.is_empty() {

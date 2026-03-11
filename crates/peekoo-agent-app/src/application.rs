@@ -457,12 +457,11 @@ impl AgentApplication {
             conversation::load_last_session(&self.session_dir, &self.workspace_dir).await?;
 
         // Stash the path so the next prompt resumes this session.
-        if let Some(ref dto) = result {
-            if !dto.session_path.is_empty() {
-                if let Ok(mut guard) = self.resume_session_path.lock() {
-                    *guard = Some(PathBuf::from(&dto.session_path));
-                }
-            }
+        if let Some(ref dto) = result
+            && !dto.session_path.is_empty()
+            && let Ok(mut guard) = self.resume_session_path.lock()
+        {
+            *guard = Some(PathBuf::from(&dto.session_path));
         }
 
         Ok(result)
@@ -547,10 +546,10 @@ impl AgentApplication {
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let mut config = AgentServiceConfig::default();
-        config.working_directory = self.workspace_dir.clone();
-
-        Ok(config)
+        Ok(AgentServiceConfig {
+            working_directory: self.workspace_dir.clone(),
+            ..Default::default()
+        })
     }
 
     fn with_plugin_prompt(&self, mut config: AgentServiceConfig) -> AgentServiceConfig {
