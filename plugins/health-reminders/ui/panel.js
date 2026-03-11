@@ -28,7 +28,7 @@ function formatSeconds(seconds) {
     return "now";
   }
 
-  const minutes = Math.ceil(seconds / 60);
+  const minutes = Math.max(1, Math.floor(seconds / 60));
   if (minutes <= 1) {
     return "~1 min";
   }
