@@ -1,7 +1,7 @@
 [plugin]
 key = "health-reminders"
 name = "Health Reminders"
-version = "0.1.0"
+version = "0.1.1"
 author = "Peekoo Team"
 description = "Water, eye-rest, and stand-up reminders for the desktop pet."
 min_peekoo_version = "0.1.0"

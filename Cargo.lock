@@ -5781,6 +5781,7 @@ dependencies = [
  "asupersync",
  "peekoo-paths",
  "pi_agent_rust",
+ "serde_json",
 ]
 
 [[package]]
@@ -5798,6 +5799,7 @@ dependencies = [
  "peekoo-productivity-domain",
  "peekoo-scheduler",
  "peekoo-security",
+ "pi_agent_rust",
  "rusqlite",
  "serde",
  "serde_json",
