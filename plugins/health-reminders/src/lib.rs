@@ -496,7 +496,7 @@ fn format_countdown(seconds: u64) -> String {
     if seconds == 0 {
         return "now".to_string();
     }
-    let minutes = (seconds + 59) / 60; // ceil
+    let minutes = (seconds / 60).max(1); // floor, but at least 1
     if minutes < 60 {
         format!("~{minutes} min")
     } else {
