@@ -382,14 +382,27 @@ impl PluginRegistry {
         }
 
         let registry = Arc::clone(self);
-        let handle = self.scheduler.start(move |owner, key| {
-            let payload = serde_json::json!({ "key": key });
-            if let Err(err) =
-                registry.dispatch_event_to_plugin(&owner, "schedule:fired", &payload.to_string())
+        let handle = self.scheduler.start_with_wake_handler(
+            move |owner, key| {
+                let payload = serde_json::json!({ "key": key });
+                if let Err(err) = registry.dispatch_event_to_plugin(
+                    &owner,
+                    "schedule:fired",
+                    &payload.to_string(),
+                ) {
+                    tracing::warn!(plugin = owner.as_str(), "Scheduler dispatch error: {err}");
+                }
+            },
             {
-                tracing::warn!(plugin = owner.as_str(), "Scheduler dispatch error: {err}");
-            }
-        });
+                let registry = Arc::clone(self);
+                move |owner| {
+                    if let Err(err) = registry.dispatch_event_to_plugin(&owner, "system:wake", "{}")
+                    {
+                        tracing::warn!(plugin = owner.as_str(), "Wake dispatch error: {err}");
+                    }
+                }
+            },
+        );
 
         if let Ok(mut guard) = self.scheduler_handle.lock() {
             *guard = Some(handle);

@@ -36,7 +36,6 @@ function createElement(tagName = "div") {
 
 function createStatusPayload() {
   return {
-    pomodoro_active: false,
     reminders: [
       {
         reminder_type: "water",

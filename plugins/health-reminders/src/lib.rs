@@ -7,7 +7,6 @@ use serde_json::{json, Value};
 const WATER_KEY: &str = "water";
 const EYE_REST_KEY: &str = "eye_rest";
 const STANDUP_KEY: &str = "standup";
-const POMODORO_ACTIVE_KEY: &str = "pomodoro_active";
 
 #[derive(Serialize, Deserialize)]
 struct StateGetRequest {
@@ -115,7 +114,6 @@ struct ReminderConfig {
     water_interval_min: u32,
     eye_rest_interval_min: u32,
     standup_interval_min: u32,
-    suppress_during_pomodoro: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -129,7 +127,6 @@ struct ReminderState {
 #[derive(Serialize, Deserialize)]
 struct HealthStatus {
     config: ReminderConfig,
-    pomodoro_active: bool,
     reminders: Vec<ReminderState>,
 }
 
@@ -158,14 +155,7 @@ pub fn on_event(input: String) -> FnResult<String> {
                 handle_schedule_fired(key);
             }
         }
-        "pomodoro:started" | "pomodoro:resumed" => {
-            set_pomodoro_active(true);
-            if load_config().suppress_during_pomodoro {
-                cancel_all_schedules();
-            }
-        }
-        "pomodoro:finished" | "pomodoro:paused" => {
-            set_pomodoro_active(false);
+        "system:wake" => {
             sync_schedules();
         }
         _ => {}
@@ -194,10 +184,6 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
     if let Some(value) = patch["standup_interval_min"].as_u64() {
         config.standup_interval_min = (value as u32).clamp(10, 180);
     }
-    if let Some(value) = patch["suppress_during_pomodoro"].as_bool() {
-        config.suppress_during_pomodoro = value;
-    }
-
     save_config(&config);
     sync_schedules();
     push_peek_badges();
@@ -218,9 +204,6 @@ pub fn data_health_reminder_status(_input: String) -> FnResult<String> {
 }
 
 fn ensure_default_state() {
-    if state_get(POMODORO_ACTIVE_KEY).is_none() {
-        state_set(POMODORO_ACTIVE_KEY, json!(false));
-    }
     save_config(&load_config());
 }
 
@@ -246,9 +229,6 @@ fn handle_schedule_fired(key: &str) {
 fn sync_schedules() {
     cancel_all_schedules();
     let config = load_config();
-    if load_pomodoro_active() && config.suppress_during_pomodoro {
-        return;
-    }
 
     let reminders = [
         (WATER_KEY, u64::from(config.water_interval_min) * 60),
@@ -326,11 +306,9 @@ fn reset_schedule(reminder_type: &str) {
 
 fn load_status() -> HealthStatus {
     let config = load_config();
-    let pomodoro_active = load_pomodoro_active();
 
     HealthStatus {
         config: config.clone(),
-        pomodoro_active,
         reminders: vec![
             load_reminder_state(WATER_KEY, config.water_interval_min),
             load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min),
@@ -358,7 +336,6 @@ fn load_config() -> ReminderConfig {
         water_interval_min: config["water_interval_min"].as_u64().unwrap_or(45) as u32,
         eye_rest_interval_min: config["eye_rest_interval_min"].as_u64().unwrap_or(20) as u32,
         standup_interval_min: config["standup_interval_min"].as_u64().unwrap_or(60) as u32,
-        suppress_during_pomodoro: config["suppress_during_pomodoro"].as_bool().unwrap_or(true),
     }
 }
 
@@ -366,20 +343,6 @@ fn save_config(config: &ReminderConfig) {
     state_set("water_interval_min", json!(config.water_interval_min));
     state_set("eye_rest_interval_min", json!(config.eye_rest_interval_min));
     state_set("standup_interval_min", json!(config.standup_interval_min));
-    state_set(
-        "suppress_during_pomodoro",
-        json!(config.suppress_during_pomodoro),
-    );
-}
-
-fn load_pomodoro_active() -> bool {
-    state_get(POMODORO_ACTIVE_KEY)
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
-}
-
-fn set_pomodoro_active(active: bool) {
-    state_set(POMODORO_ACTIVE_KEY, json!(active));
 }
 
 /// Persist the wall-clock epoch when the timer for `key` will next fire.
