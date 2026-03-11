@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Send, Settings2 } from "lucide-react";
+import { MessageSquarePlus, Send, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,6 +16,7 @@ import type {
   AgentEventToolEnd,
   AgentEventMessageUpdate,
   AssistantMessageEvent,
+  LastSessionDto,
 } from "@/types/chat";
 
 export function ChatPanel() {
@@ -39,6 +40,35 @@ export function ChatPanel() {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadLastSession = async () => {
+      try {
+        const session = await invoke<LastSessionDto | null>("chat_get_last_session");
+        if (cancelled || !session?.messages?.length) {
+          return;
+        }
+
+        setMessages(
+          session.messages.map((message, index) => ({
+            id: `history-${index}`,
+            role: message.role === "user" ? "user" : "pet",
+            text: message.text,
+          }))
+        );
+      } catch {
+        // Keep the chat usable even if history loading fails.
+      }
+    };
+
+    void loadLastSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   /** Build the streaming message text from accumulated state */
   const buildStreamingText = useCallback(() => {
@@ -185,10 +215,39 @@ export function ChatPanel() {
     }
   };
 
+  const handleNewChat = async () => {
+    if (isTyping) {
+      return;
+    }
+
+    try {
+      await invoke("chat_new_session");
+      setMessages([]);
+      setInput("");
+      setIsTyping(false);
+      streamingTextRef.current = "";
+      streamingIdRef.current = null;
+      toolStatusRef.current = new Map();
+    } catch {
+      // Keep the current chat visible if the backend fails to rotate sessions.
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       <ScrollArea className="flex-1 mb-4">
-        <div className="mb-3 flex justify-end">
+        <div className="mb-3 flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={isTyping}
+            onClick={() => void handleNewChat()}
+            className="text-text-secondary hover:text-text-primary"
+          >
+            <MessageSquarePlus size={14} />
+            New Chat
+          </Button>
           <Button
             type="button"
             variant="ghost"

@@ -156,7 +156,9 @@ impl AgentService {
             },
             working_directory: Some(config.working_directory.clone()),
             max_tool_iterations: config.max_tool_iterations,
-            no_session: true,
+            no_session: config.no_session,
+            session_dir: config.session_dir.clone(),
+            session_path: config.session_path.clone(),
             enabled_tools: Some(
                 pi::sdk::BUILTIN_TOOL_NAMES
                     .iter()
@@ -224,6 +226,19 @@ impl AgentService {
     /// Remove a previously registered event listener.
     pub fn unsubscribe(&self, id: SubscriptionId) -> bool {
         self.handle.unsubscribe(id)
+    }
+
+    /// Return the current conversation messages as serialised JSON values.
+    ///
+    /// Each element is a `serde_json::Value` representing a [`pi::model::Message`]
+    /// (tagged by `role`). Returns an empty `Vec` when there is no history.
+    pub fn messages_json(&self) -> Vec<serde_json::Value> {
+        let session = self.handle.session();
+        let messages = session.agent.messages();
+        messages
+            .iter()
+            .filter_map(|m| serde_json::to_value(m).ok())
+            .collect()
     }
 
     /// Access the underlying pi session handle for advanced operations.
