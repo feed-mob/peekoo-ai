@@ -32,7 +32,7 @@ All events involved in the peek badge system, from plugin to sprite display.
 
 **When called by health-reminders plugin:**
 - `plugin_init()` -- initial badge state after schedules are set up
-- `on_event()` -- after handling `schedule:fired`, `pomodoro:started/finished/paused/resumed`
+- `on_event()` -- after handling `schedule:fired` and `system:wake`
 - `tool_health_configure()` -- after config changes modify intervals
 - `tool_health_dismiss()` -- after a timer is reset
 
@@ -81,11 +81,11 @@ These events interact with or affect peek badge visibility:
 **Payload:** `{ "key": "water" | "eye_rest" | "standup" }`  
 **Effect on badges:** The plugin's `on_event` handler calls `push_peek_badges()` after handling the schedule, which updates badge countdown values.
 
-### `pomodoro:started` / `pomodoro:paused` / `pomodoro:resumed` / `pomodoro:finished`
+### `system:wake`
 
-**Direction:** Tauri command -> PluginRegistry -> Plugin `on_event()`  
+**Direction:** Scheduler -> PluginRegistry -> Plugin `on_event()`  
 **Payload:** `{}`  
-**Effect on badges:** The plugin pauses/restores schedules and calls `push_peek_badges()`, which updates badge items (active reminders change during pomodoro).
+**Effect on badges:** The plugin re-syncs schedule delays from persisted wall-clock timestamps and calls `push_peek_badges()` so countdowns recover after system sleep.
 
 ### `plugins-changed`
 
