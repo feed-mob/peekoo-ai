@@ -1,9 +1,11 @@
 pub mod application;
+pub mod conversation;
 pub mod plugin;
 pub mod productivity;
 pub mod settings;
 
 pub use application::AgentApplication;
+pub use conversation::{LastSessionDto, SessionMessageDto};
 pub use peekoo_notifications::PeekBadgeItem;
 pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
 pub use plugin::{PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto};

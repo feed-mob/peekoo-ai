@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use peekoo_agent::AgentEvent;
@@ -11,6 +13,7 @@ use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
+use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
@@ -36,6 +39,14 @@ pub struct AgentApplication {
     peek_badges: Arc<PeekBadgeService>,
     shutdown_token: CancellationToken,
     agent_config_version: Mutex<Option<i64>>,
+    /// Directory where pi session files are stored.
+    session_dir: PathBuf,
+    /// Workspace root used to scope session restore and resumption.
+    workspace_dir: PathBuf,
+    /// Path to the last session file, used to resume context on the next prompt.
+    resume_session_path: Mutex<Option<PathBuf>>,
+    /// Monotonic generation that invalidates in-flight agents after `new_session`.
+    conversation_generation: AtomicU64,
 }
 
 impl AgentApplication {
@@ -46,6 +57,13 @@ impl AgentApplication {
             create_plugin_registry()?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
+
+        let session_dir = peekoo_paths::peekoo_global_data_dir()?.join("sessions");
+        if !session_dir.exists() {
+            std::fs::create_dir_all(&session_dir)
+                .map_err(|e| format!("Create session dir error: {e}"))?;
+        }
+        let workspace_dir = resolve_workspace_dir();
 
         Ok(Self {
             agent: Mutex::new(None),
@@ -59,6 +77,10 @@ impl AgentApplication {
             peek_badges,
             shutdown_token,
             agent_config_version: Mutex::new(None),
+            session_dir,
+            workspace_dir,
+            resume_session_path: Mutex::new(None),
+            conversation_generation: AtomicU64::new(0),
         })
     }
 
@@ -70,6 +92,7 @@ impl AgentApplication {
     where
         F: Fn(AgentEvent) + Send + Sync + 'static,
     {
+        let generation = self.conversation_generation.load(Ordering::SeqCst);
         let mut agent = {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
             let mut version_guard = self
@@ -108,7 +131,12 @@ impl AgentApplication {
 
         {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-            *guard = Some(agent);
+            if should_restore_agent(
+                generation,
+                self.conversation_generation.load(Ordering::SeqCst),
+            ) {
+                *guard = Some(agent);
+            }
         }
 
         result.map_err(|e| format!("Agent error: {e}"))
@@ -398,6 +426,72 @@ impl AgentApplication {
         self.notifications.is_dnd()
     }
 
+    /// Return the most recent session's messages for the chat panel.
+    ///
+    /// If the agent is already alive (i.e. a prompt has been sent this
+    /// session), messages are taken from the in-memory agent. Otherwise the
+    /// most recent session file on disk is read.
+    ///
+    /// A side-effect: when messages are loaded from disk, the session file
+    /// path is stored so that [`create_agent_service`] can resume it on the
+    /// next prompt (full context restore).
+    pub async fn get_last_session(&self) -> Result<Option<LastSessionDto>, String> {
+        // Fast path: agent is alive — use its in-memory messages.
+        {
+            let guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+            if let Some(agent) = guard.as_ref() {
+                let json_msgs = agent.messages_json();
+                let dtos = json_messages_to_dtos(&json_msgs);
+                if dtos.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(LastSessionDto {
+                    session_path: String::new(),
+                    messages: dtos,
+                }));
+            }
+        }
+
+        // Slow path: load from disk.
+        let result =
+            conversation::load_last_session(&self.session_dir, &self.workspace_dir).await?;
+
+        // Stash the path so the next prompt resumes this session.
+        if let Some(ref dto) = result
+            && !dto.session_path.is_empty()
+            && let Ok(mut guard) = self.resume_session_path.lock()
+        {
+            *guard = Some(PathBuf::from(&dto.session_path));
+        }
+
+        Ok(result)
+    }
+
+    /// Start a fresh conversation. Drops the current agent so the next prompt
+    /// creates a brand-new session file.
+    pub fn new_session(&self) -> Result<(), String> {
+        self.conversation_generation.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+            *guard = None;
+        }
+        {
+            let mut version_guard = self
+                .agent_config_version
+                .lock()
+                .map_err(|e| format!("Version lock error: {e}"))?;
+            *version_guard = None;
+        }
+        {
+            let mut resume_guard = self
+                .resume_session_path
+                .lock()
+                .map_err(|e| format!("Resume path lock error: {e}"))?;
+            *resume_guard = None;
+        }
+        Ok(())
+    }
+
     pub fn shutdown_token(&self) -> CancellationToken {
         self.shutdown_token.clone()
     }
@@ -425,7 +519,17 @@ impl AgentApplication {
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
         let (config, settings_version) = self.settings.to_agent_config(config)?;
-        let config = self.with_plugin_prompt(config);
+        let mut config = self.with_plugin_prompt(config);
+
+        // Enable session persistence.
+        config.no_session = false;
+        config.session_dir = Some(self.session_dir.clone());
+
+        // If get_last_session stashed a path, resume that session for full
+        // context restore. The path is consumed so it is only used once.
+        if let Ok(mut guard) = self.resume_session_path.lock() {
+            config.session_path = guard.take();
+        }
 
         let reactor = asupersync::runtime::reactor::create_reactor()
             .map_err(|e| format!("Reactor error: {e}"))?;
@@ -442,18 +546,10 @@ impl AgentApplication {
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let mut config = AgentServiceConfig::default();
-
-        let mut current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        while current.parent().is_some() {
-            if current.join(".peekoo").is_dir() {
-                config.working_directory = current.clone();
-                break;
-            }
-            current = current.parent().unwrap().to_path_buf();
-        }
-
-        Ok(config)
+        Ok(AgentServiceConfig {
+            working_directory: self.workspace_dir.clone(),
+            ..Default::default()
+        })
     }
 
     fn with_plugin_prompt(&self, mut config: AgentServiceConfig) -> AgentServiceConfig {
@@ -486,6 +582,26 @@ impl AgentApplication {
 
         config
     }
+}
+
+fn resolve_workspace_dir() -> PathBuf {
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let mut current = current_dir.clone();
+
+    loop {
+        if current.join(".peekoo").is_dir() {
+            return current;
+        }
+
+        let Some(parent) = current.parent() else {
+            return current_dir;
+        };
+        current = parent.to_path_buf();
+    }
+}
+
+fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {
+    captured_generation == current_generation
 }
 
 #[allow(clippy::type_complexity)]
@@ -575,7 +691,7 @@ mod tests {
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
-    use super::install_discovered_plugins;
+    use super::{install_discovered_plugins, should_restore_agent};
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -642,5 +758,11 @@ mod tests {
 
         assert!(registry.loaded_keys().is_empty());
         assert!(registry.all_ui_panels().is_empty());
+    }
+
+    #[test]
+    fn agent_restore_is_blocked_after_generation_changes() {
+        assert!(should_restore_agent(4, 4));
+        assert!(!should_restore_agent(4, 5));
     }
 }
