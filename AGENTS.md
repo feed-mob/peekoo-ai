@@ -95,7 +95,7 @@ cd apps/desktop-ui && npx tsc --noEmit
 - Sign commits with GPG
 - Use conventional commits format: `type(scope): subject`
 - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
-- Keep commits atomic and focused
+- Keep commits atomic and focused; prefer separate commits for distinct logical changes instead of folding unrelated follow-up tweaks into the same commit
 
 ## Common Tasks
 
