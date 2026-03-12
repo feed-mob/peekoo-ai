@@ -3,14 +3,17 @@
 //! Provides a simplified API for creating sessions, sending prompts,
 //! and switching models at runtime.
 
+use std::path::Path;
+use std::sync::Arc;
+
 use pi::error::Result;
 use pi::sdk::{
     AgentEvent, AgentSessionHandle, AssistantMessage, ContentBlock, SessionOptions, SubscriptionId,
     create_agent_session,
 };
-use std::path::Path;
 
 use crate::config::AgentServiceConfig;
+use crate::plugin_tool::{PluginToolAdapter, PluginToolProvider};
 
 /// High-level agent service that wraps pi's session handle.
 ///
@@ -243,6 +246,32 @@ impl AgentService {
             .iter()
             .filter_map(|m| serde_json::to_value(m).ok())
             .collect()
+    }
+
+    /// Register plugin-provided tools with the agent's tool registry.
+    ///
+    /// Each plugin tool is wrapped in a [`PluginToolAdapter`] that implements
+    /// pi's [`Tool`] trait. Tool names are namespaced as
+    /// `plugin__{plugin_key}__{tool_name}` to avoid collisions with built-in
+    /// tools.
+    ///
+    /// This should be called once after session creation, before prompting.
+    pub fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
+        let tools = PluginToolAdapter::from_provider(provider);
+        if !tools.is_empty() {
+            self.handle.session_mut().agent.extend_tools(tools);
+        }
+    }
+
+    /// Return the path to the persisted session file, if any.
+    ///
+    /// Uses `try_lock` on the async session mutex so this can be called
+    /// synchronously from plugin lifecycle methods. Returns `None` when the
+    /// lock is contended (shouldn't happen between prompts) or when the
+    /// session has no persisted path.
+    pub fn session_path(&self) -> Option<std::path::PathBuf> {
+        let session = self.handle.session().session.try_lock().ok()?;
+        session.path.clone()
     }
 
     /// Access the underlying pi session handle for advanced operations.

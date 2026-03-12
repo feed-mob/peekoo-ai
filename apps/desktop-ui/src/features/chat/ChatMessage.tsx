@@ -36,7 +36,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
         )}
       </div>
       <div
-        className={`max-w-[75%] px-4 py-2.5 text-sm shadow-sm ${isUser
+        className={`max-w-[85%] px-4 py-2.5 text-sm shadow-sm overflow-x-auto ${isUser
           ? "bg-glow-blue/15 border border-glow-blue/20 text-text-primary rounded-2xl rounded-tr-sm"
           : isError
             ? "bg-danger/10 border border-danger/20 text-danger rounded-2xl rounded-tl-sm"

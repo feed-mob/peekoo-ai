@@ -63,7 +63,7 @@ export async function openPanelWindow(
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: false,
+    resizable: true,
   });
 }
 

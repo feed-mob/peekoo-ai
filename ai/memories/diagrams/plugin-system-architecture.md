@@ -4,7 +4,9 @@ This document describes the WASM-based plugin system for the Peekoo AI desktop p
 
 **Related Code:**
 - Plugin Host: `crates/peekoo-plugin-host/`
-- Application Layer: `crates/peekoo-agent-app/src/plugin.rs`
+- Plugin Tool Trait & Adapter: `crates/peekoo-agent/src/plugin_tool.rs`
+- Plugin Tool Provider Impl: `crates/peekoo-agent-app/src/plugin_tool_impl.rs`
+- Application Layer: `crates/peekoo-agent-app/src/application.rs`
 - UI Bridge: `apps/desktop-ui/src/lib/plugin-panel-bridge.ts`
 - Sprite Bubble: `apps/desktop-ui/src/components/sprite/SpriteBubble.tsx`
 - Example Plugin: `plugins/health-reminders/`
@@ -25,12 +27,19 @@ graph TB
         TauriCmds["Tauri Commands<br/>plugins_list<br/>plugin_call_tool<br/>plugin_panel_html<br/>..."]
     end
     
-    subgraph "Application Layer"
+    subgraph "Agent Layer (peekoo-agent)"
+        AgentService["AgentService<br/>LLM Session"]
+        PluginToolAdapter["PluginToolAdapter<br/>impl pi::Tool"]
+        ToolProvider["PluginToolProvider<br/>(trait)"]
+    end
+    
+    subgraph "Application Layer (peekoo-agent-app)"
         AgentApp["AgentApplication<br/>Orchestrator"]
-        PluginTools["PluginToolBridge<br/>AI Agent Adapter"]
+        ProviderImpl["PluginToolProviderImpl<br/>impl PluginToolProvider"]
     end
     
     subgraph "Plugin Host (peekoo-plugin-host)"
+        Bridge["PluginToolBridge<br/>Tool Routing"]
         Registry["PluginRegistry<br/>Discovery & Lifecycle"]
         EventBus["EventBus<br/>Deferred Event Queue"]
         StateStore["PluginStateStore<br/>KV Persistence"]
@@ -55,7 +64,12 @@ graph TB
     SpriteBubble -.->|"sprite:bubble event"| TauriCmds
     
     TauriCmds --> AgentApp
-    AgentApp --> PluginTools
+    AgentApp --> AgentService
+    AgentService -->|"LLM tool call"| PluginToolAdapter
+    PluginToolAdapter --> ToolProvider
+    ToolProvider -.->|"implemented by"| ProviderImpl
+    ProviderImpl --> Bridge
+    Bridge --> Registry
     AgentApp --> Registry
     
     Registry --> EventBus
@@ -292,6 +306,91 @@ The bridge injects a script that:
 
 ---
 
+## Diagram 5: Agent Native Tool Call Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Agent as AgentService<br/>(pi agent loop)
+    participant LLM as LLM Provider
+    participant Adapter as PluginToolAdapter<br/>(impl pi::Tool)
+    participant Provider as PluginToolProviderImpl
+    participant Bridge as PluginToolBridge
+    participant Registry as PluginRegistry
+    participant WASM as WASM Plugin
+    
+    User->>Agent: prompt("check my health status")
+    
+    rect rgb(230, 245, 255)
+        Note over Agent,LLM: Agent Loop - Turn 1
+        Agent->>LLM: messages + tool_definitions<br/>(includes plugin__health-reminders__health_get_status)
+        LLM-->>Agent: ToolCall{name: "plugin__health-reminders__health_get_status", args: {}}
+    end
+    
+    rect rgb(240, 255, 240)
+        Note over Agent,WASM: Tool Execution (spawn_blocking)
+        Agent->>Adapter: execute(tool_call_id, input, on_update)
+        Adapter->>Adapter: serialize input to JSON
+        Adapter->>Provider: call_tool("health_get_status", "{}")
+        Provider->>Bridge: call_tool("health_get_status", "{}")
+        Bridge->>Registry: call_tool("health-reminders", "health_get_status", "{}")
+        Registry->>WASM: tool_health_get_status("{}")
+        WASM-->>Registry: '{"active":true,"remaining_secs":1200}'
+        Registry-->>Bridge: Ok(json_string)
+        Bridge-->>Provider: Ok(json_string)
+        Provider-->>Adapter: Ok(json_string)
+        Adapter-->>Agent: ToolOutput{content: [Text(json)], is_error: false}
+    end
+    
+    rect rgb(255, 245, 230)
+        Note over Agent,LLM: Agent Loop - Turn 2
+        Agent->>LLM: messages + tool_result
+        LLM-->>Agent: "Your health reminder is active with 20 minutes remaining."
+    end
+    
+    Agent-->>User: "Your health reminder is active with 20 minutes remaining."
+```
+
+---
+
+## Diagram 6: Dependency Inversion for Plugin Tools
+
+```mermaid
+graph TB
+    subgraph "peekoo-agent (lightweight)"
+        trait["PluginToolProvider<br/>(trait)"]
+        spec["PluginToolSpec"]
+        adapter["PluginToolAdapter<br/>impl pi::Tool"]
+        service["AgentService<br/>::extend_plugin_tools()"]
+        
+        adapter -->|"uses"| trait
+        adapter -->|"wraps"| spec
+        service -->|"creates"| adapter
+    end
+    
+    subgraph "peekoo-agent-app (orchestration)"
+        impl["PluginToolProviderImpl<br/>impl PluginToolProvider"]
+        app["AgentApplication<br/>::create_agent_service()"]
+        
+        impl -.->|"implements"| trait
+        app -->|"passes to"| service
+    end
+    
+    subgraph "peekoo-plugin-host (WASM runtime)"
+        bridge["PluginToolBridge"]
+        registry["PluginRegistry"]
+        
+        impl -->|"delegates to"| bridge
+        bridge -->|"routes to"| registry
+    end
+    
+    style trait fill:#e1f5fe
+    style impl fill:#fff3e0
+    style bridge fill:#f3e5f5
+```
+
+---
+
 ## Key Design Decisions
 
 ### 1. Why Extism WASM Runtime?
@@ -316,10 +415,13 @@ Plugins emit events via `peekoo_emit_event` during WASM execution while the regi
 
 ## Integration Points
 
-### Agent Integration
-- `PluginToolBridge` collects tool definitions from all loaded plugins
-- Tool specs are injected into the agent's system prompt
-- Agent can call plugin tools by name; bridge routes to correct plugin
+### Agent Integration (Native Tool Calling)
+- Plugin tools are registered natively in the pi SDK's `ToolRegistry` via `PluginToolAdapter` (implements `pi::tools::Tool`)
+- The LLM sees plugin tools via standard JSON Schema tool definitions (not system prompt injection)
+- During the agent loop, tool calls are routed: `LLM -> PluginToolAdapter -> PluginToolProvider -> PluginToolBridge -> PluginRegistry -> WASM`
+- Tool names are namespaced: `plugin__{plugin_key}__{tool_name}` to avoid collisions with built-in tools
+- WASM execution runs on `tokio::task::spawn_blocking` to avoid stalling the async agent loop
+- Frontend can still call plugin tools directly via Tauri commands (`plugin_call_tool`) independently of the agent
 
 ### Event System
 Plugins subscribe to events in `peekoo-plugin.toml`:

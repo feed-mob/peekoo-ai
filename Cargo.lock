@@ -5779,9 +5779,11 @@ name = "peekoo-agent"
 version = "0.1.0"
 dependencies = [
  "asupersync",
+ "async-trait",
  "peekoo-paths",
  "pi_agent_rust",
  "serde_json",
+ "tokio",
 ]
 
 [[package]]
