@@ -9,6 +9,7 @@
 //! - Switching providers/models at runtime
 
 pub mod config;
+pub mod plugin_tool;
 pub mod service;
 
 // Re-export key types for convenience.
@@ -16,3 +17,4 @@ pub use pi::error::{Error, Result as PiResult};
 pub use pi::sdk::{AgentEvent, AssistantMessage, ContentBlock, SubscriptionId};
 pub use pi::session::Session;
 pub use pi::session_index::{SessionIndex, SessionMeta};
+pub use plugin_tool::{PluginToolAdapter, PluginToolProvider, PluginToolSpec};

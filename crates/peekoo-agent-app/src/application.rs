@@ -2,22 +2,25 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use rusqlite::Connection;
+use tokio::sync::mpsc::UnboundedReceiver;
+use tokio_util::sync::CancellationToken;
+
+use peekoo_agent::PluginToolProvider;
 use peekoo_agent::AgentEvent;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
 use peekoo_paths::ensure_windows_pi_agent_env;
-use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
+use peekoo_plugin_host::PluginRegistry;
 use peekoo_scheduler::Scheduler;
-use rusqlite::Connection;
-use tokio::sync::mpsc::UnboundedReceiver;
-use tokio_util::sync::CancellationToken;
 
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
 };
+use crate::plugin_tool_impl::PluginToolProviderImpl;
 use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
@@ -34,7 +37,7 @@ pub struct AgentApplication {
     settings: SettingsService,
     productivity: ProductivityService,
     plugin_registry: Arc<PluginRegistry>,
-    plugin_tools: PluginToolBridge,
+    plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
@@ -71,7 +74,7 @@ impl AgentApplication {
             agent: Mutex::new(None),
             settings,
             productivity: ProductivityService::new(),
-            plugin_tools: PluginToolBridge::new(Arc::clone(&plugin_registry)),
+            plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
             notifications,
@@ -300,9 +303,7 @@ impl AgentApplication {
     }
 
     pub fn call_plugin_tool(&self, tool_name: &str, args_json: &str) -> Result<String, String> {
-        self.plugin_tools
-            .call_tool(tool_name, args_json)
-            .map_err(|e| e.to_string())
+        self.plugin_tools.call_plugin_tool(tool_name, args_json)
     }
 
     pub fn drain_plugin_notifications(&self) -> Vec<PluginNotificationDto> {
@@ -516,11 +517,10 @@ impl AgentApplication {
             .uninstall_plugin(plugin_key, &self.plugin_registry)
     }
 
-    /// Build a fresh `AgentService` from current settings + plugin prompt.
+    /// Build a fresh `AgentService` from current settings + plugin tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
-        let (config, settings_version) = self.settings.to_agent_config(config)?;
-        let mut config = self.with_plugin_prompt(config);
+        let (mut config, settings_version) = self.settings.to_agent_config(config)?;
 
         // Enable session persistence.
         config.no_session = false;
@@ -539,9 +539,14 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let service = runtime
+        let mut service = runtime
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
+
+        // Register plugin tools natively in the agent's tool registry so the
+        // LLM can invoke them during the agent loop (tool call -> execute ->
+        // result -> next turn).
+        service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
 
         Ok((service, settings_version))
     }
@@ -561,37 +566,6 @@ impl AgentApplication {
             auto_discover: false,
             ..Default::default()
         })
-    }
-
-    fn with_plugin_prompt(&self, mut config: AgentServiceConfig) -> AgentServiceConfig {
-        let specs = self.plugin_tools.tool_specs();
-        if specs.is_empty() {
-            return config;
-        }
-
-        let mut lines = Vec::with_capacity(specs.len() + 2);
-        lines.push("## Plugin Capabilities".to_string());
-        lines.push(
-            "The app has installed plugins with the following externally callable capabilities:"
-                .to_string(),
-        );
-
-        for spec in specs {
-            lines.push(format!(
-                "- `{}` (plugin `{}`): {} | parameters: {}",
-                spec.name, spec.plugin_key, spec.description, spec.parameters_schema
-            ));
-        }
-
-        let plugin_prompt = lines.join("\n");
-        config.system_prompt = match config.system_prompt.take() {
-            Some(existing) if !existing.trim().is_empty() => {
-                Some(format!("{existing}\n\n{plugin_prompt}"))
-            }
-            _ => Some(plugin_prompt),
-        };
-
-        config
     }
 }
 

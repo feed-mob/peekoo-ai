@@ -1,6 +1,7 @@
 pub mod application;
 pub mod conversation;
 pub mod plugin;
+pub mod plugin_tool_impl;
 pub mod productivity;
 pub mod settings;
 mod workspace_bootstrap;
