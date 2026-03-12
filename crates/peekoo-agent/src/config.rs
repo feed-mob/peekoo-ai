@@ -27,12 +27,16 @@ pub struct AgentServiceConfig {
     pub system_prompt: Option<String>,
 
     /// Working directory for file-system tools (read, write, bash, etc.).
+    ///
+    /// When using Peekoo's `.peekoo/` convention, this is typically the same
+    /// directory that contains the persona markdown files.
     pub working_directory: PathBuf,
 
     /// Path to a directory containing startup instruction files.
     ///
     /// Supported files (all optional):
     /// - `AGENTS.md` — Operating instructions and memory usage guidelines
+    /// - `BOOTSTRAP.md` — One-time first-run onboarding instructions
     /// - `SOUL.md` — Persona tone and behavioral boundaries
     /// - `IDENTITY.md` — Agent name, vibe, and emoji
     /// - `USER.md` — User profile and addressing preferences
@@ -41,7 +45,7 @@ pub struct AgentServiceConfig {
     ///
     /// These are composed into the system prompt before any `system_prompt`
     /// or `agent_skills` content, in this order:
-    /// `AGENTS` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
+    /// `AGENTS` -> `BOOTSTRAP` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
     pub persona_dir: Option<PathBuf>,
 
     /// List of paths to markdown files containing AgentSkills (from agentskills.io).
