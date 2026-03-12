@@ -21,7 +21,7 @@
    - `USER.md`
    - `MEMORY.md`
    - `skills/memory-manager/SKILL.md`
-5. Open `USER.md` and confirm the required fields are still `[NOT_SET]`.
+5. Open `USER.md` and confirm the `Name` field is still `[NOT_SET]`.
 6. Open chat and send a simple greeting.
 7. Confirm Peekoo asks for missing profile information instead of acting like setup is already complete.
 
@@ -34,7 +34,7 @@ Expected result:
 
 1. Answer with a name and preferred form of address.
 2. After the response completes, inspect `.peekoo/USER.md`.
-3. Confirm `Name` and `Preferred address` are filled in with the provided values.
+3. Confirm `Name` is filled in and any optional profile details the user shared were recorded appropriately.
 4. Confirm `.peekoo/BOOTSTRAP.md` has been removed.
 5. Send another message in the same session.
 6. Confirm Peekoo does not ask for onboarding information again.

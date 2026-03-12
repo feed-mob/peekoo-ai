@@ -12,7 +12,7 @@ const USER_TEMPLATE: &str = include_str!("../templates/persona/USER.md");
 const MEMORY_MANAGER_SKILL_TEMPLATE: &str =
     include_str!("../templates/persona/skills/memory-manager/SKILL.md");
 
-const REQUIRED_USER_FIELDS: &[&str] = &["- Name: [NOT_SET]", "- Preferred address: [NOT_SET]"];
+const REQUIRED_USER_FIELDS: &[&str] = &["- Name: [NOT_SET]"];
 
 pub fn ensure_agent_workspace() -> Result<PathBuf, String> {
     let workspace_dir = resolve_workspace_dir()?;
@@ -133,7 +133,7 @@ mod tests {
         let dir = temp_test_dir("bootstrap-complete");
         fs::write(
             dir.join("USER.md"),
-            "## User Profile\n\n- Name: Richard\n- Preferred address: Richard\n",
+            "# USER.md - About Your Human\n\n- Name: Richard\n- Pronouns: Unknown\n",
         )
         .expect("write complete user profile");
         fs::write(dir.join("BOOTSTRAP.md"), BOOTSTRAP_TEMPLATE).expect("write bootstrap");
