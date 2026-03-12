@@ -140,6 +140,7 @@ For richer agent personalities, you can use a directory of markdown files inspir
 | File | Purpose |
 |------|---------|
 | `AGENTS.md` | Operating instructions and memory usage guidelines |
+| `BOOTSTRAP.md` | One-time first-run onboarding instructions |
 | `SOUL.md` | Persona tone and behavioral boundaries |
 | `IDENTITY.md` | Agent name, vibe, and emoji |
 | `USER.md` | User profile and addressing preferences |
@@ -148,7 +149,7 @@ For richer agent personalities, you can use a directory of markdown files inspir
 
 All files are **optional**. They are composed into the system prompt in this order:
 
-`AGENTS` → `SOUL` → `IDENTITY` → `USER` → `MEMORY` → `system_prompt` → `agent_skills`
+`AGENTS` → `BOOTSTRAP` → `SOUL` → `IDENTITY` → `USER` → `MEMORY` → `system_prompt` → `agent_skills`
 
 This support is additive and backward compatible with existing `IDENTITY` / `SOUL` / memory-only setups.
 
@@ -172,19 +173,19 @@ By default (`auto_discover: true`), `peekoo-agent` will automatically search for
 2. `.peekoo/` in the current working directory.
 3. `~/.peekoo/` in the user's home directory.
 
-**Workspace Isolation:**
-Because Peekoo acts as a persistent desktop assistant sprite, its execution workspace is isolated from the directory where the application binary was launched. When Peekoo discovers a valid `.peekoo/` configuration (whether locally or via `PEEKOO_CONFIG_DIR`), it will automatically set its `working_directory` for file-system tools to the `workspace/` subdirectory *inside* that config folder (e.g., `~/.peekoo/workspace/`).
+**Workspace Layout:**
+When Peekoo discovers a valid `.peekoo/` configuration (whether locally or via `PEEKOO_CONFIG_DIR`), it uses that directory itself as the working directory for filesystem tools. This keeps persona files and editable workspace memory in the same location (for example `~/.peekoo/`).
 
 If found, it automatically uses/creates:
-- **Startup instructions:** `IDENTITY.md`, `SOUL.md`, `memory.md` (or `MEMORY.md`), `memories/*.md`, `AGENTS.md`, and `USER.md` within the config dir.
+- **Startup instructions:** `AGENTS.md`, `BOOTSTRAP.md`, `IDENTITY.md`, `SOUL.md`, `USER.md`, `memory.md` (or `MEMORY.md`), and `memories/*.md` within the config dir.
 - **Skills:** Any markdown files or `SKILL.md` subdirectories inside the `skills/` folder.
-- **Tools Execution:** `.peekoo/workspace/` is created as the isolated sandbox.
+- **Tools Execution:** File operations run directly in the discovered `.peekoo/` directory.
 
 ```rust
 use peekoo_agent::config::AgentServiceConfig;
 
 // No need to configure paths if using the `.peekoo/` convention!
-// The agent will automatically find its persona and isolate its workspace.
+// The agent will automatically find its persona and use that directory as its workspace.
 let config = AgentServiceConfig::default(); 
 ```
 

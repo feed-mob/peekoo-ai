@@ -27,6 +27,8 @@ use crate::settings::{
 };
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
+use crate::workspace_bootstrap::ensure_agent_workspace;
+
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
@@ -63,7 +65,7 @@ impl AgentApplication {
             std::fs::create_dir_all(&session_dir)
                 .map_err(|e| format!("Create session dir error: {e}"))?;
         }
-        let workspace_dir = resolve_workspace_dir();
+        let workspace_dir = ensure_agent_workspace()?;
 
         Ok(Self {
             agent: Mutex::new(None),
@@ -546,8 +548,18 @@ impl AgentApplication {
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
+        let skills_dir = self.workspace_dir.join("skills");
+        let agent_skills = if skills_dir.is_dir() {
+            vec![skills_dir]
+        } else {
+            Vec::new()
+        };
+
         Ok(AgentServiceConfig {
             working_directory: self.workspace_dir.clone(),
+            persona_dir: Some(self.workspace_dir.clone()),
+            agent_skills,
+            auto_discover: false,
             ..Default::default()
         })
     }
@@ -581,22 +593,6 @@ impl AgentApplication {
         };
 
         config
-    }
-}
-
-fn resolve_workspace_dir() -> PathBuf {
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let mut current = current_dir.clone();
-
-    loop {
-        if current.join(".peekoo").is_dir() {
-            return current;
-        }
-
-        let Some(parent) = current.parent() else {
-            return current_dir;
-        };
-        current = parent.to_path_buf();
     }
 }
 

@@ -3,6 +3,7 @@ pub mod conversation;
 pub mod plugin;
 pub mod productivity;
 pub mod settings;
+mod workspace_bootstrap;
 
 pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};

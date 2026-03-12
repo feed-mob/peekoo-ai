@@ -56,8 +56,16 @@ impl AgentService {
                 search_paths.push(std::path::PathBuf::from(env_dir));
             }
 
-            // 2. Next: Local working directory (crawled up to workspace root)
-            search_paths.push(config.working_directory.join(".peekoo"));
+            // 2. Next: Local working directory
+            if config
+                .working_directory
+                .file_name()
+                .is_some_and(|name| name == ".peekoo")
+            {
+                search_paths.push(config.working_directory.clone());
+            } else {
+                search_paths.push(config.working_directory.join(".peekoo"));
+            }
 
             // 3. Last fallback: global peekoo config dir, then legacy ~/.peekoo
             if let Ok(global_dir) = peekoo_paths::peekoo_global_config_dir() {
@@ -82,13 +90,9 @@ impl AgentService {
                         }
                     }
 
-                    // Peekoo is an assistant sprite, so its execution workspace
-                    // is isolated inside its configuration directory.
-                    let workspace_dir = path.join("workspace");
-                    if !workspace_dir.exists() {
-                        let _ = std::fs::create_dir_all(&workspace_dir);
-                    }
-                    config.working_directory = workspace_dir;
+                    // Keep persona files and tool working directory colocated so
+                    // file operations use the same paths seen in the prompt.
+                    config.working_directory = path.clone();
 
                     // If we found a config dir (either local or global), stop searching.
                     // The first match completely overrides any further ones
@@ -327,7 +331,11 @@ fn compose_prompt_parts(persona_dir: Option<&Path>, user_prompt: Option<&str>) -
     let mut prompt_parts: Vec<String> = Vec::new();
 
     if let Some(persona_dir) = persona_dir {
-        for (filename, label) in &[("AGENTS.md", "Agents"), ("SOUL.md", "Soul")] {
+        for (filename, label) in &[
+            ("AGENTS.md", "Agents"),
+            ("BOOTSTRAP.md", "Bootstrap"),
+            ("SOUL.md", "Soul"),
+        ] {
             if let Some(section) = load_named_section(persona_dir, filename, label) {
                 prompt_parts.push(section);
             }
@@ -450,6 +458,7 @@ mod tests {
     #[test]
     fn compose_prompt_parts_uses_new_startup_order() {
         let dir = temp_test_dir("agents-user-order");
+        write_file(&dir.join("BOOTSTRAP.md"), "Bootstrap instructions");
         write_file(&dir.join("IDENTITY.md"), "Identity content");
         write_file(&dir.join("SOUL.md"), "Soul content");
         write_file(&dir.join("memory.md"), "Core memory");
@@ -457,13 +466,14 @@ mod tests {
         write_file(&dir.join("USER.md"), "User profile");
 
         let parts = compose_prompt_parts(Some(&dir), Some("User prompt"));
-        assert_eq!(parts.len(), 6);
+        assert_eq!(parts.len(), 7);
         assert!(parts[0].starts_with("## Agents\n\nAgent instructions"));
-        assert!(parts[1].starts_with("## Soul\n\nSoul content"));
-        assert!(parts[2].starts_with("## Identity\n\nIdentity content"));
-        assert!(parts[3].starts_with("## User\n\nUser profile"));
-        assert!(parts[4].starts_with("## Memory\n\nCore memory"));
-        assert_eq!(parts[5], "User prompt");
+        assert!(parts[1].starts_with("## Bootstrap\n\nBootstrap instructions"));
+        assert!(parts[2].starts_with("## Soul\n\nSoul content"));
+        assert!(parts[3].starts_with("## Identity\n\nIdentity content"));
+        assert!(parts[4].starts_with("## User\n\nUser profile"));
+        assert!(parts[5].starts_with("## Memory\n\nCore memory"));
+        assert_eq!(parts[6], "User prompt");
     }
 
     #[test]
@@ -484,6 +494,16 @@ mod tests {
         let parts = compose_prompt_parts(Some(&dir), None);
         assert_eq!(parts.len(), 1);
         assert!(parts[0].starts_with("## Agents\n\nAgent instructions"));
+    }
+
+    #[test]
+    fn compose_prompt_parts_supports_bootstrap_only() {
+        let dir = temp_test_dir("bootstrap-only");
+        write_file(&dir.join("BOOTSTRAP.md"), "Bootstrap instructions");
+
+        let parts = compose_prompt_parts(Some(&dir), None);
+        assert_eq!(parts.len(), 1);
+        assert!(parts[0].starts_with("## Bootstrap\n\nBootstrap instructions"));
     }
 
     #[test]

@@ -8,7 +8,7 @@ AI agent service - wraps the `pi_agent_rust` library (v0.1.7) and provides a sim
 - Send prompts and stream responses
 - Register custom domain-specific tools ("skills")
 - Switch providers/models at runtime
-- Load startup instruction files (IDENTITY.md, SOUL.md, memory.md/MEMORY.md, memories/*.md, AGENTS.md, USER.md)
+- Load startup instruction files (AGENTS.md, BOOTSTRAP.md, IDENTITY.md, SOUL.md, USER.md, memory.md/MEMORY.md, memories/*.md)
 - Auto-discover configuration from ~/.peekoo or local .peekoo directories
 
 ## Key Types
