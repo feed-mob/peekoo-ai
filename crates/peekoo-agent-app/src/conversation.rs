@@ -39,14 +39,10 @@ pub struct LastSessionDto {
 /// Load the most recent session from disk and return its messages.
 ///
 /// Returns `Ok(None)` when there are no prior sessions.
-pub async fn load_last_session(
-    session_dir: &Path,
-    workspace_dir: &Path,
-) -> Result<Option<LastSessionDto>, String> {
+pub async fn load_last_session(session_dir: &Path) -> Result<Option<LastSessionDto>, String> {
     let index = SessionIndex::for_sessions_root(session_dir);
-    let workspace_cwd = workspace_dir.to_string_lossy().to_string();
     let metas = index
-        .list_sessions(Some(&workspace_cwd))
+        .list_sessions(None)
         .map_err(|e| format!("List sessions error: {e}"))?;
 
     let meta = match metas.first() {
@@ -170,65 +166,7 @@ fn extract_text_from_blocks(content: &serde_json::Value) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use peekoo_agent::ContentBlock;
-    use pi::model::{AssistantMessage, StopReason, TextContent, Usage, UserContent};
     use serde_json::json;
-    use std::path::PathBuf;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temp_test_dir(prefix: &str) -> PathBuf {
-        let mut path = std::env::temp_dir();
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock before unix epoch")
-            .as_nanos();
-        path.push(format!("peekoo-agent-app-conversation-{prefix}-{nanos}"));
-        std::fs::create_dir_all(&path).expect("create temp test dir");
-        path
-    }
-
-    fn assistant_message(text: &str) -> AssistantMessage {
-        AssistantMessage {
-            content: vec![ContentBlock::Text(TextContent::new(text))],
-            api: "test".into(),
-            provider: "test".into(),
-            model: "test-model".into(),
-            usage: Usage::default(),
-            stop_reason: StopReason::Stop,
-            error_message: None,
-            timestamp: 0,
-        }
-    }
-
-    async fn write_indexed_session(
-        session_root: &Path,
-        workspace_dir: &Path,
-        file_name: &str,
-        user_text: &str,
-    ) -> String {
-        let mut session = Session::in_memory();
-        session.header.cwd = workspace_dir.to_string_lossy().to_string();
-        session.path = Some(session_root.join(file_name));
-        session.append_message(pi::session::SessionMessage::User {
-            content: UserContent::Text(user_text.to_string()),
-            timestamp: Some(0),
-        });
-        session.append_message(pi::session::SessionMessage::Assistant {
-            message: assistant_message("assistant reply"),
-        });
-        session.save().await.expect("save session");
-
-        let path = session
-            .path
-            .as_ref()
-            .expect("session path")
-            .display()
-            .to_string();
-        SessionIndex::for_sessions_root(session_root)
-            .reindex_all()
-            .expect("reindex sessions");
-        path
-    }
 
     #[test]
     fn user_text_message_to_dto() {
@@ -372,28 +310,5 @@ mod tests {
         let dto = json_value_to_dto(&value).expect("should produce dto");
         assert_eq!(dto.role, "user");
         assert_eq!(dto.text, "Block text");
-    }
-
-    #[tokio::test]
-    async fn load_last_session_filters_to_workspace() {
-        let session_root = temp_test_dir("session-root");
-        let workspace_a = temp_test_dir("workspace-a");
-        let workspace_b = temp_test_dir("workspace-b");
-
-        let expected_path =
-            write_indexed_session(&session_root, &workspace_a, "workspace-a.jsonl", "hello a")
-                .await;
-        let _other_path =
-            write_indexed_session(&session_root, &workspace_b, "workspace-b.jsonl", "hello b")
-                .await;
-
-        let dto = load_last_session(&session_root, &workspace_a)
-            .await
-            .expect("load last session")
-            .expect("workspace session");
-
-        assert_eq!(dto.session_path, expected_path);
-        assert_eq!(dto.messages.len(), 2);
-        assert_eq!(dto.messages[0].text, "hello a");
     }
 }

@@ -455,8 +455,7 @@ impl AgentApplication {
         }
 
         // Slow path: load from disk.
-        let result =
-            conversation::load_last_session(&self.session_dir, &self.workspace_dir).await?;
+        let result = conversation::load_last_session(&self.session_dir).await?;
 
         // Stash the path so the next prompt resumes this session.
         if let Some(ref dto) = result
