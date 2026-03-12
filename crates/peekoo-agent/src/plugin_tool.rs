@@ -100,9 +100,7 @@ impl PluginToolAdapter {
         provider
             .tool_specs()
             .into_iter()
-            .map(|spec| {
-                Box::new(Self::new(spec, Arc::clone(&provider))) as Box<dyn Tool>
-            })
+            .map(|spec| Box::new(Self::new(spec, Arc::clone(&provider))) as Box<dyn Tool>)
             .collect()
     }
 }
@@ -211,8 +209,7 @@ mod tests {
             tool_name: &str,
             _args_json: &str,
         ) -> std::result::Result<String, String> {
-            *self.last_call.lock().unwrap() =
-                Some((plugin_key.to_string(), tool_name.to_string()));
+            *self.last_call.lock().unwrap() = Some((plugin_key.to_string(), tool_name.to_string()));
             self.result.clone()
         }
     }
@@ -234,10 +231,7 @@ mod tests {
 
     #[test]
     fn adapter_metadata() {
-        let provider = Arc::new(StubProvider::new(
-            vec![sample_spec()],
-            Ok("{}".to_string()),
-        ));
+        let provider = Arc::new(StubProvider::new(vec![sample_spec()], Ok("{}".to_string())));
         let adapter = PluginToolAdapter::new(sample_spec(), provider);
 
         assert_eq!(adapter.name(), "plugin__health-reminders__get_status");

@@ -6,8 +6,8 @@ use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
-use peekoo_agent::PluginToolProvider;
 use peekoo_agent::AgentEvent;
+use peekoo_agent::PluginToolProvider;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
