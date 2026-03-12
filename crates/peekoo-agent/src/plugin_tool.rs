@@ -40,11 +40,20 @@ pub trait PluginToolProvider: Send + Sync {
     /// Return specs for every tool exposed by loaded plugins.
     fn tool_specs(&self) -> Vec<PluginToolSpec>;
 
-    /// Execute a plugin tool by name.
+    /// Execute a plugin tool owned by `plugin_key`.
+    ///
+    /// Both `plugin_key` and `tool_name` are required so the provider can
+    /// dispatch to the correct plugin even when multiple plugins export a
+    /// tool with the same name.
     ///
     /// `args_json` is the JSON-serialised arguments object from the LLM.
     /// Returns the tool's JSON result string on success.
-    fn call_tool(&self, tool_name: &str, args_json: &str) -> std::result::Result<String, String>;
+    fn call_tool(
+        &self,
+        plugin_key: &str,
+        tool_name: &str,
+        args_json: &str,
+    ) -> std::result::Result<String, String>;
 }
 
 // ============================================================================
@@ -60,6 +69,8 @@ pub struct PluginToolAdapter {
     namespaced_name: String,
     /// Original tool name as declared in the plugin manifest.
     original_name: String,
+    /// Key of the plugin that owns this tool (used for dispatch).
+    plugin_key: String,
     description: String,
     parameters_schema: serde_json::Value,
     provider: Arc<dyn PluginToolProvider>,
@@ -77,6 +88,7 @@ impl PluginToolAdapter {
         Self {
             namespaced_name,
             original_name: spec.name,
+            plugin_key: spec.plugin_key,
             description: spec.description,
             parameters_schema: spec.parameters_schema,
             provider,
@@ -120,13 +132,14 @@ impl Tool for PluginToolAdapter {
         _on_update: Option<Box<dyn Fn(ToolUpdate) + Send + Sync>>,
     ) -> Result<ToolOutput> {
         let args_json = serde_json::to_string(&input).unwrap_or_else(|_| "{}".to_string());
+        let plugin_key = self.plugin_key.clone();
         let original_name = self.original_name.clone();
         let provider = Arc::clone(&self.provider);
 
         // Plugin tools execute WASM synchronously via Extism. Run on a blocking
         // thread to avoid stalling the async runtime.
         let result = tokio::task::spawn_blocking(move || {
-            provider.call_tool(&original_name, &args_json)
+            provider.call_tool(&plugin_key, &original_name, &args_json)
         })
         .await;
 
@@ -167,10 +180,24 @@ impl Tool for PluginToolAdapter {
 mod tests {
     use super::*;
 
+    use std::sync::Mutex;
+
     /// Stub provider for testing.
     struct StubProvider {
         specs: Vec<PluginToolSpec>,
         result: std::result::Result<String, String>,
+        /// Records (plugin_key, tool_name) from the last call for assertions.
+        last_call: Mutex<Option<(String, String)>>,
+    }
+
+    impl StubProvider {
+        fn new(specs: Vec<PluginToolSpec>, result: std::result::Result<String, String>) -> Self {
+            Self {
+                specs,
+                result,
+                last_call: Mutex::new(None),
+            }
+        }
     }
 
     impl PluginToolProvider for StubProvider {
@@ -180,9 +207,12 @@ mod tests {
 
         fn call_tool(
             &self,
-            _tool_name: &str,
+            plugin_key: &str,
+            tool_name: &str,
             _args_json: &str,
         ) -> std::result::Result<String, String> {
+            *self.last_call.lock().unwrap() =
+                Some((plugin_key.to_string(), tool_name.to_string()));
             self.result.clone()
         }
     }
@@ -204,10 +234,10 @@ mod tests {
 
     #[test]
     fn adapter_metadata() {
-        let provider = Arc::new(StubProvider {
-            specs: vec![sample_spec()],
-            result: Ok("{}".to_string()),
-        });
+        let provider = Arc::new(StubProvider::new(
+            vec![sample_spec()],
+            Ok("{}".to_string()),
+        ));
         let adapter = PluginToolAdapter::new(sample_spec(), provider);
 
         assert_eq!(adapter.name(), "plugin__health-reminders__get_status");
@@ -218,8 +248,8 @@ mod tests {
 
     #[test]
     fn from_provider_creates_adapters_for_all_specs() {
-        let provider = Arc::new(StubProvider {
-            specs: vec![
+        let provider = Arc::new(StubProvider::new(
+            vec![
                 PluginToolSpec {
                     name: "tool_a".to_string(),
                     description: "A".to_string(),
@@ -233,8 +263,8 @@ mod tests {
                     plugin_key: "plug".to_string(),
                 },
             ],
-            result: Ok("{}".to_string()),
-        });
+            Ok("{}".to_string()),
+        ));
 
         let tools = PluginToolAdapter::from_provider(provider);
         assert_eq!(tools.len(), 2);
@@ -244,21 +274,19 @@ mod tests {
 
     #[test]
     fn from_provider_empty_when_no_specs() {
-        let provider = Arc::new(StubProvider {
-            specs: vec![],
-            result: Ok("{}".to_string()),
-        });
+        let provider = Arc::new(StubProvider::new(vec![], Ok("{}".to_string())));
 
         let tools = PluginToolAdapter::from_provider(provider);
         assert!(tools.is_empty());
     }
 
     #[tokio::test]
-    async fn execute_success() {
-        let provider = Arc::new(StubProvider {
-            specs: vec![sample_spec()],
-            result: Ok(r#"{"healthy":true}"#.to_string()),
-        });
+    async fn execute_dispatches_with_plugin_key() {
+        let concrete = Arc::new(StubProvider::new(
+            vec![sample_spec()],
+            Ok(r#"{"healthy":true}"#.to_string()),
+        ));
+        let provider: Arc<dyn PluginToolProvider> = Arc::clone(&concrete) as _;
         let adapter = PluginToolAdapter::new(sample_spec(), provider);
 
         let output = adapter
@@ -272,14 +300,19 @@ mod tests {
             ContentBlock::Text(t) => assert_eq!(t.text, r#"{"healthy":true}"#),
             other => panic!("Expected Text block, got: {other:?}"),
         }
+
+        // Verify plugin_key was passed through to the provider.
+        let last = concrete.last_call.lock().unwrap().clone().unwrap();
+        assert_eq!(last.0, "health-reminders", "plugin_key must be forwarded");
+        assert_eq!(last.1, "get_status", "tool_name must be the original name");
     }
 
     #[tokio::test]
     async fn execute_tool_error() {
-        let provider = Arc::new(StubProvider {
-            specs: vec![sample_spec()],
-            result: Err("plugin crashed".to_string()),
-        });
+        let provider = Arc::new(StubProvider::new(
+            vec![sample_spec()],
+            Err("plugin crashed".to_string()),
+        ));
         let adapter = PluginToolAdapter::new(sample_spec(), provider);
 
         let output = adapter

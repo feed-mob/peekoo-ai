@@ -1,5 +1,5 @@
 //! Concrete [`PluginToolProvider`] implementation backed by
-//! [`PluginToolBridge`].
+//! [`PluginToolBridge`] and [`PluginRegistry`].
 //!
 //! This bridges the dependency-inverted trait defined in `peekoo-agent` to the
 //! concrete plugin host runtime in `peekoo-plugin-host`, keeping the agent
@@ -20,12 +20,14 @@ use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
 /// `PluginToolBridge`'s inherent methods.
 pub struct PluginToolProviderImpl {
     bridge: PluginToolBridge,
+    registry: Arc<PluginRegistry>,
 }
 
 impl PluginToolProviderImpl {
     pub fn new(registry: Arc<PluginRegistry>) -> Self {
         Self {
-            bridge: PluginToolBridge::new(registry),
+            bridge: PluginToolBridge::new(Arc::clone(&registry)),
+            registry,
         }
     }
 
@@ -59,9 +61,17 @@ impl PluginToolProvider for PluginToolProviderImpl {
             .collect()
     }
 
-    fn call_tool(&self, tool_name: &str, args_json: &str) -> Result<String, String> {
-        self.bridge
-            .call_tool(tool_name, args_json)
+    fn call_tool(
+        &self,
+        plugin_key: &str,
+        tool_name: &str,
+        args_json: &str,
+    ) -> Result<String, String> {
+        // Dispatch directly via PluginRegistry using the plugin_key, bypassing
+        // the name-only lookup in PluginToolBridge::call_tool() which would be
+        // ambiguous if two plugins export tools with the same name.
+        self.registry
+            .call_tool(plugin_key, tool_name, args_json)
             .map_err(|e| e.to_string())
     }
 }

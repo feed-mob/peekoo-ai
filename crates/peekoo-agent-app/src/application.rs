@@ -288,7 +288,10 @@ impl AgentApplication {
         self.plugin_registry
             .install_plugin(&plugin_dir)
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
     }
 
     pub fn disable_plugin(&self, plugin_key: &str) -> Result<(), String> {
@@ -297,9 +300,12 @@ impl AgentApplication {
             .map_err(|e| e.to_string())?;
 
         match self.plugin_registry.unload_plugin(plugin_key) {
-            Ok(()) | Err(peekoo_plugin_host::PluginError::NotFound(_)) => Ok(()),
-            Err(err) => Err(err.to_string()),
+            Ok(()) | Err(peekoo_plugin_host::PluginError::NotFound(_)) => {}
+            Err(err) => return Err(err.to_string()),
         }
+
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
     }
 
     pub fn call_plugin_tool(&self, tool_name: &str, args_json: &str) -> Result<String, String> {
@@ -503,18 +509,35 @@ impl AgentApplication {
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        self.plugin_store
-            .install_plugin(plugin_key, &self.plugin_registry)
+        let result = self
+            .plugin_store
+            .install_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(result)
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        self.plugin_store
-            .update_plugin(plugin_key, &self.plugin_registry)
+        let result = self
+            .plugin_store
+            .update_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(result)
     }
 
     pub fn store_uninstall(&self, plugin_key: &str) -> Result<(), String> {
         self.plugin_store
-            .uninstall_plugin(plugin_key, &self.plugin_registry)
+            .uninstall_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
+    }
+
+    /// Drop the current agent so the next prompt rebuilds it with the latest
+    /// plugin tool set. Unlike [`new_session`] this does not reset session
+    /// persistence or the resume path — it only forces a tool-registry refresh.
+    fn invalidate_agent_for_plugin_change(&self) {
+        if let Ok(mut guard) = self.agent.lock() {
+            *guard = None;
+        }
     }
 
     /// Build a fresh `AgentService` from current settings + plugin tools.
