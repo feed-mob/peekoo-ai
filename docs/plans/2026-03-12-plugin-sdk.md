@@ -1,7 +1,7 @@
 # Plugin SDK
 
 **Date**: 2026-03-12
-**Status**: Planned
+**Status**: Implemented
 
 ## Problem
 

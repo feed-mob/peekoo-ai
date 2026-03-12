@@ -58,24 +58,39 @@ clean:
 icon SOURCE:
     cd ./apps/desktop-tauri/src-tauri/ && cargo tauri icon {{SOURCE}}
 
-# Build a plugin to WASM
+# Check the plugin SDK (wasm32-wasip1 target)
+check-sdk:
+    cargo check --manifest-path crates/peekoo-plugin-sdk/Cargo.toml
+
+# Build a Rust plugin to WASM
 plugin-build name:
     cargo build --release --target wasm32-wasip1 --manifest-path plugins/{{name}}/Cargo.toml
+
+# Build an AssemblyScript plugin to WASM
+plugin-build-as name:
+    cd plugins/{{name}} && bun install && bun run build
 
 # Install a plugin into the local Peekoo plugin dir
 plugin-install name:
     mkdir -p ~/.peekoo/plugins/{{name}}
     cp plugins/{{name}}/peekoo-plugin.toml ~/.peekoo/plugins/{{name}}/
-    cp plugins/{{name}}/target/wasm32-wasip1/release/$(echo {{name}} | tr '-' '_').wasm ~/.peekoo/plugins/{{name}}/
+    python -c "import pathlib, shutil, tomllib; src = pathlib.Path('plugins/{{name}}'); manifest = tomllib.loads((src / 'peekoo-plugin.toml').read_text()); wasm_rel = pathlib.Path(manifest['plugin']['wasm']); wasm_src = src / wasm_rel; wasm_dst = pathlib.Path.home() / '.peekoo' / 'plugins' / '{{name}}' / wasm_rel; wasm_dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(wasm_src, wasm_dst)"
     if [ -d plugins/{{name}}/ui ]; then cp -r plugins/{{name}}/ui ~/.peekoo/plugins/{{name}}/; fi
 
-# Build and install a plugin
+# Install an AssemblyScript plugin into the local Peekoo plugin dir
+plugin-install-as name:
+    mkdir -p ~/.peekoo/plugins/{{name}}
+    cp plugins/{{name}}/peekoo-plugin.toml ~/.peekoo/plugins/{{name}}/
+    python -c "import pathlib, shutil, tomllib; src = pathlib.Path('plugins/{{name}}'); manifest = tomllib.loads((src / 'peekoo-plugin.toml').read_text()); wasm_rel = pathlib.Path(manifest['plugin']['wasm']); wasm_src = src / wasm_rel; wasm_dst = pathlib.Path.home() / '.peekoo' / 'plugins' / '{{name}}' / wasm_rel; wasm_dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(wasm_src, wasm_dst)"
+
+# Build and install a Rust plugin
 plugin name: (plugin-build name) (plugin-install name)
 
-# Build all plugin examples
+# Build all plugin examples (Rust + AssemblyScript)
 plugin-build-all:
     just plugin-build example-minimal
     just plugin-build health-reminders
+    just plugin-build-as as-example-minimal
 
 # List all available commands
 list:

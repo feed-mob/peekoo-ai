@@ -1,0 +1,17 @@
+[plugin]
+key = "{{plugin_key}}"
+name = "{{project-name}}"
+version = "0.1.0"
+author = "{{author}}"
+description = "{{description}}"
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-wasip1/release/{{project-name | snake_case}}.wasm"
+
+[permissions]
+required = ["state:read", "state:write"]
+
+[[tools.definitions]]
+name = "greet"
+description = "Greet someone by name"
+parameters = '{"type":"object","properties":{"name":{"type":"string","description":"Name to greet"}},"required":["name"]}'
+return_type = "object"
