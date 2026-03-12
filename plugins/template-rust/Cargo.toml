@@ -1,6 +1,6 @@
 [package]
-name = "health-reminders"
-version = "0.1.2"
+name = "{{crate_name}}"
+version = "0.1.0"
 edition = "2021"
 
 [workspace]

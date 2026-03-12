@@ -1,113 +1,11 @@
 #![no_main]
 
-use extism_pdk::*;
-use serde::{Deserialize, Serialize};
+use peekoo_plugin_sdk::prelude::*;
 use serde_json::{json, Value};
 
 const WATER_KEY: &str = "water";
 const EYE_REST_KEY: &str = "eye_rest";
 const STANDUP_KEY: &str = "standup";
-
-#[derive(Serialize, Deserialize)]
-struct StateGetRequest {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StateGetResponse {
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StateSetRequest {
-    key: String,
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LogRequest {
-    level: String,
-    message: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EmitEventRequest {
-    event: String,
-    payload: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct NotifyRequest {
-    title: String,
-    body: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleSetRequest {
-    key: String,
-    interval_secs: u64,
-    repeat: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    delay_secs: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleCancelRequest {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleGetRequest {
-    key: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct ScheduleInfo {
-    owner: String,
-    key: String,
-    interval_secs: u64,
-    repeat: bool,
-    time_remaining_secs: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleGetResponse {
-    schedule: Option<ScheduleInfo>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ConfigGetRequest {
-    key: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ConfigGetResponse {
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PeekBadgeItem {
-    label: String,
-    value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    countdown_secs: Option<u64>,
-}
-
-#[host_fn]
-extern "ExtismHost" {
-    fn peekoo_state_get(input: Json<StateGetRequest>) -> Json<StateGetResponse>;
-    fn peekoo_state_set(input: Json<StateSetRequest>) -> Json<Value>;
-    fn peekoo_log(input: Json<LogRequest>) -> Json<Value>;
-    fn peekoo_emit_event(input: Json<EmitEventRequest>) -> Json<Value>;
-    fn peekoo_notify(input: Json<NotifyRequest>) -> Json<Value>;
-    fn peekoo_schedule_set(input: Json<ScheduleSetRequest>) -> Json<Value>;
-    fn peekoo_schedule_cancel(input: Json<ScheduleCancelRequest>) -> Json<Value>;
-    fn peekoo_schedule_get(input: Json<ScheduleGetRequest>) -> Json<ScheduleGetResponse>;
-    fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
-    fn peekoo_set_peek_badge(input: String) -> Json<Value>;
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct ReminderConfig {
@@ -372,20 +270,11 @@ fn current_epoch_secs() -> u64 {
 }
 
 fn config_get() -> Value {
-    unsafe { peekoo_config_get(Json(ConfigGetRequest { key: None })) }
-        .ok()
-        .map(|response| response.0.value)
-        .unwrap_or_else(|| json!({}))
+    peekoo::config::get_all().ok().unwrap_or_else(|| json!({}))
 }
 
 fn schedule_get(key: &str) -> Option<ScheduleInfo> {
-    unsafe {
-        peekoo_schedule_get(Json(ScheduleGetRequest {
-            key: key.to_string(),
-        }))
-    }
-    .ok()
-    .and_then(|response| response.0.schedule)
+    peekoo::schedule::get(key).ok().flatten()
 }
 
 fn schedule_set(key: &str, interval_secs: u64) {
@@ -393,64 +282,28 @@ fn schedule_set(key: &str, interval_secs: u64) {
 }
 
 fn schedule_set_with_delay(key: &str, interval_secs: u64, delay_secs: Option<u64>) {
-    let _ = unsafe {
-        peekoo_schedule_set(Json(ScheduleSetRequest {
-            key: key.to_string(),
-            interval_secs,
-            repeat: true,
-            delay_secs,
-        }))
-    };
+    let _ = peekoo::schedule::set(key, interval_secs, true, delay_secs);
     save_timer_started_at(key, interval_secs, delay_secs);
 }
 
 fn schedule_cancel(key: &str) {
-    let _ = unsafe {
-        peekoo_schedule_cancel(Json(ScheduleCancelRequest {
-            key: key.to_string(),
-        }))
-    };
+    let _ = peekoo::schedule::cancel(key);
 }
 
 fn state_get(key: &str) -> Option<Value> {
-    let response = unsafe {
-        peekoo_state_get(Json(StateGetRequest {
-            key: key.to_string(),
-        }))
-    }
-    .ok()?;
-    if response.0.value.is_null() {
-        None
-    } else {
-        Some(response.0.value)
-    }
+    peekoo::state::get::<Value>(key).ok().flatten()
 }
 
 fn state_set(key: &str, value: Value) {
-    let _ = unsafe {
-        peekoo_state_set(Json(StateSetRequest {
-            key: key.to_string(),
-            value,
-        }))
-    };
+    let _ = peekoo::state::set(key, &value);
 }
 
 fn log_info(message: &str) {
-    let _ = unsafe {
-        peekoo_log(Json(LogRequest {
-            level: "info".to_string(),
-            message: message.to_string(),
-        }))
-    };
+    peekoo::log::info(message);
 }
 
 fn emit_event(event: &str, payload: Value) {
-    let _ = unsafe {
-        peekoo_emit_event(Json(EmitEventRequest {
-            event: event.to_string(),
-            payload,
-        }))
-    };
+    let _ = peekoo::events::emit(event, payload);
 }
 
 fn push_peek_badges() {
@@ -464,11 +317,11 @@ fn push_peek_badges() {
         }
     };
 
-    let items: Vec<PeekBadgeItem> = status
+    let items: Vec<BadgeItem> = status
         .reminders
         .iter()
         .filter(|reminder| reminder.active)
-        .map(|reminder| PeekBadgeItem {
+        .map(|reminder| BadgeItem {
             label: reminder
                 .reminder_type
                 .replace('_', " ")
@@ -488,8 +341,7 @@ fn push_peek_badges() {
         })
         .collect();
 
-    let json = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
-    let _ = unsafe { peekoo_set_peek_badge(json) };
+    let _ = peekoo::badge::set(&items);
 }
 
 fn format_countdown(seconds: u64) -> String {
@@ -511,10 +363,5 @@ fn format_countdown(seconds: u64) -> String {
 }
 
 fn notify(title: &str, body: &str) {
-    let _ = unsafe {
-        peekoo_notify(Json(NotifyRequest {
-            title: title.to_string(),
-            body: body.to_string(),
-        }))
-    };
+    let _ = peekoo::notify::send(title, body);
 }

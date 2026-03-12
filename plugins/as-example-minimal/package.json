@@ -1,0 +1,17 @@
+{
+  "name": "as-example-minimal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal Peekoo plugin written in AssemblyScript",
+  "scripts": {
+    "build": "asc assembly/index.ts --outFile build/as_example_minimal.wasm --optimize --exportRuntime",
+    "build:debug": "asc assembly/index.ts --outFile build/as_example_minimal.wasm --debug --exportRuntime"
+  },
+  "dependencies": {
+    "@peekoo/plugin-sdk": "file:../../packages/plugin-sdk",
+    "@extism/as-pdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.0"
+  }
+}
