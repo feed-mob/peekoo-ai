@@ -534,8 +534,18 @@ impl AgentApplication {
     /// Drop the current agent so the next prompt rebuilds it with the latest
     /// plugin tool set. Unlike [`new_session`] this does not reset session
     /// persistence or the resume path — it only forces a tool-registry refresh.
+    ///
+    /// Before dropping, the live session path is stashed into
+    /// `resume_session_path` so the next [`create_agent_service`] call resumes
+    /// the same conversation instead of starting fresh.
     fn invalidate_agent_for_plugin_change(&self) {
         if let Ok(mut guard) = self.agent.lock() {
+            if let Some(agent) = guard.as_ref()
+                && let Some(path) = agent.session_path()
+                && let Ok(mut resume) = self.resume_session_path.lock()
+            {
+                *resume = Some(path);
+            }
             *guard = None;
         }
     }

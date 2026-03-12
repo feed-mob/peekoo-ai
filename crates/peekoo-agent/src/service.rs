@@ -263,6 +263,17 @@ impl AgentService {
         }
     }
 
+    /// Return the path to the persisted session file, if any.
+    ///
+    /// Uses `try_lock` on the async session mutex so this can be called
+    /// synchronously from plugin lifecycle methods. Returns `None` when the
+    /// lock is contended (shouldn't happen between prompts) or when the
+    /// session has no persisted path.
+    pub fn session_path(&self) -> Option<std::path::PathBuf> {
+        let session = self.handle.session().session.try_lock().ok()?;
+        session.path.clone()
+    }
+
     /// Access the underlying pi session handle for advanced operations.
     pub fn handle(&self) -> &AgentSessionHandle {
         &self.handle
