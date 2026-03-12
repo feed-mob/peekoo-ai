@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.peekoo.desktop",
   "build": {
-    "beforeDevCommand": "cd ../desktop-ui && bun run dev",
-    "beforeBuildCommand": "cd ../desktop-ui && bun run build",
+    "beforeDevCommand": "cd ../desktop-ui && npm run dev",
+    "beforeBuildCommand": "cd ../desktop-ui && npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../../desktop-ui/dist"
   },

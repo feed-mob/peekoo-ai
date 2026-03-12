@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useLayoutEffect } from "react";
 import type { AnimationType } from "@/types/sprite";
 import {
   buildKeyedSpriteSheet,
@@ -107,67 +107,62 @@ export default function SpriteAnimation({
   }, [scale, chromaKey, imageSrc, columns, rows]);
 
 
-  // Update row when animation changes
-  useEffect(() => {
-    currentRowRef.current = ANIMATION_ROWS[animation];
+  // Draw a single frame. This is extracted so we can call it immediately on animation change.
+  const drawFrame = (_currentTime: number, forceRow?: number) => {
+    if (!canvasRef.current || !sourceRef.current || !atlasRef.current) return;
+    
+    const ctx = canvasRef.current.getContext("2d");
+    if (!ctx) return;
+    
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); 
+
+    const row = forceRow !== undefined ? forceRow : currentRowRef.current;
+    const col = forceRow !== undefined ? 0 : frameRef.current;
+    
+    const sourceFrame = trimFrameTop(
+      getFrameRect(atlasRef.current, row, col),
+      ROW_TOP_TRIM_PIXELS[row] ?? 0,
+    );
+
+    const displayWidth = parseFloat(canvasRef.current.style.width || "0");
+    const displayHeight = parseFloat(canvasRef.current.style.height || "0");
+    
+    ctx.clearRect(0, 0, displayWidth, displayHeight);
+    ctx.drawImage(
+      sourceRef.current,
+      sourceFrame.sx,
+      sourceFrame.sy,
+      sourceFrame.sw,
+      sourceFrame.sh,
+      0,
+      0,
+      displayWidth,
+      displayHeight
+    );
+  };
+
+  // Update row when animation changes and force an immediate draw
+  useLayoutEffect(() => {
+    const targetRow = ANIMATION_ROWS[animation];
+    currentRowRef.current = targetRow;
     frameRef.current = 0;
     lastFrameTimeRef.current = 0;
+    
+    // Force an immediate draw of the first frame of the new animation
+    // This is critical for dragging because the thread will soon be blocked by OS
+    drawFrame(performance.now(), targetRow);
   }, [animation]);
 
   // Animation loop
   useEffect(() => {
     const animate = (currentTime: number) => {
-      if (!canvasRef.current || !sourceRef.current || !atlasRef.current) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-
-      const ctx = canvasRef.current.getContext("2d");
-      if (!ctx) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-      
-      const dpr = window.devicePixelRatio || 1;
-      
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      
-      // Ensure we are drawing to the full resolution
-      // No need to set scale here if we did it in initialization or resetTransform before drawing
-      // Actually, standard practice for animation loops:
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // Reset to base scale with DPR
-
       const frameInterval = 1000 / frameRate;
       
       if (currentTime - lastFrameTimeRef.current >= frameInterval) {
-        const row = currentRowRef.current;
-        const col = frameRef.current;
-        const sourceFrame = trimFrameTop(
-          getFrameRect(atlasRef.current, row, col),
-          ROW_TOP_TRIM_PIXELS[row] ?? 0,
-        );
-
-        // Clear using logical coordinates
-        const displayWidth = parseFloat(canvasRef.current.style.width || "0");
-        const displayHeight = parseFloat(canvasRef.current.style.height || "0");
-        
-        ctx.clearRect(0, 0, displayWidth, displayHeight);
-        ctx.drawImage(
-          sourceRef.current,
-          sourceFrame.sx,
-          sourceFrame.sy,
-          sourceFrame.sw,
-          sourceFrame.sh,
-          0,
-          0,
-          displayWidth,
-          displayHeight
-        );
-
+        drawFrame(currentTime);
         frameRef.current = (frameRef.current + 1) % columns;
         lastFrameTimeRef.current = currentTime;
-        
         onFrameChange?.(frameRef.current);
       }
 

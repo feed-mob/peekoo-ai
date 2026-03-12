@@ -10,7 +10,9 @@ const MOOD_TO_ANIMATION: Record<string, AnimationType> = {
   thinking: "thinking", // Now has a dedicated animation row
   idle: "idle",
   tired: "sleepy",
+  sleepy: "sleepy",     // Directly map sleepy mood to sleepy animation
   reminder: "reminder", // Direct mapping to reminder animation row
+  dragging: "dragging",
 };
 
 
@@ -26,25 +28,21 @@ const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
   working: "working",
   thinking: "thinking",
   reminder: "reminder",
+  dragging: "dragging",
 };
-
-// Random animation types (rows 1-6, excluding idle and dragging)
-const RANDOM_ANIMATIONS: AnimationType[] = ["happy", "working", "thinking", "reminder", "sleepy"];
 
 interface SpriteProps {
   state?: SpriteState;
-  randomTrigger?: number;
   animationOverride?: AnimationType | null;
 }
 
-export function Sprite({ state, randomTrigger = 0, animationOverride = null }: SpriteProps) {
+export function Sprite({ state, animationOverride = null }: SpriteProps) {
   const spriteState: SpriteState = state || {
     mood: "happy",
     message: "Welcome! Your AI desktop sprite is ready to help you!",
     animation: "bounce",
   };
 
-  const [overrideAnimation, setOverrideAnimation] = useState<AnimationType | null>(null);
   const [activeSpriteId] = useState("dark-cat");
   const [manifest, setManifest] = useState<SpriteManifest | null>(null);
 
@@ -56,31 +54,11 @@ export function Sprite({ state, randomTrigger = 0, animationOverride = null }: S
       .catch((err) => console.error("Failed to load sprite manifest", err));
   }, [activeSpriteId]);
 
-  // Trigger random animation when randomTrigger changes
-  useEffect(() => {
-    if (randomTrigger > 0) {
-      const randomIndex = Math.floor(Math.random() * RANDOM_ANIMATIONS.length);
-      const randomAnim = RANDOM_ANIMATIONS[randomIndex];
-      setOverrideAnimation(randomAnim);
-
-      // Reset after 2 seconds (animation plays for a bit then reverts)
-      const timeout = setTimeout(() => {
-        setOverrideAnimation(null);
-      }, 2000);
-
-      return () => clearTimeout(timeout);
-    }
-  }, [randomTrigger]);
-
   // Determine animation type from mood or animation state
   const getAnimationType = (): AnimationType => {
     // External override (e.g. dragging) takes highest priority
     if (animationOverride) {
       return animationOverride;
-    }
-    // If internal override is active (e.g. random click animation), use it
-    if (overrideAnimation) {
-      return overrideAnimation;
     }
 
     // First try to map from mood
