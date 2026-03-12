@@ -32,8 +32,8 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
   "panel-chat": {
     label: "panel-chat",
     title: "Peekoo Chat",
-    width: 420,
-    height: 600,
+    width: 520,
+    height: 640,
   },
   "panel-tasks": {
     label: "panel-tasks",
