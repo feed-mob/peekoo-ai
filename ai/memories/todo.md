@@ -30,9 +30,9 @@
   - Session tracking display
   - Notification triggers
 
-- [ ] Store conversation history in SQLite
-  - Persist chat sessions across app restarts
-  - Load previous conversations
+- [x] Store conversation history in SQLite
+  - Persist chat sessions across app restarts (pi handles JSONL; indexed via SQLite)
+  - Load previous conversations on cold start (fixed CWD mismatch, PR #72)
 
 ### Planned (GPUI Version)
 - [ ] Implement GPUI native UI as alternative
@@ -57,5 +57,5 @@
 
 ---
 
-**Last updated**: 2026-03-07
+**Last updated**: 2026-03-12
 **Status**: Tauri MVP implementation in progress
