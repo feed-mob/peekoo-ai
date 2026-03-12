@@ -9,7 +9,8 @@ const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
   "agent-result": "reminder",      // AI finished and produced a result
   "task-completed": "happy",       // Celebrate task completion
   "pomodoro-started": "working",   // Enter focus/working mode
-  "pomodoro-break": "idle",        // Resting between sessions
+  "pomodoro-resting": "sleepy",    // Actively resting during break
+  "pomodoro-break": "idle",        // Resting between sessions (paused or not started)
   "pomodoro-completed": "happy",   // Celebrate completing a pomodoro session
   "panel-opened": "reminder",      // Something is being shown to the user
   "panel-closed": "idle",          // Return to neutral idle state

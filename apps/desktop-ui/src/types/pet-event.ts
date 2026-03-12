@@ -6,6 +6,7 @@ export const PetReactionTriggerSchema = z.enum([
   "agent-result",
   "task-completed",
   "pomodoro-started",
+  "pomodoro-resting",
   "pomodoro-break",
   "pomodoro-completed",
   "panel-opened",

@@ -3,6 +3,7 @@ use std::sync::Mutex;
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
+    MIGRATION_0004_PLUGINS,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -55,6 +56,12 @@ impl SettingsStore {
             "0003_provider_compat",
             "agent_provider_configs",
             MIGRATION_0003_PROVIDER_COMPAT,
+        )?;
+        apply_migration_if_needed(
+            &conn,
+            "0004_plugins",
+            "plugins",
+            MIGRATION_0004_PLUGINS,
         )?;
 
         conn.execute(
