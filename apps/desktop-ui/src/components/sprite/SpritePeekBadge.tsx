@@ -4,12 +4,10 @@ import {
   PEEK_BADGE_HEIGHT,
   PEEK_BADGE_PADDING,
   PEEK_BADGE_ROW_HEIGHT,
-  SPRITE_WIDTH,
 } from "@/lib/sprite-bubble-layout";
 import type { PeekBadgeItem } from "@/types/peek-badge";
 
 const BADGE_WIDTH = 180;
-const BADGE_LEFT = (SPRITE_WIDTH - BADGE_WIDTH) / 2;
 
 const ICON_MAP: Record<string, LucideIcon> = {
   droplet: Droplet,
@@ -79,7 +77,8 @@ export function SpritePeekBadge({
           className="pointer-events-auto absolute z-10 cursor-pointer rounded-xl border border-glass-border bg-glass/90 px-3 py-1.5 shadow-panel backdrop-blur-lg"
           style={{
             top: PEEK_BADGE_PADDING,
-            left: BADGE_LEFT,
+            left: "50%",
+            marginLeft: -(BADGE_WIDTH / 2),
             width: BADGE_WIDTH,
             maxHeight: expandedHeight,
           }}
@@ -99,7 +98,8 @@ export function SpritePeekBadge({
           className="pointer-events-auto absolute z-10 cursor-pointer rounded-xl border border-glass-border/60 bg-glass/80 px-3 shadow-panel/50 backdrop-blur-md"
           style={{
             top: PEEK_BADGE_PADDING,
-            left: BADGE_LEFT,
+            left: "50%",
+            marginLeft: -(BADGE_WIDTH / 2),
             width: BADGE_WIDTH,
             height: PEEK_BADGE_HEIGHT,
           }}
