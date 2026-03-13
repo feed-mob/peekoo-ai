@@ -15,7 +15,9 @@ use tracing::{info, warn};
 
 use peekoo_paths::peekoo_global_data_dir;
 use peekoo_plugin_host::manifest::parse_manifest;
-use peekoo_plugin_host::{PluginManifest, PluginRegistry};
+use peekoo_plugin_host::{
+    resolve_companion_install_path, CompanionDef, PluginManifest, PluginRegistry,
+};
 
 const GITHUB_API_CONTENTS_URL: &str =
     "https://api.github.com/repos/feed-mob/peekoo-ai/contents/plugins";
@@ -218,6 +220,8 @@ impl PluginStoreService {
         F: FnOnce(&Path) -> Result<(), String>,
     {
         let was_loaded = registry.loaded_keys().iter().any(|key| key == plugin_key);
+        let old_manifest =
+            peekoo_plugin_host::manifest::load_manifest(&dest_dir.join("peekoo-plugin.toml")).ok();
 
         if was_loaded {
             let _ = registry.unload_plugin(plugin_key);
@@ -228,7 +232,22 @@ impl PluginStoreService {
             registry
                 .install_plugin(dest_dir)
                 .map(|_| ())
-                .map_err(|e| format!("Failed to load updated plugin: {e}"))
+                .map_err(|e| format!("Failed to load updated plugin: {e}"))?;
+
+            let new_manifest =
+                peekoo_plugin_host::manifest::load_manifest(&dest_dir.join("peekoo-plugin.toml"))
+                    .map_err(|e| format!("Failed to read updated manifest: {e}"))?;
+
+            if let Some(old_manifest) = &old_manifest {
+                Self::cleanup_removed_companions(
+                    plugin_key,
+                    dest_dir,
+                    &old_manifest.companions,
+                    &new_manifest.companions,
+                );
+            }
+
+            Ok(())
         });
 
         if let Err(err) = result {
@@ -262,6 +281,16 @@ impl PluginStoreService {
 
         info!(plugin = plugin_key, "Uninstalling plugin");
 
+        match peekoo_plugin_host::manifest::load_manifest(&plugin_dir.join("peekoo-plugin.toml")) {
+            Ok(manifest) => {
+                Self::cleanup_all_companions(plugin_key, &plugin_dir, &manifest.companions)
+            }
+            Err(err) => warn!(
+                plugin = plugin_key,
+                "Failed to read manifest during uninstall: {err}"
+            ),
+        }
+
         // Best-effort unload - plugin may not be in memory if initialization failed
         let _ = registry.unload_plugin(plugin_key);
 
@@ -271,6 +300,49 @@ impl PluginStoreService {
         info!(plugin = plugin_key, "Plugin uninstalled successfully");
 
         Ok(())
+    }
+
+    fn companion_paths(plugin_dir: &Path, companions: &[CompanionDef]) -> Vec<PathBuf> {
+        companions
+            .iter()
+            .filter_map(|companion| resolve_companion_install_path(plugin_dir, companion))
+            .collect()
+    }
+
+    fn cleanup_all_companions(plugin_key: &str, plugin_dir: &Path, companions: &[CompanionDef]) {
+        for path in Self::companion_paths(plugin_dir, companions) {
+            Self::remove_companion_file(plugin_key, &path);
+        }
+    }
+
+    fn cleanup_removed_companions(
+        plugin_key: &str,
+        plugin_dir: &Path,
+        old_companions: &[CompanionDef],
+        new_companions: &[CompanionDef],
+    ) {
+        let old_paths = Self::companion_paths(plugin_dir, old_companions);
+        let new_paths: std::collections::HashSet<PathBuf> =
+            Self::companion_paths(plugin_dir, new_companions)
+                .into_iter()
+                .collect();
+
+        for path in old_paths {
+            if !new_paths.contains(&path) {
+                Self::remove_companion_file(plugin_key, &path);
+            }
+        }
+    }
+
+    fn remove_companion_file(plugin_key: &str, path: &Path) {
+        if !path.exists() {
+            warn!(plugin = plugin_key, target = %path.display(), "Companion file already missing during cleanup");
+            return;
+        }
+
+        if let Err(e) = std::fs::remove_file(path) {
+            warn!(plugin = plugin_key, target = %path.display(), "Failed to remove companion file: {e}");
+        }
     }
 
     fn check_installation(
@@ -489,9 +561,10 @@ mod tests {
     use std::path::Path;
     use std::sync::Arc;
     use std::sync::Mutex;
+    use std::sync::OnceLock;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_plugin_host::PluginRegistry;
+    use peekoo_plugin_host::{resolve_companion_target, PluginRegistry};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -556,6 +629,26 @@ mod tests {
         dir
     }
 
+    fn with_test_config_home<T>(name: &str, f: impl FnOnce(PathBuf) -> T) -> T {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let _guard = ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("env lock");
+        let config_home = temp_dir(name).join("config-home");
+        fs::create_dir_all(&config_home).expect("config home");
+
+        let old = std::env::var("XDG_CONFIG_HOME").ok();
+        unsafe { std::env::set_var("XDG_CONFIG_HOME", &config_home) };
+        let result = f(config_home.clone());
+        if let Some(value) = old {
+            unsafe { std::env::set_var("XDG_CONFIG_HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
+        }
+        result
+    }
+
     fn copy_dir_recursive(src: &Path, dst: &Path) {
         fs::create_dir_all(dst).expect("create dst dir");
         for entry in fs::read_dir(src).expect("read dir") {
@@ -569,6 +662,40 @@ mod tests {
                 fs::copy(&src_path, &dst_path).expect("copy file");
             }
         }
+    }
+
+    fn write_plugin_with_companion(plugin_dir: &Path, key: &str, version: &str) {
+        fs::create_dir_all(plugin_dir.join("companions")).expect("companions dir");
+        let wasm_src = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/peekoo-opencode-companion/target/wasm32-wasip1/release/peekoo_opencode_companion.wasm");
+        let wasm_dst =
+            plugin_dir.join("target/wasm32-wasip1/release/peekoo_opencode_companion.wasm");
+        fs::create_dir_all(wasm_dst.parent().expect("wasm parent")).expect("wasm dir");
+        fs::copy(wasm_src, &wasm_dst).expect("copy wasm");
+        fs::write(
+            plugin_dir.join("peekoo-plugin.toml"),
+            format!(
+                r#"[plugin]
+key = "{key}"
+name = "OpenCode Companion"
+version = "{version}"
+wasm = "target/wasm32-wasip1/release/peekoo_opencode_companion.wasm"
+
+[permissions]
+required = ["bridge:fs_read", "notifications", "pet:mood", "scheduler", "state:read", "state:write"]
+
+[[companions]]
+source = "companions/{key}.js"
+target = "opencode-plugin"
+"#
+            ),
+        )
+        .expect("manifest");
+        fs::write(
+            plugin_dir.join(format!("companions/{key}.js")),
+            format!("console.log('v{version}')"),
+        )
+        .expect("companion file");
     }
 
     #[test]
@@ -809,12 +936,10 @@ wasm = "plugin.wasm"
         registry
             .install_plugin(&plugin_dir)
             .expect("initial plugin install should succeed");
-        assert!(
-            registry
-                .loaded_keys()
-                .iter()
-                .any(|key| key == "example-minimal")
-        );
+        assert!(registry
+            .loaded_keys()
+            .iter()
+            .any(|key| key == "example-minimal"));
 
         let err = store
             .replace_installed_plugin("example-minimal", &plugin_dir, &registry, |_| {
@@ -830,5 +955,95 @@ wasm = "plugin.wasm"
                 .any(|key| key == "example-minimal"),
             "restored plugin should be reloaded into memory after rollback"
         );
+    }
+
+    #[test]
+    fn uninstall_plugin_removes_declared_companion_file_only() {
+        with_test_config_home("uninstall-companion", |_| {
+            let store = make_store();
+            let global_plugins_dir = peekoo_global_data_dir()
+                .expect("global dir")
+                .join("plugins");
+            let plugin_key = format!("test-opencode-uninstall-{}", std::process::id());
+            let plugin_dir = global_plugins_dir.join(&plugin_key);
+            write_plugin_with_companion(&plugin_dir, &plugin_key, "0.1.0");
+
+            let target_dir = resolve_companion_target("opencode-plugin").expect("companion target");
+            fs::create_dir_all(&target_dir).expect("target dir");
+            let companion_path = target_dir.join(format!("{plugin_key}.js"));
+            let unrelated_path = target_dir.join("user-plugin.js");
+            fs::write(&companion_path, "companion").expect("companion install");
+            fs::write(&unrelated_path, "keep me").expect("unrelated file");
+
+            let registry = make_registry(vec![global_plugins_dir.clone()]);
+
+            store
+                .uninstall_plugin(&plugin_key, &registry)
+                .expect("uninstall should succeed");
+
+            assert!(!plugin_dir.exists(), "plugin directory should be removed");
+            assert!(
+                !companion_path.exists(),
+                "declared companion file should be removed"
+            );
+            assert!(
+                unrelated_path.exists(),
+                "unrelated files in target directory must be preserved"
+            );
+
+            let _ = fs::remove_file(unrelated_path);
+            let _ = fs::remove_dir_all(&plugin_dir);
+        });
+    }
+
+    #[test]
+    fn update_plugin_removes_stale_companion_file_when_manifest_drops_it() {
+        with_test_config_home("update-stale-companion", |_| {
+            let store = make_store();
+            let temp_root = temp_dir("update-stale-plugin-root");
+            let plugin_key = format!("test-opencode-update-{}", std::process::id());
+            let plugin_dir = temp_root.join(&plugin_key);
+            write_plugin_with_companion(&plugin_dir, &plugin_key, "0.1.0");
+
+            let target_dir = resolve_companion_target("opencode-plugin").expect("companion target");
+            fs::create_dir_all(&target_dir).expect("target dir");
+            let companion_path = target_dir.join(format!("{plugin_key}.js"));
+            fs::write(&companion_path, "old-companion").expect("companion install");
+
+            let registry = make_registry(vec![temp_root.clone()]);
+
+            store
+                .replace_installed_plugin(&plugin_key, &plugin_dir, &registry, |dest_dir| {
+                    let wasm_src = Path::new(env!("CARGO_MANIFEST_DIR"))
+                        .join("../../plugins/peekoo-opencode-companion/target/wasm32-wasip1/release/peekoo_opencode_companion.wasm");
+                    let wasm_dst = dest_dir.join("target/wasm32-wasip1/release/peekoo_opencode_companion.wasm");
+                    fs::create_dir_all(wasm_dst.parent().expect("wasm parent"))
+                        .map_err(|e| e.to_string())?;
+                    fs::copy(wasm_src, &wasm_dst).map_err(|e| e.to_string())?;
+
+                    fs::write(
+                        dest_dir.join("peekoo-plugin.toml"),
+                        format!(
+                            r#"[plugin]
+key = "{plugin_key}"
+name = "OpenCode Companion"
+version = "0.2.0"
+wasm = "target/wasm32-wasip1/release/peekoo_opencode_companion.wasm"
+
+[permissions]
+required = ["bridge:fs_read", "notifications", "pet:mood", "scheduler", "state:read", "state:write"]
+"#
+                        ),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    Ok(())
+                })
+                .expect("update should succeed");
+
+            assert!(
+                !companion_path.exists(),
+                "stale companion file should be removed when no longer declared"
+            );
+        });
     }
 }

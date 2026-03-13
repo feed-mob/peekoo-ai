@@ -549,7 +549,7 @@ impl PluginRegistry {
 /// Resolve a well-known companion target ID to a filesystem directory.
 ///
 /// Returns `None` for unrecognised target IDs.
-fn resolve_companion_target(target: &str) -> Option<PathBuf> {
+pub fn resolve_companion_target(target: &str) -> Option<PathBuf> {
     match target {
         "opencode-plugin" => {
             let config_base = resolve_config_base_dir()?;
@@ -589,6 +589,32 @@ fn resolve_config_base_dir() -> Option<PathBuf> {
 
     #[cfg(windows)]
     None
+}
+
+fn resolve_companion_filename(companion: &manifest::CompanionDef, source_path: Option<&Path>) -> Option<String> {
+    let raw_filename = companion.filename.as_deref().unwrap_or_else(|| {
+        source_path
+            .and_then(|path| path.file_name())
+            .or_else(|| Path::new(&companion.source).file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("companion")
+    });
+
+    Path::new(raw_filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|name| !name.is_empty() && *name != "." && *name != "..")
+        .map(ToString::to_string)
+}
+
+pub fn resolve_companion_install_path(
+    plugin_dir: &Path,
+    companion: &manifest::CompanionDef,
+) -> Option<PathBuf> {
+    let target_dir = resolve_companion_target(&companion.target)?;
+    let source_path = plugin_dir.join(&companion.source);
+    let filename = resolve_companion_filename(companion, Some(&source_path))?;
+    Some(target_dir.join(filename))
 }
 
 /// Copy companion files declared in the manifest to their target directories.
@@ -670,12 +696,8 @@ fn install_companion_files(
                 .unwrap_or("companion")
         });
 
-        // Extract only the final path component — strips any ../ or
-        // directory prefix a malicious manifest might include.
-        let safe_filename = Path::new(raw_filename).file_name().and_then(|n| n.to_str());
-
-        let safe_filename = match safe_filename {
-            Some(name) if !name.is_empty() && name != "." && name != ".." => name,
+        let safe_filename = match resolve_companion_filename(companion, Some(&canonical_source)) {
+            Some(name) => name,
             _ => {
                 tracing::warn!(
                     plugin = plugin_key,

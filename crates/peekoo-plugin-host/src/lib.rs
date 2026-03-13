@@ -26,7 +26,7 @@ pub use manifest::{
     CompanionDef, ConfigFieldDef, ConfigFieldType, PluginManifest, ToolDefinition, UiPanelDef,
 };
 pub use permissions::PermissionStore;
-pub use registry::PluginRegistry;
+pub use registry::{PluginRegistry, resolve_companion_install_path, resolve_companion_target};
 pub use runtime::PluginInstance;
 pub use state::PluginStateStore;
 pub use tools::{PluginToolBridge, PluginToolSpec};
