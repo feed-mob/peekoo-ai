@@ -5,12 +5,14 @@ mod skills;
 mod store;
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
 };
+use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::settings::catalog::{
@@ -35,6 +37,33 @@ pub struct SettingsService {
 }
 
 impl SettingsService {
+    /// Migrate the legacy settings database to `target_db_path` if needed.
+    ///
+    /// This **must** be called before opening the SQLite connection because
+    /// `Connection::open` creates the file as a side-effect, which would
+    /// cause the migration to exit early (it skips when the target exists).
+    pub fn migrate_legacy_db(target_db_path: &Path) -> Result<(), String> {
+        migrate_legacy_settings_db_if_needed(target_db_path)
+    }
+
+    /// Create a `SettingsService` backed by an already-opened shared connection.
+    ///
+    /// The caller is responsible for:
+    /// 1. Running `migrate_legacy_db()` **before** opening the connection.
+    /// 2. Opening the connection and configuring PRAGMAs (WAL, busy_timeout).
+    pub fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
+        let store = SettingsStore::with_conn(conn)?;
+        let fallback_root = peekoo_paths::peekoo_global_data_dir()?.join("secrets");
+        Ok(Self {
+            store,
+            secret_store: Box::new(FallbackSecretStore::new(
+                Box::new(KeyringSecretStore::new("peekoo-desktop")),
+                Box::new(FileSecretStore::new(fallback_root)),
+            )),
+            oauth: OAuthService::new(),
+        })
+    }
+
     pub fn new() -> Result<Self, String> {
         let db_path = default_db_path()?;
         migrate_legacy_settings_db_if_needed(&db_path)?;
@@ -548,5 +577,76 @@ mod tests {
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);
+    }
+
+    /// Regression test: legacy migration must run **before** `Connection::open`
+    /// because `open` creates the file, causing the migration to exit early.
+    ///
+    /// This mirrors the bootstrap order in `AgentApplication::new()`:
+    ///   1. `SettingsService::migrate_legacy_db(&db_path)`
+    ///   2. `Connection::open(&db_path)`
+    ///   3. `SettingsService::with_conn(conn)`
+    #[test]
+    fn legacy_migration_before_open_preserves_data() {
+        let temp = std::env::temp_dir().join(format!(
+            "peekoo-legacy-order-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos()
+        ));
+        let legacy_root = temp.join("legacy");
+        let target_root = temp.join("correct");
+        let broken_root = temp.join("broken");
+        std::fs::create_dir_all(&legacy_root).expect("create legacy root");
+        std::fs::create_dir_all(&target_root).expect("create target root");
+        std::fs::create_dir_all(&broken_root).expect("create broken root");
+
+        // Build a real legacy database with a custom provider/model.
+        let legacy_db = legacy_root.join("peekoo.sqlite");
+        {
+            let legacy_store =
+                store::SettingsStore::from_path(&legacy_db).expect("create legacy store");
+            legacy_store
+                .apply_patch(super::dto::AgentSettingsPatchDto {
+                    active_provider_id: Some("test-provider".into()),
+                    active_model_id: Some("test-model".into()),
+                    system_prompt: None,
+                    max_tool_iterations: None,
+                    skills: None,
+                })
+                .expect("seed legacy settings");
+        }
+
+        // ── Correct order: migrate THEN open ──────────────────────────
+        let correct_db = target_root.join("peekoo.sqlite");
+        migrate_settings_db_if_needed(&correct_db, Some(legacy_root.clone()))
+            .expect("migrate (correct order)");
+        let conn = Connection::open(&correct_db).expect("open after migration");
+        let db_conn = Arc::new(Mutex::new(conn));
+        let store = store::SettingsStore::with_conn(db_conn).expect("store from migrated db");
+        let settings = store.load_settings().expect("load migrated settings");
+        assert_eq!(
+            settings.active_provider_id, "test-provider",
+            "Correct order must preserve legacy provider"
+        );
+
+        // ── Broken order: open THEN migrate (the bug) ─────────────────
+        let broken_db = broken_root.join("peekoo.sqlite");
+        let _conn = Connection::open(&broken_db).expect("open before migration");
+        // File now exists, so migration will silently skip.
+        migrate_settings_db_if_needed(&broken_db, Some(legacy_root))
+            .expect("migrate (broken order)");
+        drop(_conn);
+        let conn2 = Connection::open(&broken_db).expect("reopen broken db");
+        let db_conn2 = Arc::new(Mutex::new(conn2));
+        let store2 = store::SettingsStore::with_conn(db_conn2).expect("store from empty db");
+        let settings2 = store2.load_settings().expect("load default settings");
+        assert_ne!(
+            settings2.active_provider_id, "test-provider",
+            "Broken order must NOT have legacy data (proves ordering matters)"
+        );
+
+        let _ = std::fs::remove_dir_all(&temp);
     }
 }

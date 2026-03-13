@@ -57,9 +57,29 @@ pub struct AgentApplication {
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
-        let settings = SettingsService::new()?;
+
+        // Open a single shared SQLite connection for the entire application.
+        // WAL mode allows concurrent readers and serialises writers gracefully,
+        // avoiding OS-level "Access Denied" (error 5) on Windows where SQLite
+        // uses mandatory file locks in the default DELETE journal mode.
+        //
+        // Legacy migration MUST run before Connection::open because open()
+        // creates the file as a side-effect, which would cause the migration
+        // to skip (it exits early when the target file already exists).
+        let db_path = peekoo_paths::peekoo_settings_db_path()?;
+        if let Some(parent) = db_path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("Create db dir error: {e}"))?;
+        }
+        SettingsService::migrate_legacy_db(&db_path)?;
+        let conn =
+            Connection::open(&db_path).map_err(|e| format!("Open settings db error: {e}"))?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+            .map_err(|e| format!("Set db pragmas error: {e}"))?;
+        let db_conn = Arc::new(Mutex::new(conn));
+
+        let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
         let (plugin_registry, notifications, notification_receiver, peek_badges) =
-            create_plugin_registry()?;
+            create_plugin_registry(db_conn)?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -615,7 +635,9 @@ fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bo
 }
 
 #[allow(clippy::type_complexity)]
-fn create_plugin_registry() -> Result<
+fn create_plugin_registry(
+    db_conn: Arc<Mutex<Connection>>,
+) -> Result<
     (
         Arc<PluginRegistry>,
         Arc<NotificationService>,
@@ -624,9 +646,6 @@ fn create_plugin_registry() -> Result<
     ),
     String,
 > {
-    let db_path = peekoo_paths::peekoo_settings_db_path()?;
-    let db_conn = Connection::open(&db_path).map_err(|e| format!("Open plugin db error: {e}"))?;
-
     let global_plugins_dir = peekoo_paths::peekoo_global_data_dir()?.join("plugins");
     if !global_plugins_dir.exists() {
         std::fs::create_dir_all(&global_plugins_dir)
@@ -639,7 +658,7 @@ fn create_plugin_registry() -> Result<
     let peek_badges = Arc::new(PeekBadgeService::new());
     let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
-        Arc::new(Mutex::new(db_conn)),
+        db_conn,
         scheduler,
         Arc::clone(&notifications),
         Arc::clone(&peek_badges),

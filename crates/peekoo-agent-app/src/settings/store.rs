@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
@@ -25,10 +25,28 @@ const SQL_UPSERT_PROVIDER_AUTH: &str = concat!(
 use crate::settings::skills::discover_skills;
 
 pub(crate) struct SettingsStore {
-    conn: Mutex<Connection>,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SettingsStore {
+    /// Create a `SettingsStore` backed by an already-opened shared connection.
+    ///
+    /// The caller is responsible for opening the connection and setting any
+    /// desired PRAGMAs (WAL mode, busy_timeout, etc.) before calling this.
+    /// Migrations and default seed rows are applied on the shared connection.
+    pub(crate) fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
+        {
+            let c = conn
+                .lock()
+                .map_err(|e| format!("Settings conn lock error: {e}"))?;
+            run_migrations_and_seed(&c)?;
+        }
+        Ok(Self { conn })
+    }
+
+    /// Convenience constructor that opens a new connection from a file path.
+    ///
+    /// Used by tests and the legacy `SettingsService::new()` code-path.
     pub(crate) fn from_path(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -36,38 +54,10 @@ impl SettingsStore {
         }
 
         let conn = Connection::open(path).map_err(|e| format!("Open settings db error: {e}"))?;
-
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
-            [],
-        )
-        .map_err(|e| format!("Create migrations table error: {e}"))?;
-
-        apply_migration_if_needed(&conn, "0001_init", "tasks", MIGRATION_0001_INIT)?;
-        apply_migration_if_needed(
-            &conn,
-            "0002_agent_settings",
-            "agent_settings",
-            MIGRATION_0002_AGENT_SETTINGS,
-        )?;
-        apply_migration_if_needed(
-            &conn,
-            "0003_provider_compat",
-            "agent_provider_configs",
-            MIGRATION_0003_PROVIDER_COMPAT,
-        )?;
-
-        conn.execute(
-            &format!(
-                "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
-                DEFAULT_MAX_TOOL_ITERATIONS
-            ),
-            params![DEFAULT_PROVIDER, DEFAULT_MODEL],
-        )
-        .map_err(|e| format!("Insert default agent settings error: {e}"))?;
+        run_migrations_and_seed(&conn)?;
 
         Ok(Self {
-            conn: Mutex::new(conn),
+            conn: Arc::new(Mutex::new(conn)),
         })
     }
 
@@ -435,6 +425,39 @@ impl SettingsStore {
         .ok()
         .flatten()
     }
+}
+
+fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
+        [],
+    )
+    .map_err(|e| format!("Create migrations table error: {e}"))?;
+
+    apply_migration_if_needed(conn, "0001_init", "tasks", MIGRATION_0001_INIT)?;
+    apply_migration_if_needed(
+        conn,
+        "0002_agent_settings",
+        "agent_settings",
+        MIGRATION_0002_AGENT_SETTINGS,
+    )?;
+    apply_migration_if_needed(
+        conn,
+        "0003_provider_compat",
+        "agent_provider_configs",
+        MIGRATION_0003_PROVIDER_COMPAT,
+    )?;
+
+    conn.execute(
+        &format!(
+            "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
+            DEFAULT_MAX_TOOL_ITERATIONS
+        ),
+        params![DEFAULT_PROVIDER, DEFAULT_MODEL],
+    )
+    .map_err(|e| format!("Insert default agent settings error: {e}"))?;
+
+    Ok(())
 }
 
 fn apply_migration_if_needed(
