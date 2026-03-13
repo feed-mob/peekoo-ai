@@ -591,7 +591,10 @@ fn resolve_config_base_dir() -> Option<PathBuf> {
     None
 }
 
-fn resolve_companion_filename(companion: &manifest::CompanionDef, source_path: Option<&Path>) -> Option<String> {
+fn resolve_companion_filename(
+    companion: &manifest::CompanionDef,
+    source_path: Option<&Path>,
+) -> Option<String> {
     let raw_filename = companion.filename.as_deref().unwrap_or_else(|| {
         source_path
             .and_then(|path| path.file_name())

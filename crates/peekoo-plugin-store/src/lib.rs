@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use peekoo_paths::peekoo_global_data_dir;
 use peekoo_plugin_host::manifest::parse_manifest;
 use peekoo_plugin_host::{
-    resolve_companion_install_path, CompanionDef, PluginManifest, PluginRegistry,
+    CompanionDef, PluginManifest, PluginRegistry, resolve_companion_install_path,
 };
 
 const GITHUB_API_CONTENTS_URL: &str =
@@ -270,9 +270,11 @@ impl PluginStoreService {
                     .map_err(|reload_err| {
                         format!("{err}; failed to restore plugin registration: {reload_err}")
                     })?;
-                registry.set_plugin_enabled(plugin_key, false).map_err(|reload_err| {
-                    format!("{err}; failed to restore disabled state: {reload_err}")
-                })?;
+                registry
+                    .set_plugin_enabled(plugin_key, false)
+                    .map_err(|reload_err| {
+                        format!("{err}; failed to restore disabled state: {reload_err}")
+                    })?;
             }
             return Err(err);
         }
@@ -582,7 +584,7 @@ mod tests {
     use std::sync::OnceLock;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_plugin_host::{resolve_companion_target, PluginRegistry};
+    use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -964,10 +966,12 @@ wasm = "plugin.wasm"
         registry
             .install_plugin(&plugin_dir)
             .expect("initial plugin install should succeed");
-        assert!(registry
-            .loaded_keys()
-            .iter()
-            .any(|key| key == "health-reminders"));
+        assert!(
+            registry
+                .loaded_keys()
+                .iter()
+                .any(|key| key == "health-reminders")
+        );
 
         let err = store
             .replace_installed_plugin("health-reminders", &plugin_dir, &registry, |_| {
