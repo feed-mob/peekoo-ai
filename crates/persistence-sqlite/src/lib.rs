@@ -3,8 +3,6 @@ pub const MIGRATION_0002_AGENT_SETTINGS: &str =
     include_str!("../migrations/0002_agent_settings.sql");
 pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
     include_str!("../migrations/0003_provider_compat.sql");
-pub const MIGRATION_0004_PLUGINS: &str =
-    include_str!("../migrations/0004_plugins.sql");
 
 #[cfg(test)]
 mod tests {

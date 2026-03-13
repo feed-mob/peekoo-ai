@@ -142,7 +142,6 @@ export default function SpriteView() {
       await new Promise((r) => setTimeout(r, 200));
       await new Promise((r) => requestAnimationFrame(() => r(null)));
 
-      const start = performance.now();
       // 3. Start the actual OS drag
       await getCurrentWindow().startDragging();
       

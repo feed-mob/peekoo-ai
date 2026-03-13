@@ -487,11 +487,7 @@ pub fn run() {
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
             if let Some(mut data_dir) = dirs::data_local_dir() {
-                if cfg!(debug_assertions) {
-                    data_dir.push("com.peekoo.desktop.dev");
-                } else {
-                    data_dir.push("com.peekoo.desktop");
-                }
+                data_dir.push("com.peekoo.desktop");
                 data_dir.push("WebView2");
                 if let Err(e) = std::fs::create_dir_all(&data_dir) {
                     eprintln!("warning: failed to create WebView2 data dir: {e}");

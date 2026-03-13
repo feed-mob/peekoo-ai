@@ -7,7 +7,7 @@ rust-version = "1.85"
 
 [lib]
 name = "peekoo_desktop_tauri_lib"
-crate-type = ["lib"]
+crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

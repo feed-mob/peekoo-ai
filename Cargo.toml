@@ -15,10 +15,6 @@ members = [
 ]
 resolver = "2"
 
-[profile.dev]
-codegen-units = 1
-lto = "fat"
-
 [workspace.package]
 edition = "2024"
 license = "MIT"
