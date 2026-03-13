@@ -1,0 +1,18 @@
+{
+  "name": "@peekoo/plugin-sdk",
+  "version": "0.1.0",
+  "description": "Peekoo Plugin SDK for AssemblyScript",
+  "main": "assembly/index.ts",
+  "scripts": {
+    "asbuild": "asc assembly/index.ts --exportRuntime --outFile build/sdk.wasm --optimize"
+  },
+  "dependencies": {
+    "@extism/as-pdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.0"
+  },
+  "files": [
+    "assembly/"
+  ]
+}

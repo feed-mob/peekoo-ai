@@ -95,7 +95,11 @@ cd apps/desktop-ui && npx tsc --noEmit
 - Sign commits with GPG
 - Use conventional commits format: `type(scope): subject`
 - Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`
-- Keep commits atomic and focused
+- Keep commits atomic and focused; prefer separate commits for distinct logical changes instead of folding unrelated follow-up tweaks into the same commit
+
+## Pull Requests
+
+When creating a pull request, use the template in `.github/pull_request_template.md`.
 
 ## Common Tasks
 

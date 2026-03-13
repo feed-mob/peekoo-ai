@@ -1,4 +1,6 @@
+use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -36,6 +38,8 @@ pub struct Scheduler {
     wake: Arc<Notify>,
     shutdown: CancellationToken,
 }
+
+const WAKE_DRIFT_TOLERANCE: Duration = Duration::from_secs(30);
 
 impl Scheduler {
     pub fn new() -> Self {
@@ -133,10 +137,23 @@ impl Scheduler {
     where
         F: Fn(String, String) + Send + Sync + 'static,
     {
+        self.start_with_wake_handler(on_fire, |_| {})
+    }
+
+    pub fn start_with_wake_handler<F, G>(
+        &self,
+        on_fire: F,
+        on_wake: G,
+    ) -> std::thread::JoinHandle<()>
+    where
+        F: Fn(String, String) + Send + Sync + 'static,
+        G: Fn(String) + Send + Sync + 'static,
+    {
         let entries = Arc::clone(&self.entries);
         let wake = Arc::clone(&self.wake);
         let shutdown = self.shutdown.clone();
         let on_fire = Arc::new(on_fire);
+        let on_wake = Arc::new(on_wake);
 
         std::thread::spawn(move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
@@ -145,6 +162,9 @@ impl Scheduler {
                 .expect("scheduler runtime should build");
 
             runtime.block_on(async move {
+                let mut last_monotonic = Instant::now();
+                let mut last_wall = SystemTime::now();
+
                 loop {
                     // Register the wake listener *before* releasing the entries
                     // lock so that a concurrent `set()` / `cancel()` that calls
@@ -178,8 +198,28 @@ impl Scheduler {
                         }
                     }
 
+                    let now_monotonic = Instant::now();
+                    let now_wall = SystemTime::now();
+                    let wake_detected = detect_wake_drift(
+                        last_monotonic,
+                        last_wall,
+                        now_monotonic,
+                        now_wall,
+                        WAKE_DRIFT_TOLERANCE,
+                    );
+                    last_monotonic = now_monotonic;
+                    last_wall = now_wall;
+
+                    if wake_detected {
+                        let owners = scheduled_owners(&entries);
+                        for owner in owners {
+                            on_wake(owner);
+                        }
+                        continue;
+                    }
+
                     let due_entries = {
-                        let now = Instant::now();
+                        let now = now_monotonic;
                         let mut entries = entries.lock().expect("scheduler entries lock poisoned");
                         let mut due = Vec::new();
                         let mut pending = Vec::with_capacity(entries.len());
@@ -211,5 +251,81 @@ impl Scheduler {
 impl Default for Scheduler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn scheduled_owners(entries: &Arc<Mutex<Vec<ScheduleEntry>>>) -> Vec<String> {
+    let entries = entries.lock().expect("scheduler entries lock poisoned");
+    entries
+        .iter()
+        .map(|entry| entry.owner.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+fn detect_wake_drift(
+    previous_monotonic: Instant,
+    previous_wall: SystemTime,
+    current_monotonic: Instant,
+    current_wall: SystemTime,
+    tolerance: Duration,
+) -> bool {
+    let monotonic_elapsed = current_monotonic
+        .checked_duration_since(previous_monotonic)
+        .unwrap_or(Duration::ZERO);
+    let Ok(wall_elapsed) = current_wall.duration_since(previous_wall) else {
+        return false;
+    };
+
+    wall_elapsed > monotonic_elapsed.saturating_add(tolerance)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant, SystemTime};
+
+    use super::detect_wake_drift;
+
+    #[test]
+    fn detects_large_wall_clock_jump_as_wake() {
+        let monotonic_start = Instant::now();
+        let wall_start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+
+        assert!(detect_wake_drift(
+            monotonic_start,
+            wall_start,
+            monotonic_start + Duration::from_secs(5),
+            wall_start + Duration::from_secs(50),
+            Duration::from_secs(30),
+        ));
+    }
+
+    #[test]
+    fn does_not_detect_normal_clock_progress_as_wake() {
+        let monotonic_start = Instant::now();
+        let wall_start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+
+        assert!(!detect_wake_drift(
+            monotonic_start,
+            wall_start,
+            monotonic_start + Duration::from_secs(5),
+            wall_start + Duration::from_secs(10),
+            Duration::from_secs(30),
+        ));
+    }
+
+    #[test]
+    fn ignores_backward_wall_clock_adjustments() {
+        let monotonic_start = Instant::now();
+        let wall_start = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000);
+
+        assert!(!detect_wake_drift(
+            monotonic_start,
+            wall_start,
+            monotonic_start + Duration::from_secs(5),
+            wall_start - Duration::from_secs(60),
+            Duration::from_secs(30),
+        ));
     }
 }

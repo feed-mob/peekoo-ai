@@ -1,0 +1,17 @@
+[template]
+cargo_generate_version = ">=0.18.0"
+
+[placeholders.plugin_key]
+type = "string"
+prompt = "Plugin key (kebab-case, e.g. 'my-plugin'):"
+regex = "^[a-z][a-z0-9-]*$"
+
+[placeholders.description]
+type = "string"
+prompt = "Short description:"
+default = "A Peekoo plugin"
+
+[placeholders.author]
+type = "string"
+prompt = "Author name:"
+default = "Peekoo User"

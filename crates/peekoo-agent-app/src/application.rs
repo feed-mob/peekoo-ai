@@ -1,20 +1,26 @@
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use peekoo_agent::AgentEvent;
-use peekoo_agent::config::AgentServiceConfig;
-use peekoo_agent::service::AgentService;
-use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
-use peekoo_paths::ensure_windows_pi_agent_env;
-use peekoo_plugin_host::{PluginRegistry, PluginToolBridge};
-use peekoo_scheduler::Scheduler;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
+use peekoo_agent::AgentEvent;
+use peekoo_agent::PluginToolProvider;
+use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent::service::AgentService;
+use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
+use peekoo_paths::ensure_windows_pi_agent_env;
+use peekoo_plugin_host::PluginRegistry;
+use peekoo_scheduler::Scheduler;
+
+use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
 };
+use crate::plugin_tool_impl::PluginToolProviderImpl;
 use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
@@ -24,18 +30,28 @@ use crate::settings::{
 };
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
+use crate::workspace_bootstrap::ensure_agent_workspace;
+
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
     productivity: ProductivityService,
     plugin_registry: Arc<PluginRegistry>,
-    plugin_tools: PluginToolBridge,
+    plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
     peek_badges: Arc<PeekBadgeService>,
     shutdown_token: CancellationToken,
     agent_config_version: Mutex<Option<i64>>,
+    /// Directory where pi session files are stored.
+    session_dir: PathBuf,
+    /// Workspace root used to scope session restore and resumption.
+    workspace_dir: PathBuf,
+    /// Path to the last session file, used to resume context on the next prompt.
+    resume_session_path: Mutex<Option<PathBuf>>,
+    /// Monotonic generation that invalidates in-flight agents after `new_session`.
+    conversation_generation: AtomicU64,
 }
 
 impl AgentApplication {
@@ -47,11 +63,18 @@ impl AgentApplication {
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
+        let session_dir = peekoo_paths::peekoo_global_data_dir()?.join("sessions");
+        if !session_dir.exists() {
+            std::fs::create_dir_all(&session_dir)
+                .map_err(|e| format!("Create session dir error: {e}"))?;
+        }
+        let workspace_dir = ensure_agent_workspace()?;
+
         Ok(Self {
             agent: Mutex::new(None),
             settings,
             productivity: ProductivityService::new(),
-            plugin_tools: PluginToolBridge::new(Arc::clone(&plugin_registry)),
+            plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
             notifications,
@@ -59,6 +82,10 @@ impl AgentApplication {
             peek_badges,
             shutdown_token,
             agent_config_version: Mutex::new(None),
+            session_dir,
+            workspace_dir,
+            resume_session_path: Mutex::new(None),
+            conversation_generation: AtomicU64::new(0),
         })
     }
 
@@ -70,6 +97,7 @@ impl AgentApplication {
     where
         F: Fn(AgentEvent) + Send + Sync + 'static,
     {
+        let generation = self.conversation_generation.load(Ordering::SeqCst);
         let mut agent = {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
             let mut version_guard = self
@@ -108,7 +136,12 @@ impl AgentApplication {
 
         {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
-            *guard = Some(agent);
+            if should_restore_agent(
+                generation,
+                self.conversation_generation.load(Ordering::SeqCst),
+            ) {
+                *guard = Some(agent);
+            }
         }
 
         result.map_err(|e| format!("Agent error: {e}"))
@@ -255,7 +288,10 @@ impl AgentApplication {
         self.plugin_registry
             .install_plugin(&plugin_dir)
             .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
     }
 
     pub fn disable_plugin(&self, plugin_key: &str) -> Result<(), String> {
@@ -264,15 +300,16 @@ impl AgentApplication {
             .map_err(|e| e.to_string())?;
 
         match self.plugin_registry.unload_plugin(plugin_key) {
-            Ok(()) | Err(peekoo_plugin_host::PluginError::NotFound(_)) => Ok(()),
-            Err(err) => Err(err.to_string()),
+            Ok(()) | Err(peekoo_plugin_host::PluginError::NotFound(_)) => {}
+            Err(err) => return Err(err.to_string()),
         }
+
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
     }
 
     pub fn call_plugin_tool(&self, tool_name: &str, args_json: &str) -> Result<String, String> {
-        self.plugin_tools
-            .call_tool(tool_name, args_json)
-            .map_err(|e| e.to_string())
+        self.plugin_tools.call_plugin_tool(tool_name, args_json)
     }
 
     pub fn drain_plugin_notifications(&self) -> Vec<PluginNotificationDto> {
@@ -398,6 +435,71 @@ impl AgentApplication {
         self.notifications.is_dnd()
     }
 
+    /// Return the most recent session's messages for the chat panel.
+    ///
+    /// If the agent is already alive (i.e. a prompt has been sent this
+    /// session), messages are taken from the in-memory agent. Otherwise the
+    /// most recent session file on disk is read.
+    ///
+    /// A side-effect: when messages are loaded from disk, the session file
+    /// path is stored so that [`create_agent_service`] can resume it on the
+    /// next prompt (full context restore).
+    pub async fn get_last_session(&self) -> Result<Option<LastSessionDto>, String> {
+        // Fast path: agent is alive — use its in-memory messages.
+        {
+            let guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+            if let Some(agent) = guard.as_ref() {
+                let json_msgs = agent.messages_json();
+                let dtos = json_messages_to_dtos(&json_msgs);
+                if dtos.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(LastSessionDto {
+                    session_path: String::new(),
+                    messages: dtos,
+                }));
+            }
+        }
+
+        // Slow path: load from disk.
+        let result = conversation::load_last_session(&self.session_dir).await?;
+
+        // Stash the path so the next prompt resumes this session.
+        if let Some(ref dto) = result
+            && !dto.session_path.is_empty()
+            && let Ok(mut guard) = self.resume_session_path.lock()
+        {
+            *guard = Some(PathBuf::from(&dto.session_path));
+        }
+
+        Ok(result)
+    }
+
+    /// Start a fresh conversation. Drops the current agent so the next prompt
+    /// creates a brand-new session file.
+    pub fn new_session(&self) -> Result<(), String> {
+        self.conversation_generation.fetch_add(1, Ordering::SeqCst);
+        {
+            let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
+            *guard = None;
+        }
+        {
+            let mut version_guard = self
+                .agent_config_version
+                .lock()
+                .map_err(|e| format!("Version lock error: {e}"))?;
+            *version_guard = None;
+        }
+        {
+            let mut resume_guard = self
+                .resume_session_path
+                .lock()
+                .map_err(|e| format!("Resume path lock error: {e}"))?;
+            *resume_guard = None;
+        }
+        Ok(())
+    }
+
     pub fn shutdown_token(&self) -> CancellationToken {
         self.shutdown_token.clone()
     }
@@ -407,25 +509,61 @@ impl AgentApplication {
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        self.plugin_store
-            .install_plugin(plugin_key, &self.plugin_registry)
+        let result = self
+            .plugin_store
+            .install_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(result)
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        self.plugin_store
-            .update_plugin(plugin_key, &self.plugin_registry)
+        let result = self
+            .plugin_store
+            .update_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(result)
     }
 
     pub fn store_uninstall(&self, plugin_key: &str) -> Result<(), String> {
         self.plugin_store
-            .uninstall_plugin(plugin_key, &self.plugin_registry)
+            .uninstall_plugin(plugin_key, &self.plugin_registry)?;
+        self.invalidate_agent_for_plugin_change();
+        Ok(())
     }
 
-    /// Build a fresh `AgentService` from current settings + plugin prompt.
+    /// Drop the current agent so the next prompt rebuilds it with the latest
+    /// plugin tool set. Unlike [`new_session`] this does not reset session
+    /// persistence or the resume path — it only forces a tool-registry refresh.
+    ///
+    /// Before dropping, the live session path is stashed into
+    /// `resume_session_path` so the next [`create_agent_service`] call resumes
+    /// the same conversation instead of starting fresh.
+    fn invalidate_agent_for_plugin_change(&self) {
+        if let Ok(mut guard) = self.agent.lock() {
+            if let Some(agent) = guard.as_ref()
+                && let Some(path) = agent.session_path()
+                && let Ok(mut resume) = self.resume_session_path.lock()
+            {
+                *resume = Some(path);
+            }
+            *guard = None;
+        }
+    }
+
+    /// Build a fresh `AgentService` from current settings + plugin tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
-        let (config, settings_version) = self.settings.to_agent_config(config)?;
-        let config = self.with_plugin_prompt(config);
+        let (mut config, settings_version) = self.settings.to_agent_config(config)?;
+
+        // Enable session persistence.
+        config.no_session = false;
+        config.session_dir = Some(self.session_dir.clone());
+
+        // If get_last_session stashed a path, resume that session for full
+        // context restore. The path is consumed so it is only used once.
+        if let Ok(mut guard) = self.resume_session_path.lock() {
+            config.session_path = guard.take();
+        }
 
         let reactor = asupersync::runtime::reactor::create_reactor()
             .map_err(|e| format!("Reactor error: {e}"))?;
@@ -434,58 +572,38 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let service = runtime
+        let mut service = runtime
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
+
+        // Register plugin tools natively in the agent's tool registry so the
+        // LLM can invoke them during the agent loop (tool call -> execute ->
+        // result -> next turn).
+        service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
 
         Ok((service, settings_version))
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let mut config = AgentServiceConfig::default();
-
-        let mut current = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-        while current.parent().is_some() {
-            if current.join(".peekoo").is_dir() {
-                config.working_directory = current.clone();
-                break;
-            }
-            current = current.parent().unwrap().to_path_buf();
-        }
-
-        Ok(config)
-    }
-
-    fn with_plugin_prompt(&self, mut config: AgentServiceConfig) -> AgentServiceConfig {
-        let specs = self.plugin_tools.tool_specs();
-        if specs.is_empty() {
-            return config;
-        }
-
-        let mut lines = Vec::with_capacity(specs.len() + 2);
-        lines.push("## Plugin Capabilities".to_string());
-        lines.push(
-            "The app has installed plugins with the following externally callable capabilities:"
-                .to_string(),
-        );
-
-        for spec in specs {
-            lines.push(format!(
-                "- `{}` (plugin `{}`): {} | parameters: {}",
-                spec.name, spec.plugin_key, spec.description, spec.parameters_schema
-            ));
-        }
-
-        let plugin_prompt = lines.join("\n");
-        config.system_prompt = match config.system_prompt.take() {
-            Some(existing) if !existing.trim().is_empty() => {
-                Some(format!("{existing}\n\n{plugin_prompt}"))
-            }
-            _ => Some(plugin_prompt),
+        let skills_dir = self.workspace_dir.join("skills");
+        let agent_skills = if skills_dir.is_dir() {
+            vec![skills_dir]
+        } else {
+            Vec::new()
         };
 
-        config
+        Ok(AgentServiceConfig {
+            working_directory: self.workspace_dir.clone(),
+            persona_dir: Some(self.workspace_dir.clone()),
+            agent_skills,
+            auto_discover: false,
+            ..Default::default()
+        })
     }
+}
+
+fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {
+    captured_generation == current_generation
 }
 
 #[allow(clippy::type_complexity)]
@@ -575,7 +693,7 @@ mod tests {
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
-    use super::install_discovered_plugins;
+    use super::{install_discovered_plugins, should_restore_agent};
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -642,5 +760,11 @@ mod tests {
 
         assert!(registry.loaded_keys().is_empty());
         assert!(registry.all_ui_panels().is_empty());
+    }
+
+    #[test]
+    fn agent_restore_is_blocked_after_generation_changes() {
+        assert!(should_restore_agent(4, 4));
+        assert!(!should_restore_agent(4, 5));
     }
 }

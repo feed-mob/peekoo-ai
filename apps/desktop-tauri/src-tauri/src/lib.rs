@@ -3,10 +3,10 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
-    PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, StorePluginDto, TaskDto,
+    LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
+    OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
+    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
+    SetApiKeyRequest, SetProviderConfigRequest, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
 use std::env;
@@ -259,6 +259,18 @@ async fn agent_set_model(
 async fn agent_get_model(state: State<'_, AgentState>) -> Result<ModelInfo, String> {
     let (provider, model) = state.app.get_model()?;
     Ok(ModelInfo { provider, model })
+}
+
+#[tauri::command]
+async fn chat_get_last_session(
+    state: State<'_, AgentState>,
+) -> Result<Option<LastSessionDto>, String> {
+    state.app.get_last_session().await
+}
+
+#[tauri::command]
+async fn chat_new_session(state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.new_session()
 }
 
 #[tauri::command]
@@ -625,6 +637,8 @@ pub fn run() {
             agent_prompt,
             agent_set_model,
             agent_get_model,
+            chat_get_last_session,
+            chat_new_session,
             agent_settings_get,
             agent_settings_update,
             agent_settings_catalog,

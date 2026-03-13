@@ -36,7 +36,6 @@ function createElement(tagName = "div") {
 
 function createStatusPayload() {
   return {
-    pomodoro_active: false,
     reminders: [
       {
         reminder_type: "water",
@@ -126,7 +125,7 @@ describe("health reminders panel", () => {
     advanceTime(61000);
     countdownTick.callback();
 
-    expect(readNextDueText()).toBe("Next in ~19 min");
+    expect(readNextDueText()).toBe("Next in ~18 min");
   });
 
   test("refreshes backend immediately when a reminder becomes due", async () => {

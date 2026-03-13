@@ -194,7 +194,7 @@ description = "Configure reminder intervals"
 parameters = '{"type": "object", "properties": {"water_interval_min": {"type": "integer"}}}'
 
 [events]
-subscribe = ["timer:tick", "pomodoro:finished"]
+subscribe = ["timer:tick"]
 emit = ["health:reminder-due"]
 
 [[data.providers]]
@@ -217,11 +217,6 @@ default = 45
 min = 5
 max = 180
 
-[[config.fields]]
-key = "suppress_during_pomodoro"
-label = "Suppress during pomodoro"
-type = "boolean"
-default = true
 "#;
         let m = parse_manifest(toml).unwrap();
         assert_eq!(m.plugin.key, "health-reminders");
@@ -237,7 +232,7 @@ default = true
         assert!(tools.definitions[1].return_type.is_none());
 
         let events = m.events.as_ref().unwrap();
-        assert_eq!(events.subscribe.len(), 2);
+        assert_eq!(events.subscribe.len(), 1);
         assert_eq!(events.emit.len(), 1);
 
         let data = m.data.as_ref().unwrap();
@@ -248,10 +243,9 @@ default = true
         assert_eq!(ui.panels[0].width, 320);
 
         let config = m.config.as_ref().unwrap();
-        assert_eq!(config.fields.len(), 2);
+        assert_eq!(config.fields.len(), 1);
         assert_eq!(config.fields[0].key, "water_interval_min");
         assert_eq!(config.fields[0].field_type, ConfigFieldType::Integer);
-        assert_eq!(config.fields[1].field_type, ConfigFieldType::Boolean);
     }
 
     #[test]

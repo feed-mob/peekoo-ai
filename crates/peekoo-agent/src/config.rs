@@ -27,12 +27,16 @@ pub struct AgentServiceConfig {
     pub system_prompt: Option<String>,
 
     /// Working directory for file-system tools (read, write, bash, etc.).
+    ///
+    /// When using Peekoo's `.peekoo/` convention, this is typically the same
+    /// directory that contains the persona markdown files.
     pub working_directory: PathBuf,
 
     /// Path to a directory containing startup instruction files.
     ///
     /// Supported files (all optional):
     /// - `AGENTS.md` — Operating instructions and memory usage guidelines
+    /// - `BOOTSTRAP.md` — One-time first-run onboarding instructions
     /// - `SOUL.md` — Persona tone and behavioral boundaries
     /// - `IDENTITY.md` — Agent name, vibe, and emoji
     /// - `USER.md` — User profile and addressing preferences
@@ -41,7 +45,7 @@ pub struct AgentServiceConfig {
     ///
     /// These are composed into the system prompt before any `system_prompt`
     /// or `agent_skills` content, in this order:
-    /// `AGENTS` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
+    /// `AGENTS` -> `BOOTSTRAP` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
     pub persona_dir: Option<PathBuf>,
 
     /// List of paths to markdown files containing AgentSkills (from agentskills.io).
@@ -57,6 +61,18 @@ pub struct AgentServiceConfig {
 
     /// Maximum number of consecutive tool iterations before the agent stops.
     pub max_tool_iterations: usize,
+
+    /// Directory for session file storage. When set (and `no_session` is false),
+    /// pi organises session files under this directory by working directory.
+    pub session_dir: Option<PathBuf>,
+
+    /// When `true`, sessions are ephemeral (in-memory only, no file persistence).
+    /// When `false`, pi automatically saves and restores conversation history.
+    pub no_session: bool,
+
+    /// Path to a specific session file to resume.
+    /// Takes precedence over `session_dir` when set.
+    pub session_path: Option<PathBuf>,
 }
 
 impl Default for AgentServiceConfig {
@@ -71,6 +87,9 @@ impl Default for AgentServiceConfig {
             agent_skills: Vec::new(),
             auto_discover: true,
             max_tool_iterations: 50,
+            session_dir: None,
+            no_session: false,
+            session_path: None,
         }
     }
 }
@@ -134,6 +153,9 @@ mod tests {
             agent_skills: Vec::new(),
             auto_discover: false,
             max_tool_iterations: 25,
+            session_dir: Some(PathBuf::from("/tmp/sessions")),
+            no_session: false,
+            session_path: None,
         };
         assert_eq!(config.provider.as_deref(), Some("anthropic"));
         assert_eq!(config.model.as_deref(), Some("claude-sonnet-4-6"));
@@ -144,5 +166,15 @@ mod tests {
         );
         assert_eq!(config.working_directory, PathBuf::from("/tmp/test"));
         assert_eq!(config.max_tool_iterations, 25);
+        assert_eq!(config.session_dir, Some(PathBuf::from("/tmp/sessions")));
+        assert!(!config.no_session);
+    }
+
+    #[test]
+    fn default_config_enables_session_persistence() {
+        let config = AgentServiceConfig::default();
+        assert!(!config.no_session);
+        assert!(config.session_dir.is_none());
+        assert!(config.session_path.is_none());
     }
 }

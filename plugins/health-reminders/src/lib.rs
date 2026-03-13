@@ -1,121 +1,17 @@
 #![no_main]
 
-use extism_pdk::*;
-use serde::{Deserialize, Serialize};
+use peekoo_plugin_sdk::prelude::*;
 use serde_json::{json, Value};
 
 const WATER_KEY: &str = "water";
 const EYE_REST_KEY: &str = "eye_rest";
 const STANDUP_KEY: &str = "standup";
-const POMODORO_ACTIVE_KEY: &str = "pomodoro_active";
-
-#[derive(Serialize, Deserialize)]
-struct StateGetRequest {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StateGetResponse {
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct StateSetRequest {
-    key: String,
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct LogRequest {
-    level: String,
-    message: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EmitEventRequest {
-    event: String,
-    payload: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct NotifyRequest {
-    title: String,
-    body: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleSetRequest {
-    key: String,
-    interval_secs: u64,
-    repeat: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    delay_secs: Option<u64>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleCancelRequest {
-    key: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleGetRequest {
-    key: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-struct ScheduleInfo {
-    owner: String,
-    key: String,
-    interval_secs: u64,
-    repeat: bool,
-    time_remaining_secs: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ScheduleGetResponse {
-    schedule: Option<ScheduleInfo>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ConfigGetRequest {
-    key: Option<String>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ConfigGetResponse {
-    value: Value,
-}
-
-#[derive(Serialize, Deserialize)]
-struct PeekBadgeItem {
-    label: String,
-    value: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    countdown_secs: Option<u64>,
-}
-
-#[host_fn]
-extern "ExtismHost" {
-    fn peekoo_state_get(input: Json<StateGetRequest>) -> Json<StateGetResponse>;
-    fn peekoo_state_set(input: Json<StateSetRequest>) -> Json<Value>;
-    fn peekoo_log(input: Json<LogRequest>) -> Json<Value>;
-    fn peekoo_emit_event(input: Json<EmitEventRequest>) -> Json<Value>;
-    fn peekoo_notify(input: Json<NotifyRequest>) -> Json<Value>;
-    fn peekoo_schedule_set(input: Json<ScheduleSetRequest>) -> Json<Value>;
-    fn peekoo_schedule_cancel(input: Json<ScheduleCancelRequest>) -> Json<Value>;
-    fn peekoo_schedule_get(input: Json<ScheduleGetRequest>) -> Json<ScheduleGetResponse>;
-    fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
-    fn peekoo_set_peek_badge(input: String) -> Json<Value>;
-}
 
 #[derive(Clone, Serialize, Deserialize)]
 struct ReminderConfig {
     water_interval_min: u32,
     eye_rest_interval_min: u32,
     standup_interval_min: u32,
-    suppress_during_pomodoro: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -129,7 +25,6 @@ struct ReminderState {
 #[derive(Serialize, Deserialize)]
 struct HealthStatus {
     config: ReminderConfig,
-    pomodoro_active: bool,
     reminders: Vec<ReminderState>,
 }
 
@@ -158,14 +53,7 @@ pub fn on_event(input: String) -> FnResult<String> {
                 handle_schedule_fired(key);
             }
         }
-        "pomodoro:started" | "pomodoro:resumed" => {
-            set_pomodoro_active(true);
-            if load_config().suppress_during_pomodoro {
-                cancel_all_schedules();
-            }
-        }
-        "pomodoro:finished" | "pomodoro:paused" => {
-            set_pomodoro_active(false);
+        "system:wake" => {
             sync_schedules();
         }
         _ => {}
@@ -194,10 +82,6 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
     if let Some(value) = patch["standup_interval_min"].as_u64() {
         config.standup_interval_min = (value as u32).clamp(10, 180);
     }
-    if let Some(value) = patch["suppress_during_pomodoro"].as_bool() {
-        config.suppress_during_pomodoro = value;
-    }
-
     save_config(&config);
     sync_schedules();
     push_peek_badges();
@@ -218,9 +102,6 @@ pub fn data_health_reminder_status(_input: String) -> FnResult<String> {
 }
 
 fn ensure_default_state() {
-    if state_get(POMODORO_ACTIVE_KEY).is_none() {
-        state_set(POMODORO_ACTIVE_KEY, json!(false));
-    }
     save_config(&load_config());
 }
 
@@ -246,9 +127,6 @@ fn handle_schedule_fired(key: &str) {
 fn sync_schedules() {
     cancel_all_schedules();
     let config = load_config();
-    if load_pomodoro_active() && config.suppress_during_pomodoro {
-        return;
-    }
 
     let reminders = [
         (WATER_KEY, u64::from(config.water_interval_min) * 60),
@@ -326,11 +204,9 @@ fn reset_schedule(reminder_type: &str) {
 
 fn load_status() -> HealthStatus {
     let config = load_config();
-    let pomodoro_active = load_pomodoro_active();
 
     HealthStatus {
         config: config.clone(),
-        pomodoro_active,
         reminders: vec![
             load_reminder_state(WATER_KEY, config.water_interval_min),
             load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min),
@@ -358,7 +234,6 @@ fn load_config() -> ReminderConfig {
         water_interval_min: config["water_interval_min"].as_u64().unwrap_or(45) as u32,
         eye_rest_interval_min: config["eye_rest_interval_min"].as_u64().unwrap_or(20) as u32,
         standup_interval_min: config["standup_interval_min"].as_u64().unwrap_or(60) as u32,
-        suppress_during_pomodoro: config["suppress_during_pomodoro"].as_bool().unwrap_or(true),
     }
 }
 
@@ -366,20 +241,6 @@ fn save_config(config: &ReminderConfig) {
     state_set("water_interval_min", json!(config.water_interval_min));
     state_set("eye_rest_interval_min", json!(config.eye_rest_interval_min));
     state_set("standup_interval_min", json!(config.standup_interval_min));
-    state_set(
-        "suppress_during_pomodoro",
-        json!(config.suppress_during_pomodoro),
-    );
-}
-
-fn load_pomodoro_active() -> bool {
-    state_get(POMODORO_ACTIVE_KEY)
-        .and_then(|value| value.as_bool())
-        .unwrap_or(false)
-}
-
-fn set_pomodoro_active(active: bool) {
-    state_set(POMODORO_ACTIVE_KEY, json!(active));
 }
 
 /// Persist the wall-clock epoch when the timer for `key` will next fire.
@@ -409,20 +270,11 @@ fn current_epoch_secs() -> u64 {
 }
 
 fn config_get() -> Value {
-    unsafe { peekoo_config_get(Json(ConfigGetRequest { key: None })) }
-        .ok()
-        .map(|response| response.0.value)
-        .unwrap_or_else(|| json!({}))
+    peekoo::config::get_all().ok().unwrap_or_else(|| json!({}))
 }
 
 fn schedule_get(key: &str) -> Option<ScheduleInfo> {
-    unsafe {
-        peekoo_schedule_get(Json(ScheduleGetRequest {
-            key: key.to_string(),
-        }))
-    }
-    .ok()
-    .and_then(|response| response.0.schedule)
+    peekoo::schedule::get(key).ok().flatten()
 }
 
 fn schedule_set(key: &str, interval_secs: u64) {
@@ -430,64 +282,28 @@ fn schedule_set(key: &str, interval_secs: u64) {
 }
 
 fn schedule_set_with_delay(key: &str, interval_secs: u64, delay_secs: Option<u64>) {
-    let _ = unsafe {
-        peekoo_schedule_set(Json(ScheduleSetRequest {
-            key: key.to_string(),
-            interval_secs,
-            repeat: true,
-            delay_secs,
-        }))
-    };
+    let _ = peekoo::schedule::set(key, interval_secs, true, delay_secs);
     save_timer_started_at(key, interval_secs, delay_secs);
 }
 
 fn schedule_cancel(key: &str) {
-    let _ = unsafe {
-        peekoo_schedule_cancel(Json(ScheduleCancelRequest {
-            key: key.to_string(),
-        }))
-    };
+    let _ = peekoo::schedule::cancel(key);
 }
 
 fn state_get(key: &str) -> Option<Value> {
-    let response = unsafe {
-        peekoo_state_get(Json(StateGetRequest {
-            key: key.to_string(),
-        }))
-    }
-    .ok()?;
-    if response.0.value.is_null() {
-        None
-    } else {
-        Some(response.0.value)
-    }
+    peekoo::state::get::<Value>(key).ok().flatten()
 }
 
 fn state_set(key: &str, value: Value) {
-    let _ = unsafe {
-        peekoo_state_set(Json(StateSetRequest {
-            key: key.to_string(),
-            value,
-        }))
-    };
+    let _ = peekoo::state::set(key, &value);
 }
 
 fn log_info(message: &str) {
-    let _ = unsafe {
-        peekoo_log(Json(LogRequest {
-            level: "info".to_string(),
-            message: message.to_string(),
-        }))
-    };
+    peekoo::log::info(message);
 }
 
 fn emit_event(event: &str, payload: Value) {
-    let _ = unsafe {
-        peekoo_emit_event(Json(EmitEventRequest {
-            event: event.to_string(),
-            payload,
-        }))
-    };
+    let _ = peekoo::events::emit(event, payload);
 }
 
 fn push_peek_badges() {
@@ -501,11 +317,11 @@ fn push_peek_badges() {
         }
     };
 
-    let items: Vec<PeekBadgeItem> = status
+    let items: Vec<BadgeItem> = status
         .reminders
         .iter()
         .filter(|reminder| reminder.active)
-        .map(|reminder| PeekBadgeItem {
+        .map(|reminder| BadgeItem {
             label: reminder
                 .reminder_type
                 .replace('_', " ")
@@ -525,15 +341,14 @@ fn push_peek_badges() {
         })
         .collect();
 
-    let json = serde_json::to_string(&items).unwrap_or_else(|_| "[]".to_string());
-    let _ = unsafe { peekoo_set_peek_badge(json) };
+    let _ = peekoo::badge::set(&items);
 }
 
 fn format_countdown(seconds: u64) -> String {
     if seconds == 0 {
         return "now".to_string();
     }
-    let minutes = (seconds + 59) / 60; // ceil
+    let minutes = (seconds / 60).max(1); // floor, but at least 1
     if minutes < 60 {
         format!("~{minutes} min")
     } else {
@@ -548,10 +363,5 @@ fn format_countdown(seconds: u64) -> String {
 }
 
 fn notify(title: &str, body: &str) {
-    let _ = unsafe {
-        peekoo_notify(Json(NotifyRequest {
-            title: title.to_string(),
-            body: body.to_string(),
-        }))
-    };
+    let _ = peekoo::notify::send(title, body);
 }

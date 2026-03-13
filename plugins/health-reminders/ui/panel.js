@@ -28,7 +28,7 @@ function formatSeconds(seconds) {
     return "now";
   }
 
-  const minutes = Math.ceil(seconds / 60);
+  const minutes = Math.max(1, Math.floor(seconds / 60));
   if (minutes <= 1) {
     return "~1 min";
   }
@@ -47,14 +47,6 @@ function nextDueText(seconds) {
 }
 
 function summaryContent(status) {
-  if (status.pomodoro_active) {
-    return {
-      className: "pill active",
-      title: "Suppressed during pomodoro",
-      subtitle: "Health reminders pause while your focus session is active.",
-    };
-  }
-
   const nextReminder = status.reminders
     .filter((item) => item.active)
     .sort((left, right) => left.time_remaining_secs - right.time_remaining_secs)[0];
@@ -134,9 +126,7 @@ function renderStatus(status) {
     nextDue.className = "next-due";
     nextDue.textContent = item.active
       ? nextDueText(item.time_remaining_secs)
-      : status.pomodoro_active
-        ? "Paused during pomodoro"
-        : "Waiting for reminders to resume";
+      : "Waiting for reminders to resume";
 
     const meta = document.createElement("p");
     meta.className = "meta";

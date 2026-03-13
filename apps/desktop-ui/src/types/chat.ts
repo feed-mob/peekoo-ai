@@ -6,6 +6,16 @@ export interface Message {
   streaming?: boolean;
 }
 
+export interface SessionMessageDto {
+  role: string;
+  text: string;
+}
+
+export interface LastSessionDto {
+  sessionPath: string;
+  messages: SessionMessageDto[];
+}
+
 // ── Agent event types (mirroring Rust AgentEvent) ──
 
 export interface AgentEventToolStart {
