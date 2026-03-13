@@ -90,6 +90,17 @@ pub(crate) struct OkResponse {
     pub ok: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub(crate) struct BridgeFsReadResponse {
+    pub content: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SetMoodRequest {
+    pub trigger: String,
+    pub sticky: bool,
+}
+
 // ── Host function declarations ─────────────────────────────────
 
 #[host_fn]
@@ -105,4 +116,6 @@ extern "ExtismHost" {
         -> Json<ScheduleGetResponse>;
     pub(crate) fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
     pub(crate) fn peekoo_set_peek_badge(input: String) -> Json<OkResponse>;
+    pub(crate) fn peekoo_bridge_fs_read(input: String) -> Json<BridgeFsReadResponse>;
+    pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
 }

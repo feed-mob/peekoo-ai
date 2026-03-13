@@ -1,0 +1,12 @@
+{
+  "name": "peekoo-opencode-companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenCode plugin that bridges session events to the Peekoo desktop pet",
+  "scripts": {
+    "build": "bun build ./peekoo-opencode-companion.ts --outfile=dist/peekoo-opencode-companion.js --target=node"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.2.25"
+  }
+}

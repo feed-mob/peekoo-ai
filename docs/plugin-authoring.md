@@ -434,7 +434,14 @@ All 10 host functions available to plugins:
 | `state:write` | `peekoo_state_set` |
 | `scheduler` | `peekoo_schedule_set`, `peekoo_schedule_cancel`, `peekoo_schedule_get` |
 | `notifications` | `peekoo_notify`, `peekoo_set_peek_badge` |
+| `bridge:fs_read` | `peekoo_bridge_fs_read` |
+| `pet:mood` | `peekoo_set_mood` |
 | `agent:register-tool` | Registering tools with the LLM agent |
+
+Permissions are enforced twice: the plugin must declare the capability in
+`peekoo-plugin.toml`, and the capability must also be granted by the host.
+Calling a gated host function without both declaration and grant fails at
+runtime.
 
 ## System Events
 

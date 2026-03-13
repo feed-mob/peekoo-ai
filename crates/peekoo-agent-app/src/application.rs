@@ -10,7 +10,10 @@ use peekoo_agent::AgentEvent;
 use peekoo_agent::PluginToolProvider;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
-use peekoo_notifications::{Notification, NotificationService, PeekBadgeItem, PeekBadgeService};
+use peekoo_notifications::{
+    MoodReaction, MoodReactionService, Notification, NotificationService, PeekBadgeItem,
+    PeekBadgeService,
+};
 use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::PluginRegistry;
 use peekoo_scheduler::Scheduler;
@@ -42,6 +45,7 @@ pub struct AgentApplication {
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
     peek_badges: Arc<PeekBadgeService>,
+    mood_reactions: Arc<MoodReactionService>,
     shutdown_token: CancellationToken,
     agent_config_version: Mutex<Option<i64>>,
     /// Directory where pi session files are stored.
@@ -78,7 +82,7 @@ impl AgentApplication {
         let db_conn = Arc::new(Mutex::new(conn));
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
-        let (plugin_registry, notifications, notification_receiver, peek_badges) =
+        let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
             create_plugin_registry(db_conn)?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
@@ -100,6 +104,7 @@ impl AgentApplication {
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
             peek_badges,
+            mood_reactions,
             shutdown_token,
             agent_config_version: Mutex::new(None),
             session_dir,
@@ -360,6 +365,11 @@ impl AgentApplication {
     /// Return the merged peek-badge list if any plugin pushed an update since the last call.
     pub fn take_peek_badges_if_changed(&self) -> Option<Vec<PeekBadgeItem>> {
         self.peek_badges.take_if_changed()
+    }
+
+    /// Drain all queued mood reactions pushed by plugins.
+    pub fn drain_mood_reactions(&self) -> Vec<MoodReaction> {
+        self.mood_reactions.drain()
     }
 
     pub fn plugin_config_schema(
@@ -643,6 +653,7 @@ fn create_plugin_registry(
         Arc<NotificationService>,
         UnboundedReceiver<Notification>,
         Arc<PeekBadgeService>,
+        Arc<MoodReactionService>,
     ),
     String,
 > {
@@ -656,15 +667,17 @@ fn create_plugin_registry(
     let (notifications, receiver) = NotificationService::new();
     let notifications = Arc::new(notifications);
     let peek_badges = Arc::new(PeekBadgeService::new());
+    let mood_reactions = Arc::new(MoodReactionService::new());
     let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
         db_conn,
         scheduler,
         Arc::clone(&notifications),
         Arc::clone(&peek_badges),
+        Arc::clone(&mood_reactions),
     ));
 
-    Ok((registry, notifications, receiver, peek_badges))
+    Ok((registry, notifications, receiver, peek_badges, mood_reactions))
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
@@ -715,7 +728,7 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 mod tests {
     use std::sync::{Arc, Mutex};
 
-    use peekoo_notifications::{NotificationService, PeekBadgeService};
+    use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
@@ -767,6 +780,7 @@ mod tests {
             scheduler,
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
+            Arc::new(MoodReactionService::new()),
         ))
     }
 

@@ -14,6 +14,10 @@ const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
   "pomodoro-completed": "happy",   // Celebrate completing a pomodoro session
   "panel-opened": "reminder",      // Something is being shown to the user
   "panel-closed": "idle",          // Return to neutral idle state
+  "opencode-working": "working",   // OpenCode LLM is actively producing output
+  "opencode-thinking": "thinking", // OpenCode is processing a request
+  "opencode-done": "happy",        // OpenCode agent answered the question
+  "opencode-idle": "idle",         // No active OpenCode session
 };
 
 interface UseSpriteReactionsOptions {

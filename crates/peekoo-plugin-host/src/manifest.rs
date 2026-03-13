@@ -15,6 +15,10 @@ pub struct PluginManifest {
     pub data: Option<DataBlock>,
     pub ui: Option<UiBlock>,
     pub config: Option<ConfigBlock>,
+    /// Companion files to install to well-known external directories when
+    /// this plugin is loaded.
+    #[serde(default)]
+    pub companions: Vec<CompanionDef>,
 }
 
 /// Core plugin metadata.
@@ -115,6 +119,22 @@ pub struct ConfigFieldDef {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub options: Option<Vec<ConfigOptionDef>>,
+}
+
+/// A companion file to be installed to a well-known external directory.
+///
+/// When the plugin is loaded, the host copies the source file from the
+/// plugin directory to the resolved target path.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CompanionDef {
+    /// Path to the file relative to the plugin directory.
+    pub source: String,
+    /// Well-known target identifier. Supported values:
+    /// - `"opencode-plugin"` → `~/.config/opencode/plugin/`
+    pub target: String,
+    /// Override the filename at the target location.
+    /// Defaults to the source file's basename if omitted.
+    pub filename: Option<String>,
 }
 
 /// Declaration of a UI panel provided by the plugin.

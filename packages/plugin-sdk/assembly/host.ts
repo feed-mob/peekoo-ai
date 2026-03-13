@@ -49,3 +49,11 @@ export declare function peekoo_config_get(input: i64): i64;
 // @ts-ignore: decorator
 @external("extism:host/user", "peekoo_set_peek_badge")
 export declare function peekoo_set_peek_badge(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_bridge_fs_read")
+export declare function peekoo_bridge_fs_read(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_set_mood")
+export declare function peekoo_set_mood(input: i64): i64;

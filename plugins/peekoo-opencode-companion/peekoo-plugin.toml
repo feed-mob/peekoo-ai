@@ -1,0 +1,19 @@
+[plugin]
+key = "peekoo-opencode-companion"
+name = "OpenCode Companion"
+version = "0.1.0"
+author = "Peekoo Team"
+description = "Makes Peekoo react to OpenCode sessions — shows working/thinking/happy sprites and session info badges"
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-wasip1/release/peekoo_opencode_companion.wasm"
+
+[permissions]
+required = ["bridge:fs_read", "pet:mood", "scheduler", "state:read", "state:write"]
+
+[events]
+subscribe = ["schedule:fired"]
+emit = []
+
+[[companions]]
+source = "companions/peekoo-opencode-companion.js"
+target = "opencode-plugin"
