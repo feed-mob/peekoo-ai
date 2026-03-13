@@ -87,11 +87,10 @@ plugin-install-as name:
 # Build and install a Rust plugin
 plugin name: (plugin-build name) (plugin-install name)
 
-# Build all plugin examples (Rust + AssemblyScript)
+# Build all maintained first-party plugins
 plugin-build-all:
-    just plugin-build example-minimal
     just plugin-build health-reminders
-    just plugin-build-as as-example-minimal
+    just plugin-build peekoo-opencode-companion
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
 plugin-build-opencode-companion:

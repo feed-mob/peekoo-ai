@@ -10,13 +10,8 @@ Peekoo plugins are WASM modules loaded by the `peekoo-plugin-host` crate through
 rustup target add wasm32-wasip1
 ```
 
-2. Scaffold a new plugin from the template:
-
-```bash
-cargo generate --path plugins/template-rust --destination plugins --name my-plugin
-```
-
-Or copy `plugins/example-minimal/` into `plugins/my-plugin/` and rename.
+2. Create `plugins/my-plugin/` with `Cargo.toml`, `.cargo/config.toml`,
+   `peekoo-plugin.toml`, and `src/lib.rs`.
 
 3. Update `peekoo-plugin.toml` with your plugin metadata.
 
@@ -57,7 +52,8 @@ pub fn tool_my_echo(Json(req): Json<EchoInput>) -> FnResult<Json<EchoOutput>> {
 
 ## Quick Start (AssemblyScript)
 
-1. Copy `plugins/as-example-minimal/`.
+1. Create `plugins/my-as-plugin/` with `package.json`, `asconfig.json`,
+   `tsconfig.json`, `peekoo-plugin.toml`, and `assembly/index.ts`.
 
 2. Install dependencies:
 
@@ -452,9 +448,8 @@ runtime.
 
 ## Example Plugins
 
-- `plugins/example-minimal/` — smallest Rust plugin with one tool (uses SDK)
 - `plugins/health-reminders/` — full-featured: state, events, notifications, scheduling, tools, data, UI
-- `plugins/as-example-minimal/` — smallest AssemblyScript plugin with one tool (uses SDK)
+- `plugins/peekoo-opencode-companion/` — bridge-driven integration plugin with companions, moods, and badges
 
 ## Building
 
@@ -463,16 +458,13 @@ runtime.
 just check-sdk
 
 # Build a Rust plugin
-just plugin-build example-minimal
+just plugin-build health-reminders
 
-# Build an AssemblyScript plugin
-just plugin-build-as as-example-minimal
-
-# Build all examples
+# Build all maintained plugins
 just plugin-build-all
 
 # Build and install a Rust plugin
-just plugin example-minimal
+just plugin health-reminders
 ```
 
 ## Current Limitations

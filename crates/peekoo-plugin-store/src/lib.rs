@@ -725,8 +725,8 @@ target = "opencode-plugin"
     #[test]
     fn store_plugin_dto_not_installed_has_none_source() {
         let dto = StorePluginDto {
-            plugin_key: "example-minimal".to_string(),
-            name: "Example Minimal".to_string(),
+            plugin_key: "health-reminders".to_string(),
+            name: "Health Reminders".to_string(),
             version: "0.1.0".to_string(),
             author: None,
             description: None,
@@ -927,9 +927,9 @@ wasm = "plugin.wasm"
     fn failed_replace_reloads_previous_plugin_after_backup_restore() {
         let store = make_store();
         let temp_root = temp_dir("replace-reload");
-        let plugin_dir = temp_root.join("example-minimal");
+        let plugin_dir = temp_root.join("health-reminders");
         let sample_plugin_dir =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/example-minimal");
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/health-reminders");
         copy_dir_recursive(&sample_plugin_dir, &plugin_dir);
 
         let registry = make_registry(vec![temp_root.clone()]);
@@ -939,10 +939,10 @@ wasm = "plugin.wasm"
         assert!(registry
             .loaded_keys()
             .iter()
-            .any(|key| key == "example-minimal"));
+            .any(|key| key == "health-reminders"));
 
         let err = store
-            .replace_installed_plugin("example-minimal", &plugin_dir, &registry, |_| {
+            .replace_installed_plugin("health-reminders", &plugin_dir, &registry, |_| {
                 Err("simulated update failure".to_string())
             })
             .expect_err("replace should fail");
@@ -952,7 +952,7 @@ wasm = "plugin.wasm"
             registry
                 .loaded_keys()
                 .iter()
-                .any(|key| key == "example-minimal"),
+                .any(|key| key == "health-reminders"),
             "restored plugin should be reloaded into memory after rollback"
         );
     }

@@ -21,4 +21,4 @@ import * as log from "@peekoo/plugin-sdk/assembly/log";
 import * as schedule from "@peekoo/plugin-sdk/assembly/schedule";
 ```
 
-See `plugins/as-example-minimal/` for a working example.
+See `docs/plugin-authoring.md` for a full plugin authoring walkthrough.
