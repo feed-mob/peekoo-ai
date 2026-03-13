@@ -663,21 +663,16 @@ fn install_companion_files(
         }
 
         // ── Validate filename (prevent writing outside target dir) ──
-        let raw_filename = companion
-            .filename
-            .as_deref()
-            .unwrap_or_else(|| {
-                canonical_source
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("companion")
-            });
+        let raw_filename = companion.filename.as_deref().unwrap_or_else(|| {
+            canonical_source
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("companion")
+        });
 
         // Extract only the final path component — strips any ../ or
         // directory prefix a malicious manifest might include.
-        let safe_filename = Path::new(raw_filename)
-            .file_name()
-            .and_then(|n| n.to_str());
+        let safe_filename = Path::new(raw_filename).file_name().and_then(|n| n.to_str());
 
         let safe_filename = match safe_filename {
             Some(name) if !name.is_empty() && name != "." && name != ".." => name,
@@ -843,7 +838,13 @@ mod tests {
     #[test]
     fn install_plugin_disables_plugin_after_failed_load() {
         let plugin_dir = temp_dir("broken-plugin-install").join("broken-plugin");
-        write_manifest(&plugin_dir, "broken-plugin", "0.1.0", "missing.wasm", "Broken Plugin");
+        write_manifest(
+            &plugin_dir,
+            "broken-plugin",
+            "0.1.0",
+            "missing.wasm",
+            "Broken Plugin",
+        );
 
         let registry = test_registry(vec![plugin_dir.clone()]);
 
@@ -851,9 +852,10 @@ mod tests {
             .install_plugin(&plugin_dir)
             .expect_err("broken plugin should fail to load");
 
-        assert!(
-            matches!(err, PluginError::Io(_) | PluginError::Runtime(_) | PluginError::Internal(_))
-        );
+        assert!(matches!(
+            err,
+            PluginError::Io(_) | PluginError::Runtime(_) | PluginError::Internal(_)
+        ));
         assert!(
             !registry
                 .is_plugin_enabled("broken-plugin")
@@ -864,14 +866,26 @@ mod tests {
     #[test]
     fn sync_plugin_registration_updates_existing_manifest_metadata() {
         let plugin_dir = temp_dir("plugin-metadata-update").join("meta-plugin");
-        write_manifest(&plugin_dir, "meta-plugin", "0.1.0", "plugin.wasm", "Meta Plugin");
+        write_manifest(
+            &plugin_dir,
+            "meta-plugin",
+            "0.1.0",
+            "plugin.wasm",
+            "Meta Plugin",
+        );
 
         let registry = test_registry(vec![plugin_dir.clone()]);
         registry
             .sync_plugin_registration(&plugin_dir)
             .expect("initial registration");
 
-        write_manifest(&plugin_dir, "meta-plugin", "0.2.0", "plugin.wasm", "Meta Plugin Updated");
+        write_manifest(
+            &plugin_dir,
+            "meta-plugin",
+            "0.2.0",
+            "plugin.wasm",
+            "Meta Plugin Updated",
+        );
         registry
             .sync_plugin_registration(&plugin_dir)
             .expect("updated registration");
@@ -885,7 +899,8 @@ mod tests {
             )
             .expect("plugin row");
 
-        let manifest: serde_json::Value = serde_json::from_str(&manifest_json).expect("manifest json");
+        let manifest: serde_json::Value =
+            serde_json::from_str(&manifest_json).expect("manifest json");
         assert_eq!(version, "0.2.0");
         assert_eq!(manifest["name"], "Meta Plugin Updated");
         assert_eq!(manifest["version"], "0.2.0");

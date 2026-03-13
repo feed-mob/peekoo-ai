@@ -809,10 +809,12 @@ wasm = "plugin.wasm"
         registry
             .install_plugin(&plugin_dir)
             .expect("initial plugin install should succeed");
-        assert!(registry
-            .loaded_keys()
-            .iter()
-            .any(|key| key == "example-minimal"));
+        assert!(
+            registry
+                .loaded_keys()
+                .iter()
+                .any(|key| key == "example-minimal")
+        );
 
         let err = store
             .replace_installed_plugin("example-minimal", &plugin_dir, &registry, |_| {

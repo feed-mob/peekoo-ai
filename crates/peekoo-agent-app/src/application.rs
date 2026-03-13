@@ -681,7 +681,13 @@ fn create_plugin_registry(
         Arc::clone(&mood_reactions),
     ));
 
-    Ok((registry, notifications, receiver, peek_badges, mood_reactions))
+    Ok((
+        registry,
+        notifications,
+        receiver,
+        peek_badges,
+        mood_reactions,
+    ))
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {

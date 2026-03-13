@@ -723,10 +723,14 @@ fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(),
 
 fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
     for reaction in state.app.drain_mood_reactions() {
-        app.emit_to("main", "pet:react", &PetReactionPayload {
-            trigger: reaction.trigger,
-            sticky: Some(reaction.sticky),
-        })
+        app.emit_to(
+            "main",
+            "pet:react",
+            &PetReactionPayload {
+                trigger: reaction.trigger,
+                sticky: Some(reaction.sticky),
+            },
+        )
         .map_err(|e| format!("Mood reaction emit error: {e}"))?;
     }
     Ok(())
