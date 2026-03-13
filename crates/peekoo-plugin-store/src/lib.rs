@@ -44,6 +44,7 @@ pub struct StorePluginDto {
     pub version: String,
     pub author: Option<String>,
     pub description: Option<String>,
+    pub permissions: Vec<String>,
     pub tool_count: usize,
     pub panel_count: usize,
     /// Whether the plugin is currently installed locally.
@@ -195,15 +196,8 @@ impl PluginStoreService {
             "Updating plugin from store"
         );
 
-        // Best-effort unload before replacing files.
-        let _ = registry.unload_plugin(plugin_key);
-
-        self.with_backup_guard(&dest_dir, || {
-            self.download_plugin_files(plugin_key, &dest_dir)?;
-            registry
-                .install_plugin(&dest_dir)
-                .map(|_| ())
-                .map_err(|e| format!("Failed to load updated plugin: {e}"))
+        self.replace_installed_plugin(plugin_key, &dest_dir, registry, |dest_dir| {
+            self.download_plugin_files(plugin_key, dest_dir)
         })?;
 
         let local_plugins = registry.discover();
@@ -211,6 +205,42 @@ impl PluginStoreService {
         info!(plugin = plugin_key, "Plugin updated successfully");
 
         Ok(self.build_dto(remote_manifest, &local_plugins, false))
+    }
+
+    fn replace_installed_plugin<F>(
+        &self,
+        plugin_key: &str,
+        dest_dir: &Path,
+        registry: &Arc<PluginRegistry>,
+        prepare_new_files: F,
+    ) -> Result<(), String>
+    where
+        F: FnOnce(&Path) -> Result<(), String>,
+    {
+        let was_loaded = registry.loaded_keys().iter().any(|key| key == plugin_key);
+
+        if was_loaded {
+            let _ = registry.unload_plugin(plugin_key);
+        }
+
+        let result = self.with_backup_guard(dest_dir, || {
+            prepare_new_files(dest_dir)?;
+            registry
+                .install_plugin(dest_dir)
+                .map(|_| ())
+                .map_err(|e| format!("Failed to load updated plugin: {e}"))
+        });
+
+        if let Err(err) = result {
+            if was_loaded {
+                registry.install_plugin(dest_dir).map_err(|reload_err| {
+                    format!("{err}; failed to reload restored plugin: {reload_err}")
+                })?;
+            }
+            return Err(err);
+        }
+
+        Ok(())
     }
 
     /// Unload a plugin from the registry and delete its directory from
@@ -263,6 +293,11 @@ impl PluginStoreService {
         has_update: bool,
     ) -> StorePluginDto {
         let (installed, source) = self.check_installation(&manifest.plugin.key, local_plugins);
+        let permissions = manifest
+            .permissions
+            .as_ref()
+            .map(|permissions| permissions.required.clone())
+            .unwrap_or_default();
         let tool_count = manifest
             .tools
             .as_ref()
@@ -276,6 +311,7 @@ impl PluginStoreService {
             version: manifest.plugin.version,
             author: manifest.plugin.author,
             description: manifest.plugin.description,
+            permissions,
             tool_count,
             panel_count,
             installed,
@@ -449,9 +485,13 @@ fn is_newer_version(remote: &str, local: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
+    use std::sync::Arc;
     use std::sync::Mutex;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+    use peekoo_plugin_host::PluginRegistry;
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -462,6 +502,75 @@ mod tests {
         PluginStoreService::new()
     }
 
+    fn make_registry(plugin_dirs: Vec<PathBuf>) -> Arc<PluginRegistry> {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE plugins (
+              id TEXT PRIMARY KEY,
+              plugin_key TEXT NOT NULL,
+              version TEXT NOT NULL,
+              plugin_type TEXT NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              manifest_json TEXT NOT NULL,
+              installed_at TEXT NOT NULL
+            );
+
+            CREATE TABLE plugin_permissions (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              capability TEXT NOT NULL,
+              granted INTEGER NOT NULL
+            );
+
+            CREATE TABLE plugin_state (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              state_key TEXT NOT NULL,
+              value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+            "#,
+        )
+        .expect("plugin schema");
+
+        let scheduler = Arc::new(Scheduler::new());
+        let (notifications, _receiver) = NotificationService::new();
+        Arc::new(PluginRegistry::new(
+            plugin_dirs,
+            Arc::new(Mutex::new(conn)),
+            scheduler,
+            Arc::new(notifications),
+            Arc::new(PeekBadgeService::new()),
+            Arc::new(MoodReactionService::new()),
+        ))
+    }
+
+    fn temp_dir(prefix: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("peekoo-store-{prefix}-{nanos}"));
+        fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn copy_dir_recursive(src: &Path, dst: &Path) {
+        fs::create_dir_all(dst).expect("create dst dir");
+        for entry in fs::read_dir(src).expect("read dir") {
+            let entry = entry.expect("dir entry");
+            let src_path = entry.path();
+            let dst_path = dst.join(entry.file_name());
+            let file_type = entry.file_type().expect("file type");
+            if file_type.is_dir() {
+                copy_dir_recursive(&src_path, &dst_path);
+            } else {
+                fs::copy(&src_path, &dst_path).expect("copy file");
+            }
+        }
+    }
+
     #[test]
     fn store_plugin_dto_serializes_to_camel_case() {
         let dto = StorePluginDto {
@@ -470,6 +579,7 @@ mod tests {
             version: "1.0.0".to_string(),
             author: Some("Test Author".to_string()),
             description: Some("A test plugin".to_string()),
+            permissions: vec!["notifications".to_string(), "scheduler".to_string()],
             tool_count: 2,
             panel_count: 1,
             installed: true,
@@ -482,6 +592,7 @@ mod tests {
         assert!(json.contains("toolCount"));
         assert!(json.contains("panelCount"));
         assert!(json.contains("hasUpdate"));
+        assert!(json.contains("permissions"));
     }
 
     #[test]
@@ -492,6 +603,7 @@ mod tests {
             version: "0.1.0".to_string(),
             author: None,
             description: None,
+            permissions: vec![],
             tool_count: 0,
             panel_count: 0,
             installed: false,
@@ -504,6 +616,37 @@ mod tests {
         assert_eq!(parsed["installed"], false);
         assert_eq!(parsed["source"], "none");
         assert_eq!(parsed["hasUpdate"], false);
+        assert_eq!(parsed["permissions"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn build_dto_includes_required_permissions() {
+        let store = make_store();
+        let manifest = parse_manifest(
+            r#"
+[plugin]
+key = "secure-plugin"
+name = "Secure Plugin"
+version = "0.2.0"
+wasm = "plugin.wasm"
+
+[permissions]
+required = ["bridge:fs_read", "pet:mood", "scheduler"]
+optional = ["notifications"]
+"#,
+        )
+        .unwrap();
+
+        let dto = store.build_dto(manifest, &[], false);
+
+        assert_eq!(
+            dto.permissions,
+            vec![
+                "bridge:fs_read".to_string(),
+                "pet:mood".to_string(),
+                "scheduler".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -651,5 +794,39 @@ wasm = "plugin.wasm"
         assert!(result.is_err());
         let msg = result.unwrap_err();
         assert!(msg.contains("is not installed"), "unexpected error: {msg}");
+    }
+
+    #[test]
+    fn failed_replace_reloads_previous_plugin_after_backup_restore() {
+        let store = make_store();
+        let temp_root = temp_dir("replace-reload");
+        let plugin_dir = temp_root.join("example-minimal");
+        let sample_plugin_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/example-minimal");
+        copy_dir_recursive(&sample_plugin_dir, &plugin_dir);
+
+        let registry = make_registry(vec![temp_root.clone()]);
+        registry
+            .install_plugin(&plugin_dir)
+            .expect("initial plugin install should succeed");
+        assert!(registry
+            .loaded_keys()
+            .iter()
+            .any(|key| key == "example-minimal"));
+
+        let err = store
+            .replace_installed_plugin("example-minimal", &plugin_dir, &registry, |_| {
+                Err("simulated update failure".to_string())
+            })
+            .expect_err("replace should fail");
+
+        assert!(err.contains("simulated update failure"));
+        assert!(
+            registry
+                .loaded_keys()
+                .iter()
+                .any(|key| key == "example-minimal"),
+            "restored plugin should be reloaded into memory after rollback"
+        );
     }
 }

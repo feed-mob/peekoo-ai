@@ -3,6 +3,19 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { StorePlugin } from "@/types/plugin";
 
+const PERMISSION_LABELS: Record<string, string> = {
+  "bridge:fs_read": "Bridge read",
+  notifications: "Notifications",
+  "pet:mood": "Pet mood",
+  scheduler: "Scheduler",
+  "state:read": "State read",
+  "state:write": "State write",
+};
+
+function formatPermission(permission: string): string {
+  return PERMISSION_LABELS[permission] ?? permission;
+}
+
 interface PluginStoreCatalogProps {
   catalog: StorePlugin[];
   isLoading: boolean;
@@ -138,6 +151,24 @@ export function PluginStoreCatalog({
 
                 {plugin.description ? (
                   <p className="mt-3 text-sm leading-6 text-text-secondary break-words">{plugin.description}</p>
+                ) : null}
+
+                {plugin.permissions.length > 0 ? (
+                  <div className="mt-4">
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-text-muted">Permissions</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {plugin.permissions.map((permission) => (
+                        <Badge
+                          key={permission}
+                          variant="outline"
+                          className="border-glass-border bg-space-deep/40 text-text-secondary"
+                          title={permission}
+                        >
+                          {formatPermission(permission)}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
 
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted">

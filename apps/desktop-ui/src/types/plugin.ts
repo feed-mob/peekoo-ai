@@ -27,6 +27,7 @@ export const storePluginSchema = z.object({
   version: z.string(),
   author: z.string().nullable().optional(),
   description: z.string().nullable().optional(),
+  permissions: z.array(z.string()),
   toolCount: z.number(),
   panelCount: z.number(),
   installed: z.boolean(),

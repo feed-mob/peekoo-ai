@@ -162,9 +162,17 @@ impl PluginRegistry {
 
         self.ensure_plugin_row(&key, &manifest)?;
         self.permissions.grant_all_required(&key, &manifest)?;
-        self.set_plugin_enabled(&key, true)?;
 
-        self.load_plugin(plugin_dir)
+        match self.load_plugin(plugin_dir) {
+            Ok(loaded_key) => {
+                self.set_plugin_enabled(&loaded_key, true)?;
+                Ok(loaded_key)
+            }
+            Err(err) => {
+                let _ = self.set_plugin_enabled(&key, false);
+                Err(err)
+            }
+        }
     }
 
     pub fn sync_plugin_registration(
@@ -504,15 +512,15 @@ impl PluginRegistry {
             .map(|c| c > 0)
             .map_err(|e| PluginError::Internal(e.to_string()))?;
 
-        if !exists {
-            let manifest_json = serde_json::json!({
-                "name": manifest.plugin.name,
-                "version": manifest.plugin.version,
-                "author": manifest.plugin.author,
-                "description": manifest.plugin.description,
-            })
-            .to_string();
+        let manifest_json = serde_json::json!({
+            "name": manifest.plugin.name,
+            "version": manifest.plugin.version,
+            "author": manifest.plugin.author,
+            "description": manifest.plugin.description,
+        })
+        .to_string();
 
+        if !exists {
             conn.execute(
                 "INSERT INTO plugins (id, plugin_key, version, plugin_type, enabled, manifest_json, installed_at)
                  VALUES (?1, ?2, ?3, 'wasm', 1, ?4, datetime('now'))",
@@ -522,6 +530,12 @@ impl PluginRegistry {
                     manifest.plugin.version,
                     manifest_json,
                 ],
+            )
+            .map_err(|e| PluginError::Internal(e.to_string()))?;
+        } else {
+            conn.execute(
+                "UPDATE plugins SET version = ?2, manifest_json = ?3 WHERE plugin_key = ?1",
+                rusqlite::params![plugin_key, manifest.plugin.version, manifest_json],
             )
             .map_err(|e| PluginError::Internal(e.to_string()))?;
         }
@@ -709,11 +723,15 @@ fn install_companion_files(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
+
+    use crate::PluginError;
 
     use super::PluginRegistry;
 
@@ -767,6 +785,23 @@ mod tests {
             .join(name)
     }
 
+    fn temp_dir(prefix: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("peekoo-{prefix}-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn write_manifest(plugin_dir: &Path, key: &str, version: &str, wasm: &str, name: &str) {
+        fs::create_dir_all(plugin_dir).expect("plugin dir");
+        fs::write(
+            plugin_dir.join("peekoo-plugin.toml"),
+            format!(
+                "[plugin]\nkey = \"{key}\"\nname = \"{name}\"\nversion = \"{version}\"\nwasm = \"{wasm}\"\n"
+            ),
+        )
+        .expect("manifest");
+    }
+
     #[test]
     fn discovered_plugin_defaults_to_enabled_when_registered() {
         let plugin_dir = sample_plugin_dir("health-reminders");
@@ -801,5 +836,56 @@ mod tests {
                 .is_plugin_enabled("health-reminders")
                 .expect("enabled state should exist")
         );
+    }
+
+    #[test]
+    fn install_plugin_disables_plugin_after_failed_load() {
+        let plugin_dir = temp_dir("broken-plugin-install").join("broken-plugin");
+        write_manifest(&plugin_dir, "broken-plugin", "0.1.0", "missing.wasm", "Broken Plugin");
+
+        let registry = test_registry(vec![plugin_dir.clone()]);
+
+        let err = registry
+            .install_plugin(&plugin_dir)
+            .expect_err("broken plugin should fail to load");
+
+        assert!(
+            matches!(err, PluginError::Io(_) | PluginError::Runtime(_) | PluginError::Internal(_))
+        );
+        assert!(
+            !registry
+                .is_plugin_enabled("broken-plugin")
+                .expect("enabled state should exist after failed install")
+        );
+    }
+
+    #[test]
+    fn sync_plugin_registration_updates_existing_manifest_metadata() {
+        let plugin_dir = temp_dir("plugin-metadata-update").join("meta-plugin");
+        write_manifest(&plugin_dir, "meta-plugin", "0.1.0", "plugin.wasm", "Meta Plugin");
+
+        let registry = test_registry(vec![plugin_dir.clone()]);
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("initial registration");
+
+        write_manifest(&plugin_dir, "meta-plugin", "0.2.0", "plugin.wasm", "Meta Plugin Updated");
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("updated registration");
+
+        let conn = registry.db_conn.lock().expect("db lock");
+        let (version, manifest_json): (String, String) = conn
+            .query_row(
+                "SELECT version, manifest_json FROM plugins WHERE plugin_key = ?1",
+                rusqlite::params!["meta-plugin"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("plugin row");
+
+        let manifest: serde_json::Value = serde_json::from_str(&manifest_json).expect("manifest json");
+        assert_eq!(version, "0.2.0");
+        assert_eq!(manifest["name"], "Meta Plugin Updated");
+        assert_eq!(manifest["version"], "0.2.0");
     }
 }
