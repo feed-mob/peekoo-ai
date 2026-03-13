@@ -12,7 +12,6 @@ export const PetReactionTriggerSchema = z.enum([
   "panel-opened",
   "panel-closed",
   "opencode-working",   // OpenCode LLM is actively producing output
-  "opencode-thinking",  // OpenCode is processing/thinking
   "opencode-done",      // OpenCode agent has answered the question
   "opencode-idle",      // No active OpenCode session
 ]);

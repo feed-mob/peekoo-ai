@@ -57,6 +57,23 @@ impl PeekBadgeService {
         }
     }
 
+    /// Remove all badge items for `source_plugin`. Marks state as dirty.
+    pub fn clear(&self, source_plugin: &str) {
+        if let Ok(mut state) = self.inner.lock() {
+            let removed = state.badges.remove(source_plugin).is_some();
+            if removed {
+                state.dirty = true;
+            }
+        }
+    }
+
+    /// Force the current merged badge list to be emitted on the next flush.
+    pub fn refresh(&self) {
+        if let Ok(mut state) = self.inner.lock() {
+            state.dirty = true;
+        }
+    }
+
     /// Signal that the UI has mounted and is listening for badge events.
     ///
     /// Any badges already buffered will be emitted on the next flush tick.
@@ -90,5 +107,42 @@ impl PeekBadgeService {
         // Deterministic order: sort by label so the frontend rotation is stable.
         merged.sort_by(|a, b| a.label.cmp(&b.label));
         Some(merged)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PeekBadgeItem, PeekBadgeService};
+
+    #[test]
+    fn clear_removes_plugin_badges_from_merged_output() {
+        let service = PeekBadgeService::new();
+        service.mark_ui_ready();
+        service.set(
+            "plugin-a",
+            vec![PeekBadgeItem {
+                label: "A".into(),
+                value: "one".into(),
+                icon: None,
+                countdown_secs: None,
+            }],
+        );
+        service.set(
+            "plugin-b",
+            vec![PeekBadgeItem {
+                label: "B".into(),
+                value: "two".into(),
+                icon: None,
+                countdown_secs: None,
+            }],
+        );
+
+        let merged = service.take_if_changed().expect("initial badges");
+        assert_eq!(merged.len(), 2);
+
+        service.clear("plugin-a");
+        let merged = service.take_if_changed().expect("updated badges");
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].label, "B");
     }
 }

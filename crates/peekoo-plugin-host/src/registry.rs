@@ -231,6 +231,8 @@ impl PluginRegistry {
             .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
         if plugins.remove(key).is_some() {
             self.scheduler.cancel_all(key);
+            self.peek_badges.clear(key);
+            self.peek_badges.refresh();
             Ok(())
         } else {
             Err(PluginError::NotFound(key.to_string()))

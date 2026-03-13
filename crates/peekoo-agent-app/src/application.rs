@@ -315,11 +315,15 @@ impl AgentApplication {
             .map(|_| ())
             .map_err(|e| e.to_string())?;
 
+        self.peek_badges.refresh();
         self.invalidate_agent_for_plugin_change();
         Ok(())
     }
 
     pub fn disable_plugin(&self, plugin_key: &str) -> Result<(), String> {
+        self.peek_badges.clear(plugin_key);
+        self.peek_badges.refresh();
+
         self.plugin_registry
             .set_plugin_enabled(plugin_key, false)
             .map_err(|e| e.to_string())?;

@@ -141,8 +141,7 @@ New `PetReactionTrigger` values and their mood mappings:
 
 | Trigger | Mood | When |
 |---------|------|------|
-| `opencode-working` | `working` | LLM is actively producing output |
-| `opencode-thinking` | `thinking` | OpenCode is processing a request |
+| `opencode-working` | `working` | OpenCode session is actively running |
 | `opencode-done` | `happy` | Agent answered the question |
 | `opencode-idle` | `idle` | No active session |
 

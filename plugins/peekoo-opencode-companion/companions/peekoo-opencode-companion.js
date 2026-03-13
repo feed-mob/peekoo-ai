@@ -16,6 +16,16 @@ var BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
 var currentStatus = "idle";
 var sessionTitle = "";
 var startedAt = 0;
+function clearHappyTimeout() {
+  if (happyTimeout) {
+    clearTimeout(happyTimeout);
+    happyTimeout = null;
+  }
+}
+function getSessionTitle(properties) {
+  const props = properties;
+  return props?.info?.title || props?.title;
+}
 function writeBridge(status, title, force = false) {
   const changed = status !== currentStatus || title !== sessionTitle;
   if (!changed && !force)
@@ -42,9 +52,7 @@ function writeBridge(status, title, force = false) {
 }
 var happyTimeout = null;
 function scheduleIdleTransition() {
-  if (happyTimeout) {
-    clearTimeout(happyTimeout);
-  }
+  clearHappyTimeout();
   happyTimeout = setTimeout(() => {
     writeBridge("idle", "");
     happyTimeout = null;
@@ -57,20 +65,16 @@ var PeekooOpenCodeCompanion = async () => {
       switch (event.type) {
         case "session.status": {
           const props = event.properties;
-          const status = props?.status;
-          const title = props?.title || sessionTitle;
-          if (status === "running") {
-            if (happyTimeout) {
-              clearTimeout(happyTimeout);
-              happyTimeout = null;
-            }
-            writeBridge("working", title);
-          } else if (status === "pending") {
-            if (happyTimeout) {
-              clearTimeout(happyTimeout);
-              happyTimeout = null;
-            }
-            writeBridge("thinking", title);
+          const statusType = props?.status?.type;
+          if (statusType === "busy") {
+            clearHappyTimeout();
+            writeBridge("working", sessionTitle);
+          } else if (statusType === "retry") {
+            clearHappyTimeout();
+            writeBridge("working", sessionTitle);
+          } else if (statusType === "idle") {
+            writeBridge("happy", sessionTitle);
+            scheduleIdleTransition();
           }
           break;
         }
@@ -80,16 +84,16 @@ var PeekooOpenCodeCompanion = async () => {
           break;
         }
         case "session.created": {
-          const props = event.properties;
-          const title = props?.title || "New session";
+          const title = getSessionTitle(event.properties) || "New session";
           sessionTitle = title;
-          writeBridge("thinking", title);
+          clearHappyTimeout();
+          writeBridge("working", title);
           break;
         }
         case "session.updated": {
-          const props = event.properties;
-          if (props?.title) {
-            sessionTitle = props.title;
+          const title = getSessionTitle(event.properties);
+          if (title) {
+            sessionTitle = title;
             if (currentStatus === "working" || currentStatus === "thinking") {
               writeBridge(currentStatus, sessionTitle);
             }
@@ -97,11 +101,14 @@ var PeekooOpenCodeCompanion = async () => {
           break;
         }
         case "session.error": {
+          clearHappyTimeout();
           writeBridge("idle", "");
           break;
         }
         case "message.part.updated": {
-          if (currentStatus === "thinking") {
+          const props = event.properties;
+          if (props?.part?.type === "text") {
+            clearHappyTimeout();
             writeBridge("working", sessionTitle);
           }
           break;

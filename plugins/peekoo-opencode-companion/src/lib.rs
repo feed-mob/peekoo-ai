@@ -98,7 +98,7 @@ fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), ext
             update_badge(state)?;
         }
         "thinking" => {
-            peekoo::mood::set("opencode-thinking", true)?;
+            peekoo::mood::set("opencode-working", true)?;
             update_badge(state)?;
         }
         "happy" | "done" => {

@@ -26,9 +26,29 @@ interface BridgeState {
   updated_at: number;
 }
 
+interface SessionInfo {
+  title?: string;
+}
+
+interface SessionStatusInfo {
+  type?: "busy" | "idle" | "retry";
+}
+
 let currentStatus: Status = "idle";
 let sessionTitle = "";
 let startedAt = 0;
+
+function clearHappyTimeout(): void {
+  if (happyTimeout) {
+    clearTimeout(happyTimeout);
+    happyTimeout = null;
+  }
+}
+
+function getSessionTitle(properties: unknown): string | undefined {
+  const props = properties as { info?: SessionInfo; title?: string } | undefined;
+  return props?.info?.title || props?.title;
+}
 
 function writeBridge(status: Status, title: string, force = false): void {
   const changed = status !== currentStatus || title !== sessionTitle;
@@ -64,9 +84,7 @@ function writeBridge(status: Status, title: string, force = false): void {
 let happyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function scheduleIdleTransition(): void {
-  if (happyTimeout) {
-    clearTimeout(happyTimeout);
-  }
+  clearHappyTimeout();
   happyTimeout = setTimeout(() => {
     writeBridge("idle", "");
     happyTimeout = null;
@@ -84,48 +102,41 @@ export const PeekooOpenCodeCompanion: Plugin = async () => {
       switch (event.type) {
         case "session.status": {
           const props = event.properties as
-            | { status?: string; title?: string }
+            | { status?: SessionStatusInfo; sessionID?: string }
             | undefined;
-          const status = props?.status;
-          const title = props?.title || sessionTitle;
+          const statusType = props?.status?.type;
 
-          if (status === "running") {
-            // Cancel any pending idle transition — we're active again
-            if (happyTimeout) {
-              clearTimeout(happyTimeout);
-              happyTimeout = null;
-            }
-            writeBridge("working", title);
-          } else if (status === "pending") {
-            if (happyTimeout) {
-              clearTimeout(happyTimeout);
-              happyTimeout = null;
-            }
-            writeBridge("thinking", title);
+          if (statusType === "busy") {
+            clearHappyTimeout();
+            writeBridge("working", sessionTitle);
+          } else if (statusType === "retry") {
+            clearHappyTimeout();
+            writeBridge("working", sessionTitle);
+          } else if (statusType === "idle") {
+            writeBridge("happy", sessionTitle);
+            scheduleIdleTransition();
           }
           break;
         }
 
         case "session.idle": {
-          // Agent finished — show happy, then transition to idle
           writeBridge("happy", sessionTitle);
           scheduleIdleTransition();
           break;
         }
 
         case "session.created": {
-          const props = event.properties as { title?: string } | undefined;
-          const title = props?.title || "New session";
+          const title = getSessionTitle(event.properties) || "New session";
           sessionTitle = title;
-          writeBridge("thinking", title);
+          clearHappyTimeout();
+          writeBridge("working", title);
           break;
         }
 
         case "session.updated": {
-          const props = event.properties as { title?: string } | undefined;
-          if (props?.title) {
-            sessionTitle = props.title;
-            // If we're in an active state, update the bridge with new title
+          const title = getSessionTitle(event.properties);
+          if (title) {
+            sessionTitle = title;
             if (currentStatus === "working" || currentStatus === "thinking") {
               writeBridge(currentStatus, sessionTitle);
             }
@@ -134,13 +145,18 @@ export const PeekooOpenCodeCompanion: Plugin = async () => {
         }
 
         case "session.error": {
+          clearHappyTimeout();
           writeBridge("idle", "");
           break;
         }
 
         case "message.part.updated": {
-          // LLM is actively streaming — promote thinking to working
-          if (currentStatus === "thinking") {
+          const props = event.properties as
+            | { part?: { type?: string }; delta?: string }
+            | undefined;
+
+          if (props?.part?.type === "text") {
+            clearHappyTimeout();
             writeBridge("working", sessionTitle);
           }
           break;
