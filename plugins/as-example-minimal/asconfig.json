@@ -1,8 +1,0 @@
-{
-  "options": {
-    "outFile": "build/as_example_minimal.wasm",
-    "optimize": true,
-    "exportRuntime": true
-  },
-  "entries": ["assembly/index.ts"]
-}

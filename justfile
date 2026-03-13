@@ -76,6 +76,7 @@ plugin-install name:
     cp plugins/{{name}}/peekoo-plugin.toml ~/.peekoo/plugins/{{name}}/
     python -c "import pathlib, shutil, tomllib; src = pathlib.Path('plugins/{{name}}'); manifest = tomllib.loads((src / 'peekoo-plugin.toml').read_text()); wasm_rel = pathlib.Path(manifest['plugin']['wasm']); wasm_src = src / wasm_rel; wasm_dst = pathlib.Path.home() / '.peekoo' / 'plugins' / '{{name}}' / wasm_rel; wasm_dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(wasm_src, wasm_dst)"
     if [ -d plugins/{{name}}/ui ]; then cp -r plugins/{{name}}/ui ~/.peekoo/plugins/{{name}}/; fi
+    if [ -d plugins/{{name}}/companions ]; then cp -r plugins/{{name}}/companions ~/.peekoo/plugins/{{name}}/; fi
 
 # Install an AssemblyScript plugin into the local Peekoo plugin dir
 plugin-install-as name:
@@ -86,11 +87,20 @@ plugin-install-as name:
 # Build and install a Rust plugin
 plugin name: (plugin-build name) (plugin-install name)
 
-# Build all plugin examples (Rust + AssemblyScript)
+# Build all maintained first-party plugins
 plugin-build-all:
-    just plugin-build example-minimal
     just plugin-build health-reminders
-    just plugin-build-as as-example-minimal
+    just plugin-build peekoo-opencode-companion
+
+# Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
+plugin-build-opencode-companion:
+    cd plugins/peekoo-opencode-companion/opencode-plugin && bun install && bun run build
+    mkdir -p plugins/peekoo-opencode-companion/companions
+    cp plugins/peekoo-opencode-companion/opencode-plugin/dist/peekoo-opencode-companion.js plugins/peekoo-opencode-companion/companions/
+    just plugin-build peekoo-opencode-companion
+
+# Build and install the OpenCode Companion plugin
+plugin-opencode-companion: plugin-build-opencode-companion (plugin-install "peekoo-opencode-companion")
 
 # List all available commands
 list:

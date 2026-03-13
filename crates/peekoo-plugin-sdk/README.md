@@ -99,7 +99,7 @@ From the repository root:
 
 ```bash
 just check-sdk
-just plugin-build example-minimal
+just plugin-build health-reminders
 ```
 
-See `docs/plugin-authoring.md` and `plugins/example-minimal/` for full usage patterns.
+See `docs/plugin-authoring.md` and `plugins/health-reminders/` for full usage patterns.

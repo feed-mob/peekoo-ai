@@ -15,7 +15,9 @@ import * as notify from "./notify";
 import * as schedule from "./schedule";
 import * as config from "./config";
 import * as badge from "./badge";
+import * as bridge from "./bridge";
 import * as events from "./events";
+import * as mood from "./mood";
 
-export { state, log, notify, schedule, config, badge, events };
+export { state, log, notify, schedule, config, badge, bridge, events, mood };
 export { ScheduleInfo, BadgeItem } from "./types";

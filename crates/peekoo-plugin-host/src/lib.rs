@@ -22,9 +22,11 @@ pub mod tools;
 pub use config::{resolved_config_map, set_config_field};
 pub use error::PluginError;
 pub use events::{EventBus, PluginEvent};
-pub use manifest::{ConfigFieldDef, ConfigFieldType, PluginManifest, ToolDefinition, UiPanelDef};
+pub use manifest::{
+    CompanionDef, ConfigFieldDef, ConfigFieldType, PluginManifest, ToolDefinition, UiPanelDef,
+};
 pub use permissions::PermissionStore;
-pub use registry::PluginRegistry;
+pub use registry::{PluginRegistry, resolve_companion_install_path, resolve_companion_target};
 pub use runtime::PluginInstance;
 pub use state::PluginStateStore;
 pub use tools::{PluginToolBridge, PluginToolSpec};

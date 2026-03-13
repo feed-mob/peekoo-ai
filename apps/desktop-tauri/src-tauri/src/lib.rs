@@ -717,7 +717,29 @@ fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(),
     }
 
     flush_peek_badges(app, state)?;
+    flush_mood_reactions(app, state)?;
     Ok(())
+}
+
+fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
+    for reaction in state.app.drain_mood_reactions() {
+        app.emit_to(
+            "main",
+            "pet:react",
+            &PetReactionPayload {
+                trigger: reaction.trigger,
+                sticky: Some(reaction.sticky),
+            },
+        )
+        .map_err(|e| format!("Mood reaction emit error: {e}"))?;
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct PetReactionPayload {
+    trigger: String,
+    sticky: Option<bool>,
 }
 
 fn flush_peek_badges(app: &AppHandle, state: &AgentState) -> Result<(), String> {

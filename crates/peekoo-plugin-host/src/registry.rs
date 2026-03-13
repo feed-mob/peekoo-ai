@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use peekoo_notifications::{NotificationService, PeekBadgeService};
+use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
 use peekoo_scheduler::Scheduler;
 use rusqlite::{Connection, OptionalExtension};
 
@@ -30,6 +30,7 @@ pub struct PluginRegistry {
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
+    mood_reactions: Arc<MoodReactionService>,
     scheduler_started: AtomicBool,
     scheduler_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
@@ -41,6 +42,7 @@ impl PluginRegistry {
         scheduler: Arc<Scheduler>,
         notifications: Arc<NotificationService>,
         peek_badges: Arc<PeekBadgeService>,
+        mood_reactions: Arc<MoodReactionService>,
     ) -> Self {
         let permissions = PermissionStore::new(Arc::clone(&db_conn));
         let state = PluginStateStore::new(Arc::clone(&db_conn));
@@ -55,6 +57,7 @@ impl PluginRegistry {
             scheduler,
             notifications,
             peek_badges,
+            mood_reactions,
             scheduler_started: AtomicBool::new(false),
             scheduler_handle: Mutex::new(None),
         }
@@ -101,19 +104,37 @@ impl PluginRegistry {
         self.ensure_plugin_row(&key, &manifest)?;
         self.permissions.check_required(&key, &manifest)?;
 
+        let declared_capabilities = manifest
+            .permissions
+            .as_ref()
+            .map(|permissions| {
+                permissions
+                    .required
+                    .iter()
+                    .chain(permissions.optional.iter())
+                    .cloned()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
         let host_fns = host_functions::build_host_functions(
             &key,
             &self.state,
+            &self.permissions,
+            declared_capabilities,
             &self.event_bus,
             &self.scheduler,
             &self.notifications,
             &self.peek_badges,
+            &self.mood_reactions,
             manifest
                 .config
                 .as_ref()
                 .map(|config| config.fields.clone())
                 .unwrap_or_default(),
         );
+
+        let companions = manifest.companions.clone();
 
         let mut instance = PluginInstance::load(
             manifest,
@@ -123,6 +144,8 @@ impl PluginRegistry {
             DEFAULT_TIMEOUT,
         )?;
         instance.initialize()?;
+
+        install_companion_files(&key, plugin_dir, &companions);
 
         let mut plugins = self
             .plugins
@@ -139,9 +162,17 @@ impl PluginRegistry {
 
         self.ensure_plugin_row(&key, &manifest)?;
         self.permissions.grant_all_required(&key, &manifest)?;
-        self.set_plugin_enabled(&key, true)?;
 
-        self.load_plugin(plugin_dir)
+        match self.load_plugin(plugin_dir) {
+            Ok(loaded_key) => {
+                self.set_plugin_enabled(&loaded_key, true)?;
+                Ok(loaded_key)
+            }
+            Err(err) => {
+                let _ = self.set_plugin_enabled(&key, false);
+                Err(err)
+            }
+        }
     }
 
     pub fn sync_plugin_registration(
@@ -200,6 +231,8 @@ impl PluginRegistry {
             .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
         if plugins.remove(key).is_some() {
             self.scheduler.cancel_all(key);
+            self.peek_badges.clear(key);
+            self.peek_badges.refresh();
             Ok(())
         } else {
             Err(PluginError::NotFound(key.to_string()))
@@ -481,15 +514,15 @@ impl PluginRegistry {
             .map(|c| c > 0)
             .map_err(|e| PluginError::Internal(e.to_string()))?;
 
-        if !exists {
-            let manifest_json = serde_json::json!({
-                "name": manifest.plugin.name,
-                "version": manifest.plugin.version,
-                "author": manifest.plugin.author,
-                "description": manifest.plugin.description,
-            })
-            .to_string();
+        let manifest_json = serde_json::json!({
+            "name": manifest.plugin.name,
+            "version": manifest.plugin.version,
+            "author": manifest.plugin.author,
+            "description": manifest.plugin.description,
+        })
+        .to_string();
 
+        if !exists {
             conn.execute(
                 "INSERT INTO plugins (id, plugin_key, version, plugin_type, enabled, manifest_json, installed_at)
                  VALUES (?1, ?2, ?3, 'wasm', 1, ?4, datetime('now'))",
@@ -501,19 +534,226 @@ impl PluginRegistry {
                 ],
             )
             .map_err(|e| PluginError::Internal(e.to_string()))?;
+        } else {
+            conn.execute(
+                "UPDATE plugins SET version = ?2, manifest_json = ?3 WHERE plugin_key = ?1",
+                rusqlite::params![plugin_key, manifest.plugin.version, manifest_json],
+            )
+            .map_err(|e| PluginError::Internal(e.to_string()))?;
         }
 
         Ok(())
     }
 }
 
+/// Resolve a well-known companion target ID to a filesystem directory.
+///
+/// Returns `None` for unrecognised target IDs.
+pub fn resolve_companion_target(target: &str) -> Option<PathBuf> {
+    match target {
+        "opencode-plugin" => {
+            let config_base = resolve_config_base_dir()?;
+            Some(config_base.join("opencode").join("plugin"))
+        }
+        _ => None,
+    }
+}
+
+/// Resolve the platform-appropriate base config directory.
+///
+/// Respects `XDG_CONFIG_HOME` on Linux, `APPDATA` on Windows, and falls
+/// back to `~/.config` on Unix systems.
+fn resolve_config_base_dir() -> Option<PathBuf> {
+    // XDG_CONFIG_HOME takes priority on any platform
+    if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
+        let p = PathBuf::from(&xdg);
+        if p.is_absolute() {
+            return Some(p);
+        }
+    }
+
+    // Windows: use APPDATA
+    #[cfg(windows)]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return Some(PathBuf::from(appdata));
+        }
+    }
+
+    // Unix fallback: ~/.config
+    #[cfg(not(windows))]
+    {
+        let home = std::env::var("HOME").ok()?;
+        Some(PathBuf::from(home).join(".config"))
+    }
+
+    #[cfg(windows)]
+    None
+}
+
+fn resolve_companion_filename(
+    companion: &manifest::CompanionDef,
+    source_path: Option<&Path>,
+) -> Option<String> {
+    let raw_filename = companion.filename.as_deref().unwrap_or_else(|| {
+        source_path
+            .and_then(|path| path.file_name())
+            .or_else(|| Path::new(&companion.source).file_name())
+            .and_then(|n| n.to_str())
+            .unwrap_or("companion")
+    });
+
+    Path::new(raw_filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .filter(|name| !name.is_empty() && *name != "." && *name != "..")
+        .map(ToString::to_string)
+}
+
+pub fn resolve_companion_install_path(
+    plugin_dir: &Path,
+    companion: &manifest::CompanionDef,
+) -> Option<PathBuf> {
+    let target_dir = resolve_companion_target(&companion.target)?;
+    let source_path = plugin_dir.join(&companion.source);
+    let filename = resolve_companion_filename(companion, Some(&source_path))?;
+    Some(target_dir.join(filename))
+}
+
+/// Copy companion files declared in the manifest to their target directories.
+///
+/// Errors are logged as warnings but do not prevent plugin loading.
+///
+/// **Security:** Both the source path and target filename are validated to
+/// prevent path-traversal attacks:
+/// - The source path is canonicalized and must reside under `plugin_dir`.
+/// - The filename is stripped to its final component (no `/`, `\`, `..`).
+fn install_companion_files(
+    plugin_key: &str,
+    plugin_dir: &Path,
+    companions: &[manifest::CompanionDef],
+) {
+    // Canonicalize the plugin directory once for prefix checks.
+    let canonical_plugin_dir = match plugin_dir.canonicalize() {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(
+                plugin = plugin_key,
+                dir = %plugin_dir.display(),
+                "Cannot canonicalize plugin directory, skipping companions: {e}"
+            );
+            return;
+        }
+    };
+
+    for companion in companions {
+        let target_dir = match resolve_companion_target(&companion.target) {
+            Some(dir) => dir,
+            None => {
+                tracing::warn!(
+                    plugin = plugin_key,
+                    target = companion.target.as_str(),
+                    "Unknown companion target, skipping"
+                );
+                continue;
+            }
+        };
+
+        // ── Validate source path (prevent reading outside plugin dir) ──
+        let source_path = plugin_dir.join(&companion.source);
+        if !source_path.exists() {
+            tracing::warn!(
+                plugin = plugin_key,
+                source = %source_path.display(),
+                "Companion source file not found, skipping"
+            );
+            continue;
+        }
+
+        let canonical_source = match source_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(
+                    plugin = plugin_key,
+                    source = %source_path.display(),
+                    "Cannot canonicalize companion source path: {e}"
+                );
+                continue;
+            }
+        };
+
+        if !canonical_source.starts_with(&canonical_plugin_dir) {
+            tracing::warn!(
+                plugin = plugin_key,
+                source = %companion.source,
+                "Companion source path escapes plugin directory, rejecting"
+            );
+            continue;
+        }
+
+        // ── Validate filename (prevent writing outside target dir) ──
+        let raw_filename = companion.filename.as_deref().unwrap_or_else(|| {
+            canonical_source
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("companion")
+        });
+
+        let safe_filename = match resolve_companion_filename(companion, Some(&canonical_source)) {
+            Some(name) => name,
+            _ => {
+                tracing::warn!(
+                    plugin = plugin_key,
+                    filename = raw_filename,
+                    "Companion filename is invalid, rejecting"
+                );
+                continue;
+            }
+        };
+
+        let target_path = target_dir.join(safe_filename);
+
+        if let Err(e) = std::fs::create_dir_all(&target_dir) {
+            tracing::warn!(
+                plugin = plugin_key,
+                dir = %target_dir.display(),
+                "Failed to create companion target directory: {e}"
+            );
+            continue;
+        }
+
+        match std::fs::copy(&canonical_source, &target_path) {
+            Ok(_) => {
+                tracing::info!(
+                    plugin = plugin_key,
+                    source = %canonical_source.display(),
+                    target = %target_path.display(),
+                    "Installed companion file"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    plugin = plugin_key,
+                    source = %canonical_source.display(),
+                    target = %target_path.display(),
+                    "Failed to install companion file: {e}"
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::fs;
+    use std::path::Path;
     use std::sync::{Arc, Mutex};
 
-    use peekoo_notifications::{NotificationService, PeekBadgeService};
+    use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
+
+    use crate::PluginError;
 
     use super::PluginRegistry;
 
@@ -557,6 +797,7 @@ mod tests {
             scheduler,
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
+            Arc::new(MoodReactionService::new()),
         )
     }
 
@@ -564,6 +805,23 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../plugins")
             .join(name)
+    }
+
+    fn temp_dir(prefix: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("peekoo-{prefix}-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).expect("temp dir");
+        dir
+    }
+
+    fn write_manifest(plugin_dir: &Path, key: &str, version: &str, wasm: &str, name: &str) {
+        fs::create_dir_all(plugin_dir).expect("plugin dir");
+        fs::write(
+            plugin_dir.join("peekoo-plugin.toml"),
+            format!(
+                "[plugin]\nkey = \"{key}\"\nname = \"{name}\"\nversion = \"{version}\"\nwasm = \"{wasm}\"\n"
+            ),
+        )
+        .expect("manifest");
     }
 
     #[test]
@@ -600,5 +858,76 @@ mod tests {
                 .is_plugin_enabled("health-reminders")
                 .expect("enabled state should exist")
         );
+    }
+
+    #[test]
+    fn install_plugin_disables_plugin_after_failed_load() {
+        let plugin_dir = temp_dir("broken-plugin-install").join("broken-plugin");
+        write_manifest(
+            &plugin_dir,
+            "broken-plugin",
+            "0.1.0",
+            "missing.wasm",
+            "Broken Plugin",
+        );
+
+        let registry = test_registry(vec![plugin_dir.clone()]);
+
+        let err = registry
+            .install_plugin(&plugin_dir)
+            .expect_err("broken plugin should fail to load");
+
+        assert!(matches!(
+            err,
+            PluginError::Io(_) | PluginError::Runtime(_) | PluginError::Internal(_)
+        ));
+        assert!(
+            !registry
+                .is_plugin_enabled("broken-plugin")
+                .expect("enabled state should exist after failed install")
+        );
+    }
+
+    #[test]
+    fn sync_plugin_registration_updates_existing_manifest_metadata() {
+        let plugin_dir = temp_dir("plugin-metadata-update").join("meta-plugin");
+        write_manifest(
+            &plugin_dir,
+            "meta-plugin",
+            "0.1.0",
+            "plugin.wasm",
+            "Meta Plugin",
+        );
+
+        let registry = test_registry(vec![plugin_dir.clone()]);
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("initial registration");
+
+        write_manifest(
+            &plugin_dir,
+            "meta-plugin",
+            "0.2.0",
+            "plugin.wasm",
+            "Meta Plugin Updated",
+        );
+        registry
+            .sync_plugin_registration(&plugin_dir)
+            .expect("updated registration");
+
+        let conn = registry.db_conn.lock().expect("db lock");
+        let (version, manifest_json): (String, String) = conn
+            .query_row(
+                "SELECT version, manifest_json FROM plugins WHERE plugin_key = ?1",
+                rusqlite::params!["meta-plugin"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("plugin row");
+
+        let manifest: serde_json::Value =
+            serde_json::from_str(&manifest_json).expect("manifest json");
+        assert_eq!(version, "0.2.0");
+        assert_eq!(manifest["name"], "Meta Plugin Updated");
+        assert_eq!(manifest["version"], "0.2.0");
     }
 }

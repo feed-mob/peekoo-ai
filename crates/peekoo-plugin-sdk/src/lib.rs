@@ -41,9 +41,11 @@ pub mod types;
 
 // Individual API modules.
 pub mod badge;
+pub mod bridge;
 pub mod config;
 pub mod events;
 pub mod log;
+pub mod mood;
 pub mod notify;
 pub mod schedule;
 pub mod state;
@@ -61,9 +63,11 @@ pub mod peekoo {
     //! Safe wrappers for Peekoo host functions, grouped by concern.
 
     pub use crate::badge;
+    pub use crate::bridge;
     pub use crate::config;
     pub use crate::events;
     pub use crate::log;
+    pub use crate::mood;
     pub use crate::notify;
     pub use crate::schedule;
     pub use crate::state;

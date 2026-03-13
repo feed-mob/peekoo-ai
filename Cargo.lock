@@ -5693,6 +5693,7 @@ version = "0.1.0"
 dependencies = [
  "extism",
  "peekoo-notifications",
+ "peekoo-paths",
  "peekoo-scheduler",
  "rusqlite",
  "serde",
