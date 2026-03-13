@@ -25,6 +25,11 @@ pub struct PeekBadgeService {
 struct BadgeState {
     badges: HashMap<String, Vec<PeekBadgeItem>>,
     dirty: bool,
+    /// Whether the UI has signalled that it is mounted and listening for badge
+    /// events.  Until this is `true`, `take_if_changed` withholds data so the
+    /// background flush loop does not consume and discard badges before the
+    /// frontend can receive them.
+    ui_ready: bool,
 }
 
 impl Default for PeekBadgeService {
@@ -39,6 +44,7 @@ impl PeekBadgeService {
             inner: Mutex::new(BadgeState {
                 badges: HashMap::new(),
                 dirty: false,
+                ui_ready: false,
             }),
         }
     }
@@ -51,11 +57,26 @@ impl PeekBadgeService {
         }
     }
 
+    /// Signal that the UI has mounted and is listening for badge events.
+    ///
+    /// Any badges already buffered will be emitted on the next flush tick.
+    pub fn mark_ui_ready(&self) {
+        if let Ok(mut state) = self.inner.lock() {
+            state.ui_ready = true;
+            if !state.badges.is_empty() {
+                state.dirty = true;
+            }
+        }
+    }
+
     /// Return the merged badge list if anything changed since the last call.
-    /// Clears the dirty flag so subsequent calls return `None` until the next `set`.
+    ///
+    /// Returns `None` when the UI has not yet signalled readiness (via
+    /// [`mark_ui_ready`]) so that early badge pushes are not consumed and
+    /// discarded before the frontend can receive them.
     pub fn take_if_changed(&self) -> Option<Vec<PeekBadgeItem>> {
         let mut state = self.inner.lock().ok()?;
-        if !state.dirty {
+        if !state.ui_ready || !state.dirty {
             return None;
         }
         state.dirty = false;

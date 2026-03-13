@@ -417,6 +417,18 @@ async fn dnd_set(active: bool, state: State<'_, AgentState>) -> Result<(), Strin
     Ok(())
 }
 
+/// Signal from the UI that it has mounted and is listening for events.
+///
+/// This unblocks the background flush loop so it can start emitting
+/// peek-badge updates.  Without this gate, badges pushed during plugin
+/// initialisation would be consumed and discarded before the frontend
+/// had registered its event listeners.
+#[tauri::command]
+async fn ui_ready(state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.mark_ui_ready();
+    Ok(())
+}
+
 #[tauri::command]
 async fn plugin_enable(
     plugin_key: String,
@@ -627,6 +639,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
+            ui_ready,
             resize_sprite_window,
             greet,
             get_sprite_state,

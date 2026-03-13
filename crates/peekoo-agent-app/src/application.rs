@@ -329,6 +329,14 @@ impl AgentApplication {
         notifications
     }
 
+    /// Signal that the UI has mounted and is listening for badge events.
+    ///
+    /// Badges pushed before this call are retained and will be emitted on the
+    /// next background flush tick.
+    pub fn mark_ui_ready(&self) {
+        self.peek_badges.mark_ui_ready();
+    }
+
     /// Return the merged peek-badge list if any plugin pushed an update since the last call.
     pub fn take_peek_badges_if_changed(&self) -> Option<Vec<PeekBadgeItem>> {
         self.peek_badges.take_if_changed()

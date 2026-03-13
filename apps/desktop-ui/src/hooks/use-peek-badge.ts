@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import {
   PEEK_BADGES_EVENT,
   PeekBadgesPayloadSchema,
@@ -27,7 +28,9 @@ export function usePeekBadge() {
     at: Date.now(),
   });
 
-  // Listen for backend push events
+  // Listen for backend push events, then signal the backend that the UI is
+  // ready to receive badge updates.  This prevents the background flush loop
+  // from emitting (and discarding) badge data before this listener exists.
   useEffect(() => {
     const unlisten = listen(PEEK_BADGES_EVENT, (event) => {
       const parsed = PeekBadgesPayloadSchema.safeParse(event.payload);
@@ -39,6 +42,9 @@ export function usePeekBadge() {
         parsed.data.length > 0 ? prev % parsed.data.length : 0,
       );
     });
+
+    // Signal the backend that badge listeners are registered.
+    void invoke("ui_ready");
 
     return () => {
       unlisten.then((fn) => fn());
