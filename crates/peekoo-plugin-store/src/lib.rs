@@ -219,6 +219,9 @@ impl PluginStoreService {
     where
         F: FnOnce(&Path) -> Result<(), String>,
     {
+        let was_enabled = registry
+            .is_plugin_enabled(plugin_key)
+            .map_err(|e| format!("Failed to read plugin enabled state: {e}"))?;
         let was_loaded = registry.loaded_keys().iter().any(|key| key == plugin_key);
         let old_manifest =
             peekoo_plugin_host::manifest::load_manifest(&dest_dir.join("peekoo-plugin.toml")).ok();
@@ -229,14 +232,20 @@ impl PluginStoreService {
 
         let result = self.with_backup_guard(dest_dir, || {
             prepare_new_files(dest_dir)?;
-            registry
-                .install_plugin(dest_dir)
-                .map(|_| ())
-                .map_err(|e| format!("Failed to load updated plugin: {e}"))?;
+            let new_manifest = registry
+                .sync_plugin_registration(dest_dir)
+                .map_err(|e| format!("Failed to register updated plugin: {e}"))?;
 
-            let new_manifest =
-                peekoo_plugin_host::manifest::load_manifest(&dest_dir.join("peekoo-plugin.toml"))
-                    .map_err(|e| format!("Failed to read updated manifest: {e}"))?;
+            if was_enabled {
+                registry
+                    .install_plugin(dest_dir)
+                    .map(|_| ())
+                    .map_err(|e| format!("Failed to load updated plugin: {e}"))?;
+            } else {
+                registry
+                    .set_plugin_enabled(plugin_key, false)
+                    .map_err(|e| format!("Failed to preserve disabled state: {e}"))?;
+            }
 
             if let Some(old_manifest) = &old_manifest {
                 Self::cleanup_removed_companions(
@@ -251,9 +260,18 @@ impl PluginStoreService {
         });
 
         if let Err(err) = result {
-            if was_loaded {
+            if was_enabled {
                 registry.install_plugin(dest_dir).map_err(|reload_err| {
                     format!("{err}; failed to reload restored plugin: {reload_err}")
+                })?;
+            } else {
+                registry
+                    .sync_plugin_registration(dest_dir)
+                    .map_err(|reload_err| {
+                        format!("{err}; failed to restore plugin registration: {reload_err}")
+                    })?;
+                registry.set_plugin_enabled(plugin_key, false).map_err(|reload_err| {
+                    format!("{err}; failed to restore disabled state: {reload_err}")
                 })?;
             }
             return Err(err);
@@ -629,19 +647,29 @@ mod tests {
         dir
     }
 
-    fn with_test_config_home<T>(name: &str, f: impl FnOnce(PathBuf) -> T) -> T {
+    fn with_test_home_and_config<T>(name: &str, f: impl FnOnce(PathBuf, PathBuf) -> T) -> T {
         static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
         let _guard = ENV_LOCK
             .get_or_init(|| Mutex::new(()))
             .lock()
-            .expect("env lock");
+            .unwrap_or_else(|e| e.into_inner());
+        let home_dir = temp_dir(name).join("home");
         let config_home = temp_dir(name).join("config-home");
+        fs::create_dir_all(&home_dir).expect("home dir");
         fs::create_dir_all(&config_home).expect("config home");
 
-        let old = std::env::var("XDG_CONFIG_HOME").ok();
+        let old_home = std::env::var("HOME").ok();
+        let old_xdg = std::env::var("XDG_CONFIG_HOME").ok();
+        unsafe { std::env::set_var("HOME", &home_dir) };
         unsafe { std::env::set_var("XDG_CONFIG_HOME", &config_home) };
-        let result = f(config_home.clone());
-        if let Some(value) = old {
+        let result = f(home_dir.clone(), config_home.clone());
+
+        if let Some(value) = old_home {
+            unsafe { std::env::set_var("HOME", value) };
+        } else {
+            unsafe { std::env::remove_var("HOME") };
+        }
+        if let Some(value) = old_xdg {
             unsafe { std::env::set_var("XDG_CONFIG_HOME", value) };
         } else {
             unsafe { std::env::remove_var("XDG_CONFIG_HOME") };
@@ -958,8 +986,50 @@ wasm = "plugin.wasm"
     }
 
     #[test]
+    fn replace_preserves_disabled_state_without_reloading_plugin() {
+        let store = make_store();
+        let temp_root = temp_dir("replace-disabled");
+        let plugin_dir = temp_root.join("health-reminders");
+        let sample_plugin_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/health-reminders");
+        copy_dir_recursive(&sample_plugin_dir, &plugin_dir);
+
+        let registry = make_registry(vec![temp_root.clone()]);
+        registry
+            .install_plugin(&plugin_dir)
+            .expect("initial plugin install should succeed");
+        registry
+            .set_plugin_enabled("health-reminders", false)
+            .expect("plugin should disable");
+        registry
+            .unload_plugin("health-reminders")
+            .expect("plugin should unload");
+
+        store
+            .replace_installed_plugin("health-reminders", &plugin_dir, &registry, |dest_dir| {
+                copy_dir_recursive(&sample_plugin_dir, dest_dir);
+                Ok(())
+            })
+            .expect("replace should succeed");
+
+        assert!(
+            !registry
+                .is_plugin_enabled("health-reminders")
+                .expect("enabled state should exist"),
+            "disabled plugin should remain disabled after update"
+        );
+        assert!(
+            !registry
+                .loaded_keys()
+                .iter()
+                .any(|key| key == "health-reminders"),
+            "disabled plugin should not be reloaded into memory after update"
+        );
+    }
+
+    #[test]
     fn uninstall_plugin_removes_declared_companion_file_only() {
-        with_test_config_home("uninstall-companion", |_| {
+        with_test_home_and_config("uninstall-companion", |_, _| {
             let store = make_store();
             let global_plugins_dir = peekoo_global_data_dir()
                 .expect("global dir")
@@ -998,7 +1068,7 @@ wasm = "plugin.wasm"
 
     #[test]
     fn update_plugin_removes_stale_companion_file_when_manifest_drops_it() {
-        with_test_config_home("update-stale-companion", |_| {
+        with_test_home_and_config("update-stale-companion", |_, _| {
             let store = make_store();
             let temp_root = temp_dir("update-stale-plugin-root");
             let plugin_key = format!("test-opencode-update-{}", std::process::id());
@@ -1011,6 +1081,9 @@ wasm = "plugin.wasm"
             fs::write(&companion_path, "old-companion").expect("companion install");
 
             let registry = make_registry(vec![temp_root.clone()]);
+            registry
+                .sync_plugin_registration(&plugin_dir)
+                .expect("plugin should register before update");
 
             store
                 .replace_installed_plugin(&plugin_key, &plugin_dir, &registry, |dest_dir| {

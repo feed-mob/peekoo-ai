@@ -364,6 +364,7 @@ impl AgentApplication {
     /// next background flush tick.
     pub fn mark_ui_ready(&self) {
         self.peek_badges.mark_ui_ready();
+        self.mood_reactions.mark_ui_ready();
     }
 
     /// Return the merged peek-badge list if any plugin pushed an update since the last call.
