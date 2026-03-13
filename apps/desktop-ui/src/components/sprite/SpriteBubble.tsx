@@ -1,8 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH, SPRITE_WIDTH } from "@/lib/sprite-bubble-layout";
+import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
 import type { SpriteBubblePayload } from "@/types/sprite-bubble";
-
-const BUBBLE_LEFT = (SPRITE_WIDTH - BUBBLE_WIDTH) / 2;
 
 interface SpriteBubbleProps {
   payload: SpriteBubblePayload | null;
@@ -22,7 +20,8 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
           className="pointer-events-none absolute z-20 rounded-2xl border border-glass-border bg-glass/95 px-4 py-3 shadow-panel backdrop-blur-xl"
           style={{
             top: 8,
-            left: BUBBLE_LEFT,
+            left: "50%",
+            marginLeft: -(BUBBLE_WIDTH / 2),
             width: BUBBLE_WIDTH,
             maxHeight: BUBBLE_EXTRA_HEIGHT - 16,
           }}
