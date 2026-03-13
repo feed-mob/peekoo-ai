@@ -21,8 +21,6 @@ import type { AnimationType, SpriteState } from "@/types/sprite";
 
 // Duration (ms) a reaction-triggered mood override stays active before reverting
 const MOOD_OVERRIDE_DURATION_MS = 3000;
-// If the OS drag completes faster than this (ms), the user just clicked
-const CLICK_TIME_THRESHOLD_MS = 150;
 
 export default function SpriteView() {
   const spriteState = useSpriteState();
@@ -30,7 +28,6 @@ export default function SpriteView() {
   const { items: badgeItems, currentItem: badgeCurrentItem, expanded: badgeExpanded, toggleExpanded: toggleBadgeExpanded, collapse: collapseBadge } = usePeekBadge();
   const { panels, pluginPanels, installedPlugins, togglePanel } = usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [randomTrigger, setRandomTrigger] = useState(0);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
   const [dragAnimation, setDragAnimation] = useState<AnimationType | null>(null);
   const moodResetTimerRef = useRef<number | null>(null);
@@ -115,25 +112,46 @@ export default function SpriteView() {
   // yield a frame so React can paint before startDragging() hands control
   // to the OS (which freezes the JS event loop until the drag ends).
   // If the drag completes very quickly, the user just clicked.
+  // Clear drag animation ONLY when mouse is released
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      setDragAnimation(null);
+    };
+    
+    // We only listen to mouseup. 
+    // We EXCLUDE 'blur' because startDragging often causes the window to lose focus on Windows,
+    // which was likely causing the premature reset to Idle animation.
+    window.addEventListener("mouseup", handleGlobalMouseUp);
+    
+    return () => {
+      window.removeEventListener("mouseup", handleGlobalMouseUp);
+    };
+  }, []);
+
+  // Start OS drag on mousedown.
   const handleMouseDown = useCallback(async (e: React.MouseEvent) => {
     if (e.button !== 0) return; // only primary button
     e.stopPropagation();
+    
+    // 1. Immediately switch to dragging animation
     setDragAnimation("dragging");
+    
     try {
-      // Yield to let React flush the dragging animation before OS takes over
-      await new Promise((r) => requestAnimationFrame(r));
-      const start = performance.now();
+      // 2. Give the browser more time (200ms) to finish React rendering AND paint the canvas
+      // frame before the OS takes over the thread. Windows OS drag is very aggressive.
+      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+      // 3. Start the actual OS drag
       await getCurrentWindow().startDragging();
-      const elapsed = performance.now() - start;
-      if (elapsed < CLICK_TIME_THRESHOLD_MS) {
-        // Drag ended almost instantly — user just clicked
-        setRandomTrigger((prev) => prev + 1);
-      }
+      
+      // Removed CLICK_TIME_THRESHOLD_MS logic as requested in the simpler version
     } catch (error) {
       console.error("Failed to start dragging sprite window", error);
-    } finally {
       setDragAnimation(null);
     }
+    // We DO NOT setDragAnimation(null) in a finally block here.
+    // The global mouseup listener above is responsible for that.
   }, []);
 
   // Right click: toggle menu
@@ -160,7 +178,6 @@ export default function SpriteView() {
   return (
     <div
       className="w-full h-full bg-transparent"
-      data-tauri-drag-region
     >
       <div className="relative flex items-center justify-center w-full h-full">
         <div
@@ -170,7 +187,6 @@ export default function SpriteView() {
         >
           <Sprite
             state={effectiveSpriteState}
-            randomTrigger={randomTrigger}
             animationOverride={dragAnimation}
           />
         </div>

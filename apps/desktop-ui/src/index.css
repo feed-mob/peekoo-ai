@@ -1,82 +1,136 @@
 @import "tailwindcss";
 @import "streamdown/styles.css";
 
-/* ─── Clean Playful Theme ─── */
+/* ─── Dynamic Theme Tokens ─── */
+:root {
+  /* Default Light Mode Palette */
+  --space-void: oklch(0.98 0.01 280);        /* clean white background */
+  --space-deep: oklch(0.95 0.02 280);        /* card/panel surfaces */
+  --space-surface: oklch(0.90 0.03 280);     /* elevated buttons */
+  --space-overlay: oklch(0.85 0.04 280);     /* hover effects */
+
+  --text-primary: oklch(0.25 0.04 280);      /* dark bold text */
+  --text-secondary: oklch(0.45 0.05 280);    /* descriptive text */
+  --text-muted: oklch(0.65 0.03 280);        /* placeholders */
+
+  --glow-blue: oklch(0.65 0.18 260);         /* slightly deeper blue for light */
+  --glow-purple: oklch(0.62 0.22 300);       /* slightly deeper purple for light */
+  --glow-cyan: oklch(0.68 0.16 200);
+  --glow-pink: oklch(0.64 0.20 340);
+
+  --muted-blue: oklch(0.85 0.08 260);
+  --muted-purple: oklch(0.82 0.10 300);
+
+  --glass: oklch(1 0 0 / 0.75);              /* white frost */
+  --glass-border: oklch(0 0 0 / 0.10);       /* subtle dark border */
+
+  /* Shadcn/UI compatible variables for light mode */
+  --background: var(--space-void);
+  --foreground: var(--text-primary);
+  --card: var(--space-deep);
+  --card-foreground: var(--text-primary);
+  --popover: var(--space-deep);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--glow-blue);
+  --primary-foreground: white;
+  --secondary: var(--space-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--space-surface);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--glow-purple);
+  --accent-foreground: white;
+  --destructive: oklch(0.60 0.20 20);
+  --destructive-foreground: white;
+  --border: var(--glass-border);
+  --input: var(--glass-border);
+  --ring: oklch(0.65 0.18 260 / 0.3);
+  --radius: 1rem;
+}
+
+.dark {
+  /* Original Deep Space Palette */
+  --space-void: oklch(0.20 0.03 280);
+  --space-deep: oklch(0.24 0.04 280);
+  --space-surface: oklch(0.28 0.05 280);
+  --space-overlay: oklch(0.32 0.06 280);
+
+  --text-primary: oklch(0.95 0.01 280);
+  --text-secondary: oklch(0.75 0.03 280);
+  --text-muted: oklch(0.55 0.04 280);
+
+  --glow-blue: oklch(0.72 0.14 260);
+  --glow-purple: oklch(0.68 0.18 300);
+  --glow-cyan: oklch(0.75 0.12 200);
+  --glow-pink: oklch(0.70 0.16 340);
+
+  --muted-blue: oklch(0.45 0.08 260);
+  --muted-purple: oklch(0.40 0.10 300);
+
+  --glass: oklch(0.24 0.04 280 / 0.65);
+  --glass-border: oklch(0.85 0.02 280 / 0.15);
+
+  /* Shadcn/UI compatible variables for dark mode */
+  --background: var(--space-void);
+  --foreground: var(--text-primary);
+  --card: var(--space-deep);
+  --card-foreground: var(--text-primary);
+  --popover: var(--space-deep);
+  --popover-foreground: var(--text-primary);
+  --primary: var(--glow-blue);
+  --primary-foreground: var(--space-void);
+  --secondary: var(--space-surface);
+  --secondary-foreground: var(--text-primary);
+  --muted: var(--space-surface);
+  --muted-foreground: var(--text-secondary);
+  --accent: var(--glow-purple);
+  --accent-foreground: var(--text-primary);
+  --destructive: oklch(0.68 0.18 20);
+  --destructive-foreground: var(--text-primary);
+  --border: var(--glass-border);
+  --input: var(--glass-border);
+  --ring: oklch(0.72 0.14 260 / 0.5);
+}
+
 @theme {
-  /* Base palette - Soft slate/indigo */
-  --color-space-void: oklch(0.20 0.03 280);        /* deepest background */
-  --color-space-deep: oklch(0.24 0.04 280);       /* panels, cards */
-  --color-space-surface: oklch(0.28 0.05 280);     /* elevated surfaces */
-  --color-space-overlay: oklch(0.32 0.06 280);    /* hover states */
+  --color-space-void: var(--space-void);
+  --color-space-deep: var(--space-deep);
+  --color-space-surface: var(--space-surface);
+  --color-space-overlay: var(--space-overlay);
 
-  /* Playful accents */
-  --color-glow-blue: oklch(0.72 0.14 260);         /* soft friendly blue */
-  --color-glow-purple: oklch(0.68 0.18 300);       /* playful purple */
-  --color-glow-cyan: oklch(0.75 0.12 200);         /* gentle cyan */
-  --color-glow-pink: oklch(0.70 0.16 340);         /* warm pink */
+  --color-glow-blue: var(--glow-blue);
+  --color-glow-purple: var(--glow-purple);
+  --color-glow-cyan: var(--glow-cyan);
+  --color-glow-pink: var(--glow-pink);
 
-  /* Muted variants */
-  --color-muted-blue: oklch(0.45 0.08 260);
-  --color-muted-purple: oklch(0.40 0.10 300);
+  --color-muted-blue: var(--muted-blue);
+  --color-muted-purple: var(--muted-purple);
 
-  /* Text hierarchy */
-  --color-text-primary: oklch(0.95 0.01 280);      /* soft white */
-  --color-text-secondary: oklch(0.75 0.03 280);    /* friendly dimmed */
-  --color-text-muted: oklch(0.55 0.04 280);        /* placeholder, disabled */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
 
-  /* Semantic colors */
   --color-success: oklch(0.72 0.14 150);
   --color-warning: oklch(0.75 0.15 80);
   --color-danger: oklch(0.68 0.18 20);
 
-  /* Priority badge colors */
   --color-priority-high: oklch(0.68 0.18 20);
   --color-priority-medium: oklch(0.75 0.15 80);
   --color-priority-low: oklch(0.72 0.14 150);
 
-  /* Glass effect - frosted and soft */
-  --color-glass: oklch(0.24 0.04 280 / 0.65);
-  --color-glass-border: oklch(0.85 0.02 280 / 0.15);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
 
-  /* Shadows - soft and elevated */
-  --shadow-glow-blue: 0 4px 20px oklch(0.72 0.14 260 / 0.2);
-  --shadow-glow-purple: 0 4px 20px oklch(0.68 0.18 300 / 0.2);
+  --shadow-glow-blue: 0 4px 20px var(--glow-blue) / 0.2;
+  --shadow-glow-purple: 0 4px 20px var(--glow-purple) / 0.2;
   --shadow-panel: 0 12px 40px oklch(0 0 0 / 0.4);
 
-  /* Typography */
   --font-sans: "Inter", "Nunito", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
-  /* Border radius - bouncy and round */
   --radius-panel: 1.5rem;
   --radius-button: 1rem;
 
-  /* Spacing for panels */
   --spacing-panel-padding: 1.25rem;
-}
-
-/* ─── Override shadcn/ui CSS variables for playful theme ─── */
-:root {
-  --background: oklch(0.20 0.03 280);
-  --foreground: oklch(0.95 0.01 280);
-  --card: oklch(0.24 0.04 280);
-  --card-foreground: oklch(0.95 0.01 280);
-  --popover: oklch(0.24 0.04 280);
-  --popover-foreground: oklch(0.95 0.01 280);
-  --primary: oklch(0.72 0.14 260);
-  --primary-foreground: oklch(0.20 0.03 280);
-  --secondary: oklch(0.28 0.05 280);
-  --secondary-foreground: oklch(0.95 0.01 280);
-  --muted: oklch(0.28 0.05 280);
-  --muted-foreground: oklch(0.75 0.03 280);
-  --accent: oklch(0.68 0.18 300);
-  --accent-foreground: oklch(0.95 0.01 280);
-  --destructive: oklch(0.68 0.18 20);
-  --destructive-foreground: oklch(0.95 0.01 280);
-  --border: oklch(0.85 0.02 280 / 0.15);
-  --input: oklch(0.85 0.02 280 / 0.15);
-  --ring: oklch(0.72 0.14 260 / 0.5);
-  --radius: 1rem;
 }
 
 /* ─── Global resets ─── */
@@ -85,12 +139,13 @@ html, body, #root {
   padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden; /* Tauri desktop — no page scroll */
+  overflow: hidden;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 body {
   background-color: transparent;
-  color: var(--color-text-primary);
+  color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }

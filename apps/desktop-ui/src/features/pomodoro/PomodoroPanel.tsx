@@ -23,11 +23,15 @@ export function PomodoroPanel() {
     setIsActive(nextIsActive);
 
     if (nextIsActive) {
-      void emitPetReaction("pomodoro-started", { sticky: true });
+      if (mode === "work") {
+        void emitPetReaction("pomodoro-started", { sticky: true });
+      } else {
+        void emitPetReaction("pomodoro-resting", { sticky: true });
+      }
     } else {
       void emitPetReaction("pomodoro-break");
     }
-  }, [isActive]);
+  }, [isActive, mode]);
 
   const resetTimer = useCallback(() => {
     setIsActive(false);
