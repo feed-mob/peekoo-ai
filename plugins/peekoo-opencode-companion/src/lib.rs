@@ -1,4 +1,4 @@
-#![no_main]
+#![cfg_attr(target_arch = "wasm32", no_main)]
 
 use peekoo_plugin_sdk::prelude::*;
 
@@ -18,6 +18,18 @@ struct BridgeState {
 const SCHEDULE_KEY: &str = "poll-opencode";
 const POLL_INTERVAL_SECS: u64 = 2;
 const STATE_LAST_STATUS: &str = "last_status";
+const MAX_DISPLAY_LEN: usize = 30;
+
+fn truncate_title(s: &str) -> String {
+    if s.chars().count() > MAX_DISPLAY_LEN {
+        format!(
+            "{}...",
+            s.chars().take(MAX_DISPLAY_LEN - 3).collect::<String>()
+        )
+    } else {
+        s.to_string()
+    }
+}
 
 // ── Lifecycle ──────────────────────────────────────────────────
 
@@ -103,7 +115,15 @@ fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), ext
         }
         "happy" | "done" => {
             peekoo::mood::set("opencode-done", false)?;
-            // Clear badge — the happy mood is transient
+
+            let body = match state.session_title.as_deref() {
+                Some(t) if !t.is_empty() => {
+                    format!("🎉 {} is done!", truncate_title(t))
+                }
+                _ => "🎉 OpenCode has finished working".to_string(),
+            };
+            let _ = peekoo::notify::send("OpenCode", &body);
+
             peekoo::badge::set(&[])?;
         }
         _ => {
@@ -116,15 +136,86 @@ fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), ext
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── truncate_title ─────────────────────────────────────────
+
+    #[test]
+    fn truncate_title_empty_string() {
+        assert_eq!(truncate_title(""), "");
+    }
+
+    #[test]
+    fn truncate_title_short_ascii() {
+        assert_eq!(truncate_title("Fix bug"), "Fix bug");
+    }
+
+    #[test]
+    fn truncate_title_exactly_at_limit() {
+        // 30 chars exactly — no truncation
+        let title = "a".repeat(MAX_DISPLAY_LEN);
+        assert_eq!(truncate_title(&title), title);
+    }
+
+    #[test]
+    fn truncate_title_one_over_limit() {
+        // 31 chars — should truncate to 27 chars + "..."
+        let title = "a".repeat(MAX_DISPLAY_LEN + 1);
+        let result = truncate_title(&title);
+        assert_eq!(result, format!("{}...", "a".repeat(MAX_DISPLAY_LEN - 3)));
+        assert_eq!(result.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn truncate_title_long_ascii() {
+        let title = "Help me write a new feature that allows users to track metrics";
+        let result = truncate_title(title);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn truncate_title_multibyte_emoji() {
+        // Emoji are multibyte in UTF-8 — this would panic with byte indexing
+        let title = "🚀".repeat(MAX_DISPLAY_LEN + 1);
+        let result = truncate_title(&title);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn truncate_title_mixed_emoji_and_ascii() {
+        // Mix of ASCII and multibyte chars exceeding the limit
+        let title = "Fix 🐛 in the 🎨 rendering pipeline for 🚀 deployment";
+        let result = truncate_title(title);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn truncate_title_cjk_characters() {
+        // CJK chars are 3 bytes each in UTF-8 — byte indexing would panic
+        let title = "日本語のタスク名前がとても長い場合のテストケースですから確認する";
+        assert!(title.chars().count() > MAX_DISPLAY_LEN);
+        let result = truncate_title(title);
+        assert!(result.ends_with("..."));
+        assert_eq!(result.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn truncate_title_emoji_at_exact_limit() {
+        // Exactly 30 emoji chars — no truncation needed
+        let title = "🎉".repeat(MAX_DISPLAY_LEN);
+        assert_eq!(truncate_title(&title), title);
+    }
+}
+
 fn update_badge(state: &BridgeState) -> Result<(), extism_pdk::Error> {
     let title = state.session_title.as_deref().unwrap_or("Working...");
 
-    // Truncate long titles for the badge display
-    let display_title = if title.len() > 30 {
-        format!("{}...", &title[..27])
-    } else {
-        title.to_string()
-    };
+    let display_title = truncate_title(title);
 
     let elapsed_label = match state.started_at {
         Some(started) => {
