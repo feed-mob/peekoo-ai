@@ -17,30 +17,37 @@ export function PanelShell({ title, children }: PanelShellProps) {
   };
 
   return (
-    <div className="w-full h-screen flex flex-col bg-glass backdrop-blur-2xl border border-glass-border rounded-panel overflow-hidden shadow-panel">
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.95, y: 20 }}
+      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+      className="w-full h-screen flex flex-col bg-glass backdrop-blur-xl border border-glass-border rounded-panel overflow-hidden shadow-2xl"
+    >
       {/* Title bar / drag region */}
       <div
         data-tauri-drag-region
-        className="flex items-center justify-between h-12 px-4 select-none shrink-0"
+        className="flex items-center justify-between h-11 px-4 select-none shrink-0 border-b border-glass-border/50"
       >
         <span
           data-tauri-drag-region
-          className="text-sm font-semibold text-text-primary opacity-80 tracking-wide"
+          className="text-sm font-semibold text-text-primary tracking-wide"
         >
           {title}
         </span>
         <motion.button
           onClick={handleClose}
-          whileHover={{ scale: 1.1 }}
+          whileHover={{ scale: 1.1, backgroundColor: "oklch(0.60 0.18 25 / 0.15)" }}
           whileTap={{ scale: 0.9 }}
-          className="p-1.5 rounded-full hover:bg-space-surface text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+          className="p-1.5 rounded-lg hover:bg-space-surface text-text-muted hover:text-color-danger transition-colors cursor-pointer"
+          aria-label="Close panel"
         >
           <X size={16} />
         </motion.button>
       </div>
 
       {/* Panel content */}
-      <div className="flex-1 min-w-0 px-panel-padding pb-panel-padding overflow-y-auto overflow-x-hidden">{children}</div>
-    </div>
+      <div className="flex-1 min-w-0 p-5 overflow-y-auto overflow-x-hidden">{children}</div>
+    </motion.div>
   );
 }

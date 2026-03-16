@@ -11,7 +11,7 @@ use peekoo_agent_app::{
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
-use std::process::Command;
+
 use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,
@@ -498,15 +498,51 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
-            if let Some(mut data_dir) = dirs::data_local_dir() {
-                data_dir.push("com.peekoo.desktop");
-                data_dir.push("WebView2");
-                if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    eprintln!("warning: failed to create WebView2 data dir: {e}");
+            let mut paths_to_try = Vec::new();
+            
+            // 1. Primary: User's AppData\Roaming (always writable)
+            if let Some(mut p) = dirs::data_dir() {
+                p.push("peekoo-desktop");
+                p.push("WebView2");
+                paths_to_try.push(("primary", p));
+            }
+            
+            // 2. Fallback: Home directory
+            if let Some(mut p) = dirs::home_dir() {
+                p.push(".peekoo-desktop-webview");
+                paths_to_try.push(("home", p));
+            }
+            
+            // 3. Last resort: Temp directory
+            let mut temp_p = std::env::temp_dir();
+            temp_p.push("peekoo-webview-data");
+            paths_to_try.push(("temp", temp_p));
+
+            let mut chosen_path = None;
+            for (name, path) in paths_to_try {
+                if let Err(e) = std::fs::create_dir_all(&path) {
+                    eprintln!("info: failed to use {} WebView2 path ({:?}): {}", name, path, e);
+                    continue;
                 }
+                
+                // Test if we can actually write a file there
+                let test_file = path.join(".write_test");
+                if std::fs::write(&test_file, "test").is_ok() {
+                    let _ = std::fs::remove_file(test_file);
+                    chosen_path = Some(path);
+                    break;
+                } else {
+                    eprintln!("info: {} WebView2 path is not writable: {:?}", name, path);
+                }
+            }
+
+            if let Some(path) = chosen_path {
+                println!("WebView2 data folder set to: {:?}", path);
                 // SAFETY: Called at the start of `run()` before `tauri::Builder`
                 // is constructed, so no other threads are running yet.
-                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
+                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", path) };
+            } else {
+                eprintln!("error: could not find a writable WebView2 data directory!");
             }
         }
     }

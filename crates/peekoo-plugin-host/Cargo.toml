@@ -3,8 +3,12 @@ name = "peekoo-plugin-host"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["plugin-runtime"]
+plugin-runtime = ["extism"]
+
 [dependencies]
-extism = "1.13"
+extism = { version = "1.13", optional = true }
 peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-paths = { path = "../peekoo-paths" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }

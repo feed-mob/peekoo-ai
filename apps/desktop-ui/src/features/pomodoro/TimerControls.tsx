@@ -24,10 +24,7 @@ export function TimerControls({
       <div className="flex gap-3">
         <Button
           onClick={onToggle}
-          className={isActive 
-            ? "bg-warning hover:bg-warning/80 text-space-void" 
-            : "bg-success hover:bg-success/80 text-space-void"
-          }
+          variant={isActive ? "warning" : "success"}
         >
           {isActive ? (
             <>
@@ -42,7 +39,6 @@ export function TimerControls({
         <Button
           onClick={onReset}
           variant="outline"
-          className="border-glass-border text-text-primary hover:bg-space-overlay"
         >
           <RotateCcw size={18} className="mr-2" /> Reset
         </Button>
@@ -50,16 +46,15 @@ export function TimerControls({
 
       <Button
         onClick={onSwitchMode}
-        variant="ghost"
+        variant="soft"
         size="sm"
-        className="text-text-muted hover:text-text-primary"
       >
         Switch to {mode === "work" ? "Break" : "Work"}
       </Button>
 
       <Badge
         variant="outline"
-        className="border-glow-blue/30 text-glow-blue"
+        className="border-accent-teal/30 text-accent-teal"
       >
         {completedSessions} sessions completed
       </Badge>

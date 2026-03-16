@@ -3,26 +3,62 @@
 
 /* ─── Dynamic Theme Tokens ─── */
 :root {
-  /* Default Light Mode Palette */
-  --space-void: oklch(0.98 0.01 280);        /* clean white background */
-  --space-deep: oklch(0.95 0.02 280);        /* card/panel surfaces */
-  --space-surface: oklch(0.90 0.03 280);     /* elevated buttons */
-  --space-overlay: oklch(0.85 0.04 280);     /* hover effects */
+  /* Light Mode Palette - Warm Cream with Blue & Coral Pink */
+  /* Background layers (米白温暖系) */
+  --space-void: oklch(0.98 0.01 60);         /* #FDF7F4 - warm cream background */
+  --space-deep: oklch(0.97 0.01 55);         /* #F9F6F3 - milk white cards/panels */
+  --space-surface: oklch(0.94 0.02 50);      /* #F5C9B0 - peach cream buttons */
+  --space-overlay: oklch(0.92 0.02 55);      /* #EBE1D1 - warm beige hover */
 
-  --text-primary: oklch(0.25 0.04 280);      /* dark bold text */
-  --text-secondary: oklch(0.45 0.05 280);    /* descriptive text */
-  --text-muted: oklch(0.65 0.03 280);        /* placeholders */
+  /* Text colors (high contrast) */
+  --text-primary: oklch(0.00 0.00 0);        /* #000000 - pure black */
+  --text-secondary: oklch(0.42 0.02 40);     /* #685752 - deep brown-gray */
+  --text-muted: oklch(0.58 0.02 45);         /* #997C70 - brown-gray */
 
-  --glow-blue: oklch(0.65 0.18 260);         /* slightly deeper blue for light */
-  --glow-purple: oklch(0.62 0.22 300);       /* slightly deeper purple for light */
-  --glow-cyan: oklch(0.68 0.16 200);
-  --glow-pink: oklch(0.64 0.20 340);
+  /* Theme colors (forest green system) */
+  --glow-green: oklch(0.45 0.06 155);        /* #41644A - forest green primary */
+  --glow-sage: oklch(0.65 0.05 140);         /* #8EB486 - soft green */
+  --glow-olive: oklch(0.70 0.04 130);        /* #A6B28B - olive green */
 
-  --muted-blue: oklch(0.85 0.08 260);
-  --muted-purple: oklch(0.82 0.10 300);
+  /* Accent colors (warm orange/coral pink system) */
+  --accent-orange: oklch(0.65 0.14 45);      /* #E9762B - vibrant orange */
+  --accent-coral: oklch(0.70 0.12 40);       /* #FD8A6B - coral orange */
+  --accent-peach: oklch(0.82 0.05 50);       /* #F5C9B0 - soft peach */
+  --accent-coral-pink: oklch(0.75 0.12 25);  /* #FEC288 - coral pink ✨ */
+  --accent-rose-pink: oklch(0.80 0.08 15);   /* #FBEF76 - rose pink ✨ */
 
-  --glass: oklch(1 0 0 / 0.75);              /* white frost */
-  --glass-border: oklch(0 0 0 / 0.10);       /* subtle dark border */
+  /* Contrast colors (cool blue tones) */
+  --accent-blue: oklch(0.50 0.08 250);       /* #465C88 - deep blue ✨ */
+  --accent-sky-blue: oklch(0.65 0.06 240);   /* #7B9AC7 - sky blue ✨ */
+  --accent-blue-gray: oklch(0.48 0.05 250);  /* #465C88 - blue-gray */
+  --accent-teal: oklch(0.62 0.04 180);       /* #689B8A - teal green */
+
+  /* Pomodoro-specific colors */
+  --pomodoro-focus: oklch(0.62 0.04 180);    /* #689B8A - teal green for focus */
+  --pomodoro-rest: oklch(0.65 0.14 45);      /* #E9762B - vibrant orange for rest */
+
+  /* Semantic colors */
+  --color-success: oklch(0.65 0.05 140);     /* success - soft green */
+  --color-warning: oklch(0.65 0.14 45);      /* warning - vibrant orange */
+  --color-danger: oklch(0.60 0.18 25);       /* danger - red */
+  --color-info: oklch(0.50 0.08 250);        /* info - deep blue ✨ */
+
+  /* Muted backgrounds */
+  --muted-green: oklch(0.93 0.02 140);       /* soft green bg */
+  --muted-orange: oklch(0.93 0.03 45);       /* soft orange bg */
+  --muted-blue: oklch(0.93 0.02 240);        /* soft blue bg ✨ */
+  --muted-pink: oklch(0.93 0.03 25);         /* soft pink bg ✨ */
+
+  /* Glass effects */
+  --glass: oklch(0.98 0.01 60 / 0.75);       /* warm cream frost */
+  --glass-border: oklch(0.45 0.06 155 / 0.12); /* forest green border */
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, oklch(0.45 0.06 155), oklch(0.65 0.05 140));
+  --gradient-warm: linear-gradient(135deg, oklch(0.65 0.14 45), oklch(0.75 0.12 25));
+  --gradient-cool: linear-gradient(135deg, oklch(0.50 0.08 250), oklch(0.65 0.06 240));
+  --gradient-fresh: linear-gradient(135deg, oklch(0.62 0.04 180), oklch(0.48 0.05 250));
+  --gradient-sunset: linear-gradient(135deg, oklch(0.70 0.12 40), oklch(0.82 0.05 50));
 
   /* Shadcn/UI compatible variables for light mode */
   --background: var(--space-void);
@@ -31,43 +67,75 @@
   --card-foreground: var(--text-primary);
   --popover: var(--space-deep);
   --popover-foreground: var(--text-primary);
-  --primary: var(--glow-blue);
+  --primary: var(--glow-green);
   --primary-foreground: white;
   --secondary: var(--space-surface);
   --secondary-foreground: var(--text-primary);
   --muted: var(--space-surface);
   --muted-foreground: var(--text-secondary);
-  --accent: var(--glow-purple);
-  --accent-foreground: white;
-  --destructive: oklch(0.60 0.20 20);
+  --accent: var(--accent-peach);
+  --accent-foreground: var(--text-primary);
+  --destructive: var(--color-danger);
   --destructive-foreground: white;
   --border: var(--glass-border);
   --input: var(--glass-border);
-  --ring: oklch(0.65 0.18 260 / 0.3);
+  --ring: oklch(0.45 0.06 155 / 0.3);
   --radius: 1rem;
 }
 
 .dark {
-  /* Original Deep Space Palette */
-  --space-void: oklch(0.20 0.03 280);
-  --space-deep: oklch(0.24 0.04 280);
-  --space-surface: oklch(0.28 0.05 280);
-  --space-overlay: oklch(0.32 0.06 280);
+  /* Dark Mode Palette - Deep Forest Night with Coffee & Mint */
+  /* Background layers (深森林绿+咖啡色系) */
+  --space-void: oklch(0.25 0.03 160);        /* #1C352D - deep forest green background */
+  --space-deep: oklch(0.28 0.02 50);         /* #3D342E - coffee brown cards/panels */
+  --space-surface: oklch(0.45 0.06 155);     /* #41644A - forest green buttons */
+  --space-overlay: oklch(0.62 0.04 180);     /* #689B8A - teal green hover */
 
-  --text-primary: oklch(0.95 0.01 280);
-  --text-secondary: oklch(0.75 0.03 280);
-  --text-muted: oklch(0.55 0.04 280);
+  /* Text colors (warm cream tones) */
+  --text-primary: oklch(0.98 0.01 60);       /* #FDF7F4 - warm cream text */
+  --text-secondary: oklch(0.87 0.04 70);     /* #F3DEBA - coffee cream text */
+  --text-muted: oklch(0.80 0.04 60);         /* #D9C4A0 - light coffee text */
 
-  --glow-blue: oklch(0.72 0.14 260);
-  --glow-purple: oklch(0.68 0.18 300);
-  --glow-cyan: oklch(0.75 0.12 200);
-  --glow-pink: oklch(0.70 0.16 340);
+  /* Theme colors (olive green + mint system) */
+  --glow-green: oklch(0.70 0.04 130);        /* #A6B28B - olive green primary */
+  --glow-sage: oklch(0.65 0.05 140);         /* #8EB486 - soft green */
+  --glow-olive: oklch(0.78 0.08 180);        /* #8DD9CF - mint green (enhanced) */
 
-  --muted-blue: oklch(0.45 0.08 260);
-  --muted-purple: oklch(0.40 0.10 300);
+  /* Accent colors (warm coffee/peach system) */
+  --accent-orange: oklch(0.72 0.12 40);      /* #FF7A30 - vibrant orange */
+  --accent-coral: oklch(0.70 0.12 40);       /* #FD8A6B - coral orange */
+  --accent-peach: oklch(0.82 0.05 50);       /* #F5C9B0 - soft peach */
+  --accent-coffee: oklch(0.62 0.03 50);      /* #A9907E - coffee gray */
 
-  --glass: oklch(0.24 0.04 280 / 0.65);
-  --glass-border: oklch(0.85 0.02 280 / 0.15);
+  /* Contrast colors (cool mint tones) */
+  --accent-blue-gray: oklch(0.48 0.05 250);  /* #465C88 - blue-gray */
+  --accent-mint: oklch(0.85 0.08 180);       /* #A8E8DF - bright mint */
+  --accent-teal: oklch(0.68 0.08 180);       /* #6BBFB5 - teal mint */
+
+  /* Pomodoro-specific colors */
+  --pomodoro-focus: oklch(0.78 0.08 180);    /* #8DD9CF - mint green for focus */
+  --pomodoro-rest: oklch(0.72 0.12 40);      /* #FF7A30 - vibrant orange for rest */
+
+  /* Semantic colors */
+  --color-success: oklch(0.78 0.08 180);     /* success - mint green */
+  --color-warning: oklch(0.72 0.12 40);      /* warning - vibrant orange */
+  --color-danger: oklch(0.65 0.18 25);       /* danger - coral red */
+  --color-info: oklch(0.85 0.08 180);        /* info - bright mint */
+
+  /* Muted backgrounds */
+  --muted-green: oklch(0.32 0.03 155);       /* soft green bg */
+  --muted-coffee: oklch(0.30 0.02 40);       /* soft coffee bg */
+  --muted-mint: oklch(0.34 0.03 180);        /* soft mint bg */
+
+  /* Glass effects */
+  --glass: oklch(0.25 0.03 160 / 0.65);      /* deep forest frost */
+  --glass-border: oklch(0.87 0.04 70 / 0.15); /* coffee cream border */
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, oklch(0.70 0.04 130), oklch(0.78 0.08 180));
+  --gradient-warm: linear-gradient(135deg, oklch(0.72 0.12 40), oklch(0.62 0.03 50));
+  --gradient-fresh: linear-gradient(135deg, oklch(0.85 0.08 180), oklch(0.68 0.08 180));
+  --gradient-sunset: linear-gradient(135deg, oklch(0.70 0.12 40), oklch(0.82 0.05 50));
 
   /* Shadcn/UI compatible variables for dark mode */
   --background: var(--space-void);
@@ -76,60 +144,113 @@
   --card-foreground: var(--text-primary);
   --popover: var(--space-deep);
   --popover-foreground: var(--text-primary);
-  --primary: var(--glow-blue);
+  --primary: var(--glow-green);
   --primary-foreground: var(--space-void);
   --secondary: var(--space-surface);
   --secondary-foreground: var(--text-primary);
   --muted: var(--space-surface);
   --muted-foreground: var(--text-secondary);
-  --accent: var(--glow-purple);
+  --accent: var(--accent-peach);
   --accent-foreground: var(--text-primary);
-  --destructive: oklch(0.68 0.18 20);
-  --destructive-foreground: var(--text-primary);
+  --destructive: var(--color-danger);
+  --destructive-foreground: white;
   --border: var(--glass-border);
   --input: var(--glass-border);
-  --ring: oklch(0.72 0.14 260 / 0.5);
+  --ring: oklch(0.78 0.08 180 / 0.5);
 }
 
 @theme {
+  /* Background layers */
   --color-space-void: var(--space-void);
   --color-space-deep: var(--space-deep);
   --color-space-surface: var(--space-surface);
   --color-space-overlay: var(--space-overlay);
 
-  --color-glow-blue: var(--glow-blue);
-  --color-glow-purple: var(--glow-purple);
-  --color-glow-cyan: var(--glow-cyan);
-  --color-glow-pink: var(--glow-pink);
+  /* Theme colors */
+  --color-glow-green: var(--glow-green);
+  --color-glow-sage: var(--glow-sage);
+  --color-glow-olive: var(--glow-olive);
 
-  --color-muted-blue: var(--muted-blue);
-  --color-muted-purple: var(--muted-purple);
+  /* Accent colors */
+  --color-accent-orange: var(--accent-orange);
+  --color-accent-coral: var(--accent-coral);
+  --color-accent-peach: var(--accent-peach);
+  --color-accent-coral-pink: var(--accent-coral-pink);
+  --color-accent-rose-pink: var(--accent-rose-pink);
+  --color-accent-coffee: var(--accent-coffee);
+  --color-accent-blue: var(--accent-blue);
+  --color-accent-sky-blue: var(--accent-sky-blue);
+  --color-accent-blue-gray: var(--accent-blue-gray);
+  --color-accent-mint: var(--accent-mint);
+  --color-accent-teal: var(--accent-teal);
 
+  /* Pomodoro colors */
+  --color-pomodoro-focus: var(--pomodoro-focus);
+  --color-pomodoro-rest: var(--pomodoro-rest);
+
+  /* Text colors */
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-muted: var(--text-muted);
 
-  --color-success: oklch(0.72 0.14 150);
-  --color-warning: oklch(0.75 0.15 80);
-  --color-danger: oklch(0.68 0.18 20);
+  /* Semantic colors */
+  --color-success: var(--color-success);
+  --color-warning: var(--color-warning);
+  --color-danger: var(--color-danger);
+  --color-info: var(--color-info);
 
-  --color-priority-high: oklch(0.68 0.18 20);
-  --color-priority-medium: oklch(0.75 0.15 80);
-  --color-priority-low: oklch(0.72 0.14 150);
+  /* Priority colors (for tasks) */
+  --color-priority-high: var(--color-warning);
+  --color-priority-medium: var(--glow-green);
+  --color-priority-low: var(--accent-teal);
 
+  /* Muted backgrounds */
+  --color-muted-green: var(--muted-green);
+  --color-muted-coffee: var(--muted-coffee);
+  --color-muted-mint: var(--muted-mint);
+  --color-muted-blue: var(--muted-blue);
+  --color-muted-pink: var(--muted-pink);
+
+  /* Glass effects */
   --color-glass: var(--glass);
   --color-glass-border: var(--glass-border);
 
-  --shadow-glow-blue: 0 4px 20px var(--glow-blue) / 0.2;
-  --shadow-glow-purple: 0 4px 20px var(--glow-purple) / 0.2;
+  /* Gradients */
+  --color-gradient-primary: var(--gradient-primary);
+  --color-gradient-warm: var(--gradient-warm);
+  --color-gradient-cool: var(--gradient-cool);
+  --color-gradient-fresh: var(--gradient-fresh);
+  --color-gradient-sunset: var(--gradient-sunset);
+
+  /* Shadows */
+  --shadow-glow-green: 0 4px 20px var(--glow-green) / 0.2;
+  --shadow-glow-orange: 0 4px 20px var(--accent-orange) / 0.2;
   --shadow-panel: 0 12px 40px oklch(0 0 0 / 0.4);
 
-  --font-sans: "Inter", "Nunito", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+  /* Typography */
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Consolas", "Liberation Mono", monospace;
 
+  /* Font sizes */
+  --text-xs: 0.75rem;      /* 12px - 小标签、徽章 */
+  --text-sm: 0.875rem;     /* 14px - 正文、按钮 */
+  --text-base: 1rem;       /* 16px - 标题、强调 */
+  --text-lg: 1.125rem;     /* 18px - 大标题 */
+  --text-xl: 1.25rem;      /* 20px - 主标题 */
+  --text-2xl: 1.5rem;      /* 24px - 特大标题 */
+  --text-4xl: 2.25rem;     /* 36px - 番茄钟时间 */
+
+  /* Line heights */
+  --leading-tight: 1.25;   /* 紧凑行高 - 标题 */
+  --leading-normal: 1.5;   /* 正常行高 - 正文 */
+  --leading-relaxed: 1.75; /* 宽松行高 - 长文本 */
+
+  /* Border radius */
   --radius-panel: 1.5rem;
   --radius-button: 1rem;
+  --radius-badge: 0.75rem;
 
+  /* Spacing */
   --spacing-panel-padding: 1.25rem;
 }
 
@@ -147,7 +268,10 @@ body {
   background-color: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
