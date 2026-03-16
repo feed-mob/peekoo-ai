@@ -19,11 +19,11 @@
 3. Add the private key and password to GitHub Actions secrets:
    - `TAURI_SIGNING_PRIVATE_KEY`
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-4. If you want automatic AUR publishing later, add an `AUR_SSH_KEY` secret with push access to `peekoo-bin`.
+4. Set up AUR publishing (see [AUR setup](#aur-setup) below).
 
 ## Workflows
 
-- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, and drafts a GitHub Release.
+- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, drafts a GitHub Release, and publishes to AUR when the release is published.
 - `PR Release Label`: fails non-draft PRs that do not have a release-note label.
 - `CI`: validates the workspace, release tooling tests, and the desktop UI build.
 
@@ -34,6 +34,9 @@
 3. Add these repository secrets before the first release:
    - `TAURI_SIGNING_PRIVATE_KEY`
    - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+   - `AUR_SSH_PRIVATE_KEY` (for AUR publishing)
+   - `AUR_USERNAME` (for AUR publishing)
+   - `AUR_EMAIL` (for AUR publishing)
 
 ## Release labels
 
@@ -83,7 +86,7 @@ Use `.github/pull_request_template.md` as the default checklist when opening PRs
    - creates a draft GitHub Release
 8. Open the draft release in GitHub.
 9. Verify the uploaded files and the generated notes.
-10. Publish the release.
+10. Publish the release. This triggers the `publish-aur` job automatically.
 
 ## Manual workflow dispatch
 
@@ -102,7 +105,28 @@ This still uses the version already checked into the repo. It does not bump vers
 1. Install one artifact on each platform you care about.
 2. Smoke-test app launch and the updater check.
 3. Confirm the release page includes `latest.json` and the signature files.
-4. If you maintain AUR manually, update `packaging/aur/PKGBUILD` and `.SRCINFO` with the new AppImage checksum.
+4. AUR is updated automatically when the release is published. Verify the `peekoo-bin` AUR package shows the new version.
+
+## AUR setup
+
+The `publish-aur` job runs automatically when a GitHub Release is published.
+It requires one-time setup:
+
+1. Register the `peekoo-bin` package on [aur.archlinux.org](https://aur.archlinux.org/).
+2. Generate an SSH key pair for AUR access:
+
+   ```bash
+   ssh-keygen -t ed25519 -C "aur" -f ~/.ssh/aur
+   ```
+
+3. Add the **public key** (`~/.ssh/aur.pub`) to your AUR account under SSH Keys.
+4. Add three secrets to GitHub Actions (`Settings` -> `Secrets and variables` -> `Actions`):
+   - `AUR_SSH_PRIVATE_KEY`: contents of `~/.ssh/aur`
+   - `AUR_USERNAME`: your AUR username (used as the git commit author)
+   - `AUR_EMAIL`: your email (used as the git commit author)
+
+The job patches `packaging/aur/PKGBUILD` with the release version, computes
+the AppImage SHA256 checksum automatically, and pushes to the AUR git repo.
 
 ## Updating GitHub secrets
 
