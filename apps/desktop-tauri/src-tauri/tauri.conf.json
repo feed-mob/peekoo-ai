@@ -23,8 +23,7 @@
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "skipTaskbar": true,
-        "dataDirectory": "webview-data"
+        "skipTaskbar": true
       }
     ],
     "security": {
