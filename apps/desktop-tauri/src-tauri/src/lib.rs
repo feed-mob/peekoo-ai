@@ -490,6 +490,62 @@ async fn plugin_store_uninstall(
 }
 
 // ============================================================================
+// WebView2 data directory (Windows)
+// ============================================================================
+
+/// Try each candidate directory in order, returning the first one that can be
+/// created successfully. The `try_create` callback is responsible for creating
+/// the directory (or simulating creation in tests).
+#[cfg(any(target_os = "windows", test))]
+fn resolve_webview2_data_dir<F>(
+    candidates: &[(&str, PathBuf)],
+    mut try_create: F,
+) -> Option<PathBuf>
+where
+    F: FnMut(&std::path::Path) -> std::io::Result<()>,
+{
+    for (label, path) in candidates {
+        match try_create(path) {
+            Ok(()) => {
+                eprintln!(
+                    "info: WebView2 data folder set to ({label}): {}",
+                    path.display()
+                );
+                return Some(path.clone());
+            }
+            Err(e) => {
+                eprintln!(
+                    "info: failed to use {label} WebView2 path ({:?}): {e}",
+                    path.display()
+                );
+            }
+        }
+    }
+    None
+}
+
+/// Build the ordered list of candidate directories for WebView2 user data.
+#[cfg(target_os = "windows")]
+fn webview2_candidate_dirs() -> Vec<(&'static str, PathBuf)> {
+    let mut v = Vec::new();
+    // Primary: %LOCALAPPDATA%\com.peekoo.desktop\WebView2
+    if let Some(mut p) = dirs::data_local_dir() {
+        p.push("com.peekoo.desktop");
+        p.push("WebView2");
+        v.push(("primary", p));
+    }
+    // Fallback: %USERPROFILE%\.peekoo-desktop\WebView2
+    if let Some(mut p) = dirs::home_dir() {
+        p.push(".peekoo-desktop");
+        p.push("WebView2");
+        v.push(("home", p));
+    }
+    // Last resort: %TEMP%\peekoo-webview-data
+    v.push(("temp", std::env::temp_dir().join("peekoo-webview-data")));
+    v
+}
+
+// ============================================================================
 // App Entry
 // ============================================================================
 
@@ -498,15 +554,13 @@ pub fn run() {
     #[cfg(target_os = "windows")]
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
-            if let Some(mut data_dir) = dirs::data_local_dir() {
-                data_dir.push("com.peekoo.desktop");
-                data_dir.push("WebView2");
-                if let Err(e) = std::fs::create_dir_all(&data_dir) {
-                    eprintln!("warning: failed to create WebView2 data dir: {e}");
-                }
+            let candidates = webview2_candidate_dirs();
+            if let Some(dir) =
+                resolve_webview2_data_dir(&candidates, |p| std::fs::create_dir_all(p))
+            {
                 // SAFETY: Called at the start of `run()` before `tauri::Builder`
                 // is constructed, so no other threads are running yet.
-                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", data_dir) };
+                unsafe { std::env::set_var("WEBVIEW2_USER_DATA_FOLDER", dir) };
             }
         }
     }
@@ -767,7 +821,10 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
+    use super::resolve_webview2_data_dir;
     use super::{MainWindowVisibilityAction, next_main_window_visibility_action};
+    use std::io;
+    use std::path::PathBuf;
 
     #[test]
     fn visible_window_hides_on_toggle() {
@@ -783,5 +840,109 @@ mod tests {
             next_main_window_visibility_action(false),
             MainWindowVisibilityAction::ShowAndFocus
         );
+    }
+
+    // -- WebView2 data directory fallback tests --
+
+    #[test]
+    fn webview2_picks_first_writable_candidate() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+            ("temp", PathBuf::from("/fake/temp")),
+        ];
+
+        let result = resolve_webview2_data_dir(&candidates, |_| Ok(()));
+
+        assert_eq!(result, Some(PathBuf::from("/fake/primary")));
+    }
+
+    #[test]
+    fn webview2_skips_inaccessible_picks_next() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+            ("temp", PathBuf::from("/fake/temp")),
+        ];
+
+        let result = resolve_webview2_data_dir(&candidates, |p| {
+            if p == std::path::Path::new("/fake/primary") {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Access Denied",
+                ))
+            } else {
+                Ok(())
+            }
+        });
+
+        assert_eq!(result, Some(PathBuf::from("/fake/home")));
+    }
+
+    #[test]
+    fn webview2_falls_through_to_last_resort() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+            ("temp", PathBuf::from("/fake/temp")),
+        ];
+
+        let result = resolve_webview2_data_dir(&candidates, |p| {
+            if p == std::path::Path::new("/fake/temp") {
+                Ok(())
+            } else {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Access Denied",
+                ))
+            }
+        });
+
+        assert_eq!(result, Some(PathBuf::from("/fake/temp")));
+    }
+
+    #[test]
+    fn webview2_returns_none_when_all_fail() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+            ("temp", PathBuf::from("/fake/temp")),
+        ];
+
+        let result = resolve_webview2_data_dir(&candidates, |_| {
+            Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Access Denied",
+            ))
+        });
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn webview2_returns_none_for_empty_candidates() {
+        let candidates: Vec<(&str, PathBuf)> = vec![];
+
+        let result = resolve_webview2_data_dir(&candidates, |_| Ok(()));
+
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn webview2_stops_after_first_success() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+            ("temp", PathBuf::from("/fake/temp")),
+        ];
+
+        let mut attempts = Vec::new();
+        let result = resolve_webview2_data_dir(&candidates, |p| {
+            attempts.push(p.to_path_buf());
+            Ok(())
+        });
+
+        assert_eq!(result, Some(PathBuf::from("/fake/primary")));
+        assert_eq!(attempts, vec![PathBuf::from("/fake/primary")]);
     }
 }
