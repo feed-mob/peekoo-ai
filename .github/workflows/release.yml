@@ -4,6 +4,8 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -11,6 +13,7 @@ permissions:
 
 jobs:
   release-notes:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     outputs:
       release_body: ${{ steps.notes.outputs.release_body }}
@@ -36,6 +39,7 @@ jobs:
 
   publish-tauri:
     needs: release-notes
+    if: github.event_name != 'release'
     strategy:
       fail-fast: false
       matrix:
@@ -93,3 +97,32 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  publish-aur:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from release tag
+        id: version
+        run: echo "pkgver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Patch PKGBUILD version
+        working-directory: packaging/aur
+        run: sed -i "s/pkgver=.*/pkgver=${{ steps.version.outputs.pkgver }}/" PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: peekoo-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          assets: |
+            packaging/aur/peekoo.desktop
+            packaging/aur/peekoo.sh
+            packaging/aur/peekoo.png
+          updpkgsums: true
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.pkgver }}"
