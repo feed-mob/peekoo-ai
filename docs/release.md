@@ -119,7 +119,7 @@ In GitHub:
 
 ## Notes
 
-- macOS signing and notarization are not configured yet, so users will still see Gatekeeper warnings.
+- macOS signing and notarization are not configured yet. Users must run `xattr -cr /Applications/Peekoo.app` after installing. See [docs/install-macos.md](install-macos.md) for details. Release notes include this instruction automatically.
 - Windows code signing is not configured yet, so SmartScreen warnings will still appear.
 - The updater only works after the public key placeholder is replaced and release artifacts are signed by the workflow.
 - Generated release notes come from GitHub's release notes API and are grouped by `.github/release.yml` labels.

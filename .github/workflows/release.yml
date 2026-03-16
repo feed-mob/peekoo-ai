@@ -28,6 +28,7 @@ jobs:
             --field tag_name="${GITHUB_REF_NAME}" \
             --field target_commitish="${GITHUB_SHA}" \
             --jq .body > release-notes.md
+          printf '\n---\n\n> macOS users: The macOS DMG is not yet notarized with Apple. After installing, open Terminal and run `xattr -cr /Applications/Peekoo.app` to allow the app to open. See the [macOS install guide](https://github.com/feed-mob/peekoo-ai/blob/master/docs/install-macos.md) for details.\n' >> release-notes.md
           {
             echo 'release_body<<EOF'
             cat release-notes.md
