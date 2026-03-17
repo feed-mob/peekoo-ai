@@ -12,14 +12,14 @@ use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
 use std::time::Duration;
+#[cfg(target_os = "macos")]
+use tauri::utils::config::Color;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,
     image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
-#[cfg(target_os = "macos")]
-use tauri::utils::config::Color;
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
 // ============================================================================
@@ -114,7 +114,11 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
 #[cfg(target_os = "macos")]
 fn apply_macos_transparent_background(app: &tauri::App) {
     if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+        if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
+            tracing::warn!(
+                "Failed to set macOS main window background color to transparent: {err}"
+            );
+        }
     }
 }
 
