@@ -9,6 +9,34 @@ AI-powered desktop pet built with Tauri v2, React, and Rust. A small, transparen
 - **Pomodoro Timer** — Focus sessions with start/pause/resume/finish controls
 - **Animated Sprite** — Desktop pet character with mood-based animations and reactions
 
+## Installation
+
+Download the latest release from [GitHub Releases](https://github.com/feed-mob/peekoo-ai/releases).
+
+### Linux
+
+Install Peekoo from the AUR:
+
+```bash
+yay -S peekoo-bin
+```
+
+- AUR package: [peekoo-bin](https://aur.archlinux.org/packages/peekoo-bin)
+
+### macOS
+
+Download the latest `.dmg` from [GitHub Releases](https://github.com/feed-mob/peekoo-ai/releases), move `Peekoo.app` to `/Applications`, then remove the quarantine attribute:
+
+```bash
+xattr -cr /Applications/Peekoo.app
+```
+
+- Detailed macOS instructions: [`docs/install-macos.md`](docs/install-macos.md)
+
+### Windows
+
+Download the latest `x64-setup.exe` installer from [GitHub Releases](https://github.com/feed-mob/peekoo-ai/releases), then run it.
+
 ## Tech Stack
 
 | Layer | Technology |
