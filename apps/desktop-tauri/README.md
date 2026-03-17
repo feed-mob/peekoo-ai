@@ -16,13 +16,22 @@ Or directly:
 
 ```bash
 cd apps/desktop-tauri/src-tauri
-cargo tauri dev
+cargo tauri dev --config tauri.macos.conf.json # macOS
+# cargo tauri dev                              # non-macOS
 ```
 
 ## Build
 
 ```bash
 just build
+```
+
+Or directly:
+
+```bash
+cd apps/desktop-tauri/src-tauri
+cargo tauri build --config tauri.macos.conf.json # macOS
+# cargo tauri build                               # non-macOS
 ```
 
 ## Architecture

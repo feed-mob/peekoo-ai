@@ -11,9 +11,12 @@ use peekoo_agent_app::{
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
+#[cfg(target_os = "linux")]
 use std::process::Command;
 
 use std::time::Duration;
+#[cfg(target_os = "macos")]
+use tauri::utils::config::Color;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,
     image::Image,
@@ -110,6 +113,22 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
         toggle_main_window_visibility(app);
     }
 }
+
+#[cfg(target_os = "macos")]
+fn apply_macos_transparent_background(app: &tauri::App) {
+    // macOS transparency workaround details and distribution tradeoffs are documented in:
+    // apps/desktop-tauri/src-tauri/MACOS_PRIVATE_API.md
+    if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
+        if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
+            tracing::warn!(
+                "Failed to set macOS main window background color to transparent: {err}"
+            );
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn apply_macos_transparent_background(_: &tauri::App) {}
 
 // ============================================================================
 // Tauri Commands
@@ -632,6 +651,8 @@ pub fn run() {
             }
 
             let _ = tray_builder.build(app)?;
+
+            apply_macos_transparent_background(app);
 
             let state = app.state::<AgentState>();
             state.app.start_plugin_runtime();
