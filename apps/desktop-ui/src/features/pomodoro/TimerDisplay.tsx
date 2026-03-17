@@ -42,7 +42,7 @@ export function TimerDisplay({ time, status, progress, isWorkMode }: TimerDispla
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            className={isWorkMode ? "text-glow-blue" : "text-glow-purple"}
+            className={isWorkMode ? "text-pomodoro-focus" : "text-pomodoro-rest"}
             style={{
               transition: "stroke-dashoffset 1s ease-in-out",
             }}
@@ -51,7 +51,9 @@ export function TimerDisplay({ time, status, progress, isWorkMode }: TimerDispla
         
         {/* Time display in center */}
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="font-mono text-4xl text-glow-blue font-bold">
+          <span className={`font-mono text-4xl font-bold ${
+            isWorkMode ? "text-pomodoro-focus" : "text-pomodoro-rest"
+          }`}>
             {time}
           </span>
           <span className="text-text-secondary text-sm mt-1">{status}</span>

@@ -19,29 +19,34 @@ export function ChatMessage({ message }: ChatMessageProps) {
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
       className={`flex items-start gap-3 ${isUser ? "flex-row-reverse" : ""}`}
     >
+      {/* Avatar with solid background */}
       <div
-        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${isUser
-          ? "bg-glow-blue text-space-void"
-          : isError
-            ? "bg-danger text-space-void"
-            : "bg-glow-purple text-space-void"
-          }`}
+        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-md ${
+          isUser
+            ? "bg-accent-orange"
+            : isError
+            ? "bg-color-danger"
+            : "bg-accent-blue"
+        }`}
       >
         {isUser ? (
-          <User size={16} />
+          <User size={16} className="text-white" />
         ) : isError ? (
-          <AlertCircle size={16} />
+          <AlertCircle size={16} className="text-white" />
         ) : (
-          <Bot size={16} />
+          <Bot size={16} className="text-white" />
         )}
       </div>
+      
+      {/* Message bubble */}
       <div
-        className={`max-w-[85%] px-4 py-2.5 text-sm shadow-sm overflow-x-auto ${isUser
-          ? "bg-glow-blue/15 border border-glow-blue/20 text-text-primary rounded-2xl rounded-tr-sm"
-          : isError
-            ? "bg-danger/10 border border-danger/20 text-danger rounded-2xl rounded-tl-sm"
-            : "bg-space-surface border border-glass-border text-text-primary rounded-2xl rounded-tl-sm"
-          }`}
+        className={`max-w-[85%] px-4 py-2.5 text-sm shadow-sm overflow-x-auto ${
+          isUser
+            ? "bg-accent-peach/20 border border-accent-peach/40 text-text-primary rounded-2xl rounded-tr-sm"
+            : isError
+            ? "bg-color-danger/15 border border-color-danger/40 text-text-primary rounded-2xl rounded-tl-sm"
+            : "bg-glow-sage/20 border border-glow-sage/40 text-text-primary rounded-2xl rounded-tl-sm"
+        }`}
       >
         <Streamdown>{message.text}</Streamdown>
       </div>

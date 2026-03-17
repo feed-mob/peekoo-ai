@@ -239,21 +239,19 @@ export function ChatPanel() {
         <div className="mb-3 flex justify-end gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="glass"
             size="sm"
             disabled={isTyping}
             onClick={() => void handleNewChat()}
-            className="text-text-secondary hover:text-text-primary"
           >
             <MessageSquarePlus size={14} />
             New Chat
           </Button>
           <Button
             type="button"
-            variant="ghost"
+            variant="glass"
             size="sm"
             onClick={() => setShowSettings((prev) => !prev)}
-            className="text-text-secondary hover:text-text-primary"
           >
             <Settings2 size={14} />
             {showSettings ? "Hide Settings" : "Settings"}
@@ -302,7 +300,7 @@ export function ChatPanel() {
           type="submit"
           disabled={isTyping || !input.trim()}
           size="icon"
-          className="bg-glow-blue hover:bg-glow-blue/80 text-space-void"
+          variant="gradient"
         >
           <Send size={16} />
         </Button>

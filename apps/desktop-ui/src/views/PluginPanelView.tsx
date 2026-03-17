@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import { PanelShell } from "@/components/panels/PanelShell";
 import {
   BRIDGE_REQUEST_TYPE,
   BRIDGE_RESPONSE_TYPE,
@@ -9,11 +10,26 @@ import {
 
 export default function PluginPanelView() {
   const [html, setHtml] = useState<string>("");
+  const [title, setTitle] = useState<string>("Plugin");
   const [error, setError] = useState<string | null>(null);
   const label = getCurrentWebviewWindow().label;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
+    // Fetch plugin panel metadata to get the title
+    invoke<{ label: string; title: string; width: number; height: number }[]>(
+      "plugin_panels_list"
+    )
+      .then((panels) => {
+        const panel = panels.find((p) => p.label === label);
+        if (panel) {
+          setTitle(panel.title);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch plugin panel metadata:", err);
+      });
+
     invoke<string>("plugin_panel_html", { label })
       .then((content) => {
         setHtml(injectPluginPanelBridge(content));
@@ -68,19 +84,23 @@ export default function PluginPanelView() {
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center bg-glass text-text-secondary">
-        Failed to load plugin panel: {error}
-      </div>
+      <PanelShell title={title}>
+        <div className="flex h-full items-center justify-center text-text-secondary">
+          Failed to load plugin panel: {error}
+        </div>
+      </PanelShell>
     );
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      title={label}
-      srcDoc={html}
-      className="h-screen w-full border-0 bg-transparent"
-      sandbox="allow-scripts"
-    />
+    <PanelShell title={title}>
+      <iframe
+        ref={iframeRef}
+        title={label}
+        srcDoc={html}
+        className="h-full w-full border-0 bg-transparent"
+        sandbox="allow-scripts"
+      />
+    </PanelShell>
   );
 }

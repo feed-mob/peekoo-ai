@@ -3,6 +3,10 @@ name = "peekoo-agent-app"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = ["plugin-runtime"]
+plugin-runtime = ["peekoo-plugin-host/plugin-runtime"]
+
 [dependencies]
 peekoo-agent = { path = "../peekoo-agent" }
 peekoo-agent-auth = { path = "../peekoo-agent-auth" }

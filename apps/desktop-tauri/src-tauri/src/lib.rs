@@ -12,6 +12,7 @@ use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+
 use std::time::Duration;
 use tauri::{
     AppHandle, Emitter, LogicalSize, Manager, State, Window,

@@ -53,19 +53,19 @@ function summaryContent(status) {
 
   if (!nextReminder) {
     return {
-      className: "pill quiet",
-      title: "Reminders are currently paused",
-      subtitle: "Restart a timer to resume wellness nudges.",
+      dotClass: "status-dot quiet",
+      title: "Reminders paused",
+      subtitle: "Restart a timer to resume wellness nudges",
     };
   }
 
   return {
-    className: "pill",
+    dotClass: "status-dot",
     title: "Reminders running",
     subtitle:
       nextReminder.time_remaining_secs <= 0
-        ? `${labelFor(nextReminder.reminder_type)} due now.`
-        : `${labelFor(nextReminder.reminder_type)} next in ${formatSeconds(nextReminder.time_remaining_secs)}.`,
+        ? `${labelFor(nextReminder.reminder_type)} due now`
+        : `${labelFor(nextReminder.reminder_type)} next in ${formatSeconds(nextReminder.time_remaining_secs)}`,
   };
 }
 
@@ -80,70 +80,81 @@ function renderStatus(status) {
   statusRoot.innerHTML = "";
 
   const summary = summaryContent(status);
-  const pill = document.createElement("div");
-  pill.className = summary.className;
+  const badge = document.createElement("div");
+  badge.className = "status-badge";
 
   const dot = document.createElement("span");
-  dot.className = "pill-dot";
+  dot.className = summary.dotClass;
 
-  const pillCopy = document.createElement("div");
-  pillCopy.className = "pill-copy";
+  const textContainer = document.createElement("div");
+  textContainer.className = "status-text";
 
-  const pillTitle = document.createElement("strong");
-  pillTitle.textContent = summary.title;
+  const title = document.createElement("strong");
+  title.textContent = summary.title;
 
-  const pillSubtitle = document.createElement("span");
-  pillSubtitle.textContent = summary.subtitle;
+  const subtitle = document.createElement("span");
+  subtitle.textContent = summary.subtitle;
 
-  pillCopy.append(pillTitle, pillSubtitle);
-  pill.append(dot, pillCopy);
-  summaryRoot.appendChild(pill);
+  textContainer.append(title, subtitle);
+  badge.append(dot, textContainer);
+  summaryRoot.appendChild(badge);
 
   status.reminders.forEach((item) => {
     const card = document.createElement("article");
-    card.className = "card";
+    card.className = "reminder-card";
 
-    const cardCopy = document.createElement("div");
-    cardCopy.className = "card-copy";
+    const header = document.createElement("div");
+    header.className = "card-header";
 
-    const titleRow = document.createElement("div");
-    titleRow.className = "title-row";
+    const titleContainer = document.createElement("div");
+    titleContainer.className = "card-title";
 
-    const title = document.createElement("h2");
+    const title = document.createElement("h3");
     title.textContent = labelFor(item.reminder_type);
 
-    const state = document.createElement("span");
-    state.className = `state ${item.active ? "ready" : "paused"}`;
-    state.textContent = item.active ? "Active" : "Paused";
+    const badge = document.createElement("span");
+    badge.className = `card-badge ${item.active ? "active" : "paused"}`;
+    badge.textContent = item.active ? "Active" : "Paused";
 
-    titleRow.append(title, state);
+    titleContainer.append(title, badge);
+    header.appendChild(titleContainer);
+
+    const body = document.createElement("div");
+    body.className = "card-body";
 
     const interval = document.createElement("p");
-    interval.className = "interval";
+    interval.className = "card-interval";
     interval.textContent = `Every ${item.interval_min} min`;
 
     const nextDue = document.createElement("p");
-    nextDue.className = "next-due";
+    nextDue.className = "card-next-due";
     nextDue.textContent = item.active
       ? nextDueText(item.time_remaining_secs)
       : "Waiting for reminders to resume";
 
     const meta = document.createElement("p");
-    meta.className = "meta";
+    meta.className = "card-meta";
     meta.textContent = item.active
-      ? "Quiet reminder will appear automatically when due."
-      : "This reminder will stay quiet until scheduling resumes.";
+      ? "Quiet reminder will appear automatically when due"
+      : "This reminder will stay quiet until scheduling resumes";
 
-    const dismiss = document.createElement("button");
-    dismiss.textContent = "Restart timer";
-    dismiss.disabled = !item.active;
-    dismiss.addEventListener("click", async () => {
+    body.append(interval, nextDue, meta);
+
+    const footer = document.createElement("div");
+    footer.className = "card-footer";
+
+    const restartBtn = document.createElement("button");
+    restartBtn.className = "btn-restart";
+    restartBtn.textContent = "Restart timer";
+    restartBtn.disabled = !item.active;
+    restartBtn.addEventListener("click", async () => {
       await callTool("health_dismiss", { reminder_type: item.reminder_type });
       await refresh();
     });
 
-    cardCopy.append(titleRow, interval, nextDue, meta);
-    card.append(cardCopy, dismiss);
+    footer.appendChild(restartBtn);
+
+    card.append(header, body, footer);
     statusRoot.appendChild(card);
   });
 }
