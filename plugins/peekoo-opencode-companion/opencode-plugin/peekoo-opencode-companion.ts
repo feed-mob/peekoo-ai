@@ -16,8 +16,8 @@ function resolvePeekooBridgeDir(): string {
 
 const BRIDGE_DIR = resolvePeekooBridgeDir();
 const BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
-const FALLBACK_SESSION_ID = "default";
 const IDLE_TRANSITION_MS = 5000;
+const MAX_COMPLETED_SESSIONS = 32;
 
 type Status = "working" | "thinking" | "happy" | "idle";
 
@@ -30,6 +30,7 @@ export interface BridgeSessionWrite {
 }
 
 export interface CompletedSessionWrite {
+  completion_id: string;
   session_id: string;
   session_title: string;
   updated_at: number;
@@ -41,7 +42,7 @@ export interface BridgeWrite {
   started_at: number;
   updated_at: number;
   sessions: BridgeSessionWrite[];
-  completed_session?: CompletedSessionWrite;
+  completed_sessions: CompletedSessionWrite[];
 }
 
 interface BridgeEvent {
@@ -66,6 +67,7 @@ interface SessionRecord {
 }
 
 interface CompletedSessionRecord {
+  completionId: string;
   sessionId: string;
   title: string;
   updatedAt: number;
@@ -124,20 +126,32 @@ export function createBridgeController(
 ): BridgeController {
   const sessions = new Map<string, SessionRecord>();
   const rememberedTitles = new Map<string, string>();
-  let lastCompletedSession: CompletedSessionRecord | null = null;
+  const pendingCompletions: CompletedSessionRecord[] = [];
   let lastBridgeSnapshot = "";
+  let completionSequence = 0;
 
-  const resolveSessionId = (event: BridgeEvent): string => {
+  const resolveSessionId = (event: BridgeEvent): string | undefined => {
     const fromProperties = getSessionId(event.properties);
     if (fromProperties) {
       return fromProperties;
     }
 
     if (sessions.size === 1) {
-      return sessions.keys().next().value ?? FALLBACK_SESSION_ID;
+      return sessions.keys().next().value;
     }
 
-    return FALLBACK_SESSION_ID;
+    return undefined;
+  };
+
+  const resolveActiveSessionIds = (event: BridgeEvent): string[] => {
+    const sessionId = resolveSessionId(event);
+    if (sessionId) {
+      return [sessionId];
+    }
+
+    return [...sessions.values()]
+      .filter((session) => isActiveStatus(session.status))
+      .map((session) => session.sessionId);
   };
 
   const getSession = (sessionId: string): SessionRecord | undefined => {
@@ -185,13 +199,12 @@ export function createBridgeController(
       started_at: primaryActive?.startedAt || 0,
       updated_at: dependencies.now(),
       sessions: activeSessions.map(toBridgeSession),
-      completed_session: lastCompletedSession
-        ? {
-            session_id: lastCompletedSession.sessionId,
-            session_title: lastCompletedSession.title,
-            updated_at: lastCompletedSession.updatedAt,
-          }
-        : undefined,
+      completed_sessions: pendingCompletions.map((completion) => ({
+        completion_id: completion.completionId,
+        session_id: completion.sessionId,
+        session_title: completion.title,
+        updated_at: completion.updatedAt,
+      })),
     };
 
     const serialized = JSON.stringify(snapshot);
@@ -221,14 +234,22 @@ export function createBridgeController(
       return;
     }
 
+    if (session.status === "happy") {
+      return;
+    }
+
     session.status = "happy";
     session.startedAt = 0;
     session.updatedAt = dependencies.now();
-    lastCompletedSession = {
+    pendingCompletions.push({
+      completionId: `${sessionId}:${session.updatedAt}:${completionSequence++}`,
       sessionId,
       title: session.title,
       updatedAt: session.updatedAt,
-    };
+    });
+    if (pendingCompletions.length > MAX_COMPLETED_SESSIONS) {
+      pendingCompletions.splice(0, pendingCompletions.length - MAX_COMPLETED_SESSIONS);
+    }
     emitSnapshot();
     dependencies.scheduleIdle(sessionId, () => {
       sessions.delete(sessionId);
@@ -248,20 +269,27 @@ export function createBridgeController(
           const props = event.properties as { status?: SessionStatusInfo } | undefined;
           const statusType = props?.status?.type;
 
-          if (statusType === "busy" || statusType === "retry") {
+          if ((statusType === "busy" || statusType === "retry") && sessionId) {
             markWorking(sessionId);
           } else if (statusType === "idle") {
-            markHappy(sessionId);
+            for (const activeSessionId of resolveActiveSessionIds(event)) {
+              markHappy(activeSessionId);
+            }
           }
           break;
         }
 
         case "session.idle": {
-          markHappy(sessionId);
+          for (const activeSessionId of resolveActiveSessionIds(event)) {
+            markHappy(activeSessionId);
+          }
           break;
         }
 
         case "session.created": {
+          if (!sessionId) {
+            break;
+          }
           const title = getSessionTitle(event.properties) || "New session";
           const session = ensureSessionForActivity(sessionId);
           session.title = title;
@@ -276,7 +304,7 @@ export function createBridgeController(
 
         case "session.updated": {
           const title = getSessionTitle(event.properties);
-          if (title) {
+          if (title && sessionId) {
             const session = getSession(sessionId);
             if (!session) {
               rememberedTitles.set(sessionId, title);
@@ -291,8 +319,10 @@ export function createBridgeController(
         }
 
         case "session.error": {
-          dependencies.cancelIdle(sessionId);
-          sessions.delete(sessionId);
+          for (const activeSessionId of resolveActiveSessionIds(event)) {
+            dependencies.cancelIdle(activeSessionId);
+            sessions.delete(activeSessionId);
+          }
           emitSnapshot();
           break;
         }
@@ -300,7 +330,7 @@ export function createBridgeController(
         case "message.part.updated": {
           const props = event.properties as { part?: { type?: string } } | undefined;
 
-          if (props?.part?.type === "text") {
+          if (props?.part?.type === "text" && sessionId) {
             markWorking(sessionId);
           }
           break;

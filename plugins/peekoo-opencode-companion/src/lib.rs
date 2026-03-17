@@ -10,7 +10,7 @@ struct BridgeState {
     session_title: Option<String>,
     started_at: Option<u64>,
     sessions: Option<Vec<BridgeSession>>,
-    completed_session: Option<CompletedSession>,
+    completed_sessions: Option<Vec<CompletedSession>>,
     #[allow(dead_code)]
     updated_at: Option<u64>,
 }
@@ -29,8 +29,11 @@ struct BridgeSession {
 
 #[derive(Clone, Deserialize, Default)]
 struct CompletedSession {
+    completion_id: Option<String>,
+    #[allow(dead_code)]
     session_id: Option<String>,
     session_title: Option<String>,
+    #[allow(dead_code)]
     updated_at: Option<u64>,
 }
 
@@ -39,7 +42,8 @@ struct CompletedSession {
 const SCHEDULE_KEY: &str = "poll-opencode";
 const POLL_INTERVAL_SECS: u64 = 2;
 const STATE_LAST_STATUS: &str = "last_status";
-const STATE_LAST_COMPLETED_SESSION: &str = "last_completed_session";
+const STATE_SEEN_COMPLETIONS: &str = "seen_completed_sessions";
+const MAX_TRACKED_COMPLETIONS: usize = 32;
 const MAX_DISPLAY_LEN: usize = 30;
 
 fn truncate_title(s: &str) -> String {
@@ -67,24 +71,33 @@ fn session_badge_value(status: Option<&str>) -> String {
     }
 }
 
-fn completed_session_marker(session: Option<&CompletedSession>) -> Option<String> {
-    session.and_then(|session| {
-        let session_id = session.session_id.as_deref()?.trim();
-        let updated_at = session.updated_at?;
-        if session_id.is_empty() {
-            return None;
-        }
-
-        Some(format!("{session_id}:{updated_at}"))
-    })
+fn completion_id(session: &CompletedSession) -> Option<String> {
+    session
+        .completion_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
 }
 
-fn completed_session_notification_title(session: Option<&CompletedSession>) -> Option<String> {
+fn completed_session_notification_title(session: &CompletedSession) -> Option<String> {
     session
-        .and_then(|session| session.session_title.as_deref())
+        .session_title
+        .as_deref()
         .map(str::trim)
         .filter(|title| !title.is_empty())
         .map(truncate_title)
+}
+
+fn completed_sessions(state: &BridgeState) -> Vec<CompletedSession> {
+    state.completed_sessions.clone().unwrap_or_default()
+}
+
+fn trim_seen_completions(seen: &mut Vec<String>) {
+    if seen.len() > MAX_TRACKED_COMPLETIONS {
+        let drain_count = seen.len() - MAX_TRACKED_COMPLETIONS;
+        seen.drain(0..drain_count);
+    }
 }
 
 fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
@@ -179,18 +192,24 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
     let current_status = state.status.as_deref().unwrap_or("idle");
     let previous_status: String =
         peekoo::state::get(STATE_LAST_STATUS)?.unwrap_or_else(|| "idle".to_string());
-    let completion_marker = completed_session_marker(state.completed_session.as_ref());
-    let previous_completion_marker: Option<String> =
-        peekoo::state::get(STATE_LAST_COMPLETED_SESSION)?;
+    let mut seen_completions: Vec<String> =
+        peekoo::state::get(STATE_SEEN_COMPLETIONS)?.unwrap_or_default();
 
-    if completion_marker != previous_completion_marker {
-        if let Some(marker) = completion_marker.as_ref() {
-            handle_completed_session(&state)?;
-            peekoo::state::set(STATE_LAST_COMPLETED_SESSION, marker)?;
-        } else {
-            peekoo::state::delete(STATE_LAST_COMPLETED_SESSION)?;
+    for completion in completed_sessions(&state) {
+        let Some(completion_id) = completion_id(&completion) else {
+            continue;
+        };
+
+        if seen_completions.iter().any(|seen| seen == &completion_id) {
+            continue;
         }
+
+        handle_completed_session(&completion)?;
+        seen_completions.push(completion_id);
     }
+
+    trim_seen_completions(&mut seen_completions);
+    peekoo::state::set(STATE_SEEN_COMPLETIONS, &seen_completions)?;
 
     // Only act on status changes
     if current_status != previous_status {
@@ -206,10 +225,10 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
     Ok(())
 }
 
-fn handle_completed_session(state: &BridgeState) -> Result<(), extism_pdk::Error> {
+fn handle_completed_session(session: &CompletedSession) -> Result<(), extism_pdk::Error> {
     peekoo::mood::set("opencode-done", false)?;
 
-    let body = match completed_session_notification_title(state.completed_session.as_ref()) {
+    let body = match completed_session_notification_title(session) {
         Some(title) => format!("🎉 {} is done!", title),
         None => "🎉 OpenCode has finished working".to_string(),
     };
@@ -229,8 +248,14 @@ fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), ext
             update_badge(state)?;
         }
         "happy" | "done" => {
-            if state.completed_session.is_none() {
-                handle_completed_session(state)?;
+            if completed_sessions(state).is_empty() {
+                let fallback = CompletedSession {
+                    completion_id: Some("status-change".to_string()),
+                    session_id: None,
+                    session_title: state.session_title.clone(),
+                    updated_at: state.updated_at,
+                };
+                handle_completed_session(&fallback)?;
             }
 
             peekoo::badge::set(&[])?;
@@ -336,7 +361,7 @@ mod tests {
             status: Some("working".to_string()),
             session_title: Some("Second session".to_string()),
             started_at: Some(10),
-            completed_session: None,
+            completed_sessions: None,
             updated_at: Some(12),
             sessions: Some(vec![
                 BridgeSession {
@@ -370,7 +395,7 @@ mod tests {
             status: Some("working".to_string()),
             session_title: Some("Keep B running".to_string()),
             started_at: Some(20),
-            completed_session: None,
+            completed_sessions: None,
             sessions: Some(vec![BridgeSession {
                 session_id: Some("session-b".to_string()),
                 status: Some("working".to_string()),
@@ -388,30 +413,65 @@ mod tests {
     }
 
     #[test]
-    fn completed_session_marker_uses_session_id_and_timestamp() {
+    fn completion_id_uses_explicit_completion_identifier() {
         let completed = CompletedSession {
+            completion_id: Some("session-a:42:0".to_string()),
             session_id: Some("session-a".to_string()),
             session_title: Some("Finish A".to_string()),
             updated_at: Some(42),
         };
 
-        assert_eq!(
-            completed_session_marker(Some(&completed)).as_deref(),
-            Some("session-a:42")
-        );
+        assert_eq!(completion_id(&completed).as_deref(), Some("session-a:42:0"));
     }
 
     #[test]
     fn completed_session_notification_title_uses_truncated_title() {
         let completed = CompletedSession {
+            completion_id: Some("session-a:42:0".to_string()),
             session_id: Some("session-a".to_string()),
             session_title: Some("Finish a very long task title that needs truncating".to_string()),
             updated_at: Some(42),
         };
 
-        let title = completed_session_notification_title(Some(&completed)).unwrap();
+        let title = completed_session_notification_title(&completed).unwrap();
         assert!(title.ends_with("..."));
         assert_eq!(title.chars().count(), MAX_DISPLAY_LEN);
+    }
+
+    #[test]
+    fn completed_sessions_returns_all_queued_completions() {
+        let state = BridgeState {
+            status: Some("happy".to_string()),
+            session_title: Some("Done".to_string()),
+            started_at: Some(0),
+            sessions: Some(vec![]),
+            completed_sessions: Some(vec![
+                CompletedSession {
+                    completion_id: Some("session-a:42:0".to_string()),
+                    session_id: Some("session-a".to_string()),
+                    session_title: Some("First".to_string()),
+                    updated_at: Some(42),
+                },
+                CompletedSession {
+                    completion_id: Some("session-b:43:1".to_string()),
+                    session_id: Some("session-b".to_string()),
+                    session_title: Some("Second".to_string()),
+                    updated_at: Some(43),
+                },
+            ]),
+            updated_at: Some(43),
+        };
+
+        let completions = completed_sessions(&state);
+        assert_eq!(completions.len(), 2);
+        assert_eq!(
+            completion_id(&completions[0]).as_deref(),
+            Some("session-a:42:0")
+        );
+        assert_eq!(
+            completion_id(&completions[1]).as_deref(),
+            Some("session-b:43:1")
+        );
     }
 }
 

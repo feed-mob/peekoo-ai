@@ -13,8 +13,8 @@ function resolvePeekooBridgeDir() {
 }
 var BRIDGE_DIR = resolvePeekooBridgeDir();
 var BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
-var FALLBACK_SESSION_ID = "default";
 var IDLE_TRANSITION_MS = 5000;
+var MAX_COMPLETED_SESSIONS = 32;
 function getSessionTitle(properties) {
   const props = properties;
   return props?.info?.title || props?.title;
@@ -41,17 +41,25 @@ function sortByUpdatedAt(sessions) {
 function createBridgeController(dependencies) {
   const sessions = new Map;
   const rememberedTitles = new Map;
-  let lastCompletedSession = null;
+  const pendingCompletions = [];
   let lastBridgeSnapshot = "";
+  let completionSequence = 0;
   const resolveSessionId = (event) => {
     const fromProperties = getSessionId(event.properties);
     if (fromProperties) {
       return fromProperties;
     }
     if (sessions.size === 1) {
-      return sessions.keys().next().value ?? FALLBACK_SESSION_ID;
+      return sessions.keys().next().value;
     }
-    return FALLBACK_SESSION_ID;
+    return;
+  };
+  const resolveActiveSessionIds = (event) => {
+    const sessionId = resolveSessionId(event);
+    if (sessionId) {
+      return [sessionId];
+    }
+    return [...sessions.values()].filter((session) => isActiveStatus(session.status)).map((session) => session.sessionId);
   };
   const getSession = (sessionId) => {
     return sessions.get(sessionId);
@@ -83,11 +91,12 @@ function createBridgeController(dependencies) {
       started_at: primaryActive?.startedAt || 0,
       updated_at: dependencies.now(),
       sessions: activeSessions.map(toBridgeSession),
-      completed_session: lastCompletedSession ? {
-        session_id: lastCompletedSession.sessionId,
-        session_title: lastCompletedSession.title,
-        updated_at: lastCompletedSession.updatedAt
-      } : undefined
+      completed_sessions: pendingCompletions.map((completion) => ({
+        completion_id: completion.completionId,
+        session_id: completion.sessionId,
+        session_title: completion.title,
+        updated_at: completion.updatedAt
+      }))
     };
     const serialized = JSON.stringify(snapshot);
     if (!force && serialized === lastBridgeSnapshot) {
@@ -112,14 +121,21 @@ function createBridgeController(dependencies) {
     if (!session) {
       return;
     }
+    if (session.status === "happy") {
+      return;
+    }
     session.status = "happy";
     session.startedAt = 0;
     session.updatedAt = dependencies.now();
-    lastCompletedSession = {
+    pendingCompletions.push({
+      completionId: `${sessionId}:${session.updatedAt}:${completionSequence++}`,
       sessionId,
       title: session.title,
       updatedAt: session.updatedAt
-    };
+    });
+    if (pendingCompletions.length > MAX_COMPLETED_SESSIONS) {
+      pendingCompletions.splice(0, pendingCompletions.length - MAX_COMPLETED_SESSIONS);
+    }
     emitSnapshot();
     dependencies.scheduleIdle(sessionId, () => {
       sessions.delete(sessionId);
@@ -136,18 +152,25 @@ function createBridgeController(dependencies) {
         case "session.status": {
           const props = event.properties;
           const statusType = props?.status?.type;
-          if (statusType === "busy" || statusType === "retry") {
+          if ((statusType === "busy" || statusType === "retry") && sessionId) {
             markWorking(sessionId);
           } else if (statusType === "idle") {
-            markHappy(sessionId);
+            for (const activeSessionId of resolveActiveSessionIds(event)) {
+              markHappy(activeSessionId);
+            }
           }
           break;
         }
         case "session.idle": {
-          markHappy(sessionId);
+          for (const activeSessionId of resolveActiveSessionIds(event)) {
+            markHappy(activeSessionId);
+          }
           break;
         }
         case "session.created": {
+          if (!sessionId) {
+            break;
+          }
           const title = getSessionTitle(event.properties) || "New session";
           const session = ensureSessionForActivity(sessionId);
           session.title = title;
@@ -161,7 +184,7 @@ function createBridgeController(dependencies) {
         }
         case "session.updated": {
           const title = getSessionTitle(event.properties);
-          if (title) {
+          if (title && sessionId) {
             const session = getSession(sessionId);
             if (!session) {
               rememberedTitles.set(sessionId, title);
@@ -175,14 +198,16 @@ function createBridgeController(dependencies) {
           break;
         }
         case "session.error": {
-          dependencies.cancelIdle(sessionId);
-          sessions.delete(sessionId);
+          for (const activeSessionId of resolveActiveSessionIds(event)) {
+            dependencies.cancelIdle(activeSessionId);
+            sessions.delete(activeSessionId);
+          }
           emitSnapshot();
           break;
         }
         case "message.part.updated": {
           const props = event.properties;
-          if (props?.part?.type === "text") {
+          if (props?.part?.type === "text" && sessionId) {
             markWorking(sessionId);
           }
           break;
