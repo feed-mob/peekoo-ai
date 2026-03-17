@@ -11,6 +11,7 @@ use peekoo_agent_app::{
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
+#[cfg(target_os = "linux")]
 use std::process::Command;
 
 use std::time::Duration;
@@ -115,6 +116,8 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
 
 #[cfg(target_os = "macos")]
 fn apply_macos_transparent_background(app: &tauri::App) {
+    // macOS transparency workaround details and distribution tradeoffs are documented in:
+    // apps/desktop-tauri/src-tauri/MACOS_PRIVATE_API.md
     if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
         if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
             tracing::warn!(
