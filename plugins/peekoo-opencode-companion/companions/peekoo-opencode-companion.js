@@ -23,8 +23,12 @@ function getSessionId(properties) {
   const props = properties;
   return props?.sessionID || props?.sessionId || props?.id || props?.session?.id;
 }
+function getRequestId(properties) {
+  const props = properties;
+  return props?.requestID || props?.permissionID || props?.id;
+}
 function isActiveStatus(status) {
-  return status === "working" || status === "thinking";
+  return status === "working" || status === "thinking" || status === "waiting";
 }
 function toBridgeSession(session) {
   return {
@@ -75,7 +79,8 @@ function createBridgeController(dependencies) {
       status: "working",
       title: rememberedTitles.get(sessionId) || "OpenCode session",
       startedAt: now,
-      updatedAt: now
+      updatedAt: now,
+      pendingRequestIds: new Set
     };
     sessions.set(sessionId, created);
     return created;
@@ -84,7 +89,7 @@ function createBridgeController(dependencies) {
     const activeSessions = sortByUpdatedAt([...sessions.values()].filter((session) => isActiveStatus(session.status)));
     const latestCompleted = sortByUpdatedAt([...sessions.values()].filter((session) => session.status === "happy"))[0];
     const primaryActive = activeSessions[0];
-    const aggregateStatus = primaryActive ? activeSessions.some((session) => session.status === "working") ? "working" : "thinking" : latestCompleted ? "happy" : "idle";
+    const aggregateStatus = primaryActive ? activeSessions.some((session) => session.status === "waiting") ? "waiting" : activeSessions.some((session) => session.status === "working") ? "working" : "thinking" : latestCompleted ? "happy" : "idle";
     const snapshot = {
       status: aggregateStatus,
       session_title: primaryActive?.title || latestCompleted?.title || "",
@@ -116,6 +121,32 @@ function createBridgeController(dependencies) {
     session.updatedAt = now;
     emitSnapshot();
   };
+  const markWaiting = (sessionId, requestId) => {
+    dependencies.cancelIdle(sessionId);
+    const session = ensureSessionForActivity(sessionId);
+    if (session.pendingRequestIds.has(requestId)) {
+      return;
+    }
+    session.pendingRequestIds.add(requestId);
+    session.status = "waiting";
+    session.updatedAt = dependencies.now();
+    emitSnapshot();
+  };
+  const resolveWaiting = (sessionId, requestId) => {
+    const session = getSession(sessionId);
+    if (!session) {
+      return;
+    }
+    if (!session.pendingRequestIds.delete(requestId)) {
+      return;
+    }
+    session.status = session.pendingRequestIds.size > 0 ? "waiting" : "working";
+    if (session.status === "working" && session.startedAt === 0) {
+      session.startedAt = dependencies.now();
+    }
+    session.updatedAt = dependencies.now();
+    emitSnapshot();
+  };
   const markHappy = (sessionId) => {
     const session = getSession(sessionId);
     if (!session) {
@@ -124,6 +155,7 @@ function createBridgeController(dependencies) {
     if (session.status === "happy") {
       return;
     }
+    session.pendingRequestIds.clear();
     session.status = "happy";
     session.startedAt = 0;
     session.updatedAt = dependencies.now();
@@ -176,6 +208,7 @@ function createBridgeController(dependencies) {
           session.title = title;
           rememberedTitles.set(sessionId, title);
           session.status = "working";
+          session.pendingRequestIds.clear();
           session.startedAt = dependencies.now();
           session.updatedAt = dependencies.now();
           dependencies.cancelIdle(sessionId);
@@ -203,6 +236,30 @@ function createBridgeController(dependencies) {
             sessions.delete(activeSessionId);
           }
           emitSnapshot();
+          break;
+        }
+        case "permission.updated":
+        case "permission.asked": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            markWaiting(sessionId, requestId);
+          }
+          break;
+        }
+        case "permission.replied":
+        case "question.replied":
+        case "question.rejected": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            resolveWaiting(sessionId, requestId);
+          }
+          break;
+        }
+        case "question.asked": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            markWaiting(sessionId, requestId);
+          }
           break;
         }
         case "message.part.updated": {

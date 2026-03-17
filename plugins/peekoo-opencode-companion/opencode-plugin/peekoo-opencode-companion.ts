@@ -19,7 +19,7 @@ const BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
 const IDLE_TRANSITION_MS = 5000;
 const MAX_COMPLETED_SESSIONS = 32;
 
-type Status = "working" | "thinking" | "happy" | "idle";
+type Status = "working" | "thinking" | "waiting" | "happy" | "idle";
 
 export interface BridgeSessionWrite {
   session_id: string;
@@ -64,6 +64,7 @@ interface SessionRecord {
   title: string;
   startedAt: number;
   updatedAt: number;
+  pendingRequestIds: Set<string>;
 }
 
 interface CompletedSessionRecord {
@@ -103,8 +104,20 @@ function getSessionId(properties: unknown): string | undefined {
   return props?.sessionID || props?.sessionId || props?.id || props?.session?.id;
 }
 
+function getRequestId(properties: unknown): string | undefined {
+  const props = properties as
+    | {
+        requestID?: string;
+        permissionID?: string;
+        id?: string;
+      }
+    | undefined;
+
+  return props?.requestID || props?.permissionID || props?.id;
+}
+
 function isActiveStatus(status: Status): boolean {
-  return status === "working" || status === "thinking";
+  return status === "working" || status === "thinking" || status === "waiting";
 }
 
 function toBridgeSession(session: SessionRecord): BridgeSessionWrite {
@@ -171,6 +184,7 @@ export function createBridgeController(
       title: rememberedTitles.get(sessionId) || "OpenCode session",
       startedAt: now,
       updatedAt: now,
+      pendingRequestIds: new Set(),
     };
     sessions.set(sessionId, created);
     return created;
@@ -186,7 +200,9 @@ export function createBridgeController(
 
     const primaryActive = activeSessions[0];
     const aggregateStatus: Status = primaryActive
-      ? activeSessions.some((session) => session.status === "working")
+      ? activeSessions.some((session) => session.status === "waiting")
+        ? "waiting"
+        : activeSessions.some((session) => session.status === "working")
         ? "working"
         : "thinking"
       : latestCompleted
@@ -228,6 +244,37 @@ export function createBridgeController(
     emitSnapshot();
   };
 
+  const markWaiting = (sessionId: string, requestId: string): void => {
+    dependencies.cancelIdle(sessionId);
+    const session = ensureSessionForActivity(sessionId);
+    if (session.pendingRequestIds.has(requestId)) {
+      return;
+    }
+
+    session.pendingRequestIds.add(requestId);
+    session.status = "waiting";
+    session.updatedAt = dependencies.now();
+    emitSnapshot();
+  };
+
+  const resolveWaiting = (sessionId: string, requestId: string): void => {
+    const session = getSession(sessionId);
+    if (!session) {
+      return;
+    }
+
+    if (!session.pendingRequestIds.delete(requestId)) {
+      return;
+    }
+
+    session.status = session.pendingRequestIds.size > 0 ? "waiting" : "working";
+    if (session.status === "working" && session.startedAt === 0) {
+      session.startedAt = dependencies.now();
+    }
+    session.updatedAt = dependencies.now();
+    emitSnapshot();
+  };
+
   const markHappy = (sessionId: string): void => {
     const session = getSession(sessionId);
     if (!session) {
@@ -238,6 +285,7 @@ export function createBridgeController(
       return;
     }
 
+    session.pendingRequestIds.clear();
     session.status = "happy";
     session.startedAt = 0;
     session.updatedAt = dependencies.now();
@@ -295,6 +343,7 @@ export function createBridgeController(
           session.title = title;
           rememberedTitles.set(sessionId, title);
           session.status = "working";
+          session.pendingRequestIds.clear();
           session.startedAt = dependencies.now();
           session.updatedAt = dependencies.now();
           dependencies.cancelIdle(sessionId);
@@ -324,6 +373,33 @@ export function createBridgeController(
             sessions.delete(activeSessionId);
           }
           emitSnapshot();
+          break;
+        }
+
+        case "permission.updated":
+        case "permission.asked": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            markWaiting(sessionId, requestId);
+          }
+          break;
+        }
+
+        case "permission.replied":
+        case "question.replied":
+        case "question.rejected": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            resolveWaiting(sessionId, requestId);
+          }
+          break;
+        }
+
+        case "question.asked": {
+          const requestId = getRequestId(event.properties);
+          if (sessionId && requestId) {
+            markWaiting(sessionId, requestId);
+          }
           break;
         }
 

@@ -8,6 +8,8 @@
 - Replaced the single completion marker with a `completed_sessions` queue so Peekoo can emit one done notification per finished OpenCode session even when multiple sessions finish between Rust poll cycles
 - Preserved the done reaction when one session finishes while other sessions remain active by suppressing the same-poll working mood refresh
 - Fixed expanded peek badge rendering so clicking the badge shows every active OpenCode session even when multiple sessions share the same title
+- Added a waiting-for-input state so OpenCode permission prompts and question requests switch Peekoo into reminder mood, batch notifications, and show `Needs input` in the badge until all pending requests are answered
+- Added bridge staleness detection so interrupted or crashed OpenCode sessions silently clear after 30 seconds instead of leaving Peekoo stuck in a working or waiting state
 - Added regression tests for repeated-turn title retention and concurrent-session badge output, rebuilt the bundled companion JS, and refreshed the release WASM artifact
 - Bumped the plugin package versions to `0.1.2`
 
@@ -18,6 +20,8 @@
 - The first multi-session implementation could miss or duplicate done notifications because it stored only one completion marker and treated repeated terminal events as distinct completions
 - The sprite reaction pipeline could overwrite a fresh done reaction with a working reaction in the same poll when another session was still active
 - Duplicate badge labels caused the expanded badge list to collapse visually to one row because React keys were not unique
+- Users can miss pending OpenCode permissions or question prompts when they are away from the terminal, so Peekoo should surface that blocked state proactively
+- Interrupted OpenCode processes can leave stale bridge files behind, so the plugin needs to time out old active states instead of assuming every session exits cleanly
 
 **Files affected:**
 - `ai/memories/changelogs/202603171603-feat-opencode-companion-session-rotation.md`

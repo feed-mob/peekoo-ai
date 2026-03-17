@@ -1,6 +1,7 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 use peekoo_plugin_sdk::prelude::*;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 // ── Bridge file schema ─────────────────────────────────────────
 
@@ -45,6 +46,7 @@ const STATE_LAST_STATUS: &str = "last_status";
 const STATE_SEEN_COMPLETIONS: &str = "seen_completed_sessions";
 const MAX_TRACKED_COMPLETIONS: usize = 32;
 const MAX_DISPLAY_LEN: usize = 30;
+const STALE_SESSION_TIMEOUT_SECS: u64 = 30;
 
 fn truncate_title(s: &str) -> String {
     if s.chars().count() > MAX_DISPLAY_LEN {
@@ -66,6 +68,7 @@ fn display_badge_title(title: Option<&str>) -> String {
 
 fn session_badge_value(status: Option<&str>) -> String {
     match status {
+        Some("waiting") => "Needs input".to_string(),
         Some("thinking") => "Thinking".to_string(),
         _ => "Working".to_string(),
     }
@@ -104,12 +107,39 @@ fn should_refresh_working_mood(current_status: &str, new_completion_count: usize
     matches!(current_status, "working" | "thinking") && new_completion_count == 0
 }
 
+fn current_unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0)
+}
+
+fn is_interruptible_status(status: &str) -> bool {
+    matches!(status, "working" | "thinking" | "waiting")
+}
+
+fn is_stale_active_state(state: &BridgeState, now: u64) -> bool {
+    let Some(status) = state.status.as_deref() else {
+        return false;
+    };
+
+    if !is_interruptible_status(status) {
+        return false;
+    }
+
+    let Some(updated_at) = state.updated_at else {
+        return false;
+    };
+
+    now.saturating_sub(updated_at) >= STALE_SESSION_TIMEOUT_SECS
+}
+
 fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
     let mut sessions = state.sessions.clone().unwrap_or_default();
     sessions.retain(|session| {
         matches!(
             session.status.as_deref(),
-            Some("working") | Some("thinking")
+            Some("working") | Some("thinking") | Some("waiting")
         )
     });
     sessions
@@ -222,25 +252,33 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
         _ => BridgeState::default(),
     };
 
-    let current_status = state.status.as_deref().unwrap_or("idle");
+    let now = current_unix_timestamp();
+    let is_stale = is_stale_active_state(&state, now);
+    let current_status = if is_stale {
+        "idle"
+    } else {
+        state.status.as_deref().unwrap_or("idle")
+    };
     let previous_status: String =
         peekoo::state::get(STATE_LAST_STATUS)?.unwrap_or_else(|| "idle".to_string());
     let mut seen_completions: Vec<String> =
         peekoo::state::get(STATE_SEEN_COMPLETIONS)?.unwrap_or_default();
     let mut new_completion_count = 0usize;
 
-    for completion in completed_sessions(&state) {
-        let Some(completion_id) = completion_id(&completion) else {
-            continue;
-        };
+    if !is_stale {
+        for completion in completed_sessions(&state) {
+            let Some(completion_id) = completion_id(&completion) else {
+                continue;
+            };
 
-        if seen_completions.iter().any(|seen| seen == &completion_id) {
-            continue;
+            if seen_completions.iter().any(|seen| seen == &completion_id) {
+                continue;
+            }
+
+            handle_completed_session(&completion)?;
+            seen_completions.push(completion_id);
+            new_completion_count += 1;
         }
-
-        handle_completed_session(&completion)?;
-        seen_completions.push(completion_id);
-        new_completion_count += 1;
     }
 
     trim_seen_completions(&mut seen_completions);
@@ -288,6 +326,11 @@ fn handle_status_change(
             if should_refresh_working_mood(new_status, new_completion_count) {
                 peekoo::mood::set("opencode-working", true)?;
             }
+            update_badge(state)?;
+        }
+        "waiting" => {
+            peekoo::mood::set("opencode-reminder", false)?;
+            let _ = peekoo::notify::send("OpenCode", "OpenCode needs your input");
             update_badge(state)?;
         }
         "happy" | "done" => {
@@ -556,6 +599,68 @@ mod tests {
         assert!(should_refresh_working_mood("working", 0));
         assert!(should_refresh_working_mood("thinking", 0));
         assert!(!should_refresh_working_mood("happy", 0));
+    }
+
+    #[test]
+    fn waiting_status_uses_needs_input_badge_value() {
+        assert_eq!(session_badge_value(Some("waiting")), "Needs input");
+    }
+
+    #[test]
+    fn waiting_status_does_not_refresh_working_mood() {
+        assert!(!should_refresh_working_mood("waiting", 0));
+    }
+
+    #[test]
+    fn stale_active_state_times_out_working_status() {
+        let state = BridgeState {
+            status: Some("working".to_string()),
+            session_title: Some("Stuck task".to_string()),
+            started_at: Some(10),
+            sessions: Some(vec![]),
+            completed_sessions: Some(vec![]),
+            updated_at: Some(100),
+        };
+
+        assert!(is_stale_active_state(&state, 130));
+        assert!(!is_stale_active_state(&state, 129));
+    }
+
+    #[test]
+    fn stale_active_state_times_out_waiting_status() {
+        let state = BridgeState {
+            status: Some("waiting".to_string()),
+            session_title: Some("Needs input".to_string()),
+            started_at: Some(10),
+            sessions: Some(vec![]),
+            completed_sessions: Some(vec![]),
+            updated_at: Some(200),
+        };
+
+        assert!(is_stale_active_state(&state, 230));
+    }
+
+    #[test]
+    fn stale_active_state_ignores_idle_and_missing_timestamps() {
+        let idle_state = BridgeState {
+            status: Some("idle".to_string()),
+            session_title: None,
+            started_at: None,
+            sessions: Some(vec![]),
+            completed_sessions: Some(vec![]),
+            updated_at: Some(100),
+        };
+        let missing_timestamp = BridgeState {
+            status: Some("working".to_string()),
+            session_title: None,
+            started_at: None,
+            sessions: Some(vec![]),
+            completed_sessions: Some(vec![]),
+            updated_at: None,
+        };
+
+        assert!(!is_stale_active_state(&idle_state, 10_000));
+        assert!(!is_stale_active_state(&missing_timestamp, 10_000));
     }
 }
 

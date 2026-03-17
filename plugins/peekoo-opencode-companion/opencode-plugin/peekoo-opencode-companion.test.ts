@@ -278,4 +278,102 @@ describe("createBridgeController", () => {
     expect(latest?.completed_sessions?.length).toBe(1);
     expect(latest?.completed_sessions?.[0]?.session_id).toBe("session-z");
   });
+
+  test("marks a session as waiting when permission is asked", () => {
+    const writes: BridgeWrite[] = [];
+
+    const controller = createBridgeController({
+      writeBridge: (state) => writes.push(state),
+      scheduleIdle: () => {},
+      cancelIdle: () => {},
+      now: (() => {
+        let current = 900;
+        return () => current++;
+      })(),
+    });
+
+    controller.handleEvent({
+      type: "session.created",
+      properties: { sessionID: "session-wait", title: "Needs approval" },
+    });
+    controller.handleEvent({
+      type: "permission.asked",
+      properties: { sessionID: "session-wait", requestID: "perm-1" },
+    });
+
+    const latest = writes.at(-1);
+    expect(latest?.status).toBe("waiting");
+    expect(latest?.sessions[0]?.status).toBe("waiting");
+  });
+
+  test("returns to working after the last pending request is answered", () => {
+    const writes: BridgeWrite[] = [];
+
+    const controller = createBridgeController({
+      writeBridge: (state) => writes.push(state),
+      scheduleIdle: () => {},
+      cancelIdle: () => {},
+      now: (() => {
+        let current = 1000;
+        return () => current++;
+      })(),
+    });
+
+    controller.handleEvent({
+      type: "session.created",
+      properties: { sessionID: "session-wait", title: "Needs approval" },
+    });
+    controller.handleEvent({
+      type: "permission.asked",
+      properties: { sessionID: "session-wait", requestID: "perm-1" },
+    });
+    controller.handleEvent({
+      type: "permission.replied",
+      properties: { sessionID: "session-wait", requestID: "perm-1", reply: "once" },
+    });
+
+    const latest = writes.at(-1);
+    expect(latest?.status).toBe("working");
+    expect(latest?.sessions[0]?.status).toBe("working");
+  });
+
+  test("keeps waiting until all pending questions and permissions are resolved", () => {
+    const writes: BridgeWrite[] = [];
+
+    const controller = createBridgeController({
+      writeBridge: (state) => writes.push(state),
+      scheduleIdle: () => {},
+      cancelIdle: () => {},
+      now: (() => {
+        let current = 1100;
+        return () => current++;
+      })(),
+    });
+
+    controller.handleEvent({
+      type: "session.created",
+      properties: { sessionID: "session-wait", title: "Needs input" },
+    });
+    controller.handleEvent({
+      type: "permission.asked",
+      properties: { sessionID: "session-wait", requestID: "perm-1" },
+    });
+    controller.handleEvent({
+      type: "question.asked",
+      properties: { sessionID: "session-wait", id: "question-1", questions: [] },
+    });
+    controller.handleEvent({
+      type: "permission.replied",
+      properties: { sessionID: "session-wait", requestID: "perm-1", reply: "once" },
+    });
+
+    expect(writes.at(-1)?.status).toBe("waiting");
+
+    controller.handleEvent({
+      type: "question.replied",
+      properties: { sessionID: "session-wait", requestID: "question-1", answers: [] },
+    });
+
+    expect(writes.at(-1)?.status).toBe("working");
+  });
 });
