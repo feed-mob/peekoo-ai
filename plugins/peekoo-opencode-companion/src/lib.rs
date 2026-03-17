@@ -9,6 +9,19 @@ struct BridgeState {
     status: Option<String>,
     session_title: Option<String>,
     started_at: Option<u64>,
+    sessions: Option<Vec<BridgeSession>>,
+    #[allow(dead_code)]
+    updated_at: Option<u64>,
+}
+
+#[derive(Clone, Deserialize, Default)]
+struct BridgeSession {
+    #[allow(dead_code)]
+    session_id: Option<String>,
+    status: Option<String>,
+    session_title: Option<String>,
+    #[allow(dead_code)]
+    started_at: Option<u64>,
     #[allow(dead_code)]
     updated_at: Option<u64>,
 }
@@ -36,6 +49,48 @@ fn display_badge_title(title: Option<&str>) -> String {
         Some(title) if !title.is_empty() => truncate_title(title),
         _ => "Working...".to_string(),
     }
+}
+
+fn session_badge_value(status: Option<&str>) -> String {
+    match status {
+        Some("thinking") => "Thinking".to_string(),
+        _ => "Working".to_string(),
+    }
+}
+
+fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
+    let mut sessions = state.sessions.clone().unwrap_or_default();
+    sessions.retain(|session| {
+        matches!(
+            session.status.as_deref(),
+            Some("working") | Some("thinking")
+        )
+    });
+    sessions
+}
+
+fn badge_items_from_state(state: &BridgeState) -> Vec<BadgeItem> {
+    let sessions = active_sessions(state);
+    if sessions.len() > 1 {
+        return sessions
+            .into_iter()
+            .map(|session| BadgeItem {
+                label: display_badge_title(session.session_title.as_deref()),
+                value: session_badge_value(session.status.as_deref()),
+                icon: Some("activity".into()),
+                countdown_secs: None,
+            })
+            .collect();
+    }
+
+    let display_title = display_badge_title(state.session_title.as_deref());
+
+    vec![BadgeItem {
+        label: "OpenCode".into(),
+        value: display_title,
+        icon: Some("activity".into()),
+        countdown_secs: None,
+    }]
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────
@@ -227,11 +282,42 @@ mod tests {
     fn display_badge_title_uses_non_empty_title() {
         assert_eq!(display_badge_title(Some("Fix badge")), "Fix badge");
     }
+
+    #[test]
+    fn badge_items_from_state_rotates_multiple_active_sessions() {
+        let state = BridgeState {
+            status: Some("working".to_string()),
+            session_title: Some("Second session".to_string()),
+            started_at: Some(10),
+            updated_at: Some(12),
+            sessions: Some(vec![
+                BridgeSession {
+                    session_id: Some("session-2".to_string()),
+                    status: Some("working".to_string()),
+                    session_title: Some("Second session".to_string()),
+                    started_at: Some(11),
+                    updated_at: Some(12),
+                },
+                BridgeSession {
+                    session_id: Some("session-1".to_string()),
+                    status: Some("thinking".to_string()),
+                    session_title: Some("First session".to_string()),
+                    started_at: Some(10),
+                    updated_at: Some(11),
+                },
+            ]),
+        };
+
+        let badges = badge_items_from_state(&state);
+        assert_eq!(badges.len(), 2);
+        assert_eq!(badges[0].label, "Second session");
+        assert_eq!(badges[0].value, "Working");
+        assert_eq!(badges[1].label, "First session");
+        assert_eq!(badges[1].value, "Thinking");
+    }
 }
 
 fn update_badge(state: &BridgeState) -> Result<(), extism_pdk::Error> {
-    let display_title = display_badge_title(state.session_title.as_deref());
-
     let elapsed_label = match state.started_at {
         Some(started) => {
             // We don't have access to system time in WASM, so we use
@@ -245,17 +331,19 @@ fn update_badge(state: &BridgeState) -> Result<(), extism_pdk::Error> {
     };
 
     let value = if elapsed_label.is_empty() {
-        display_title
+        String::new()
     } else {
-        format!("{display_title} ({elapsed_label})")
+        elapsed_label
     };
 
-    peekoo::badge::set(&[BadgeItem {
-        label: "OpenCode".into(),
-        value,
-        icon: Some("activity".into()),
-        countdown_secs: None,
-    }])?;
+    let mut badges = badge_items_from_state(state);
+    if !value.is_empty() {
+        for badge in &mut badges {
+            badge.value = format!("{} ({value})", badge.value);
+        }
+    }
+
+    peekoo::badge::set(&badges)?;
 
     Ok(())
 }

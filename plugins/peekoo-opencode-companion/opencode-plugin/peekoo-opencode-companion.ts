@@ -1,7 +1,7 @@
 import type { Plugin } from "@opencode-ai/plugin";
-import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
+import { join } from "node:path";
 
 function resolvePeekooBridgeDir(): string {
   if (process.platform === "win32") {
@@ -16,14 +16,25 @@ function resolvePeekooBridgeDir(): string {
 
 const BRIDGE_DIR = resolvePeekooBridgeDir();
 const BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
+const FALLBACK_SESSION_ID = "default";
+const IDLE_TRANSITION_MS = 5000;
 
 type Status = "working" | "thinking" | "happy" | "idle";
+
+export interface BridgeSessionWrite {
+  session_id: string;
+  status: Status;
+  session_title: string;
+  started_at: number;
+  updated_at: number;
+}
 
 export interface BridgeWrite {
   status: Status;
   session_title: string;
   started_at: number;
   updated_at: number;
+  sessions: BridgeSessionWrite[];
 }
 
 interface BridgeEvent {
@@ -39,35 +50,18 @@ interface SessionStatusInfo {
   type?: "busy" | "idle" | "retry";
 }
 
-let currentStatus: Status = "idle";
-let startedAt = 0;
-let bridgeTitle = "";
-let lastKnownTitle = "";
-
-function clearHappyTimeout(): void {
-  if (happyTimeout) {
-    clearTimeout(happyTimeout);
-    happyTimeout = null;
-  }
+interface SessionRecord {
+  sessionId: string;
+  status: Status;
+  title: string;
+  startedAt: number;
+  updatedAt: number;
 }
-
-function getSessionTitle(properties: unknown): string | undefined {
-  const props = properties as { info?: SessionInfo; title?: string } | undefined;
-  return props?.info?.title || props?.title;
-}
-
-function rememberTitle(title: string): void {
-  if (title.trim().length > 0) {
-    lastKnownTitle = title;
-  }
-}
-
-let happyTimeout: ReturnType<typeof setTimeout> | null = null;
 
 interface BridgeControllerDependencies {
   writeBridge: (state: BridgeWrite) => void;
-  scheduleIdle: (callback: () => void) => void;
-  cancelIdle: () => void;
+  scheduleIdle: (sessionId: string, callback: () => void) => void;
+  cancelIdle: (sessionId: string) => void;
   now: () => number;
 }
 
@@ -76,116 +70,200 @@ interface BridgeController {
   handleEvent: (event: BridgeEvent) => void;
 }
 
+function getSessionTitle(properties: unknown): string | undefined {
+  const props = properties as { info?: SessionInfo; title?: string } | undefined;
+  return props?.info?.title || props?.title;
+}
+
+function getSessionId(properties: unknown): string | undefined {
+  const props = properties as
+    | {
+        sessionID?: string;
+        sessionId?: string;
+        id?: string;
+        session?: { id?: string };
+      }
+    | undefined;
+
+  return props?.sessionID || props?.sessionId || props?.id || props?.session?.id;
+}
+
+function isActiveStatus(status: Status): boolean {
+  return status === "working" || status === "thinking";
+}
+
+function toBridgeSession(session: SessionRecord): BridgeSessionWrite {
+  return {
+    session_id: session.sessionId,
+    status: session.status,
+    session_title: session.title,
+    started_at: session.startedAt,
+    updated_at: session.updatedAt,
+  };
+}
+
+function sortByUpdatedAt(sessions: SessionRecord[]): SessionRecord[] {
+  return sessions.sort((left, right) => right.updatedAt - left.updatedAt);
+}
+
 export function createBridgeController(
   dependencies: BridgeControllerDependencies,
 ): BridgeController {
-  let controllerStatus: Status = "idle";
-  let controllerBridgeTitle = "";
-  let controllerLastKnownTitle = "";
-  let controllerStartedAt = 0;
+  const sessions = new Map<string, SessionRecord>();
+  const rememberedTitles = new Map<string, string>();
+  let lastBridgeSnapshot = "";
 
-  const rememberControllerTitle = (title: string): void => {
-    if (title.trim().length > 0) {
-      controllerLastKnownTitle = title;
+  const resolveSessionId = (event: BridgeEvent): string => {
+    const fromProperties = getSessionId(event.properties);
+    if (fromProperties) {
+      return fromProperties;
     }
+
+    if (sessions.size === 1) {
+      return sessions.keys().next().value ?? FALLBACK_SESSION_ID;
+    }
+
+    return FALLBACK_SESSION_ID;
   };
 
-  const emitBridge = (status: Status, title: string, force = false): void => {
-    const changed =
-      status !== controllerStatus || title !== controllerBridgeTitle;
-    if (!changed && !force) return;
-
-    controllerStatus = status;
-    controllerBridgeTitle = title;
-    rememberControllerTitle(title);
-
-    if (status !== "idle" && status !== "happy") {
-      if (controllerStartedAt === 0) {
-        controllerStartedAt = dependencies.now();
-      }
-    } else {
-      controllerStartedAt = 0;
+  const ensureSession = (sessionId: string): SessionRecord => {
+    const existing = sessions.get(sessionId);
+    if (existing) {
+      return existing;
     }
 
-    dependencies.writeBridge({
-      status,
-      session_title: title,
-      started_at: controllerStartedAt,
+    const now = dependencies.now();
+    const created: SessionRecord = {
+      sessionId,
+      status: "working",
+      title: rememberedTitles.get(sessionId) || "OpenCode session",
+      startedAt: now,
+      updatedAt: now,
+    };
+    sessions.set(sessionId, created);
+    return created;
+  };
+
+  const emitSnapshot = (force = false): void => {
+    const activeSessions = sortByUpdatedAt(
+      [...sessions.values()].filter((session) => isActiveStatus(session.status)),
+    );
+    const latestCompleted = sortByUpdatedAt(
+      [...sessions.values()].filter((session) => session.status === "happy"),
+    )[0];
+
+    const primaryActive = activeSessions[0];
+    const aggregateStatus: Status = primaryActive
+      ? activeSessions.some((session) => session.status === "working")
+        ? "working"
+        : "thinking"
+      : latestCompleted
+        ? "happy"
+        : "idle";
+
+    const snapshot: BridgeWrite = {
+      status: aggregateStatus,
+      session_title: primaryActive?.title || latestCompleted?.title || "",
+      started_at: primaryActive?.startedAt || 0,
       updated_at: dependencies.now(),
-    });
+      sessions: activeSessions.map(toBridgeSession),
+    };
+
+    const serialized = JSON.stringify(snapshot);
+    if (!force && serialized === lastBridgeSnapshot) {
+      return;
+    }
+
+    lastBridgeSnapshot = serialized;
+    dependencies.writeBridge(snapshot);
   };
 
-  const activeTitle = (): string => controllerLastKnownTitle;
-
-  const handleBusy = (): void => {
-    dependencies.cancelIdle();
-    emitBridge("working", activeTitle());
+  const markWorking = (sessionId: string): void => {
+    dependencies.cancelIdle(sessionId);
+    const session = ensureSession(sessionId);
+    const now = dependencies.now();
+    session.status = "working";
+    if (session.startedAt === 0) {
+      session.startedAt = now;
+    }
+    session.updatedAt = now;
+    emitSnapshot();
   };
 
-  const handleIdle = (): void => {
-    emitBridge("happy", activeTitle());
-    dependencies.scheduleIdle(() => {
-      emitBridge("idle", "");
+  const markHappy = (sessionId: string): void => {
+    const session = ensureSession(sessionId);
+    session.status = "happy";
+    session.startedAt = 0;
+    session.updatedAt = dependencies.now();
+    emitSnapshot();
+    dependencies.scheduleIdle(sessionId, () => {
+      sessions.delete(sessionId);
+      emitSnapshot();
     });
   };
 
   return {
     initialize: () => {
-      emitBridge("idle", "", true);
+      emitSnapshot(true);
     },
     handleEvent: (event) => {
+      const sessionId = resolveSessionId(event);
+
       switch (event.type) {
         case "session.status": {
-          const props = event.properties as
-            | { status?: SessionStatusInfo; sessionID?: string }
-            | undefined;
+          const props = event.properties as { status?: SessionStatusInfo } | undefined;
           const statusType = props?.status?.type;
 
           if (statusType === "busy" || statusType === "retry") {
-            handleBusy();
+            markWorking(sessionId);
           } else if (statusType === "idle") {
-            handleIdle();
+            markHappy(sessionId);
           }
           break;
         }
 
         case "session.idle": {
-          handleIdle();
+          markHappy(sessionId);
           break;
         }
 
         case "session.created": {
           const title = getSessionTitle(event.properties) || "New session";
-          rememberControllerTitle(title);
-          dependencies.cancelIdle();
-          emitBridge("working", title);
+          const session = ensureSession(sessionId);
+          session.title = title;
+          rememberedTitles.set(sessionId, title);
+          session.status = "working";
+          session.startedAt = dependencies.now();
+          session.updatedAt = dependencies.now();
+          dependencies.cancelIdle(sessionId);
+          emitSnapshot();
           break;
         }
 
         case "session.updated": {
           const title = getSessionTitle(event.properties);
           if (title) {
-            rememberControllerTitle(title);
-            if (controllerStatus === "working" || controllerStatus === "thinking") {
-              emitBridge(controllerStatus, controllerLastKnownTitle);
-            }
+            const session = ensureSession(sessionId);
+            session.title = title;
+            rememberedTitles.set(sessionId, title);
+            session.updatedAt = dependencies.now();
+            emitSnapshot();
           }
           break;
         }
 
         case "session.error": {
-          dependencies.cancelIdle();
-          emitBridge("idle", "");
+          dependencies.cancelIdle(sessionId);
+          sessions.delete(sessionId);
+          emitSnapshot();
           break;
         }
 
         case "message.part.updated": {
-          const props = event.properties as
-            | { part?: { type?: string }; delta?: string }
-            | undefined;
+          const props = event.properties as { part?: { type?: string } } | undefined;
 
           if (props?.part?.type === "text") {
-            handleBusy();
+            markWorking(sessionId);
           }
           break;
         }
@@ -194,12 +272,9 @@ export function createBridgeController(
   };
 }
 
-function persistBridgeWrite(state: BridgeWrite): void {
-  currentStatus = state.status;
-  bridgeTitle = state.session_title;
-  rememberTitle(state.session_title);
-  startedAt = state.started_at;
+const happyTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
 
+function persistBridgeWrite(state: BridgeWrite): void {
   try {
     mkdirSync(BRIDGE_DIR, { recursive: true });
     writeFileSync(BRIDGE_FILE, JSON.stringify(state));
@@ -208,17 +283,26 @@ function persistBridgeWrite(state: BridgeWrite): void {
   }
 }
 
+function cancelIdleTransition(sessionId: string): void {
+  const timeout = happyTimeouts.get(sessionId);
+  if (timeout) {
+    clearTimeout(timeout);
+    happyTimeouts.delete(sessionId);
+  }
+}
+
 export const PeekooOpenCodeCompanion: Plugin = async () => {
   const controller = createBridgeController({
     writeBridge: persistBridgeWrite,
-    scheduleIdle: (callback) => {
-      clearHappyTimeout();
-      happyTimeout = setTimeout(() => {
+    scheduleIdle: (sessionId, callback) => {
+      cancelIdleTransition(sessionId);
+      const timeout = setTimeout(() => {
         callback();
-        happyTimeout = null;
-      }, 5000);
+        happyTimeouts.delete(sessionId);
+      }, IDLE_TRANSITION_MS);
+      happyTimeouts.set(sessionId, timeout);
     },
-    cancelIdle: clearHappyTimeout,
+    cancelIdle: cancelIdleTransition,
     now: () => Math.floor(Date.now() / 1000),
   });
 
