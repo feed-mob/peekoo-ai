@@ -43,6 +43,8 @@ export function useIdleStateManager({
   const idleTimerRef = useRef<number | null>(null);
   const stateTimerRef = useRef<number | null>(null);
   const lastInteractionRef = useRef<number>(Date.now());
+  // Ref to break the circular dependency between activateRandomState and scheduleRandomState
+  const scheduleRandomStateRef = useRef<() => void>(() => {});
 
   // Select a random state based on weights
   const selectRandomState = useCallback((): RandomState => {
@@ -93,8 +95,8 @@ export function useIdleStateManager({
       onStateChange?.(null);
       stateTimerRef.current = null;
       
-      // Restart idle detection after returning to idle
-      scheduleRandomState();
+      // Restart idle detection after returning to idle (via ref to avoid circular dep)
+      scheduleRandomStateRef.current();
     }, duration);
   }, [selectRandomState, getRandomDuration, onStateChange]);
 
@@ -114,11 +116,14 @@ export function useIdleStateManager({
       if (!isUserInteracting && !hasActiveNotification) {
         activateRandomState();
       } else {
-        // Reschedule if conditions not met
-        scheduleRandomState();
+        // Reschedule if conditions not met (via ref to avoid stale self-reference)
+        scheduleRandomStateRef.current();
       }
     }, timeout);
   }, [enabled, isUserInteracting, hasActiveNotification, activateRandomState, getRandomDuration, clearTimers]);
+
+  // Keep the ref in sync with the latest stable callback
+  scheduleRandomStateRef.current = scheduleRandomState;
 
   // Reset idle timer on user interaction
   const resetIdleTimer = useCallback(() => {
