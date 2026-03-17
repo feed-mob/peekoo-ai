@@ -1,6 +1,6 @@
 {
   "name": "peekoo-desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Peekoo AI Desktop Pet",
   "type": "module",
   "scripts": {
