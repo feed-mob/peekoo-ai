@@ -14,8 +14,9 @@ function resolvePeekooBridgeDir() {
 var BRIDGE_DIR = resolvePeekooBridgeDir();
 var BRIDGE_FILE = join(BRIDGE_DIR, "peekoo-opencode-companion.json");
 var currentStatus = "idle";
-var sessionTitle = "";
 var startedAt = 0;
+var bridgeTitle = "";
+var lastKnownTitle = "";
 function clearHappyTimeout() {
   if (happyTimeout) {
     clearTimeout(happyTimeout);
@@ -26,97 +27,138 @@ function getSessionTitle(properties) {
   const props = properties;
   return props?.info?.title || props?.title;
 }
-function writeBridge(status, title, force = false) {
-  const changed = status !== currentStatus || title !== sessionTitle;
-  if (!changed && !force)
-    return;
-  currentStatus = status;
-  sessionTitle = title;
-  if (status !== "idle" && status !== "happy") {
-    if (startedAt === 0) {
-      startedAt = Math.floor(Date.now() / 1000);
-    }
-  } else {
-    startedAt = 0;
+function rememberTitle(title) {
+  if (title.trim().length > 0) {
+    lastKnownTitle = title;
   }
-  try {
-    mkdirSync(BRIDGE_DIR, { recursive: true });
-    const state = {
-      status,
-      session_title: title,
-      started_at: startedAt,
-      updated_at: Math.floor(Date.now() / 1000)
-    };
-    writeFileSync(BRIDGE_FILE, JSON.stringify(state));
-  } catch {}
 }
 var happyTimeout = null;
-function scheduleIdleTransition() {
-  clearHappyTimeout();
-  happyTimeout = setTimeout(() => {
-    writeBridge("idle", "");
-    happyTimeout = null;
-  }, 5000);
-}
-var PeekooOpenCodeCompanion = async () => {
-  writeBridge("idle", "", true);
+function createBridgeController(dependencies) {
+  let controllerStatus = "idle";
+  let controllerBridgeTitle = "";
+  let controllerLastKnownTitle = "";
+  let controllerStartedAt = 0;
+  const rememberControllerTitle = (title) => {
+    if (title.trim().length > 0) {
+      controllerLastKnownTitle = title;
+    }
+  };
+  const emitBridge = (status, title, force = false) => {
+    const changed = status !== controllerStatus || title !== controllerBridgeTitle;
+    if (!changed && !force)
+      return;
+    controllerStatus = status;
+    controllerBridgeTitle = title;
+    rememberControllerTitle(title);
+    if (status !== "idle" && status !== "happy") {
+      if (controllerStartedAt === 0) {
+        controllerStartedAt = dependencies.now();
+      }
+    } else {
+      controllerStartedAt = 0;
+    }
+    dependencies.writeBridge({
+      status,
+      session_title: title,
+      started_at: controllerStartedAt,
+      updated_at: dependencies.now()
+    });
+  };
+  const activeTitle = () => controllerLastKnownTitle;
+  const handleBusy = () => {
+    dependencies.cancelIdle();
+    emitBridge("working", activeTitle());
+  };
+  const handleIdle = () => {
+    emitBridge("happy", activeTitle());
+    dependencies.scheduleIdle(() => {
+      emitBridge("idle", "");
+    });
+  };
   return {
-    event: async ({ event }) => {
+    initialize: () => {
+      emitBridge("idle", "", true);
+    },
+    handleEvent: (event) => {
       switch (event.type) {
         case "session.status": {
           const props = event.properties;
           const statusType = props?.status?.type;
-          if (statusType === "busy") {
-            clearHappyTimeout();
-            writeBridge("working", sessionTitle);
-          } else if (statusType === "retry") {
-            clearHappyTimeout();
-            writeBridge("working", sessionTitle);
+          if (statusType === "busy" || statusType === "retry") {
+            handleBusy();
           } else if (statusType === "idle") {
-            writeBridge("happy", sessionTitle);
-            scheduleIdleTransition();
+            handleIdle();
           }
           break;
         }
         case "session.idle": {
-          writeBridge("happy", sessionTitle);
-          scheduleIdleTransition();
+          handleIdle();
           break;
         }
         case "session.created": {
           const title = getSessionTitle(event.properties) || "New session";
-          sessionTitle = title;
-          clearHappyTimeout();
-          writeBridge("working", title);
+          rememberControllerTitle(title);
+          dependencies.cancelIdle();
+          emitBridge("working", title);
           break;
         }
         case "session.updated": {
           const title = getSessionTitle(event.properties);
           if (title) {
-            sessionTitle = title;
-            if (currentStatus === "working" || currentStatus === "thinking") {
-              writeBridge(currentStatus, sessionTitle);
+            rememberControllerTitle(title);
+            if (controllerStatus === "working" || controllerStatus === "thinking") {
+              emitBridge(controllerStatus, controllerLastKnownTitle);
             }
           }
           break;
         }
         case "session.error": {
-          clearHappyTimeout();
-          writeBridge("idle", "");
+          dependencies.cancelIdle();
+          emitBridge("idle", "");
           break;
         }
         case "message.part.updated": {
           const props = event.properties;
           if (props?.part?.type === "text") {
-            clearHappyTimeout();
-            writeBridge("working", sessionTitle);
+            handleBusy();
           }
           break;
         }
       }
     }
   };
+}
+function persistBridgeWrite(state) {
+  currentStatus = state.status;
+  bridgeTitle = state.session_title;
+  rememberTitle(state.session_title);
+  startedAt = state.started_at;
+  try {
+    mkdirSync(BRIDGE_DIR, { recursive: true });
+    writeFileSync(BRIDGE_FILE, JSON.stringify(state));
+  } catch {}
+}
+var PeekooOpenCodeCompanion = async () => {
+  const controller = createBridgeController({
+    writeBridge: persistBridgeWrite,
+    scheduleIdle: (callback) => {
+      clearHappyTimeout();
+      happyTimeout = setTimeout(() => {
+        callback();
+        happyTimeout = null;
+      }, 5000);
+    },
+    cancelIdle: clearHappyTimeout,
+    now: () => Math.floor(Date.now() / 1000)
+  });
+  controller.initialize();
+  return {
+    event: async ({ event }) => {
+      controller.handleEvent(event);
+    }
+  };
 };
 export {
+  createBridgeController,
   PeekooOpenCodeCompanion
 };

@@ -31,6 +31,13 @@ fn truncate_title(s: &str) -> String {
     }
 }
 
+fn display_badge_title(title: Option<&str>) -> String {
+    match title.map(str::trim) {
+        Some(title) if !title.is_empty() => truncate_title(title),
+        _ => "Working...".to_string(),
+    }
+}
+
 // ── Lifecycle ──────────────────────────────────────────────────
 
 #[plugin_fn]
@@ -210,12 +217,20 @@ mod tests {
         let title = "🎉".repeat(MAX_DISPLAY_LEN);
         assert_eq!(truncate_title(&title), title);
     }
+
+    #[test]
+    fn display_badge_title_falls_back_for_empty_title() {
+        assert_eq!(display_badge_title(Some("")), "Working...");
+    }
+
+    #[test]
+    fn display_badge_title_uses_non_empty_title() {
+        assert_eq!(display_badge_title(Some("Fix badge")), "Fix badge");
+    }
 }
 
 fn update_badge(state: &BridgeState) -> Result<(), extism_pdk::Error> {
-    let title = state.session_title.as_deref().unwrap_or("Working...");
-
-    let display_title = truncate_title(title);
+    let display_title = display_badge_title(state.session_title.as_deref());
 
     let elapsed_label = match state.started_at {
         Some(started) => {
