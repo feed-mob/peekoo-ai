@@ -140,7 +140,6 @@ jobs:
           pkgbuild: packaging/aur/PKGBUILD
           assets: |
             packaging/aur/peekoo.desktop
-            packaging/aur/peekoo.sh
             packaging/aur/peekoo.png
           updpkgsums: false
           commit_username: ${{ secrets.AUR_USERNAME }}
