@@ -191,8 +191,21 @@ mod tests {
         if cfg!(windows) {
             return;
         }
+        // Clear env override so we test the default path logic.
+        let original = std::env::var_os("PI_CODING_AGENT_DIR");
+        if original.is_some() {
+            // SAFETY: test process controls env access for this assertion.
+            unsafe { std::env::remove_var("PI_CODING_AGENT_DIR") };
+        }
+
         let dir = pi_agent_dir().expect("pi agent dir");
         assert!(dir.to_string_lossy().contains(".pi"));
         assert!(dir.ends_with(PathBuf::from(".pi").join("agent")));
+
+        // Restore original value for test isolation.
+        if let Some(value) = original {
+            // SAFETY: restoring original env var value for test isolation.
+            unsafe { std::env::set_var("PI_CODING_AGENT_DIR", value) };
+        }
     }
 }
