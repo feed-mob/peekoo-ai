@@ -115,13 +115,42 @@ fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
     sessions
 }
 
+fn distinct_badge_labels(sessions: &[BridgeSession]) -> Vec<String> {
+    let base_labels: Vec<String> = sessions
+        .iter()
+        .map(|session| display_badge_title(session.session_title.as_deref()))
+        .collect();
+
+    let mut counts = std::collections::HashMap::<String, usize>::new();
+    for label in &base_labels {
+        *counts.entry(label.clone()).or_insert(0) += 1;
+    }
+
+    let mut seen = std::collections::HashMap::<String, usize>::new();
+    base_labels
+        .into_iter()
+        .map(|label| {
+            let total = counts.get(&label).copied().unwrap_or(0);
+            if total <= 1 {
+                return label;
+            }
+
+            let ordinal = seen.entry(label.clone()).or_insert(0);
+            *ordinal += 1;
+            format!("{} ({})", label, ordinal)
+        })
+        .collect()
+}
+
 fn badge_items_from_state(state: &BridgeState) -> Vec<BadgeItem> {
     let sessions = active_sessions(state);
     if sessions.len() > 1 {
+        let labels = distinct_badge_labels(&sessions);
         return sessions
             .into_iter()
-            .map(|session| BadgeItem {
-                label: display_badge_title(session.session_title.as_deref()),
+            .zip(labels)
+            .map(|(session, label)| BadgeItem {
+                label,
                 value: session_badge_value(session.status.as_deref()),
                 icon: Some("activity".into()),
                 countdown_secs: None,
@@ -401,6 +430,34 @@ mod tests {
         assert_eq!(badges[0].value, "Working");
         assert_eq!(badges[1].label, "First session");
         assert_eq!(badges[1].value, "Thinking");
+    }
+
+    #[test]
+    fn distinct_badge_labels_disambiguates_duplicate_titles() {
+        let sessions = vec![
+            BridgeSession {
+                session_id: Some("session-1".to_string()),
+                status: Some("working".to_string()),
+                session_title: Some("OpenCode session".to_string()),
+                started_at: Some(1),
+                updated_at: Some(2),
+            },
+            BridgeSession {
+                session_id: Some("session-2".to_string()),
+                status: Some("thinking".to_string()),
+                session_title: Some("OpenCode session".to_string()),
+                started_at: Some(3),
+                updated_at: Some(4),
+            },
+        ];
+
+        assert_eq!(
+            distinct_badge_labels(&sessions),
+            vec![
+                "OpenCode session (1)".to_string(),
+                "OpenCode session (2)".to_string()
+            ]
+        );
     }
 
     #[test]
