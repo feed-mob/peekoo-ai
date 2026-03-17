@@ -60,6 +60,7 @@ export async function openPanelWindow(
     x: panelX,
     y: panelY,
     decorations: false,
+    shadow: false,
     transparent: true,
     alwaysOnTop: true,
     skipTaskbar: true,
