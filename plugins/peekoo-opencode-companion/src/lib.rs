@@ -100,6 +100,10 @@ fn trim_seen_completions(seen: &mut Vec<String>) {
     }
 }
 
+fn should_refresh_working_mood(current_status: &str, new_completion_count: usize) -> bool {
+    matches!(current_status, "working" | "thinking") && new_completion_count == 0
+}
+
 fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
     let mut sessions = state.sessions.clone().unwrap_or_default();
     sessions.retain(|session| {
@@ -194,6 +198,7 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
         peekoo::state::get(STATE_LAST_STATUS)?.unwrap_or_else(|| "idle".to_string());
     let mut seen_completions: Vec<String> =
         peekoo::state::get(STATE_SEEN_COMPLETIONS)?.unwrap_or_default();
+    let mut new_completion_count = 0usize;
 
     for completion in completed_sessions(&state) {
         let Some(completion_id) = completion_id(&completion) else {
@@ -206,6 +211,7 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
 
         handle_completed_session(&completion)?;
         seen_completions.push(completion_id);
+        new_completion_count += 1;
     }
 
     trim_seen_completions(&mut seen_completions);
@@ -213,12 +219,12 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
 
     // Only act on status changes
     if current_status != previous_status {
-        handle_status_change(current_status, &state)?;
+        handle_status_change(current_status, &state, new_completion_count)?;
         peekoo::state::set(STATE_LAST_STATUS, &current_status.to_string())?;
     }
 
     // Always update badge when active (elapsed time changes)
-    if current_status == "working" || current_status == "thinking" {
+    if should_refresh_working_mood(current_status, new_completion_count) {
         update_badge(&state)?;
     }
 
@@ -237,14 +243,22 @@ fn handle_completed_session(session: &CompletedSession) -> Result<(), extism_pdk
     Ok(())
 }
 
-fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), extism_pdk::Error> {
+fn handle_status_change(
+    new_status: &str,
+    state: &BridgeState,
+    new_completion_count: usize,
+) -> Result<(), extism_pdk::Error> {
     match new_status {
         "working" => {
-            peekoo::mood::set("opencode-working", true)?;
+            if should_refresh_working_mood(new_status, new_completion_count) {
+                peekoo::mood::set("opencode-working", true)?;
+            }
             update_badge(state)?;
         }
         "thinking" => {
-            peekoo::mood::set("opencode-working", true)?;
+            if should_refresh_working_mood(new_status, new_completion_count) {
+                peekoo::mood::set("opencode-working", true)?;
+            }
             update_badge(state)?;
         }
         "happy" | "done" => {
@@ -472,6 +486,19 @@ mod tests {
             completion_id(&completions[1]).as_deref(),
             Some("session-b:43:1")
         );
+    }
+
+    #[test]
+    fn working_mood_is_suppressed_when_new_completion_arrives() {
+        assert!(!should_refresh_working_mood("working", 1));
+        assert!(!should_refresh_working_mood("thinking", 2));
+    }
+
+    #[test]
+    fn working_mood_resumes_when_no_new_completion_arrives() {
+        assert!(should_refresh_working_mood("working", 0));
+        assert!(should_refresh_working_mood("thinking", 0));
+        assert!(!should_refresh_working_mood("happy", 0));
     }
 }
 
