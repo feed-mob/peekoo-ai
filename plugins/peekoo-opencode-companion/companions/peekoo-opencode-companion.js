@@ -21,7 +21,7 @@ function getSessionTitle(properties) {
 }
 function getSessionId(properties) {
   const props = properties;
-  return props?.sessionID || props?.sessionId || props?.id || props?.session?.id;
+  return props?.sessionID || props?.sessionId || props?.session?.id;
 }
 function getRequestId(properties) {
   const props = properties;
@@ -40,7 +40,7 @@ function toBridgeSession(session) {
   };
 }
 function sortByUpdatedAt(sessions) {
-  return sessions.sort((left, right) => right.updatedAt - left.updatedAt);
+  return sessions.toSorted((left, right) => right.updatedAt - left.updatedAt);
 }
 function createBridgeController(dependencies) {
   const sessions = new Map;

@@ -110,8 +110,8 @@ export function SpritePeekBadge({
           }}
           onClick={onToggle}
         >
-          {items.map((item, index) => (
-            <BadgeRow key={`${item.label}-${item.value}-${index}`} item={item} compact />
+          {items.map((item) => (
+            <BadgeRow key={`${item.label}-${item.value}`} item={item} compact />
           ))}
         </motion.div>
       ) : (

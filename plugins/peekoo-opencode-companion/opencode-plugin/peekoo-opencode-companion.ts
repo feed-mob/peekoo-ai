@@ -91,19 +91,26 @@ function getSessionTitle(properties: unknown): string | undefined {
   return props?.info?.title || props?.title;
 }
 
+// OpenCode events provide the session identifier under varying keys depending
+// on the event type.  We intentionally omit a bare `id` fallback to avoid
+// accidentally matching unrelated identifiers (e.g. message or permission IDs).
 function getSessionId(properties: unknown): string | undefined {
   const props = properties as
     | {
         sessionID?: string;
         sessionId?: string;
-        id?: string;
         session?: { id?: string };
       }
     | undefined;
 
-  return props?.sessionID || props?.sessionId || props?.id || props?.session?.id;
+  return props?.sessionID || props?.sessionId || props?.session?.id;
 }
 
+// Permission and question events use `requestID` or `permissionID` as the
+// request identifier.  Both are tracked uniformly so a single pending-request
+// set can cover permissions and questions alike.  `question.asked` events may
+// carry the identifier under a bare `id` key, so it is kept as a last-resort
+// fallback.
 function getRequestId(properties: unknown): string | undefined {
   const props = properties as
     | {
@@ -131,7 +138,7 @@ function toBridgeSession(session: SessionRecord): BridgeSessionWrite {
 }
 
 function sortByUpdatedAt(sessions: SessionRecord[]): SessionRecord[] {
-  return sessions.sort((left, right) => right.updatedAt - left.updatedAt);
+  return sessions.toSorted((left, right) => right.updatedAt - left.updatedAt);
 }
 
 export function createBridgeController(

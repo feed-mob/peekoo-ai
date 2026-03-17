@@ -92,8 +92,8 @@ fn completed_session_notification_title(session: &CompletedSession) -> Option<St
         .map(truncate_title)
 }
 
-fn completed_sessions(state: &BridgeState) -> Vec<CompletedSession> {
-    state.completed_sessions.clone().unwrap_or_default()
+fn completed_sessions(state: &BridgeState) -> &[CompletedSession] {
+    state.completed_sessions.as_deref().unwrap_or_default()
 }
 
 fn trim_seen_completions(seen: &mut Vec<String>) {
@@ -263,20 +263,22 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
         peekoo::state::get(STATE_LAST_STATUS)?.unwrap_or_else(|| "idle".to_string());
     let mut seen_completions: Vec<String> =
         peekoo::state::get(STATE_SEEN_COMPLETIONS)?.unwrap_or_default();
+    let mut seen_set: std::collections::HashSet<String> =
+        seen_completions.iter().cloned().collect();
     let mut new_completion_count = 0usize;
 
     if !is_stale {
         for completion in completed_sessions(&state) {
-            let Some(completion_id) = completion_id(&completion) else {
+            let Some(id) = completion_id(&completion) else {
                 continue;
             };
 
-            if seen_completions.iter().any(|seen| seen == &completion_id) {
+            if !seen_set.insert(id.clone()) {
                 continue;
             }
 
             handle_completed_session(&completion)?;
-            seen_completions.push(completion_id);
+            seen_completions.push(id);
             new_completion_count += 1;
         }
     }
@@ -665,32 +667,7 @@ mod tests {
 }
 
 fn update_badge(state: &BridgeState) -> Result<(), extism_pdk::Error> {
-    let elapsed_label = match state.started_at {
-        Some(started) => {
-            // We don't have access to system time in WASM, so we use
-            // countdown_secs to show relative time. The frontend will
-            // tick this down. Since we want to show elapsed time (counting
-            // up), we don't use countdown_secs and instead format a value.
-            let _ = started; // started_at is tracked by the bridge writer
-            String::new()
-        }
-        None => String::new(),
-    };
-
-    let value = if elapsed_label.is_empty() {
-        String::new()
-    } else {
-        elapsed_label
-    };
-
-    let mut badges = badge_items_from_state(state);
-    if !value.is_empty() {
-        for badge in &mut badges {
-            badge.value = format!("{} ({value})", badge.value);
-        }
-    }
-
+    let badges = badge_items_from_state(state);
     peekoo::badge::set(&badges)?;
-
     Ok(())
 }
