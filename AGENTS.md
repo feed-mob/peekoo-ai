@@ -126,6 +126,10 @@ cargo test <pattern>
 cargo test pomodoro
 ```
 
+### Releasing a New Version
+
+See [`docs/release.md`](docs/release.md) for the full release process, including version bumping, tagging, CI workflow, and AUR publishing.
+
 ## AI Knowledge Base
 
 This repository includes an AI memory system in the `ai/` directory. See `ai/AGENTS.md` for details on:

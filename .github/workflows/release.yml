@@ -4,13 +4,21 @@ on:
   push:
     tags:
       - "v*"
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      publish_aur:
+        description: "Publish to AUR (requires a published release for the latest tag)"
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
   release-notes:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur)
     runs-on: ubuntu-latest
     outputs:
       release_body: ${{ steps.notes.outputs.release_body }}
@@ -28,6 +36,7 @@ jobs:
             --field tag_name="${GITHUB_REF_NAME}" \
             --field target_commitish="${GITHUB_SHA}" \
             --jq .body > release-notes.md
+          printf '\n---\n\n> macOS users: The macOS DMG is not yet notarized with Apple. After installing, open Terminal and run `xattr -cr /Applications/Peekoo.app` to allow the app to open. See the [macOS install guide](https://github.com/feed-mob/peekoo-ai/blob/master/docs/install-macos.md) for details.\n' >> release-notes.md
           {
             echo 'release_body<<EOF'
             cat release-notes.md
@@ -36,6 +45,7 @@ jobs:
 
   publish-tauri:
     needs: release-notes
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur)
     strategy:
       fail-fast: false
       matrix:
@@ -94,3 +104,46 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  publish-aur:
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish_aur)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "pkgver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            # Get the latest release tag
+            TAG=$(gh release view --json tagName --jq .tagName)
+            echo "pkgver=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute AppImage SHA256 and patch PKGBUILD
+        working-directory: packaging/aur
+        run: |
+          VERSION=${{ steps.version.outputs.pkgver }}
+          URL="https://github.com/feed-mob/peekoo-ai/releases/download/v${VERSION}/Peekoo_${VERSION}_amd64.AppImage"
+          SHA256=$(curl -sL "$URL" | sha256sum | awk '{print $1}')
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/'REPLACE_WITH_APPIMAGE_SHA256'/'${SHA256}'/" PKGBUILD
+
+      - name: Publish to AUR
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        with:
+          pkgname: peekoo-bin
+          pkgbuild: packaging/aur/PKGBUILD
+          assets: |
+            packaging/aur/peekoo.desktop
+            packaging/aur/peekoo.sh
+            packaging/aur/peekoo.png
+          updpkgsums: false
+          commit_username: ${{ secrets.AUR_USERNAME }}
+          commit_email: ${{ secrets.AUR_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: "Update to ${{ steps.version.outputs.pkgver }}"

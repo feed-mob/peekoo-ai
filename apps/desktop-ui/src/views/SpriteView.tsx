@@ -12,6 +12,7 @@ import { getSpriteWindowSize } from "@/lib/sprite-bubble-layout";
 import { useSpriteState } from "@/hooks/use-sprite-state";
 import { usePanelWindows } from "@/hooks/use-panel-windows";
 import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
+import { useIdleStateManager } from "@/hooks/use-idle-state-manager";
 import {
   SPRITE_BUBBLE_DURATION_MS,
   SPRITE_BUBBLE_EVENT,
@@ -31,6 +32,13 @@ export default function SpriteView() {
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
   const [dragAnimation, setDragAnimation] = useState<AnimationType | null>(null);
   const moodResetTimerRef = useRef<number | null>(null);
+
+  // Idle state manager for random state transitions
+  const { randomState, resetIdleTimer } = useIdleStateManager({
+    enabled: true,
+    isUserInteracting: menuOpen || dragAnimation !== null,
+    hasActiveNotification: moodOverride === "reminder" || (bubblePayload !== null && bubbleVisible),
+  });
 
   const clearMoodResetTimer = useCallback(() => {
     if (moodResetTimerRef.current !== null) {
@@ -104,8 +112,14 @@ export default function SpriteView() {
 
   useSpriteReactions({ onMoodChange: handleMoodChange });
 
+  // Determine effective sprite state with priority:
+  // 1. moodOverride (reactions, reminders) - highest priority
+  // 2. randomState (idle state manager) - low priority
+  // 3. spriteState (default) - fallback
   const effectiveSpriteState: SpriteState = moodOverride
     ? { ...spriteState, mood: moodOverride }
+    : randomState
+    ? { ...spriteState, mood: randomState }
     : spriteState;
 
   // Start OS drag on mousedown. We set the dragging animation first, then
@@ -133,6 +147,9 @@ export default function SpriteView() {
     if (e.button !== 0) return; // only primary button
     e.stopPropagation();
     
+    // Reset idle timer on user interaction
+    resetIdleTimer();
+    
     // 1. Immediately switch to dragging animation
     setDragAnimation("dragging");
     
@@ -152,27 +169,34 @@ export default function SpriteView() {
     }
     // We DO NOT setDragAnimation(null) in a finally block here.
     // The global mouseup listener above is responsible for that.
-  }, []);
+  }, [resetIdleTimer]);
 
   // Right click: toggle menu
   const handleContextMenu = useCallback(
     async (e: React.MouseEvent) => {
       e.preventDefault();
+      
+      // Reset idle timer on user interaction
+      resetIdleTimer();
+      
       if (menuOpen) {
         setMenuOpen(false);
       } else {
         setMenuOpen(true);
       }
     },
-    [menuOpen],
+    [menuOpen, resetIdleTimer],
   );
 
   const handleTogglePanel = useCallback(
     async (label: Parameters<typeof togglePanel>[0]) => {
+      // Reset idle timer on user interaction
+      resetIdleTimer();
+      
       await togglePanel(label);
       setMenuOpen(false);
     },
-    [togglePanel],
+    [togglePanel, resetIdleTimer],
   );
 
   return (
