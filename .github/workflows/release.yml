@@ -110,9 +110,14 @@ jobs:
         id: version
         run: echo "pkgver=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
 
-      - name: Patch PKGBUILD version
+      - name: Compute AppImage SHA256 and patch PKGBUILD
         working-directory: packaging/aur
-        run: sed -i "s/pkgver=.*/pkgver=${{ steps.version.outputs.pkgver }}/" PKGBUILD
+        run: |
+          VERSION=${{ steps.version.outputs.pkgver }}
+          URL="https://github.com/feed-mob/peekoo-ai/releases/download/v${VERSION}/Peekoo_${VERSION}_amd64.AppImage"
+          SHA256=$(curl -sL "$URL" | sha256sum | awk '{print $1}')
+          sed -i "s/pkgver=.*/pkgver=${VERSION}/" PKGBUILD
+          sed -i "s/'REPLACE_WITH_APPIMAGE_SHA256'/'${SHA256}'/" PKGBUILD
 
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
@@ -123,7 +128,7 @@ jobs:
             packaging/aur/peekoo.desktop
             packaging/aur/peekoo.sh
             packaging/aur/peekoo.png
-          updpkgsums: true
+          updpkgsums: false
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}
           ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
