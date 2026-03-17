@@ -17,11 +17,14 @@ function UnknownView({ label }: { label: string }) {
 }
 
 function viewForLabel(label: string) {
+  // Handle plugin panels (including openclaw-sessions)
   if (
-    label.startsWith("panel-") &&
-    !(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)
+    label.startsWith("panel-") ||
+    label === "openclaw-sessions"
   ) {
-    return <PluginPanelView />;
+    if (!(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)) {
+      return <PluginPanelView />;
+    }
   }
 
   const parsed = WindowLabelSchema.safeParse(label);

@@ -1,0 +1,8 @@
+{
+  "options": {
+    "outFile": "build/openclaw_sessions.wasm",
+    "optimize": true,
+    "exportRuntime": true
+  },
+  "entries": ["assembly/index.ts"]
+}

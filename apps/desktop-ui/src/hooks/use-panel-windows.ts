@@ -19,6 +19,7 @@ const INITIAL_STATE: PanelWindowStates = {
   "panel-tasks": { isOpen: false },
   "panel-pomodoro": { isOpen: false },
   "panel-plugins": { isOpen: false },
+  "openclaw-sessions": { isOpen: false },
 };
 
 const PANEL_OFFSET_X = 20;
@@ -27,7 +28,29 @@ function resolvePanelConfig(
   label: string,
   pluginPanels: PluginPanel[],
 ): PanelWindowConfig | PluginPanel | undefined {
-  return PANEL_WINDOW_CONFIGS[label] ?? pluginPanels.find((panel) => panel.label === label);
+  // First check built-in panels
+  if (PANEL_WINDOW_CONFIGS[label]) {
+    return PANEL_WINDOW_CONFIGS[label];
+  }
+
+  // Then check plugin panels
+  const pluginPanel = pluginPanels.find((panel) => panel.label === label);
+  if (pluginPanel) {
+    return pluginPanel;
+  }
+
+  // Special case for openclaw-sessions - use hardcoded config if not loaded
+  if (label === "openclaw-sessions") {
+    return {
+      label: "openclaw-sessions",
+      title: "Openclaw Sessions Management",
+      width: 900,
+      height: 600,
+      entry: "ui/panel.html",
+    };
+  }
+
+  return undefined;
 }
 
 export async function openPanelWindow(
@@ -62,9 +85,11 @@ export async function openPanelWindow(
     decorations: false,
     shadow: false,
     transparent: true,
-    alwaysOnTop: true,
+    alwaysOnTop: label === "openclaw-sessions" ? false : true,
     skipTaskbar: true,
     resizable: true,
+    hiddenTitle: true,
+    titleBarStyle: "overlay",
   });
 }
 

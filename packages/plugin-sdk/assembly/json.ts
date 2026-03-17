@@ -127,3 +127,28 @@ export function extractU64Field(json: string, field: string): u64 {
 export function extractBoolField(json: string, field: string): bool {
   return extractRawField(json, field) == "true";
 }
+
+export function extractIntField(json: string, field: string): i32 {
+  const raw = extractRawField(json, field);
+  if (raw.length == 0) return 0;
+
+  let result: i32 = 0;
+  let negative: bool = false;
+  let start: i32 = 0;
+
+  if (raw.charAt(0) == '-') {
+    negative = true;
+    start = 1;
+  }
+
+  for (let i: i32 = start; i < raw.length; i++) {
+    const c: i32 = raw.charCodeAt(i);
+    if (c >= 48 && c <= 57) {
+      result = result * 10 + (c - 48);
+    } else {
+      break;
+    }
+  }
+
+  return negative ? -result : result;
+}

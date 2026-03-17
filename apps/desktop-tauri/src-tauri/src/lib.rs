@@ -1,6 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use base64::Engine as _;
+use ed25519_dalek::{Signer as _, SigningKey};
+use futures_util::{SinkExt, StreamExt};
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
@@ -8,13 +11,14 @@ use peekoo_agent_app::{
     PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
     SetApiKeyRequest, SetProviderConfigRequest, StorePluginDto, TaskDto,
 };
-use serde::Serialize;
+use rand::rngs::OsRng;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::env;
 use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
-
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(target_os = "macos")]
 use tauri::utils::config::Color;
 use tauri::{
@@ -25,6 +29,8 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tokio_tungstenite::{connect_async, tungstenite::Message};
+use uuid::Uuid;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -57,6 +63,338 @@ struct AgentResponse {
 struct ModelInfo {
     provider: String,
     model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenClawConfig {
+    websocket_url: String,
+    token: String,
+    password: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenClawConfigResponse {
+    websocket_url: String,
+    token: String,
+    password: String,
+    config_exists: bool,
+}
+
+fn openclaw_config_file_path() -> Result<PathBuf, String> {
+    Ok(peekoo_paths::peekoo_global_config_dir()?
+        .join("plugins")
+        .join("openclaw-sessions")
+        .join("config.json"))
+}
+
+fn openclaw_config_exists(cfg: &OpenClawConfig) -> bool {
+    !cfg.websocket_url.trim().is_empty()
+        && (!cfg.token.trim().is_empty() || !cfg.password.trim().is_empty())
+}
+
+fn default_openclaw_config() -> OpenClawConfig {
+    OpenClawConfig {
+        websocket_url: "ws://127.0.0.1:18789".to_string(),
+        token: String::new(),
+        password: String::new(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct OpenClawStoredDeviceIdentity {
+    version: u8,
+    algorithm: String,
+    secret_key_base64: String,
+    created_at_ms: u64,
+}
+
+struct OpenClawDeviceIdentity {
+    device_id: String,
+    public_key_base64url: String,
+    signing_key: SigningKey,
+}
+
+fn openclaw_device_identity_path() -> Result<PathBuf, String> {
+    Ok(peekoo_paths::peekoo_global_config_dir()?
+        .join("plugins")
+        .join("openclaw-sessions")
+        .join("device-identity.json"))
+}
+
+fn base64_url_no_pad(bytes: &[u8]) -> String {
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn load_or_create_openclaw_device_identity() -> Result<OpenClawDeviceIdentity, String> {
+    let path = openclaw_device_identity_path()?;
+    let signing_key = if path.exists() {
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Read OpenClaw device identity error: {e}"))?;
+        let stored: OpenClawStoredDeviceIdentity = serde_json::from_str(&content)
+            .map_err(|e| format!("Parse OpenClaw device identity error: {e}"))?;
+        if stored.algorithm != "ed25519" {
+            return Err("Unsupported OpenClaw device identity algorithm".to_string());
+        }
+        let secret = base64::engine::general_purpose::STANDARD
+            .decode(stored.secret_key_base64.as_bytes())
+            .map_err(|e| format!("Decode OpenClaw device secret error: {e}"))?;
+        let secret_arr: [u8; 32] = secret
+            .as_slice()
+            .try_into()
+            .map_err(|_| "Invalid OpenClaw device secret length".to_string())?;
+        SigningKey::from_bytes(&secret_arr)
+    } else {
+        let signing_key = SigningKey::generate(&mut OsRng);
+        let stored = OpenClawStoredDeviceIdentity {
+            version: 2,
+            algorithm: "ed25519".to_string(),
+            secret_key_base64: base64::engine::general_purpose::STANDARD
+                .encode(signing_key.to_bytes()),
+            created_at_ms: now_millis(),
+        };
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Create OpenClaw device identity directory error: {e}"))?;
+        }
+        let json = serde_json::to_string_pretty(&stored)
+            .map_err(|e| format!("Serialize OpenClaw device identity error: {e}"))?;
+        std::fs::write(&path, json)
+            .map_err(|e| format!("Write OpenClaw device identity error: {e}"))?;
+        signing_key
+    };
+
+    let pubkey = signing_key.verifying_key().to_bytes();
+    let device_id = hex::encode(Sha256::digest(pubkey));
+    Ok(OpenClawDeviceIdentity {
+        device_id,
+        public_key_base64url: base64_url_no_pad(&pubkey),
+        signing_key,
+    })
+}
+
+fn signature_secret(cfg: &OpenClawConfig) -> String {
+    if !cfg.token.trim().is_empty() {
+        cfg.token.clone()
+    } else {
+        cfg.password.clone()
+    }
+}
+
+fn signed_payload(
+    identity: &OpenClawDeviceIdentity,
+    cfg: &OpenClawConfig,
+    signed_at: u64,
+    nonce: Option<&str>,
+) -> String {
+    let mut fields = vec![
+        if nonce.is_some() { "v2" } else { "v1" }.to_string(),
+        identity.device_id.clone(),
+        "gateway-client".to_string(),
+        "ui".to_string(),
+        "operator".to_string(),
+        "operator.admin".to_string(),
+        signed_at.to_string(),
+        signature_secret(cfg),
+    ];
+    if let Some(nonce) = nonce {
+        fields.push(nonce.to_string());
+    }
+    fields.join("|")
+}
+
+async fn openclaw_wait_for_connect_challenge<
+    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+>(
+    ws: &mut S,
+    timeout: Duration,
+) -> Result<Option<String>, String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline
+            .checked_duration_since(tokio::time::Instant::now())
+            .unwrap_or_else(|| Duration::from_millis(0));
+        if remaining.is_zero() {
+            return Ok(None);
+        }
+        let next = tokio::time::timeout(remaining, ws.next())
+            .await
+            .map_err(|_| "Timed out waiting for connect.challenge".to_string())?;
+        let Some(msg) = next else {
+            return Err("Gateway closed while waiting for connect.challenge".to_string());
+        };
+        let msg = msg.map_err(|e| format!("Gateway message error: {e}"))?;
+        let text = match msg {
+            Message::Text(t) => t.to_string(),
+            _ => continue,
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if parsed.get("type").and_then(|v| v.as_str()) == Some("event")
+            && parsed.get("event").and_then(|v| v.as_str()) == Some("connect.challenge")
+            && let Some(nonce) = parsed
+                .get("payload")
+                .and_then(|v| v.get("nonce"))
+                .and_then(|v| v.as_str())
+        {
+            return Ok(Some(nonce.trim().to_string()));
+        }
+    }
+}
+
+async fn openclaw_wait_for_response<
+    S: StreamExt<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Unpin,
+>(
+    ws: &mut S,
+    expected_id: &str,
+    timeout: Duration,
+) -> Result<serde_json::Value, String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        let remaining = deadline
+            .checked_duration_since(tokio::time::Instant::now())
+            .unwrap_or_else(|| Duration::from_millis(0));
+        if remaining.is_zero() {
+            return Err(format!(
+                "Timed out waiting for gateway response: {expected_id}"
+            ));
+        }
+        let next = tokio::time::timeout(remaining, ws.next())
+            .await
+            .map_err(|_| format!("Timed out waiting for gateway response: {expected_id}"))?;
+        let Some(msg) = next else {
+            return Err("Gateway closed while waiting for response".to_string());
+        };
+        let msg = msg.map_err(|e| format!("Gateway message error: {e}"))?;
+        let text = match msg {
+            Message::Text(t) => t.to_string(),
+            _ => continue,
+        };
+        let parsed: serde_json::Value = match serde_json::from_str(&text) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if parsed.get("type").and_then(|v| v.as_str()) != Some("res") {
+            continue;
+        }
+        if parsed.get("id").and_then(|v| v.as_str()) != Some(expected_id) {
+            continue;
+        }
+        if parsed.get("ok").and_then(|v| v.as_bool()).unwrap_or(false) {
+            return Ok(parsed
+                .get("payload")
+                .cloned()
+                .unwrap_or_else(|| serde_json::json!({})));
+        }
+        let err = parsed
+            .get("error")
+            .and_then(|v| v.get("message"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("gateway error");
+        return Err(err.to_string());
+    }
+}
+
+async fn openclaw_gateway_rpc(
+    cfg: &OpenClawConfig,
+    method: &str,
+    params: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let (mut ws, _) = connect_async(cfg.websocket_url.trim())
+        .await
+        .map_err(|e| format!("WebSocket connect error: {e}"))?;
+
+    let nonce = openclaw_wait_for_connect_challenge(&mut ws, Duration::from_secs(5)).await?;
+    let identity = load_or_create_openclaw_device_identity()?;
+    let signed_at = now_millis();
+    let payload = signed_payload(&identity, cfg, signed_at, nonce.as_deref());
+    let signature = base64_url_no_pad(&identity.signing_key.sign(payload.as_bytes()).to_bytes());
+
+    let connect_id = Uuid::new_v4().to_string();
+    let mut auth = serde_json::Map::new();
+    if !cfg.token.trim().is_empty() {
+        auth.insert(
+            "token".to_string(),
+            serde_json::Value::String(cfg.token.clone()),
+        );
+    }
+    if !cfg.password.trim().is_empty() {
+        auth.insert(
+            "password".to_string(),
+            serde_json::Value::String(cfg.password.clone()),
+        );
+    }
+
+    let connect_req = serde_json::json!({
+        "type": "req",
+        "id": connect_id,
+        "method": "connect",
+        "params": {
+            "minProtocol": 3,
+            "maxProtocol": 3,
+            "client": {
+                "id": "gateway-client",
+                "displayName": "OpenClaw Session Manager",
+                "version": "1.0.0",
+                "platform": std::env::consts::OS,
+                "mode": "ui",
+                "instanceId": Uuid::new_v4().to_string(),
+            },
+            "auth": auth,
+            "role": "operator",
+            "scopes": ["operator.admin"],
+            "device": {
+                "id": identity.device_id,
+                "publicKey": identity.public_key_base64url,
+                "signature": signature,
+                "signedAt": signed_at,
+                "nonce": nonce,
+            }
+        }
+    });
+
+    ws.send(Message::Text(connect_req.to_string().into()))
+        .await
+        .map_err(|e| format!("Send connect request error: {e}"))?;
+    openclaw_wait_for_response(&mut ws, &connect_id, Duration::from_secs(8)).await?;
+
+    let request_id = Uuid::new_v4().to_string();
+    let request = serde_json::json!({
+        "type": "req",
+        "id": request_id,
+        "method": method,
+        "params": params
+    });
+    ws.send(Message::Text(request.to_string().into()))
+        .await
+        .map_err(|e| format!("Send {method} request error: {e}"))?;
+    let payload = openclaw_wait_for_response(&mut ws, &request_id, Duration::from_secs(12)).await?;
+
+    let _ = ws.close(None).await;
+    Ok(payload)
+}
+
+async fn openclaw_gateway_sessions_list(cfg: &OpenClawConfig) -> Result<serde_json::Value, String> {
+    openclaw_gateway_rpc(
+        cfg,
+        "sessions.list",
+        serde_json::json!({
+            "limit": 100,
+            "includeLastMessage": true,
+            "includeDerivedTitles": true
+        }),
+    )
+    .await
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -427,6 +765,146 @@ async fn plugin_config_set(
 }
 
 #[tauri::command]
+async fn openclaw_config_get() -> Result<OpenClawConfigResponse, String> {
+    let path = openclaw_config_file_path()?;
+    if !path.exists() {
+        let cfg = default_openclaw_config();
+        return Ok(OpenClawConfigResponse {
+            websocket_url: cfg.websocket_url,
+            token: cfg.token,
+            password: cfg.password,
+            config_exists: false,
+        });
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Read OpenClaw config error ({}): {e}", path.display()))?;
+    let cfg: OpenClawConfig = serde_json::from_str(&content)
+        .map_err(|e| format!("Parse OpenClaw config error ({}): {e}", path.display()))?;
+
+    Ok(OpenClawConfigResponse {
+        config_exists: openclaw_config_exists(&cfg),
+        websocket_url: cfg.websocket_url,
+        token: cfg.token,
+        password: cfg.password,
+    })
+}
+
+#[tauri::command]
+async fn openclaw_config_set(
+    websocket_url: String,
+    token: Option<String>,
+    password: Option<String>,
+) -> Result<OpenClawConfigResponse, String> {
+    let token = token.unwrap_or_default();
+    let password = password.unwrap_or_default();
+    let websocket_url = websocket_url.trim().to_string();
+
+    if websocket_url.is_empty() {
+        return Err("WebSocket URL is required".to_string());
+    }
+    if token.trim().is_empty() && password.trim().is_empty() {
+        return Err("Either token or password must be provided".to_string());
+    }
+
+    let cfg = OpenClawConfig {
+        websocket_url,
+        token,
+        password,
+    };
+
+    let path = openclaw_config_file_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Create OpenClaw config directory error: {e}"))?;
+    }
+
+    let json = serde_json::to_string_pretty(&cfg)
+        .map_err(|e| format!("Serialize OpenClaw config error: {e}"))?;
+    std::fs::write(&path, json)
+        .map_err(|e| format!("Write OpenClaw config error ({}): {e}", path.display()))?;
+
+    Ok(OpenClawConfigResponse {
+        config_exists: true,
+        websocket_url: cfg.websocket_url,
+        token: cfg.token,
+        password: cfg.password,
+    })
+}
+
+#[tauri::command]
+async fn openclaw_sessions_refresh() -> Result<serde_json::Value, String> {
+    let cfg = openclaw_config_get().await?;
+    if !cfg.config_exists {
+        return Err("OpenClaw configuration is not set".to_string());
+    }
+    let cfg = OpenClawConfig {
+        websocket_url: cfg.websocket_url,
+        token: cfg.token,
+        password: cfg.password,
+    };
+    openclaw_gateway_sessions_list(&cfg).await
+}
+
+fn openclaw_resolved_config(cfg: OpenClawConfigResponse) -> Result<OpenClawConfig, String> {
+    if !cfg.config_exists {
+        return Err("OpenClaw configuration is not set".to_string());
+    }
+    Ok(OpenClawConfig {
+        websocket_url: cfg.websocket_url,
+        token: cfg.token,
+        password: cfg.password,
+    })
+}
+
+#[tauri::command]
+async fn openclaw_chat_history(
+    session_key: String,
+    limit: Option<u32>,
+) -> Result<serde_json::Value, String> {
+    let cfg = openclaw_resolved_config(openclaw_config_get().await?)?;
+    let key = session_key.trim().to_string();
+    if key.is_empty() {
+        return Err("session_key is required".to_string());
+    }
+    openclaw_gateway_rpc(
+        &cfg,
+        "chat.history",
+        serde_json::json!({
+            "sessionKey": key,
+            "limit": limit.unwrap_or(200)
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn openclaw_chat_send(
+    session_key: String,
+    message: String,
+) -> Result<serde_json::Value, String> {
+    let cfg = openclaw_resolved_config(openclaw_config_get().await?)?;
+    let key = session_key.trim().to_string();
+    if key.is_empty() {
+        return Err("session_key is required".to_string());
+    }
+    let text = message.trim().to_string();
+    if text.is_empty() {
+        return Err("message is required".to_string());
+    }
+    openclaw_gateway_rpc(
+        &cfg,
+        "chat.send",
+        serde_json::json!({
+            "sessionKey": key,
+            "message": text,
+            "idempotencyKey": Uuid::new_v4().to_string()
+        }),
+    )
+    .await
+}
+
+#[tauri::command]
 async fn dnd_get(state: State<'_, AgentState>) -> Result<bool, String> {
     Ok(state.app.is_dnd())
 }
@@ -747,6 +1225,11 @@ pub fn run() {
             plugin_config_schema,
             plugin_config_get,
             plugin_config_set,
+            openclaw_config_get,
+            openclaw_config_set,
+            openclaw_sessions_refresh,
+            openclaw_chat_history,
+            openclaw_chat_send,
             dnd_get,
             dnd_set,
             plugin_enable,
