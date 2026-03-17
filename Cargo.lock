@@ -5612,6 +5612,7 @@ dependencies = [
  "asupersync",
  "peekoo-agent",
  "peekoo-agent-auth",
+ "peekoo-app-settings",
  "peekoo-notifications",
  "peekoo-paths",
  "peekoo-persistence-sqlite",
@@ -5643,6 +5644,16 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "peekoo-app-settings"
+version = "0.1.0"
+dependencies = [
+ "peekoo-persistence-sqlite",
+ "rusqlite",
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

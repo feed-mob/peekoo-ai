@@ -6,7 +6,7 @@ use peekoo_agent_app::{
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
     PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, StorePluginDto, TaskDto,
+    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
 use std::env;
@@ -32,6 +32,7 @@ use tauri_plugin_notification::NotificationExt;
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
+const TRAY_SETTINGS_MENU_ID: &str = "settings";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 
@@ -98,6 +99,9 @@ fn toggle_main_window_visibility(app: &AppHandle) {
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
     match menu_id {
         TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
+        TRAY_SETTINGS_MENU_ID => {
+            let _ = app.emit("open-settings", ());
+        }
         TRAY_QUIT_MENU_ID => app.exit(0),
         _ => {}
     }
@@ -263,6 +267,31 @@ async fn agent_oauth_cancel(
     state: State<'_, AgentState>,
 ) -> Result<OauthCancelResponse, String> {
     state.app.oauth_cancel(req)
+}
+
+// ── Global app settings ─────────────────────────────────────────────────
+
+#[tauri::command]
+async fn app_settings_get(
+    state: State<'_, AgentState>,
+) -> Result<std::collections::HashMap<String, String>, String> {
+    state.app.get_app_settings()
+}
+
+#[tauri::command]
+async fn app_settings_set(
+    key: String,
+    value: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_app_setting(&key, &value)
+}
+
+#[tauri::command]
+async fn app_settings_list_sprites(
+    state: State<'_, AgentState>,
+) -> Result<Vec<SpriteInfo>, String> {
+    Ok(state.app.list_sprites())
 }
 
 #[tauri::command]
@@ -611,6 +640,7 @@ pub fn run() {
         .setup(|app| {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
+                .text(TRAY_SETTINGS_MENU_ID, "Settings")
                 .separator()
                 .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
                 .build()?;
@@ -733,6 +763,9 @@ pub fn run() {
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
+            app_settings_get,
+            app_settings_set,
+            app_settings_list_sprites,
             create_task,
             pomodoro_start,
             pomodoro_pause,

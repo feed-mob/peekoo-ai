@@ -6,6 +6,7 @@ members = [
   "crates/peekoo-agent",
   "crates/peekoo-agent-auth",
   "crates/peekoo-agent-app",
+  "crates/peekoo-app-settings",
   "crates/peekoo-paths",
   "crates/peekoo-scheduler",
   "crates/peekoo-notifications",
