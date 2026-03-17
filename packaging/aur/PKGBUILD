@@ -7,22 +7,25 @@ url="https://github.com/feed-mob/peekoo-ai"
 license=('MIT')
 depends=('gtk3' 'webkit2gtk-4.1' 'libayatana-appindicator' 'libnotify')
 optdepends=('xdg-utils: open external links')
+options=('!strip')
 source=(
   "https://github.com/feed-mob/peekoo-ai/releases/download/v${pkgver}/Peekoo_${pkgver}_amd64.AppImage"
   'peekoo.desktop'
-  'peekoo.sh'
   'peekoo.png'
 )
 sha256sums=(
   'REPLACE_WITH_APPIMAGE_SHA256'
   'SKIP'
   'SKIP'
-  'SKIP'
 )
 
+prepare() {
+  chmod +x "${srcdir}/Peekoo_${pkgver}_amd64.AppImage"
+  "${srcdir}/Peekoo_${pkgver}_amd64.AppImage" --appimage-extract
+}
+
 package() {
-  install -Dm755 "${srcdir}/Peekoo_${pkgver}_amd64.AppImage" "${pkgdir}/opt/peekoo/Peekoo.AppImage"
-  install -Dm755 "${srcdir}/peekoo.sh" "${pkgdir}/usr/bin/peekoo"
+  install -Dm755 "${srcdir}/squashfs-root/usr/bin/peekoo-desktop-tauri" "${pkgdir}/usr/bin/peekoo"
   install -Dm644 "${srcdir}/peekoo.desktop" "${pkgdir}/usr/share/applications/peekoo.desktop"
   install -Dm644 "${srcdir}/peekoo.png" "${pkgdir}/usr/share/pixmaps/peekoo.png"
 }
