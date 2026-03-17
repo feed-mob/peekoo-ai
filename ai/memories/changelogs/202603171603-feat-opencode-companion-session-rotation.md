@@ -6,6 +6,8 @@
 - Updated the Rust plugin to deserialize multi-session bridge state and publish one badge item per active session so the existing UI rotation can cycle through them
 - Hardened session completion handling so unknown `session.updated` events do not synthesize fake active work, terminal events without a `sessionID` can clear active sessions, and repeated idle events do not enqueue duplicate completions
 - Replaced the single completion marker with a `completed_sessions` queue so Peekoo can emit one done notification per finished OpenCode session even when multiple sessions finish between Rust poll cycles
+- Preserved the done reaction when one session finishes while other sessions remain active by suppressing the same-poll working mood refresh
+- Fixed expanded peek badge rendering so clicking the badge shows every active OpenCode session even when multiple sessions share the same title
 - Added regression tests for repeated-turn title retention and concurrent-session badge output, rebuilt the bundled companion JS, and refreshed the release WASM artifact
 - Bumped the plugin package versions to `0.1.2`
 
@@ -14,6 +16,8 @@
 - Concurrent OpenCode sessions previously overwrote each other because the bridge only tracked one global session state at a time
 - Recording all active sessions in the bridge lets Peekoo surface multiple active coding tasks without changing the desktop badge rotation behavior
 - The first multi-session implementation could miss or duplicate done notifications because it stored only one completion marker and treated repeated terminal events as distinct completions
+- The sprite reaction pipeline could overwrite a fresh done reaction with a working reaction in the same poll when another session was still active
+- Duplicate badge labels caused the expanded badge list to collapse visually to one row because React keys were not unique
 
 **Files affected:**
 - `ai/memories/changelogs/202603171603-feat-opencode-companion-session-rotation.md`
@@ -22,6 +26,7 @@
 - `plugins/peekoo-opencode-companion/companions/peekoo-opencode-companion.js`
 - `plugins/peekoo-opencode-companion/src/lib.rs`
 - `plugins/peekoo-opencode-companion/target/wasm32-wasip1/release/peekoo_opencode_companion.wasm`
+- `apps/desktop-ui/src/components/sprite/SpritePeekBadge.tsx`
 - `plugins/peekoo-opencode-companion/Cargo.toml`
 - `plugins/peekoo-opencode-companion/peekoo-plugin.toml`
 - `plugins/peekoo-opencode-companion/opencode-plugin/package.json`
