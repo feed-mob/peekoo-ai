@@ -30,11 +30,29 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
+      - name: Inject platform-specific Tauri config
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":true}}' >> "$GITHUB_ENV"
+          else
+            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":false}}' >> "$GITHUB_ENV"
+          fi
+
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cargo clippy --workspace --all-targets --all-features -- -D warnings
+          else
+            cargo clippy --workspace --all-targets --all-features --exclude peekoo-desktop-tauri -- -D warnings
+          fi
 
       - name: Test workspace
-        run: cargo test --workspace
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cargo test --workspace
+          else
+            cargo test --workspace --exclude peekoo-desktop-tauri
+          fi
 
       - name: Test release tooling
         run: python -m unittest tests.test_release
