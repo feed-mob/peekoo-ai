@@ -10,6 +10,7 @@ struct BridgeState {
     session_title: Option<String>,
     started_at: Option<u64>,
     sessions: Option<Vec<BridgeSession>>,
+    completed_session: Option<CompletedSession>,
     #[allow(dead_code)]
     updated_at: Option<u64>,
 }
@@ -26,11 +27,19 @@ struct BridgeSession {
     updated_at: Option<u64>,
 }
 
+#[derive(Clone, Deserialize, Default)]
+struct CompletedSession {
+    session_id: Option<String>,
+    session_title: Option<String>,
+    updated_at: Option<u64>,
+}
+
 // ── Constants ──────────────────────────────────────────────────
 
 const SCHEDULE_KEY: &str = "poll-opencode";
 const POLL_INTERVAL_SECS: u64 = 2;
 const STATE_LAST_STATUS: &str = "last_status";
+const STATE_LAST_COMPLETED_SESSION: &str = "last_completed_session";
 const MAX_DISPLAY_LEN: usize = 30;
 
 fn truncate_title(s: &str) -> String {
@@ -56,6 +65,26 @@ fn session_badge_value(status: Option<&str>) -> String {
         Some("thinking") => "Thinking".to_string(),
         _ => "Working".to_string(),
     }
+}
+
+fn completed_session_marker(session: Option<&CompletedSession>) -> Option<String> {
+    session.and_then(|session| {
+        let session_id = session.session_id.as_deref()?.trim();
+        let updated_at = session.updated_at?;
+        if session_id.is_empty() {
+            return None;
+        }
+
+        Some(format!("{session_id}:{updated_at}"))
+    })
+}
+
+fn completed_session_notification_title(session: Option<&CompletedSession>) -> Option<String> {
+    session
+        .and_then(|session| session.session_title.as_deref())
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(truncate_title)
 }
 
 fn active_sessions(state: &BridgeState) -> Vec<BridgeSession> {
@@ -150,6 +179,18 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
     let current_status = state.status.as_deref().unwrap_or("idle");
     let previous_status: String =
         peekoo::state::get(STATE_LAST_STATUS)?.unwrap_or_else(|| "idle".to_string());
+    let completion_marker = completed_session_marker(state.completed_session.as_ref());
+    let previous_completion_marker: Option<String> =
+        peekoo::state::get(STATE_LAST_COMPLETED_SESSION)?;
+
+    if completion_marker != previous_completion_marker {
+        if let Some(marker) = completion_marker.as_ref() {
+            handle_completed_session(&state)?;
+            peekoo::state::set(STATE_LAST_COMPLETED_SESSION, marker)?;
+        } else {
+            peekoo::state::delete(STATE_LAST_COMPLETED_SESSION)?;
+        }
+    }
 
     // Only act on status changes
     if current_status != previous_status {
@@ -165,6 +206,18 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
     Ok(())
 }
 
+fn handle_completed_session(state: &BridgeState) -> Result<(), extism_pdk::Error> {
+    peekoo::mood::set("opencode-done", false)?;
+
+    let body = match completed_session_notification_title(state.completed_session.as_ref()) {
+        Some(title) => format!("🎉 {} is done!", title),
+        None => "🎉 OpenCode has finished working".to_string(),
+    };
+    let _ = peekoo::notify::send("OpenCode", &body);
+
+    Ok(())
+}
+
 fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), extism_pdk::Error> {
     match new_status {
         "working" => {
@@ -176,15 +229,9 @@ fn handle_status_change(new_status: &str, state: &BridgeState) -> Result<(), ext
             update_badge(state)?;
         }
         "happy" | "done" => {
-            peekoo::mood::set("opencode-done", false)?;
-
-            let body = match state.session_title.as_deref() {
-                Some(t) if !t.is_empty() => {
-                    format!("🎉 {} is done!", truncate_title(t))
-                }
-                _ => "🎉 OpenCode has finished working".to_string(),
-            };
-            let _ = peekoo::notify::send("OpenCode", &body);
+            if state.completed_session.is_none() {
+                handle_completed_session(state)?;
+            }
 
             peekoo::badge::set(&[])?;
         }
@@ -289,6 +336,7 @@ mod tests {
             status: Some("working".to_string()),
             session_title: Some("Second session".to_string()),
             started_at: Some(10),
+            completed_session: None,
             updated_at: Some(12),
             sessions: Some(vec![
                 BridgeSession {
@@ -314,6 +362,56 @@ mod tests {
         assert_eq!(badges[0].value, "Working");
         assert_eq!(badges[1].label, "First session");
         assert_eq!(badges[1].value, "Thinking");
+    }
+
+    #[test]
+    fn completed_session_marker_can_coexist_with_active_sessions() {
+        let state = BridgeState {
+            status: Some("working".to_string()),
+            session_title: Some("Keep B running".to_string()),
+            started_at: Some(20),
+            completed_session: None,
+            sessions: Some(vec![BridgeSession {
+                session_id: Some("session-b".to_string()),
+                status: Some("working".to_string()),
+                session_title: Some("Keep B running".to_string()),
+                started_at: Some(20),
+                updated_at: Some(21),
+            }]),
+            updated_at: Some(21),
+        };
+
+        let badges = badge_items_from_state(&state);
+        assert_eq!(badges.len(), 1);
+        assert_eq!(badges[0].label, "OpenCode");
+        assert_eq!(badges[0].value, "Keep B running");
+    }
+
+    #[test]
+    fn completed_session_marker_uses_session_id_and_timestamp() {
+        let completed = CompletedSession {
+            session_id: Some("session-a".to_string()),
+            session_title: Some("Finish A".to_string()),
+            updated_at: Some(42),
+        };
+
+        assert_eq!(
+            completed_session_marker(Some(&completed)).as_deref(),
+            Some("session-a:42")
+        );
+    }
+
+    #[test]
+    fn completed_session_notification_title_uses_truncated_title() {
+        let completed = CompletedSession {
+            session_id: Some("session-a".to_string()),
+            session_title: Some("Finish a very long task title that needs truncating".to_string()),
+            updated_at: Some(42),
+        };
+
+        let title = completed_session_notification_title(Some(&completed)).unwrap();
+        assert!(title.ends_with("..."));
+        assert_eq!(title.chars().count(), MAX_DISPLAY_LEN);
     }
 }
 

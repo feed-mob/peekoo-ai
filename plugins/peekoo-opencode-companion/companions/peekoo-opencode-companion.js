@@ -41,6 +41,7 @@ function sortByUpdatedAt(sessions) {
 function createBridgeController(dependencies) {
   const sessions = new Map;
   const rememberedTitles = new Map;
+  let lastCompletedSession = null;
   let lastBridgeSnapshot = "";
   const resolveSessionId = (event) => {
     const fromProperties = getSessionId(event.properties);
@@ -52,7 +53,10 @@ function createBridgeController(dependencies) {
     }
     return FALLBACK_SESSION_ID;
   };
-  const ensureSession = (sessionId) => {
+  const getSession = (sessionId) => {
+    return sessions.get(sessionId);
+  };
+  const ensureSessionForActivity = (sessionId) => {
     const existing = sessions.get(sessionId);
     if (existing) {
       return existing;
@@ -78,7 +82,12 @@ function createBridgeController(dependencies) {
       session_title: primaryActive?.title || latestCompleted?.title || "",
       started_at: primaryActive?.startedAt || 0,
       updated_at: dependencies.now(),
-      sessions: activeSessions.map(toBridgeSession)
+      sessions: activeSessions.map(toBridgeSession),
+      completed_session: lastCompletedSession ? {
+        session_id: lastCompletedSession.sessionId,
+        session_title: lastCompletedSession.title,
+        updated_at: lastCompletedSession.updatedAt
+      } : undefined
     };
     const serialized = JSON.stringify(snapshot);
     if (!force && serialized === lastBridgeSnapshot) {
@@ -89,7 +98,7 @@ function createBridgeController(dependencies) {
   };
   const markWorking = (sessionId) => {
     dependencies.cancelIdle(sessionId);
-    const session = ensureSession(sessionId);
+    const session = ensureSessionForActivity(sessionId);
     const now = dependencies.now();
     session.status = "working";
     if (session.startedAt === 0) {
@@ -99,10 +108,18 @@ function createBridgeController(dependencies) {
     emitSnapshot();
   };
   const markHappy = (sessionId) => {
-    const session = ensureSession(sessionId);
+    const session = getSession(sessionId);
+    if (!session) {
+      return;
+    }
     session.status = "happy";
     session.startedAt = 0;
     session.updatedAt = dependencies.now();
+    lastCompletedSession = {
+      sessionId,
+      title: session.title,
+      updatedAt: session.updatedAt
+    };
     emitSnapshot();
     dependencies.scheduleIdle(sessionId, () => {
       sessions.delete(sessionId);
@@ -132,7 +149,7 @@ function createBridgeController(dependencies) {
         }
         case "session.created": {
           const title = getSessionTitle(event.properties) || "New session";
-          const session = ensureSession(sessionId);
+          const session = ensureSessionForActivity(sessionId);
           session.title = title;
           rememberedTitles.set(sessionId, title);
           session.status = "working";
@@ -145,7 +162,11 @@ function createBridgeController(dependencies) {
         case "session.updated": {
           const title = getSessionTitle(event.properties);
           if (title) {
-            const session = ensureSession(sessionId);
+            const session = getSession(sessionId);
+            if (!session) {
+              rememberedTitles.set(sessionId, title);
+              break;
+            }
             session.title = title;
             rememberedTitles.set(sessionId, title);
             session.updatedAt = dependencies.now();

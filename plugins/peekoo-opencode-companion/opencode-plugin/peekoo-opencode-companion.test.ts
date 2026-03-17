@@ -86,4 +86,56 @@ describe("createBridgeController", () => {
     expect(latest?.status).toBe("working");
     expect(latest?.session_title).toBe("Second session");
   });
+
+  test("ignores standalone session updates for unknown sessions", () => {
+    const writes: BridgeWrite[] = [];
+
+    const controller = createBridgeController({
+      writeBridge: (state) => writes.push(state),
+      scheduleIdle: () => {},
+      cancelIdle: () => {},
+      now: () => 300,
+    });
+
+    controller.handleEvent({
+      type: "session.updated",
+      properties: { sessionID: "session-ghost", title: "Renamed only" },
+    });
+
+    expect(writes).toEqual([]);
+  });
+
+  test("keeps a completion marker when another session is still active", () => {
+    const writes: BridgeWrite[] = [];
+
+    const controller = createBridgeController({
+      writeBridge: (state) => writes.push(state),
+      scheduleIdle: () => {},
+      cancelIdle: () => {},
+      now: (() => {
+        let current = 400;
+        return () => current++;
+      })(),
+    });
+
+    controller.handleEvent({
+      type: "session.created",
+      properties: { sessionID: "session-a", title: "Finish A" },
+    });
+    controller.handleEvent({
+      type: "session.created",
+      properties: { sessionID: "session-b", title: "Keep B running" },
+    });
+    controller.handleEvent({
+      type: "session.idle",
+      properties: { sessionID: "session-a" },
+    });
+
+    const latest = writes.at(-1);
+
+    expect(latest?.status).toBe("working");
+    expect(latest?.sessions.map((session) => session.session_id)).toEqual(["session-b"]);
+    expect(latest?.completed_session?.session_id).toBe("session-a");
+    expect(latest?.completed_session?.session_title).toBe("Finish A");
+  });
 });
