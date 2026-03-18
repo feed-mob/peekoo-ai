@@ -15,7 +15,7 @@ use peekoo_scheduler::{ScheduleInfo, Scheduler};
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{connect, Message, WebSocket};
+use tungstenite::{Message, WebSocket, connect};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -614,7 +614,7 @@ fn host_websocket_connect(
         scheme => {
             return Err(Error::msg(format!(
                 "Unsupported websocket scheme: {scheme}"
-            )))
+            )));
         }
     }
 
