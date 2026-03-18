@@ -85,6 +85,9 @@ impl AppSettingsService {
 
     /// Set a single setting by key.
     pub fn set(&self, key: &str, value: &str) -> Result<(), String> {
+        if key == SETTING_ACTIVE_SPRITE_ID {
+            return self.set_active_sprite_id(value);
+        }
         self.store.set(key, value)
     }
 }
@@ -117,6 +120,17 @@ mod tests {
         let result = svc.set_active_sprite_id("unknown-sprite");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown sprite"));
+    }
+
+    #[test]
+    fn generic_set_validates_active_sprite_id() {
+        let svc = test_service();
+
+        let result = svc.set(SETTING_ACTIVE_SPRITE_ID, "unknown-sprite");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unknown sprite"));
+        assert_eq!(svc.get_active_sprite_id().unwrap(), "dark-cat");
     }
 
     #[test]
