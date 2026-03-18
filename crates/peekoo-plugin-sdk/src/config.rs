@@ -6,8 +6,12 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! let interval: u64 = peekoo::config::get("water_interval_min")?.unwrap_or(45);
-//! let all = peekoo::config::get_all()?;
+//! fn example() -> Result<(), Error> {
+//!     let interval: u64 = peekoo::config::get("water_interval_min")?.unwrap_or(45);
+//!     let all = peekoo::config::get_all()?;
+//!     let _ = (interval, all);
+//!     Ok(())
+//! }
 //! ```
 
 use extism_pdk::{Error, Json};

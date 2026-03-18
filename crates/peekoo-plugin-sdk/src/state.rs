@@ -6,9 +6,12 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! let count: u64 = peekoo::state::get("call_count")?.unwrap_or(0);
-//! peekoo::state::set("call_count", &(count + 1))?;
-//! peekoo::state::delete("old_key")?;
+//! fn example() -> Result<(), Error> {
+//!     let count: u64 = peekoo::state::get("call_count")?.unwrap_or(0);
+//!     peekoo::state::set("call_count", &(count + 1))?;
+//!     peekoo::state::delete("old_key")?;
+//!     Ok(())
+//! }
 //! ```
 
 use extism_pdk::{Error, Json};

@@ -7,11 +7,11 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! // Transient mood — reverts to idle after timeout
-//! peekoo::mood::set("opencode-done", false)?;
-//!
-//! // Sticky mood — persists until explicitly changed
-//! peekoo::mood::set("opencode-working", true)?;
+//! fn example() -> Result<(), Error> {
+//!     peekoo::mood::set("opencode-done", false)?;
+//!     peekoo::mood::set("opencode-working", true)?;
+//!     Ok(())
+//! }
 //! ```
 //!
 //! Requires the `pet:mood` permission.

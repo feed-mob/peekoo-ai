@@ -124,64 +124,76 @@ pub(crate) struct SetMoodRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketConnectRequest {
     pub url: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketConnectResponse {
     pub socket_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketSendRequest {
     pub socket_id: String,
     pub text: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketRecvRequest {
     pub socket_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketRecvResponse {
     pub text: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct WebSocketCloseRequest {
     pub socket_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SystemTimeMillisResponse {
     pub time_millis: u64,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct SystemUuidV4Response {
     pub uuid: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CryptoEd25519GetOrCreateRequest {
     pub alias: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CryptoEd25519GetOrCreateResponse {
     pub public_key_base64_url: String,
     pub public_key_sha256_hex: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CryptoEd25519SignRequest {
     pub alias: String,
     pub payload: String,
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CryptoEd25519SignResponse {
     pub signature_base64_url: String,
 }
@@ -221,4 +233,59 @@ extern "ExtismHost" {
         input: Json<CryptoEd25519SignRequest>,
     ) -> Json<CryptoEd25519SignResponse>;
     pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CryptoEd25519GetOrCreateResponse, CryptoEd25519SignResponse, SystemTimeMillisResponse,
+        WebSocketConnectRequest, WebSocketConnectResponse,
+    };
+
+    #[test]
+    fn websocket_connect_request_serializes_camel_case() {
+        let json = serde_json::to_value(WebSocketConnectRequest {
+            url: "ws://127.0.0.1:18789".to_string(),
+        })
+        .expect("serialize request");
+
+        assert_eq!(
+            json.get("url").and_then(|v| v.as_str()),
+            Some("ws://127.0.0.1:18789")
+        );
+    }
+
+    #[test]
+    fn websocket_connect_response_deserializes_camel_case() {
+        let response: WebSocketConnectResponse =
+            serde_json::from_str(r#"{"socketId":"ws-1"}"#).expect("deserialize response");
+
+        assert_eq!(response.socket_id, "ws-1");
+    }
+
+    #[test]
+    fn system_response_deserializes_camel_case() {
+        let response: SystemTimeMillisResponse =
+            serde_json::from_str(r#"{"timeMillis":42}"#).expect("deserialize response");
+
+        assert_eq!(response.time_millis, 42);
+    }
+
+    #[test]
+    fn crypto_response_deserializes_camel_case() {
+        let response: CryptoEd25519GetOrCreateResponse =
+            serde_json::from_str(r#"{"publicKeyBase64Url":"abc","publicKeySha256Hex":"def"}"#)
+                .expect("deserialize response");
+
+        assert_eq!(response.public_key_base64_url, "abc");
+        assert_eq!(response.public_key_sha256_hex, "def");
+    }
+
+    #[test]
+    fn signature_response_deserializes_camel_case() {
+        let response: CryptoEd25519SignResponse =
+            serde_json::from_str(r#"{"signatureBase64Url":"sig"}"#).expect("deserialize response");
+
+        assert_eq!(response.signature_base64_url, "sig");
+    }
 }
