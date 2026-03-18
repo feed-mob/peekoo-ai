@@ -9,7 +9,7 @@ function formatReleaseDate(value: string | null): string | null {
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return value;
+    return null;
   }
 
   return new Intl.DateTimeFormat(undefined, {

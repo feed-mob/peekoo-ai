@@ -135,6 +135,7 @@ export default function SpriteView() {
     };
   }, [openPanel]);
 
+  // Open about panel when the tray menu "About Peekoo" item is clicked
   useEffect(() => {
     const unlisten = listen("open-about", () => {
       void openAboutPanelFromTray(openPanel);
