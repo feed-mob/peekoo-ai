@@ -7,7 +7,6 @@ import { Host } from "@extism/as-pdk";
 import * as state from "@peekoo/plugin-sdk/assembly/state";
 import * as log from "@peekoo/plugin-sdk/assembly/log";
 import * as notify from "@peekoo/plugin-sdk/assembly/notify";
-import * as config from "@peekoo/plugin-sdk/assembly/config";
 import { quote, extractStringField, extractIntField } from "@peekoo/plugin-sdk/assembly/json";
 
 // Configuration keys

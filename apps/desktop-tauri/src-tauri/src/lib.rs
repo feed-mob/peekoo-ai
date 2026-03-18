@@ -181,6 +181,12 @@ fn load_or_create_openclaw_device_identity() -> Result<OpenClawDeviceIdentity, S
     })
 }
 
+async fn load_or_create_openclaw_device_identity_async() -> Result<OpenClawDeviceIdentity, String> {
+    tauri::async_runtime::spawn_blocking(load_or_create_openclaw_device_identity)
+        .await
+        .map_err(|e| format!("Create OpenClaw device identity task failed: {e}"))?
+}
+
 fn signature_secret(cfg: &OpenClawConfig) -> String {
     if !cfg.token.trim().is_empty() {
         cfg.token.clone()
@@ -315,7 +321,7 @@ async fn openclaw_gateway_rpc(
         .map_err(|e| format!("WebSocket connect error: {e}"))?;
 
     let nonce = openclaw_wait_for_connect_challenge(&mut ws, Duration::from_secs(5)).await?;
-    let identity = load_or_create_openclaw_device_identity()?;
+    let identity = load_or_create_openclaw_device_identity_async().await?;
     let signed_at = now_millis();
     let payload = signed_payload(&identity, cfg, signed_at, nonce.as_deref());
     let signature = base64_url_no_pad(&identity.signing_key.sign(payload.as_bytes()).to_bytes());
@@ -767,27 +773,31 @@ async fn plugin_config_set(
 #[tauri::command]
 async fn openclaw_config_get() -> Result<OpenClawConfigResponse, String> {
     let path = openclaw_config_file_path()?;
-    if !path.exists() {
-        let cfg = default_openclaw_config();
-        return Ok(OpenClawConfigResponse {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !path.exists() {
+            let cfg = default_openclaw_config();
+            return Ok(OpenClawConfigResponse {
+                websocket_url: cfg.websocket_url,
+                token: cfg.token,
+                password: cfg.password,
+                config_exists: false,
+            });
+        }
+
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Read OpenClaw config error ({}): {e}", path.display()))?;
+        let cfg: OpenClawConfig = serde_json::from_str(&content)
+            .map_err(|e| format!("Parse OpenClaw config error ({}): {e}", path.display()))?;
+
+        Ok(OpenClawConfigResponse {
+            config_exists: openclaw_config_exists(&cfg),
             websocket_url: cfg.websocket_url,
             token: cfg.token,
             password: cfg.password,
-            config_exists: false,
-        });
-    }
-
-    let content = std::fs::read_to_string(&path)
-        .map_err(|e| format!("Read OpenClaw config error ({}): {e}", path.display()))?;
-    let cfg: OpenClawConfig = serde_json::from_str(&content)
-        .map_err(|e| format!("Parse OpenClaw config error ({}): {e}", path.display()))?;
-
-    Ok(OpenClawConfigResponse {
-        config_exists: openclaw_config_exists(&cfg),
-        websocket_url: cfg.websocket_url,
-        token: cfg.token,
-        password: cfg.password,
+        })
     })
+    .await
+    .map_err(|e| format!("OpenClaw config read task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -813,22 +823,29 @@ async fn openclaw_config_set(
         password,
     };
 
-    let path = openclaw_config_file_path()?;
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Create OpenClaw config directory error: {e}"))?;
-    }
+    let response_cfg = cfg.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = openclaw_config_file_path()?;
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Create OpenClaw config directory error: {e}"))?;
+        }
 
-    let json = serde_json::to_string_pretty(&cfg)
-        .map_err(|e| format!("Serialize OpenClaw config error: {e}"))?;
-    std::fs::write(&path, json)
-        .map_err(|e| format!("Write OpenClaw config error ({}): {e}", path.display()))?;
+        let json = serde_json::to_string_pretty(&cfg)
+            .map_err(|e| format!("Serialize OpenClaw config error: {e}"))?;
+        std::fs::write(&path, json)
+            .map_err(|e| format!("Write OpenClaw config error ({}): {e}", path.display()))?;
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|e| format!("OpenClaw config write task failed: {e}"))??;
 
     Ok(OpenClawConfigResponse {
         config_exists: true,
-        websocket_url: cfg.websocket_url,
-        token: cfg.token,
-        password: cfg.password,
+        websocket_url: response_cfg.websocket_url,
+        token: response_cfg.token,
+        password: response_cfg.password,
     })
 }
 

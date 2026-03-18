@@ -129,7 +129,11 @@ export function extractBoolField(json: string, field: string): bool {
 }
 
 export function extractIntField(json: string, field: string): i32 {
-  const raw = extractRawField(json, field);
+  let raw = extractRawField(json, field);
+  if (raw.length == 0) return 0;
+  if (raw.length >= 2 && raw.charAt(0) == '"' && raw.charAt(raw.length - 1) == '"') {
+    raw = raw.substring(1, raw.length - 1);
+  }
   if (raw.length == 0) return 0;
 
   let result: i32 = 0;

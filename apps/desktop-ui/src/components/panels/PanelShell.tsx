@@ -12,10 +12,8 @@ interface PanelShellProps {
 
 export function PanelShell({ title, children, showCloseButton = true }: PanelShellProps) {
   const handleClose = async () => {
-    console.log("PanelShell close clicked");
     await emitPetReaction("panel-closed");
     const win = getCurrentWindow();
-    console.log("PanelShell window:", win.label);
     await win.close();
   };
 

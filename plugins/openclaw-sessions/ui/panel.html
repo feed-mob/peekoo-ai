@@ -281,14 +281,19 @@
       font-weight: 500;
     }
 
-    .cell-kind.direct {
+    .cell-kind.cell-kind-direct {
       background: rgba(74, 222, 128, 0.2);
       color: var(--success);
     }
 
-    .cell-kind.proxy {
+    .cell-kind.cell-kind-proxy {
       background: rgba(251, 191, 36, 0.2);
       color: var(--warning);
+    }
+
+    .cell-kind.cell-kind-unknown {
+      background: rgba(148, 163, 184, 0.18);
+      color: var(--text-secondary);
     }
 
     .cell-key {
@@ -1387,7 +1392,8 @@
         session?.lastActivityAtMs ??
         session?.createdAt
       );
-      const age = String(session?.age ?? formatRelativeTime(updatedAtMs) ?? "-");
+      const rel = formatRelativeTime(updatedAtMs);
+      const age = String(session?.age ?? (rel || "-"));
       const model = String(
         session?.model ??
         session?.modelName ??
@@ -1459,7 +1465,7 @@
     }
 
     function getTotalPages() {
-      return Math.ceil(getFilteredSessions().length / state.pageSize);
+      return Math.max(1, Math.ceil(getFilteredSessions().length / state.pageSize));
     }
 
     // ============================================
@@ -1471,24 +1477,34 @@
       }
     }
 
+    function getSessionKindClass(kind) {
+      const normalized = String(kind || '').toLowerCase();
+      if (normalized === 'direct' || normalized === 'proxy') {
+        return normalized;
+      }
+      return 'unknown';
+    }
+
     function renderSessions() {
       const { sessions, total, start, end } = getPaginatedSessions();
 
-      elements.sessionsTableBody.innerHTML = sessions.map(session => `
+      elements.sessionsTableBody.innerHTML = sessions.map((session) => {
+        const safePercent = Math.max(0, Math.min(toNumber(session.ctxPercent, 0), 100));
+        return `
         <tr>
           <td>
-            <span class="cell-kind ${session.kind}">${session.kind}</span>
+            <span class="cell-kind cell-kind-${getSessionKindClass(session.kind)}">${escapeHtml(String(session.kind))}</span>
           </td>
           <td>
-            <div class="cell-key" title="${session.key}">${truncate(session.key, 30)}</div>
+            <div class="cell-key" title="${escapeHtml(session.key)}">${escapeHtml(truncate(session.key, 30))}</div>
           </td>
-          <td>${session.age}</td>
-          <td>${session.model}</td>
+          <td>${escapeHtml(String(session.age))}</td>
+          <td>${escapeHtml(String(session.model))}</td>
           <td>
             <div class="cell-tokens">
-              <span class="token-text">${session.tokens} (${session.ctxPercent}%)</span>
+              <span class="token-text">${escapeHtml(String(session.tokens))} (${escapeHtml(String(safePercent))}%)</span>
               <div class="token-bar">
-                <div class="token-fill" style="width: ${Math.min(session.ctxPercent, 100)}%;"></div>
+                <div class="token-fill" style="width: ${safePercent}%;"></div>
               </div>
             </div>
           </td>
@@ -1496,7 +1512,8 @@
             <button class="session-action-btn btn-session-chat" data-session-key="${escapeHtml(session.key)}">Chat</button>
           </td>
         </tr>
-      `).join('');
+      `;
+      }).join('');
 
       elements.showingStart.textContent = total > 0 ? start : 0;
       elements.showingEnd.textContent = end;

@@ -44,7 +44,6 @@ export default function PluginPanelView() {
         if (data.command === "plugin_panel_close") {
           await emitPetReaction("panel-closed");
           const win = getCurrentWindow();
-          await win.close();
           iframeRef.current?.contentWindow?.postMessage(
             {
               type: BRIDGE_RESPONSE_TYPE,
@@ -54,6 +53,7 @@ export default function PluginPanelView() {
             },
             "*",
           );
+          void win.close();
           return;
         }
 
