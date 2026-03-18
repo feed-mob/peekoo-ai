@@ -13,7 +13,6 @@ use std::env;
 use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
-
 use std::time::Duration;
 #[cfg(target_os = "macos")]
 use tauri::utils::config::Color;

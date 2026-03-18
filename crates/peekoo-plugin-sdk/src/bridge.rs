@@ -11,9 +11,12 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! if let Some(contents) = peekoo::bridge::read()? {
-//!     let data: serde_json::Value = serde_json::from_str(&contents)?;
-//!     peekoo::log::info(&format!("bridge data: {data}"));
+//! fn example() -> Result<(), Error> {
+//!     if let Some(contents) = peekoo::bridge::read()? {
+//!         let data: serde_json::Value = serde_json::from_str(&contents)?;
+//!         peekoo::log::info(&format!("bridge data: {data}"));
+//!     }
+//!     Ok(())
 //! }
 //! ```
 

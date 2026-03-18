@@ -130,6 +130,11 @@ impl PluginRegistry {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let allowed_hosts = manifest
+            .permissions
+            .as_ref()
+            .map(|permissions| permissions.allowed_hosts.clone())
+            .unwrap_or_default();
 
         let host_fns = host_functions::build_host_functions(
             &key,
@@ -137,6 +142,7 @@ impl PluginRegistry {
             &self.permissions,
             declared_capabilities,
             allowed_paths,
+            allowed_hosts,
             &self.event_bus,
             &self.scheduler,
             &self.notifications,

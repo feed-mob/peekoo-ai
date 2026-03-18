@@ -19,11 +19,10 @@ function UnknownView({ label }: { label: string }) {
 }
 
 function viewForLabel(label: string) {
-  if (
-    label.startsWith("panel-") &&
-    !(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)
-  ) {
-    return <PluginPanelView />;
+  if (label.startsWith("panel-")) {
+    if (!(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)) {
+      return <PluginPanelView />;
+    }
   }
 
   const parsed = WindowLabelSchema.safeParse(label);

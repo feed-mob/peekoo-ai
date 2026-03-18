@@ -1,0 +1,78 @@
+[plugin]
+key = "openclaw-sessions"
+name = "OpenClaw Sessions"
+version = "1.0.0"
+author = "Peekoo Developer"
+description = "Manage OpenClaw sessions with configuration and session list view"
+min_peekoo_version = "0.1.0"
+wasm = "build/openclaw_sessions.wasm"
+
+[permissions]
+required = ["state:read", "state:write", "notifications", "net:websocket", "crypto:ed25519"]
+allowed_hosts = ["*"]
+
+[[tools.definitions]]
+name = "get_openclaw_config"
+description = "Get the current OpenClaw connection configuration"
+parameters = '{"type":"object","properties":{}}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "save_openclaw_config"
+description = "Save OpenClaw connection configuration"
+parameters = '{"type":"object","properties":{"websocketUrl":{"type":"string","description":"WebSocket URL for OpenClaw"},"token":{"type":"string","description":"Authentication token"},"password":{"type":"string","description":"Authentication password"}},"required":["websocketUrl"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "list_sessions"
+description = "List all OpenClaw sessions with pagination"
+parameters = '{"type":"object","properties":{"page":{"type":"integer","description":"Page number (1-based)","default":1},"pageSize":{"type":"integer","description":"Items per page","default":10}},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "refresh_sessions"
+description = "Refresh sessions from OpenClaw server"
+parameters = '{"type":"object","properties":{}}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "openclaw_chat_history"
+description = "Get chat history for an OpenClaw session"
+parameters = '{"type":"object","properties":{"sessionKey":{"type":"string"},"limit":{"type":"integer"}},"required":["sessionKey"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "openclaw_chat_send"
+description = "Append a message to an OpenClaw session chat"
+parameters = '{"type":"object","properties":{"sessionKey":{"type":"string"},"message":{"type":"string"}},"required":["sessionKey","message"]}'
+return_type = "object"
+
+[[config.fields]]
+key = "default_page_size"
+label = "Default Page Size"
+description = "Number of sessions to show per page"
+type = "select"
+default = "10"
+
+[[config.fields.options]]
+value = "5"
+label = "5"
+
+[[config.fields.options]]
+value = "10"
+label = "10"
+
+[[config.fields.options]]
+value = "20"
+label = "20"
+
+[[ui.panels]]
+label = "panel-openclaw-sessions"
+title = "OpenClaw Sessions"
+width = 900
+height = 600
+entry = "ui/panel.html"
+
+[events]
+subscribe = []
+emit = ["openclaw-sessions:config-updated", "openclaw-sessions:sessions-refreshed"]

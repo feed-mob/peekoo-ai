@@ -188,6 +188,7 @@ export function PluginStoreCatalog({
               </section>
             );
           })}
+
         </div>
       )}
     </div>

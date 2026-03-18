@@ -45,6 +45,8 @@ pub struct PermissionsBlock {
     pub optional: Vec<String>,
     #[serde(default)]
     pub allowed_paths: Vec<String>,
+    #[serde(default)]
+    pub allowed_hosts: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -298,6 +300,30 @@ allowed_paths = ["~/.claude/projects/", "~/tmp/"]
         assert_eq!(
             permissions.allowed_paths,
             vec!["~/.claude/projects/", "~/tmp/"]
+        );
+    }
+
+    #[test]
+    fn parse_permissions_allowed_hosts() {
+        let toml = r#"
+[plugin]
+key = "openclaw-sessions"
+name = "OpenClaw Sessions"
+version = "0.1.0"
+wasm = "plugin.wasm"
+
+[permissions]
+required = ["net:websocket"]
+allowed_hosts = ["127.0.0.1:18789", "*.feedmob.dev"]
+"#;
+
+        let manifest = parse_manifest(toml).unwrap();
+        let permissions = manifest.permissions.as_ref().unwrap();
+
+        assert_eq!(permissions.required, vec!["net:websocket"]);
+        assert_eq!(
+            permissions.allowed_hosts,
+            vec!["127.0.0.1:18789", "*.feedmob.dev"]
         );
     }
 

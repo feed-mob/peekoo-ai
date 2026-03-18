@@ -16,12 +16,11 @@ export default function PluginPanelView() {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
-    // Fetch plugin panel metadata to get the title
     invoke<{ label: string; title: string; width: number; height: number }[]>(
-      "plugin_panels_list"
+      "plugin_panels_list",
     )
       .then((panels) => {
-        const panel = panels.find((p) => p.label === label);
+        const panel = panels.find((entry) => entry.label === label);
         if (panel) {
           setTitle(panel.title);
         }

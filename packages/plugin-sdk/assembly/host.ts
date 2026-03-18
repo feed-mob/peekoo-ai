@@ -63,5 +63,37 @@ export declare function peekoo_fs_read(input: i64): i64;
 export declare function peekoo_fs_read_dir(input: i64): i64;
 
 // @ts-ignore: decorator
+@external("extism:host/user", "peekoo_websocket_connect")
+export declare function peekoo_websocket_connect(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_websocket_send")
+export declare function peekoo_websocket_send(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_websocket_recv")
+export declare function peekoo_websocket_recv(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_websocket_close")
+export declare function peekoo_websocket_close(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_system_time_millis")
+export declare function peekoo_system_time_millis(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_system_uuid_v4")
+export declare function peekoo_system_uuid_v4(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_crypto_ed25519_get_or_create")
+export declare function peekoo_crypto_ed25519_get_or_create(input: i64): i64;
+
+// @ts-ignore: decorator
+@external("extism:host/user", "peekoo_crypto_ed25519_sign")
+export declare function peekoo_crypto_ed25519_sign(input: i64): i64;
+
+// @ts-ignore: decorator
 @external("extism:host/user", "peekoo_set_mood")
 export declare function peekoo_set_mood(input: i64): i64;

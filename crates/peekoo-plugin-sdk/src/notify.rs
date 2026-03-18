@@ -5,9 +5,12 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! let delivered = peekoo::notify::send("Reminder", "Time to drink water")?;
-//! if !delivered {
-//!     peekoo::log::debug("notification was suppressed by DND");
+//! fn example() -> Result<(), Error> {
+//!     let delivered = peekoo::notify::send("Reminder", "Time to drink water")?;
+//!     if !delivered {
+//!         peekoo::log::debug("notification was suppressed by DND");
+//!     }
+//!     Ok(())
 //! }
 //! ```
 

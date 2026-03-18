@@ -6,14 +6,17 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! peekoo::badge::set(&[
-//!     BadgeItem {
-//!         label: "Water".into(),
-//!         value: "~5 min".into(),
-//!         icon: Some("droplet".into()),
-//!         countdown_secs: Some(300),
-//!     },
-//! ])?;
+//! fn example() -> Result<(), Error> {
+//!     peekoo::badge::set(&[
+//!         BadgeItem {
+//!             label: "Water".into(),
+//!             value: "~5 min".into(),
+//!             icon: Some("droplet".into()),
+//!             countdown_secs: Some(300),
+//!         },
+//!     ])?;
+//!     Ok(())
+//! }
 //! ```
 
 use extism_pdk::Error;

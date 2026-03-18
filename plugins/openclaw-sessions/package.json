@@ -1,0 +1,17 @@
+{
+  "name": "openclaw-sessions",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenClaw Sessions Plugin for Peekoo",
+  "scripts": {
+    "build": "asc assembly/index.ts --config asconfig.json --target release",
+    "build:debug": "asc assembly/index.ts --outFile build/openclaw_sessions.wasm --debug --exportRuntime --use abort=assembly/index/abort"
+  },
+  "dependencies": {
+    "@peekoo/plugin-sdk": "file:../../packages/plugin-sdk",
+    "@extism/as-pdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "assemblyscript": "^0.27.0"
+  }
+}

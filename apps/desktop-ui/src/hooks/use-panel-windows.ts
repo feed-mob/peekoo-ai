@@ -28,7 +28,10 @@ function resolvePanelConfig(
   label: string,
   pluginPanels: PluginPanel[],
 ): PanelWindowConfig | PluginPanel | undefined {
-  return PANEL_WINDOW_CONFIGS[label] ?? pluginPanels.find((panel) => panel.label === label);
+  if (PANEL_WINDOW_CONFIGS[label]) {
+    return PANEL_WINDOW_CONFIGS[label];
+  }
+  return pluginPanels.find((panel) => panel.label === label);
 }
 
 export async function openPanelWindow(

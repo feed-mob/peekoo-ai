@@ -32,6 +32,51 @@
 //!     Ok(Json(EchoOutput { echo: req.input, call_count: count + 1 }))
 //! }
 //! ```
+//!
+//! ## Permissions for networked plugins
+//!
+//! Plugins that use the newer runtime helpers must declare the matching
+//! permissions in `peekoo-plugin.toml`:
+//!
+//! ```toml
+//! [permissions]
+//! required = ["net:websocket", "crypto:ed25519"]
+//! allowed_hosts = ["127.0.0.1:18789"]
+//! ```
+//!
+//! ## WebSocket + crypto example
+//!
+//! ```rust,no_run
+//! #![no_main]
+//! use peekoo_plugin_sdk::prelude::*;
+//!
+//! #[derive(Serialize)]
+//! struct ConnectPayload<'a> {
+//!     id: &'a str,
+//!     signed_at: u64,
+//!     signature: &'a str,
+//! }
+//!
+//! #[plugin_fn]
+//! pub fn tool_open_socket(_: String) -> FnResult<String> {
+//!     let socket_id = peekoo::websocket::connect("ws://127.0.0.1:18789")?;
+//!     let key = peekoo::crypto::ed25519_get_or_create("gateway-device")?;
+//!     let signed_at = peekoo::system::time_millis()?;
+//!     let signature = peekoo::crypto::ed25519_sign(
+//!         "gateway-device",
+//!         &format!("{}|{}", key.public_key_sha256_hex, signed_at),
+//!     )?;
+//!     let payload = serde_json::to_string(&ConnectPayload {
+//!         id: &peekoo::system::uuid_v4()?,
+//!         signed_at,
+//!         signature: &signature,
+//!     })?;
+//!     peekoo::websocket::send(&socket_id, &payload)?;
+//!     let _reply = peekoo::websocket::recv(&socket_id)?;
+//!     peekoo::websocket::close(&socket_id)?;
+//!     Ok(r#"{"ok":true}"#.into())
+//! }
+//! ```
 
 // Private: raw host function declarations and request/response types.
 pub(crate) mod host_fns;
@@ -43,6 +88,7 @@ pub mod types;
 pub mod badge;
 pub mod bridge;
 pub mod config;
+pub mod crypto;
 pub mod events;
 pub mod fs;
 pub mod log;
@@ -50,6 +96,8 @@ pub mod mood;
 pub mod notify;
 pub mod schedule;
 pub mod state;
+pub mod system;
+pub mod websocket;
 
 /// The `peekoo` namespace — plugin authors access all APIs through this.
 ///
@@ -66,6 +114,7 @@ pub mod peekoo {
     pub use crate::badge;
     pub use crate::bridge;
     pub use crate::config;
+    pub use crate::crypto;
     pub use crate::events;
     pub use crate::fs;
     pub use crate::log;
@@ -73,6 +122,8 @@ pub mod peekoo {
     pub use crate::notify;
     pub use crate::schedule;
     pub use crate::state;
+    pub use crate::system;
+    pub use crate::websocket;
 }
 
 /// Prelude — import everything you need with a single `use`.

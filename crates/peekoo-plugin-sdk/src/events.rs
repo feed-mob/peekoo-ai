@@ -6,7 +6,10 @@
 //! use peekoo_plugin_sdk::prelude::*;
 //! use serde_json::json;
 //!
-//! peekoo::events::emit("health:reminder-due", json!({ "reminder_type": "water" }))?;
+//! fn example() -> Result<(), Error> {
+//!     peekoo::events::emit("health:reminder-due", json!({ "reminder_type": "water" }))?;
+//!     Ok(())
+//! }
 //! ```
 
 use extism_pdk::{Error, Json};

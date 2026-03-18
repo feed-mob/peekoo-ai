@@ -6,16 +6,14 @@
 //! ```no_run
 //! use peekoo_plugin_sdk::prelude::*;
 //!
-//! // Set a repeating 5-minute timer
-//! peekoo::schedule::set("my_timer", 300, true, None)?;
-//!
-//! // Check remaining time
-//! if let Some(info) = peekoo::schedule::get("my_timer")? {
-//!     peekoo::log::info(&format!("{}s remaining", info.time_remaining_secs));
+//! fn example() -> Result<(), Error> {
+//!     peekoo::schedule::set("my_timer", 300, true, None)?;
+//!     if let Some(info) = peekoo::schedule::get("my_timer")? {
+//!         peekoo::log::info(&format!("{}s remaining", info.time_remaining_secs));
+//!     }
+//!     peekoo::schedule::cancel("my_timer")?;
+//!     Ok(())
 //! }
-//!
-//! // Cancel it
-//! peekoo::schedule::cancel("my_timer")?;
 //! ```
 
 use extism_pdk::{Error, Json};
