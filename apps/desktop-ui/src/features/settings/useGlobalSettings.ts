@@ -1,0 +1,69 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
+import type { SpriteInfo } from "@/types/global-settings";
+
+interface GlobalSettingsState {
+  activeSpriteId: string | null;
+  sprites: SpriteInfo[];
+  loading: boolean;
+  error: string | null;
+}
+
+export function useGlobalSettings() {
+  const [state, setState] = useState<GlobalSettingsState>({
+    activeSpriteId: null,
+    sprites: [],
+    loading: true,
+    error: null,
+  });
+
+  const load = useCallback(async () => {
+    try {
+      const [settings, sprites] = await Promise.all([
+        invoke<Record<string, string>>("app_settings_get"),
+        invoke<SpriteInfo[]>("app_settings_list_sprites"),
+      ]);
+      setState({
+        activeSpriteId: settings.active_sprite_id ?? "dark-cat",
+        sprites,
+        loading: false,
+        error: null,
+      });
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        loading: false,
+        error: String(err),
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const setActiveSpriteId = useCallback(
+    async (spriteId: string) => {
+      try {
+        await invoke("app_settings_set", {
+          key: "active_sprite_id",
+          value: spriteId,
+        });
+        setState((prev) => ({ ...prev, activeSpriteId: spriteId }));
+        await emit("sprite:changed", { id: spriteId });
+      } catch (err) {
+        setState((prev) => ({ ...prev, error: String(err) }));
+      }
+    },
+    [],
+  );
+
+  return {
+    activeSpriteId: state.activeSpriteId,
+    sprites: state.sprites,
+    loading: state.loading,
+    error: state.error,
+    setActiveSpriteId,
+  };
+}

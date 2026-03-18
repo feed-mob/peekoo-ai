@@ -3,6 +3,8 @@ pub const MIGRATION_0002_AGENT_SETTINGS: &str =
     include_str!("../migrations/0002_agent_settings.sql");
 pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
     include_str!("../migrations/0003_provider_compat.sql");
+pub const MIGRATION_0004_GLOBAL_SETTINGS: &str =
+    include_str!("../migrations/0004_global_settings.sql");
 
 #[cfg(test)]
 mod tests {
@@ -25,5 +27,11 @@ mod tests {
     #[test]
     fn migration_contains_provider_config_table() {
         assert!(MIGRATION_0003_PROVIDER_COMPAT.contains("CREATE TABLE agent_provider_configs"));
+    }
+
+    #[test]
+    fn migration_contains_global_settings_table() {
+        assert!(MIGRATION_0004_GLOBAL_SETTINGS.contains("CREATE TABLE"));
+        assert!(MIGRATION_0004_GLOBAL_SETTINGS.contains("app_settings"));
     }
 }

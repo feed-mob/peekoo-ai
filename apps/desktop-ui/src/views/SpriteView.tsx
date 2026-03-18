@@ -112,6 +112,16 @@ export default function SpriteView() {
 
   useSpriteReactions({ onMoodChange: handleMoodChange });
 
+  // Open settings panel when the tray menu "Settings" item is clicked
+  useEffect(() => {
+    const unlisten = listen("open-settings", () => {
+      void togglePanel("panel-settings");
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [togglePanel]);
+
   // Determine effective sprite state with priority:
   // 1. moodOverride (reactions, reminders) - highest priority
   // 2. randomState (idle state manager) - low priority

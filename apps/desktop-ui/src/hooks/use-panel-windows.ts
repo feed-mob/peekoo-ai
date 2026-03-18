@@ -19,6 +19,7 @@ const INITIAL_STATE: PanelWindowStates = {
   "panel-tasks": { isOpen: false },
   "panel-pomodoro": { isOpen: false },
   "panel-plugins": { isOpen: false },
+  "panel-settings": { isOpen: false },
 };
 
 const PANEL_OFFSET_X = 20;

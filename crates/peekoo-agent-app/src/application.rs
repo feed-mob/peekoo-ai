@@ -10,6 +10,7 @@ use peekoo_agent::AgentEvent;
 use peekoo_agent::PluginToolProvider;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
+use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 use peekoo_notifications::{
     MoodReaction, MoodReactionService, Notification, NotificationService, PeekBadgeItem,
     PeekBadgeService,
@@ -38,6 +39,7 @@ use crate::workspace_bootstrap::ensure_agent_workspace;
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
+    app_settings: AppSettingsService,
     productivity: ProductivityService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
@@ -82,6 +84,7 @@ impl AgentApplication {
         let db_conn = Arc::new(Mutex::new(conn));
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
+        let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
         let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
             create_plugin_registry(db_conn)?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
@@ -97,6 +100,7 @@ impl AgentApplication {
         Ok(Self {
             agent: Mutex::new(None),
             settings,
+            app_settings,
             productivity: ProductivityService::new(),
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
@@ -249,6 +253,30 @@ impl AgentApplication {
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
     }
+
+    // ── Global app settings ────────────────────────────────────────────
+
+    pub fn get_active_sprite_id(&self) -> Result<String, String> {
+        self.app_settings.get_active_sprite_id()
+    }
+
+    pub fn set_active_sprite_id(&self, sprite_id: &str) -> Result<(), String> {
+        self.app_settings.set_active_sprite_id(sprite_id)
+    }
+
+    pub fn list_sprites(&self) -> Vec<SpriteInfo> {
+        self.app_settings.list_sprites()
+    }
+
+    pub fn get_app_settings(&self) -> Result<std::collections::HashMap<String, String>, String> {
+        self.app_settings.get_all()
+    }
+
+    pub fn set_app_setting(&self, key: &str, value: &str) -> Result<(), String> {
+        self.app_settings.set(key, value)
+    }
+
+    // ── Productivity ────────────────────────────────────────────────────
 
     pub fn create_task(&self, title: &str, priority: &str) -> Result<TaskDto, String> {
         self.productivity.create_task(title, priority)
