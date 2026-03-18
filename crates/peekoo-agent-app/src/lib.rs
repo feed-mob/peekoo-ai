@@ -8,6 +8,7 @@ mod workspace_bootstrap;
 
 pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};
+pub use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 pub use peekoo_notifications::PeekBadgeItem;
 pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
 pub use plugin::{PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto};

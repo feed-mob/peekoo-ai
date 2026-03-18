@@ -1,0 +1,3 @@
+# Override local git excludes that blanket-ignore *.sql
+# Migration files must be tracked.
+!*.sql

@@ -6,6 +6,7 @@ members = [
   "crates/peekoo-agent",
   "crates/peekoo-agent-auth",
   "crates/peekoo-agent-app",
+  "crates/peekoo-app-settings",
   "crates/peekoo-paths",
   "crates/peekoo-scheduler",
   "crates/peekoo-notifications",
@@ -18,7 +19,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 license = "MIT"
-version = "0.1.1"
+version = "0.1.3"
 
 [profile.release]
 lto = true

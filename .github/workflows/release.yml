@@ -12,13 +12,17 @@ on:
         description: "Publish to AUR (requires a published release for the latest tag)"
         type: boolean
         default: false
+      finalize_release_tag:
+        description: "Optional tag to publish from draft and mark as latest (example: v0.1.2)"
+        type: string
+        required: false
 
 permissions:
   contents: write
 
 jobs:
   release-notes:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur && !inputs.finalize_release_tag)
     runs-on: ubuntu-latest
     outputs:
       release_body: ${{ steps.notes.outputs.release_body }}
@@ -45,13 +49,13 @@ jobs:
 
   publish-tauri:
     needs: release-notes
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur)
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.publish_aur && !inputs.finalize_release_tag)
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: macos-14
-            args: --target aarch64-apple-darwin --bundles dmg
+            args: --target aarch64-apple-darwin --bundles dmg,updater
           - platform: ubuntu-22.04
             args: --bundles appimage,deb
           - platform: windows-latest
@@ -105,6 +109,15 @@ jobs:
           prerelease: false
           includeUpdaterJson: true
           args: ${{ matrix.args }}
+
+  finalize-release:
+    if: github.event_name == 'workflow_dispatch' && inputs.finalize_release_tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release and mark latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ inputs.finalize_release_tag }}" --draft=false --latest
 
   publish-aur:
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish_aur)

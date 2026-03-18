@@ -5692,6 +5692,7 @@ dependencies = [
  "asupersync",
  "peekoo-agent",
  "peekoo-agent-auth",
+ "peekoo-app-settings",
  "peekoo-notifications",
  "peekoo-paths",
  "peekoo-persistence-sqlite",
@@ -5726,8 +5727,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "peekoo-app-settings"
+version = "0.1.0"
+dependencies = [
+ "peekoo-persistence-sqlite",
+ "rusqlite",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "peekoo-desktop-tauri"
-version = "0.1.1"
+version = "0.1.3"
 dependencies = [
  "base64 0.22.1",
  "dirs",

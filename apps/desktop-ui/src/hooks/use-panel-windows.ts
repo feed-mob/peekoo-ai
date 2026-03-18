@@ -20,6 +20,7 @@ const INITIAL_STATE: PanelWindowStates = {
   "panel-pomodoro": { isOpen: false },
   "panel-plugins": { isOpen: false },
   "panel-openclaw-sessions": { isOpen: false },
+  "panel-settings": { isOpen: false },
 };
 
 const PANEL_OFFSET_X = 20;
@@ -150,6 +151,7 @@ export function usePanelWindows() {
     panels,
     pluginPanels,
     installedPlugins,
+    openPanel,
     togglePanel,
   };
 }

@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import SpriteAnimation from "./SpriteAnimation";
 import type { AnimationType, SpriteState, SpriteManifest } from "@/types/sprite";
 
@@ -31,6 +33,8 @@ const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
   dragging: "dragging",
 };
 
+const DEFAULT_SPRITE_ID = "dark-cat";
+
 interface SpriteProps {
   state?: SpriteState;
   animationOverride?: AnimationType | null;
@@ -43,8 +47,29 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
     animation: "bounce",
   };
 
-  const [activeSpriteId] = useState("dark-cat");
+  const [activeSpriteId, setActiveSpriteId] = useState(DEFAULT_SPRITE_ID);
   const [manifest, setManifest] = useState<SpriteManifest | null>(null);
+
+  // Load active sprite ID from global settings on mount
+  useEffect(() => {
+    invoke<Record<string, string>>("app_settings_get")
+      .then((settings) => {
+        if (settings.active_sprite_id) {
+          setActiveSpriteId(settings.active_sprite_id);
+        }
+      })
+      .catch((err) => console.error("Failed to load active sprite setting", err));
+  }, []);
+
+  // Listen for sprite changes from the settings panel
+  useEffect(() => {
+    const unlisten = listen<{ id: string }>("sprite:changed", (event) => {
+      setActiveSpriteId(event.payload.id);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   // Load sprite manifest
   useEffect(() => {
