@@ -575,7 +575,9 @@ fn is_path_allowed(path: &Path, allowed_paths: &[PathBuf]) -> bool {
         return false;
     };
 
-    allowed_paths.iter().any(|allowed_root| candidate.starts_with(allowed_root))
+    allowed_paths
+        .iter()
+        .any(|allowed_root| candidate.starts_with(allowed_root))
 }
 
 fn read_file_content(path: &Path, tail_bytes: Option<u64>) -> std::io::Result<Option<String>> {
