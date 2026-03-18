@@ -1,9 +1,11 @@
 import { useEffect, useCallback } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { PetReactionEventSchema, type PetReactionTrigger } from "@/types/pet-event";
+import { PetReactionEventSchema } from "@/types/pet-event";
 
-// Map reaction triggers to mood states aligned with the new sprite sheet rows
-const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
+// Maps app-level semantic triggers to mood states.
+// Plugin-emitted values (e.g. "working", "idle") are not listed here —
+// they pass through as-is via the fallback in handleReaction.
+const TRIGGER_TO_MOOD: Partial<Record<string, string>> = {
   "chat-message": "thinking",      // AI received a message, entering thinking state
   "ai-processing": "thinking",     // AI is actively processing/generating a response
   "agent-result": "reminder",      // AI finished and produced a result
@@ -14,13 +16,6 @@ const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
   "pomodoro-completed": "happy",   // Celebrate completing a pomodoro session
   "panel-opened": "reminder",      // Something is being shown to the user
   "panel-closed": "idle",          // Return to neutral idle state
-  "opencode-working": "working",   // OpenCode LLM is actively producing output
-  "opencode-done": "happy",        // OpenCode agent answered the question
-  "opencode-idle": "idle",         // No active OpenCode session
-  "claude-working": "working",     // Claude Code is actively producing output
-  "claude-reminder": "reminder",   // Claude Code needs user input
-  "claude-done": "happy",          // Claude Code finished a task
-  "claude-idle": "idle",           // No active Claude Code session
 };
 
 interface UseSpriteReactionsOptions {
@@ -29,11 +24,9 @@ interface UseSpriteReactionsOptions {
 
 export function useSpriteReactions({ onMoodChange }: UseSpriteReactionsOptions = {}) {
   const handleReaction = useCallback(
-    (trigger: PetReactionTrigger, sticky: boolean) => {
-      const mood = TRIGGER_TO_MOOD[trigger];
-      if (mood) {
-        onMoodChange?.(mood, sticky);
-      }
+    (trigger: string, sticky: boolean) => {
+      const mood = TRIGGER_TO_MOOD[trigger] ?? trigger;
+      onMoodChange?.(mood, sticky);
     },
     [onMoodChange],
   );

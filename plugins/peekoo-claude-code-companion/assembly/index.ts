@@ -206,8 +206,8 @@ class CandidateSession {
 function aggregateSessions(sessions: SessionSnapshot[]): AggregateState {
   const aggregate = new AggregateState();
   let primaryModified: u64 = 0;
-  let hasWorking = false;
   let hasWaiting = false;
+  let hasWorking = false;
 
   for (let i = 0; i < sessions.length; i++) {
     const session = sessions[i];
@@ -279,7 +279,7 @@ function inferSessionSnapshot(jsonl: string, modifiedSecs: u64, unchangedPolls: 
       const stopReason = extractStringField(message, "stop_reason");
       if (stopReason == "end_turn" || stopReason == "stop_sequence") {
         snapshot.status = "done";
-        snapshot.completionKey = snapshot.sessionId + ":" + modifiedSecs.toString();
+        snapshot.completionKey = snapshot.sessionId;
         return snapshot;
       }
 
@@ -292,12 +292,12 @@ function inferSessionSnapshot(jsonl: string, modifiedSecs: u64, unchangedPolls: 
         continue;
       }
 
-      const toolUseResult = extractRawField(line, "toolUseResult");
-      if (toolUseResult.length > 0) {
-        snapshot.status = unchangedPolls >= STALE_WORKING_POLLS ? "idle" : "working";
-      } else {
+      if (isInterruptedUserLine(line)) {
         snapshot.status = unchangedPolls >= STALE_WORKING_POLLS ? "idle" : "waiting";
+        return snapshot;
       }
+
+      snapshot.status = unchangedPolls >= STALE_WORKING_POLLS ? "idle" : "working";
       return snapshot;
     }
   }
@@ -328,6 +328,10 @@ function readPollState(sessionId: string, modifiedSecs: u64): u64[] {
 function writePollState(sessionId: string, modifiedSecs: u64, status: string, unchangedPolls: u64): void {
   const nextUnchanged = status == "working" || status == "waiting" ? unchangedPolls : 0;
   state.set("poll:" + sessionId, modifiedSecs.toString() + "|" + nextUnchanged.toString());
+}
+
+function isInterruptedUserLine(line: string): bool {
+  return line.indexOf('"text":"[Request interrupted by user]"') >= 0;
 }
 
 function snapshotToJson(snapshot: SessionSnapshot): string {
