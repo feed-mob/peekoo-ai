@@ -33,6 +33,7 @@ const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
 const TRAY_SETTINGS_MENU_ID: &str = "settings";
+const TRAY_ABOUT_MENU_ID: &str = "about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 
@@ -101,6 +102,9 @@ fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
         TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
         TRAY_SETTINGS_MENU_ID => {
             let _ = app.emit("open-settings", ());
+        }
+        TRAY_ABOUT_MENU_ID => {
+            let _ = app.emit("open-about", ());
         }
         TRAY_QUIT_MENU_ID => app.exit(0),
         _ => {}
@@ -641,6 +645,7 @@ pub fn run() {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
                 .text(TRAY_SETTINGS_MENU_ID, "Settings")
+                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
                 .separator()
                 .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
                 .build()?;

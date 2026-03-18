@@ -6,6 +6,7 @@ export const BUILTIN_PANEL_LABELS = [
   "panel-pomodoro",
   "panel-plugins",
   "panel-settings",
+  "panel-about",
 ] as const;
 
 export const WindowLabelSchema = z.string().refine(
@@ -59,5 +60,11 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
     title: "Peekoo Settings",
     width: 420,
     height: 500,
+  },
+  "panel-about": {
+    label: "panel-about",
+    title: "About Peekoo",
+    width: 420,
+    height: 440,
   },
 };

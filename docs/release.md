@@ -3,7 +3,7 @@
 ## Supported install targets
 
 - Windows: NSIS and MSI installers attached to GitHub Releases.
-- macOS: Apple Silicon DMG attached to GitHub Releases.
+- macOS: Apple Silicon DMG for manual installs plus updater archives for in-app updates.
 - Linux: AppImage and DEB attached to GitHub Releases.
 - Arch Linux: `peekoo-bin` AUR package sourced from the GitHub Release AppImage.
 
@@ -23,7 +23,7 @@
 
 ## Workflows
 
-- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, drafts a GitHub Release, and publishes to AUR when the release is published.
+- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, drafts a GitHub Release, can publish a draft release as latest, and publishes to AUR when the release is published.
 - `PR Release Label`: fails non-draft PRs that do not have a release-note label.
 - `CI`: validates the workspace, release tooling tests, and the desktop UI build.
 
@@ -79,24 +79,30 @@ Use `.github/pull_request_template.md` as the default checklist when opening PRs
 6. GitHub Actions runs the `Release` workflow automatically from the `v0.x.y` tag.
 7. The workflow:
    - builds Windows installers (`nsis`, `msi`)
-   - builds a macOS ARM64 `dmg`
+   - builds a macOS ARM64 `dmg` plus updater archives
    - builds Linux `AppImage` and `deb`
    - signs updater artifacts with the Tauri private key
    - asks GitHub to generate release notes
    - creates a draft GitHub Release
 8. Open the draft release in GitHub.
 9. Verify the uploaded files and the generated notes.
-10. Publish the release. This triggers the `publish-aur` job automatically.
+10. Open `Actions` -> `Release` -> `Run workflow`.
+11. Set `finalize_release_tag` to `v0.x.y` and run the workflow.
+12. The workflow publishes the draft release, marks it as GitHub's latest release, and triggers the `publish-aur` job automatically.
 
 ## Manual workflow dispatch
 
-Use manual dispatch when you want to rebuild artifacts for the checked-in version without creating a new tag first.
+Use manual dispatch when you want to rebuild artifacts for the checked-in version without creating a new tag first, publish AUR for the latest release, or finalize an already-built draft release.
 
 1. Open `Actions` in GitHub.
 2. Select `Release`.
 3. Click `Run workflow`.
 4. Pick the branch that already contains the target version.
-5. Run the workflow.
+5. Choose one action:
+   - leave both inputs empty/false to rebuild draft release artifacts for the checked-in version
+   - set `finalize_release_tag` to `v0.x.y` to publish a draft release and mark it as latest
+   - set `publish_aur` to `true` to republish the AUR package from the current latest release
+6. Run the workflow.
 
 This still uses the version already checked into the repo. It does not bump versions for you.
 
@@ -104,7 +110,7 @@ This still uses the version already checked into the repo. It does not bump vers
 
 1. Install one artifact on each platform you care about.
 2. Smoke-test app launch and the updater check.
-3. Confirm the release page includes `latest.json` and the signature files.
+3. Confirm the release page includes `latest.json`, the signature files, and the macOS updater archive.
 4. AUR is updated automatically when the release is published. Verify the `peekoo-bin` AUR package shows the new version.
 
 ## AUR setup

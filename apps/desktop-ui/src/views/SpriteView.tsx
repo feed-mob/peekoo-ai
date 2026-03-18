@@ -30,6 +30,12 @@ export async function openSettingsPanelFromTray(
   await openPanel("panel-settings");
 }
 
+export async function openAboutPanelFromTray(
+  openPanel: (label: PanelLabel) => Promise<void>,
+) {
+  await openPanel("panel-about");
+}
+
 export default function SpriteView() {
   const spriteState = useSpriteState();
   const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
@@ -123,6 +129,16 @@ export default function SpriteView() {
   useEffect(() => {
     const unlisten = listen("open-settings", () => {
       void openSettingsPanelFromTray(openPanel);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [openPanel]);
+
+  // Open about panel when the tray menu "About Peekoo" item is clicked
+  useEffect(() => {
+    const unlisten = listen("open-about", () => {
+      void openAboutPanelFromTray(openPanel);
     });
     return () => {
       unlisten.then((fn) => fn());
