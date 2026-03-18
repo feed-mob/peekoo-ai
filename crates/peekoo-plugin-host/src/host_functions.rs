@@ -943,6 +943,10 @@ fn host_matches_rule(host: &str, port: Option<u16>, rule: &str) -> bool {
         return false;
     }
 
+    if rule == "*" {
+        return true;
+    }
+
     if let Some(suffix) = rule.strip_prefix("*.") {
         return host != suffix && host.ends_with(&format!(".{suffix}"));
     }
@@ -1134,6 +1138,14 @@ mod tests {
         assert!(is_websocket_url_allowed(
             "wss://gateway.feedmob.dev/rpc",
             &["*.feedmob.dev".to_string()],
+        ));
+    }
+
+    #[test]
+    fn websocket_url_is_allowed_for_global_wildcard() {
+        assert!(is_websocket_url_allowed(
+            "wss://anywhere.example.com:444/rpc",
+            &["*".to_string()],
         ));
     }
 
