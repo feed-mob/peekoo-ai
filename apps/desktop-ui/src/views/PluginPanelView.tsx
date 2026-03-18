@@ -16,7 +16,7 @@ export default function PluginPanelView() {
   const label = getCurrentWebviewWindow().label;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  const isOpenClawSessions = label === "openclaw-sessions";
+  const isOpenClawSessions = label === "panel-openclaw-sessions";
 
   useEffect(() => {
     invoke<string>("plugin_panel_html", { label })
@@ -95,7 +95,7 @@ export default function PluginPanelView() {
     );
   }
 
-  // Only show custom title bar for openclaw-sessions
+  // Only show custom title bar for panel-openclaw-sessions
   if (isOpenClawSessions) {
     return (
       <PanelShell title="Openclaw Sessions Management" showCloseButton>

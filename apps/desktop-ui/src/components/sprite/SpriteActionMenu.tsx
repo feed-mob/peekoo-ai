@@ -186,26 +186,6 @@ export function SpriteActionMenu({
                       </button>
                     );
                   })}
-
-                  {/* Hardcoded entry for openclaw-sessions plugin - only show if installed */}
-                  {installedPlugins.some((p) => p.pluginKey === "openclaw-sessions") && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPluginsPopupOpen(false);
-                        onTogglePanel("openclaw-sessions");
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors",
-                        panels["openclaw-sessions"]?.isOpen
-                          ? "bg-space-overlay text-text-primary"
-                          : "text-text-secondary hover:bg-space-overlay hover:text-text-primary",
-                      )}
-                    >
-                      <HeartPulse size={16} className="shrink-0" />
-                      <span className="text-xs font-medium whitespace-nowrap">Openclaw Sessions Management</span>
-                    </button>
-                  )}
                 </div>
               </div>
             </motion.div>

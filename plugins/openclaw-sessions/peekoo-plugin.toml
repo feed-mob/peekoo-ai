@@ -55,7 +55,7 @@ value = "20"
 label = "20"
 
 [[ui.panels]]
-label = "openclaw-sessions"
+label = "panel-openclaw-sessions"
 title = "Openclaw Sessions Management"
 width = 900
 height = 600

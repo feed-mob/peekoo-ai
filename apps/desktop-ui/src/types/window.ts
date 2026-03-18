@@ -15,10 +15,9 @@ export type WindowLabel = z.infer<typeof WindowLabelSchema>;
 
 export const PanelLabelSchema = z
   .string()
-  .refine(
-    (value) => value.startsWith("panel-") || value === "openclaw-sessions",
-    { message: "Expected a panel-* label or openclaw-sessions" },
-  );
+  .refine((value) => value.startsWith("panel-"), {
+    message: "Expected a panel-* label",
+  });
 export type PanelLabel = z.infer<typeof PanelLabelSchema>;
 
 export const PanelWindowConfigSchema = z.object({

@@ -17,11 +17,7 @@ function UnknownView({ label }: { label: string }) {
 }
 
 function viewForLabel(label: string) {
-  // Handle plugin panels (including openclaw-sessions)
-  if (
-    label.startsWith("panel-") ||
-    label === "openclaw-sessions"
-  ) {
+  if (label.startsWith("panel-")) {
     if (!(BUILTIN_PANEL_LABELS as readonly string[]).includes(label)) {
       return <PluginPanelView />;
     }
