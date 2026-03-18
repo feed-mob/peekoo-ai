@@ -18,3 +18,12 @@ export class BadgeItem {
   icon: string | null = null;
   countdown_secs: u64 = 0;
 }
+
+/**
+ * A filesystem entry returned by fs.readDir().
+ */
+export class FsEntry {
+  name: string = "";
+  is_dir: bool = false;
+  modified_secs: u64 = 0;
+}

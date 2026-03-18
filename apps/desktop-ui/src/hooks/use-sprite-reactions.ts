@@ -17,6 +17,10 @@ const TRIGGER_TO_MOOD: Record<PetReactionTrigger, string> = {
   "opencode-working": "working",   // OpenCode LLM is actively producing output
   "opencode-done": "happy",        // OpenCode agent answered the question
   "opencode-idle": "idle",         // No active OpenCode session
+  "claude-working": "working",     // Claude Code is actively producing output
+  "claude-reminder": "reminder",   // Claude Code needs user input
+  "claude-done": "happy",          // Claude Code finished a task
+  "claude-idle": "idle",           // No active Claude Code session
 };
 
 interface UseSpriteReactionsOptions {

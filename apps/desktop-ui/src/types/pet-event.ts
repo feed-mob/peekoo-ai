@@ -14,6 +14,10 @@ export const PetReactionTriggerSchema = z.enum([
   "opencode-working",   // OpenCode LLM is actively producing output
   "opencode-done",      // OpenCode agent has answered the question
   "opencode-idle",      // No active OpenCode session
+  "claude-working",     // Claude Code is actively working
+  "claude-reminder",    // Claude Code is waiting for user input
+  "claude-done",        // Claude Code finished a task
+  "claude-idle",        // No active Claude Code session
 ]);
 export type PetReactionTrigger = z.infer<typeof PetReactionTriggerSchema>;
 

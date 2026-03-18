@@ -80,6 +80,17 @@ import { Host } from "@extism/as-pdk";
 import * as state from "@peekoo/plugin-sdk/assembly/state";
 import * as log from "@peekoo/plugin-sdk/assembly/log";
 
+export function abort(
+    message: string | null,
+    fileName: string | null,
+    lineNumber: u32,
+    columnNumber: u32,
+): void {
+    const messageText = message === null ? "abort" : changetype<string>(message);
+    const fileText = fileName === null ? "unknown" : changetype<string>(fileName);
+    log.error(fileText + ":" + lineNumber.toString() + ":" + columnNumber.toString() + ": " + messageText);
+}
+
 export function plugin_init(): i32 {
     log.info("plugin started");
     Host.outputString('{"status":"ok"}');
@@ -91,6 +102,22 @@ export function tool_my_echo(): i32 {
     // parse input, do work, write output
     Host.outputString('{"echo":"hello"}');
     return 0;
+}
+```
+
+Add this to `asconfig.json` so the module uses the plugin-defined abort handler instead
+of importing `env::abort` from the host runtime:
+
+```json
+{
+  "targets": {
+    "release": {
+      "outFile": "build/my_plugin.wasm",
+      "exportRuntime": true,
+      "use": ["abort=assembly/index/abort"],
+      "bindings": "raw"
+    }
+  }
 }
 ```
 
@@ -163,7 +190,11 @@ wasm = "target/wasm32-wasip1/release/my_plugin.wasm"  # path to built WASM
 [permissions]
 required = ["state:read", "state:write"]
 optional = ["agent:register-tool"]
+allowed_paths = ["~/.claude/projects/"]
 ```
+
+Use `allowed_paths` whenever you declare `fs:read`. Requested paths are sandboxed to these
+prefixes by the plugin host.
 
 ### Tool definitions
 
