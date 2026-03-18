@@ -1,4 +1,5 @@
 import { Host } from "@extism/as-pdk";
+import * as config from "@peekoo/plugin-sdk/assembly/config";
 import * as crypto from "@peekoo/plugin-sdk/assembly/crypto";
 import { extractIntField, extractRawField, extractStringField, quote } from "@peekoo/plugin-sdk/assembly/json";
 import * as notify from "@peekoo/plugin-sdk/assembly/notify";
@@ -11,6 +12,7 @@ const CONFIG_TOKEN = "token";
 const CONFIG_PASSWORD = "password";
 const STATE_CONFIG_EXISTS = "configExists";
 const STATE_SESSIONS_CACHE = "sessionsCache";
+const CONFIG_DEFAULT_PAGE_SIZE = "default_page_size";
 const DEVICE_KEY_ALIAS = "openclaw-device-v2";
 const DEFAULT_WEBSOCKET_URL = "ws://127.0.0.1:18789";
 const DEFAULT_PAGE_SIZE: i32 = 10;
@@ -88,19 +90,21 @@ export function tool_list_sessions(): i32 {
   const input = Host.inputString();
   const page = extractIntField(input, "page");
   const pageSize = extractIntField(input, "pageSize");
-  const cached = state.get(STATE_SESSIONS_CACHE);
+  const resolvedPage = page > 0 ? page : 1;
+  const resolvedPageSize = pageSize > 0 ? pageSize : resolveDefaultPageSize();
+  const cached = readCachedSessions(resolvedPage, resolvedPageSize);
   if (cached != "") {
     Host.outputString(cached);
     return 0;
   }
 
-  Host.outputString(refreshSessions(page > 0 ? page : 1, pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE));
+  Host.outputString(refreshSessions(resolvedPage, resolvedPageSize));
   return 0;
 }
 
 export function tool_refresh_sessions(): i32 {
   initializeDefaults();
-  Host.outputString(refreshSessions(1, DEFAULT_PAGE_SIZE));
+  Host.outputString(refreshSessions(1, resolveDefaultPageSize()));
   return 0;
 }
 
@@ -151,7 +155,7 @@ function refreshSessions(page: i32, pageSize: i32): string {
     '"page":' + page.toString() + ',"pageSize":' + pageSize.toString() + '}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
-    state.set(STATE_SESSIONS_CACHE, payload);
+    state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
     notify.send("OpenClaw Sessions", "Sessions refreshed successfully");
   }
   return payload;
@@ -324,6 +328,35 @@ function initializeDefaults(): void {
   }
 }
 
+function readCachedSessions(page: i32, pageSize: i32): string {
+  const cached = state.get(STATE_SESSIONS_CACHE);
+  if (cached == "") {
+    return "";
+  }
+
+  if (extractIntField(cached, "page") != page) {
+    return "";
+  }
+  if (extractIntField(cached, "pageSize") != pageSize) {
+    return "";
+  }
+
+  return extractRawField(cached, "payload");
+}
+
+function buildCachedSessions(page: i32, pageSize: i32, payload: string): string {
+  return (
+    '{"page":' + page.toString() +
+    ',"pageSize":' + pageSize.toString() +
+    ',"payload":' + payload + "}"
+  );
+}
+
+function resolveDefaultPageSize(): i32 {
+  const configured = parseIntString(config.get(CONFIG_DEFAULT_PAGE_SIZE));
+  return configured > 0 ? configured : DEFAULT_PAGE_SIZE;
+}
+
 function defaultIfEmpty(value: string, fallback: string): string {
   return value == "" ? fallback : value;
 }
@@ -334,6 +367,24 @@ function positiveInt(value: i32, fallback: i32): i32 {
 
 function boolJson(value: bool): string {
   return value ? "true" : "false";
+}
+
+function parseIntString(raw: string): i32 {
+  if (raw.length == 0) {
+    return 0;
+  }
+
+  let result: i32 = 0;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    if (c >= 48 && c <= 57) {
+      result = result * 10 + (c - 48);
+      continue;
+    }
+    break;
+  }
+
+  return result;
 }
 
 function isErrorPayload(payload: string): bool {

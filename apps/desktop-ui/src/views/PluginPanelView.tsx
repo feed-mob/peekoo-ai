@@ -1,21 +1,34 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PanelShell } from "@/components/panels/PanelShell";
 import {
   BRIDGE_REQUEST_TYPE,
   BRIDGE_RESPONSE_TYPE,
   injectPluginPanelBridge,
 } from "@/lib/plugin-panel-bridge";
-import { emitPetReaction } from "@/lib/pet-events";
 
 export default function PluginPanelView() {
   const [html, setHtml] = useState<string>("");
+  const [title, setTitle] = useState<string>("Plugin");
   const [error, setError] = useState<string | null>(null);
   const label = getCurrentWebviewWindow().label;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
+    invoke<{ label: string; title: string; width: number; height: number }[]>(
+      "plugin_panels_list",
+    )
+      .then((panels) => {
+        const panel = panels.find((entry) => entry.label === label);
+        if (panel) {
+          setTitle(panel.title);
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to fetch plugin panel metadata:", err);
+      });
+
     invoke<string>("plugin_panel_html", { label })
       .then((content) => {
         setHtml(injectPluginPanelBridge(content));
@@ -38,22 +51,6 @@ export default function PluginPanelView() {
       }
 
       try {
-        if (data.command === "plugin_panel_close") {
-          await emitPetReaction("panel-closed");
-          const win = getCurrentWindow();
-          iframeRef.current?.contentWindow?.postMessage(
-            {
-              type: BRIDGE_RESPONSE_TYPE,
-              id: data.id,
-              ok: true,
-              result: null,
-            },
-            "*",
-          );
-          void win.close();
-          return;
-        }
-
         const result = await invoke(data.command, data.payload ?? {});
         iframeRef.current?.contentWindow?.postMessage(
           {
@@ -86,19 +83,23 @@ export default function PluginPanelView() {
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center bg-glass text-text-secondary">
-        Failed to load plugin panel: {error}
-      </div>
+      <PanelShell title={title}>
+        <div className="flex h-full items-center justify-center text-text-secondary">
+          Failed to load plugin panel: {error}
+        </div>
+      </PanelShell>
     );
   }
 
   return (
-    <iframe
-      ref={iframeRef}
-      title={label}
-      srcDoc={html}
-      className="h-screen w-full border-0 bg-transparent"
-      sandbox="allow-scripts"
-    />
+    <PanelShell title={title}>
+      <iframe
+        ref={iframeRef}
+        title={label}
+        srcDoc={html}
+        className="h-full w-full border-0 bg-transparent"
+        sandbox="allow-scripts"
+      />
+    </PanelShell>
   );
 }
