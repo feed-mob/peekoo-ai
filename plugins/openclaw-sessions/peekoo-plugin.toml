@@ -1,6 +1,6 @@
 [plugin]
 key = "openclaw-sessions"
-name = "OpenClaw Sessions Manager"
+name = "OpenClaw Sessions"
 version = "1.0.0"
 author = "Peekoo Developer"
 description = "Manage OpenClaw sessions with configuration and session list view"
@@ -68,7 +68,7 @@ label = "20"
 
 [[ui.panels]]
 label = "panel-openclaw-sessions"
-title = "Openclaw Sessions Management"
+title = "OpenClaw Sessions"
 width = 900
 height = 600
 entry = "ui/panel.html"

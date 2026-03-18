@@ -192,7 +192,7 @@ function gatewayRpc(method: string, paramsJson: string): string {
     '"minProtocol":3,"maxProtocol":3,' +
     '"client":{' +
     '"id":"gateway-client",' +
-    '"displayName":"OpenClaw Session Manager",' +
+    '"displayName":"OpenClaw Sessions",' +
     '"version":"1.0.0",' +
     '"platform":"peekoo-plugin",' +
     '"mode":"ui",' +
