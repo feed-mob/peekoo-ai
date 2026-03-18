@@ -17,7 +17,8 @@ import * as config from "./config";
 import * as badge from "./badge";
 import * as bridge from "./bridge";
 import * as events from "./events";
+import * as fs from "./fs";
 import * as mood from "./mood";
 
-export { state, log, notify, schedule, config, badge, bridge, events, mood };
-export { ScheduleInfo, BadgeItem } from "./types";
+export { state, log, notify, schedule, config, badge, bridge, events, fs, mood };
+export { ScheduleInfo, BadgeItem, FsEntry } from "./types";

@@ -102,6 +102,9 @@ plugin-build-opencode-companion:
 # Build and install the OpenCode Companion plugin
 plugin-opencode-companion: plugin-build-opencode-companion (plugin-install "peekoo-opencode-companion")
 
+# Build and install the Claude Code Companion plugin
+plugin-claude-code-companion: (plugin-build-as "peekoo-claude-code-companion") (plugin-install-as "peekoo-claude-code-companion")
+
 # List all available commands
 list:
     @just --list

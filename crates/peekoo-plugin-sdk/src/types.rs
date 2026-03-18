@@ -34,6 +34,15 @@ pub struct BadgeItem {
     pub countdown_secs: Option<u64>,
 }
 
+/// A filesystem entry returned by [`crate::peekoo::fs::read_dir`].
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FsEntry {
+    pub name: String,
+    pub is_dir: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_secs: Option<u64>,
+}
+
 /// Known system events that Peekoo delivers to plugins.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SystemEvent {

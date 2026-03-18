@@ -7,7 +7,7 @@ use extism_pdk::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::types::ScheduleInfo;
+use crate::types::{FsEntry, ScheduleInfo};
 
 // ── Request types ──────────────────────────────────────────────
 
@@ -96,6 +96,28 @@ pub(crate) struct BridgeFsReadResponse {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct FsReadRequest {
+    pub path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tail_bytes: Option<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct FsReadResponse {
+    pub content: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct FsReadDirRequest {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct FsReadDirResponse {
+    pub entries: Vec<FsEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct SetMoodRequest {
     pub trigger: String,
     pub sticky: bool,
@@ -117,5 +139,7 @@ extern "ExtismHost" {
     pub(crate) fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
     pub(crate) fn peekoo_set_peek_badge(input: String) -> Json<OkResponse>;
     pub(crate) fn peekoo_bridge_fs_read(input: String) -> Json<BridgeFsReadResponse>;
+    pub(crate) fn peekoo_fs_read(input: Json<FsReadRequest>) -> Json<FsReadResponse>;
+    pub(crate) fn peekoo_fs_read_dir(input: Json<FsReadDirRequest>) -> Json<FsReadDirResponse>;
     pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
 }

@@ -5702,6 +5702,7 @@ version = "0.1.0"
 name = "peekoo-plugin-host"
 version = "0.1.0"
 dependencies = [
+ "dirs",
  "extism",
  "peekoo-notifications",
  "peekoo-paths",

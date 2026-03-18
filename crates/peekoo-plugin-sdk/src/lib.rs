@@ -44,6 +44,7 @@ pub mod badge;
 pub mod bridge;
 pub mod config;
 pub mod events;
+pub mod fs;
 pub mod log;
 pub mod mood;
 pub mod notify;
@@ -66,6 +67,7 @@ pub mod peekoo {
     pub use crate::bridge;
     pub use crate::config;
     pub use crate::events;
+    pub use crate::fs;
     pub use crate::log;
     pub use crate::mood;
     pub use crate::notify;
@@ -93,5 +95,5 @@ pub mod prelude {
     pub use crate::peekoo;
 
     // Re-export public types.
-    pub use crate::types::{BadgeItem, ScheduleInfo, SystemEvent};
+    pub use crate::types::{BadgeItem, FsEntry, ScheduleInfo, SystemEvent};
 }

@@ -8,6 +8,7 @@ default = ["plugin-runtime"]
 plugin-runtime = ["extism"]
 
 [dependencies]
+dirs = "6"
 extism = { version = "1.13", optional = true }
 peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-paths = { path = "../peekoo-paths" }
