@@ -266,15 +266,33 @@ export default function SpriteView() {
     };
   }, [openPanel]);
 
+  // Detect active Pomodoro session from badge items to provide a persistent background mood.
+  // This ensures the sprite returns to its "Working" or "Sleepy" state even after
+  // transient reactions (like thinking or reminders) finish.
+  const activePomodoro = badgeItems.find(
+    (item) => (item.icon === "brain" || item.icon === "coffee") && item.countdown_secs != null,
+  );
+  const pomodoroMood = activePomodoro
+    ? activePomodoro.icon === "brain"
+      ? "working"
+      : "sleepy"
+    : null;
+
   // Determine effective sprite state with priority:
-  // 1. moodOverride (reactions, reminders) - highest priority
-  // 2. randomState (idle state manager) - low priority
-  // 3. spriteState (default) - fallback
-  const effectiveSpriteState: SpriteState = moodOverride
-    ? { ...spriteState, mood: moodOverride }
-    : randomState
-      ? { ...spriteState, mood: randomState }
-      : spriteState;
+  // 1. moodOverride (specific reactions, thinking, reminders) - highest priority
+  //    (We ignore "idle" override if there's an active pomodoro mood to fallback to)
+  // 2. pomodoroMood (active focus or rest session)
+  // 3. randomState (idle state manager) - low priority
+  // 4. spriteState (default) - fallback
+  const effectiveMood =
+    moodOverride && moodOverride !== "idle"
+      ? moodOverride
+      : pomodoroMood || moodOverride || randomState || spriteState.mood;
+
+  const effectiveSpriteState: SpriteState = {
+    ...spriteState,
+    mood: effectiveMood,
+  };
 
   const startWindowDrag = useCallback(async () => {
     setDragAnimation("dragging");
@@ -289,7 +307,6 @@ export default function SpriteView() {
       setDragAnimation(null);
     }
   }, []);
-
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       setDragAnimation(null);

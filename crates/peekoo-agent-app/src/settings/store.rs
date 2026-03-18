@@ -3,9 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-    MIGRATION_0005_TASK_EXTENSIONS, MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE,
-    MIGRATION_0007_RECURRENCE_TIME_OF_DAY, MIGRATION_0008_TASK_ORDER_INDEX,
-    MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
+    MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
+    MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
+    MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -450,6 +450,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "agent_provider_configs",
         MIGRATION_0003_PROVIDER_COMPAT,
     )?;
+    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
 
     conn.execute(
         &format!(

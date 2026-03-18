@@ -14,8 +14,6 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use std::time::Duration;
-#[cfg(target_os = "macos")]
-use tauri::utils::config::Color;
 use tauri::{
     AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, State, Window,
     WindowSizeConstraints,
@@ -33,8 +31,6 @@ use tauri_plugin_shell::ShellExt;
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
-const TRAY_SETTINGS_MENU_ID: &str = "settings";
-const TRAY_ABOUT_MENU_ID: &str = "about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 
@@ -101,12 +97,6 @@ fn toggle_main_window_visibility(app: &AppHandle) {
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
     match menu_id {
         TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
-        TRAY_SETTINGS_MENU_ID => {
-            let _ = app.emit("open-settings", ());
-        }
-        TRAY_ABOUT_MENU_ID => {
-            let _ = app.emit("open-about", ());
-        }
         TRAY_QUIT_MENU_ID => app.exit(0),
         _ => {}
     }
@@ -122,22 +112,6 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
         toggle_main_window_visibility(app);
     }
 }
-
-#[cfg(target_os = "macos")]
-fn apply_macos_transparent_background(app: &tauri::App) {
-    // macOS transparency workaround details and distribution tradeoffs are documented in:
-    // apps/desktop-tauri/src-tauri/MACOS_PRIVATE_API.md
-    if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
-            tracing::warn!(
-                "Failed to set macOS main window background color to transparent: {err}"
-            );
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn apply_macos_transparent_background(_: &tauri::App) {}
 
 // ============================================================================
 // Tauri Commands
@@ -331,7 +305,6 @@ async fn app_settings_list_sprites(
 ) -> Result<Vec<SpriteInfo>, String> {
     Ok(state.app.list_sprites())
 }
-
 #[tauri::command]
 async fn agent_set_model(
     provider: String,
@@ -713,8 +686,8 @@ async fn plugin_store_uninstall(
 // ============================================================================
 
 /// Try each candidate directory in order, returning the first one that can be
-/// created successfully. The `try_create` callback is responsible for creating
-/// the directory (or simulating creation in tests).
+/// created and written to successfully. The `try_create` callback is responsible
+/// for creating the directory (or simulating creation in tests).
 #[cfg(any(target_os = "windows", test))]
 fn resolve_webview2_data_dir<F>(
     candidates: &[(&str, PathBuf)],
@@ -726,11 +699,24 @@ where
     for (label, path) in candidates {
         match try_create(path) {
             Ok(()) => {
-                eprintln!(
-                    "info: WebView2 data folder set to ({label}): {}",
-                    path.display()
-                );
-                return Some(path.clone());
+                // Also verify we can actually write to the directory
+                let test_file = path.join(".peekoo-write-test");
+                match std::fs::write(&test_file, b"test") {
+                    Ok(_) => {
+                        let _ = std::fs::remove_file(&test_file);
+                        eprintln!(
+                            "info: WebView2 data folder set to ({label}): {}",
+                            path.display()
+                        );
+                        return Some(path.clone());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "info: {label} WebView2 path not writable ({:?}): {e}",
+                            path.display()
+                        );
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(
@@ -747,16 +733,16 @@ where
 #[cfg(target_os = "windows")]
 fn webview2_candidate_dirs() -> Vec<(&'static str, PathBuf)> {
     let mut v = Vec::new();
-    // Primary: %LOCALAPPDATA%\com.peekoo.desktop\WebView2
+    // Primary: %LOCALAPPDATA%\Peekoo\WebView2
     if let Some(mut p) = dirs::data_local_dir() {
-        p.push("com.peekoo.desktop");
+        p.push("Peekoo");
         p.push("WebView2");
         v.push(("primary", p));
     }
-    // Fallback: %USERPROFILE%\.peekoo-desktop\WebView2
+    // Fallback: %USERPROFILE%\.peekoo\webview2
     if let Some(mut p) = dirs::home_dir() {
-        p.push(".peekoo-desktop");
-        p.push("WebView2");
+        p.push(".peekoo");
+        p.push("webview2");
         v.push(("home", p));
     }
     // Last resort: %TEMP%\peekoo-webview-data
@@ -816,8 +802,6 @@ pub fn run() {
         .setup(|app| {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
-                .text(TRAY_SETTINGS_MENU_ID, "Settings")
-                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
                 .separator()
                 .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
                 .build()?;
@@ -858,8 +842,6 @@ pub fn run() {
             }
 
             let _ = tray_builder.build(app)?;
-
-            apply_macos_transparent_background(app);
 
             let state = app.state::<AgentState>();
             state.app.start_plugin_runtime();
@@ -975,7 +957,7 @@ pub fn run() {
             plugin_store_catalog,
             plugin_store_install,
             plugin_store_update,
-            plugin_store_uninstall
+            plugin_store_uninstall,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
