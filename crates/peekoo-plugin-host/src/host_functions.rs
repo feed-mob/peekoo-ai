@@ -799,7 +799,7 @@ fn host_crypto_ed25519_get_or_create(
     }
 
     let key = load_or_create_signing_key(&ctx.plugin_key, alias)
-        .map_err(|e| Error::msg(format!("{e}")))?;
+        .map_err(|e| Error::msg(e.to_string()))?;
     let public_key = key.verifying_key().to_bytes();
     let public_key_base64url = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key);
     let public_key_sha256_hex = hex::encode(Sha256::digest(public_key));
@@ -834,7 +834,7 @@ fn host_crypto_ed25519_sign(
     }
 
     let key = load_or_create_signing_key(&ctx.plugin_key, alias)
-        .map_err(|e| Error::msg(format!("{e}")))?;
+        .map_err(|e| Error::msg(e.to_string()))?;
     let signature = ed25519_dalek::Signer::sign(&key, payload.as_bytes());
     let signature_base64url =
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes());
