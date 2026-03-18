@@ -1042,6 +1042,7 @@
         websocketUrl: 'ws://127.0.0.1:18789',
         token: '',
         password: '',
+        defaultPageSize: 10,
         configExists: false
       },
       isConnected: false
@@ -1124,9 +1125,12 @@
         : "ws://127.0.0.1:18789";
       const token = (raw && typeof raw.token === "string") ? raw.token : "";
       const password = (raw && typeof raw.password === "string") ? raw.password : "";
+      const defaultPageSize = Number.isFinite(raw?.defaultPageSize) && raw.defaultPageSize > 0
+        ? raw.defaultPageSize
+        : 10;
       const configExists = Boolean(raw && raw.configExists);
 
-      return { websocketUrl, token, password, configExists };
+      return { websocketUrl, token, password, defaultPageSize, configExists };
     }
 
     function truncate(str, maxLength) {
@@ -1831,6 +1835,7 @@
           password
         });
         state.config = normalizeConfig(result);
+        state.pageSize = state.config.defaultPageSize;
         state.isConnected = state.config.configExists;
         renderConnectionStatus();
         closeConfigModal();
@@ -1847,6 +1852,7 @@
       try {
         const result = await invokePluginTool("get_openclaw_config");
         state.config = normalizeConfig(result);
+        state.pageSize = state.config.defaultPageSize;
         if (state.config.configExists) {
           setStatusMessage('');
         }
@@ -1856,8 +1862,10 @@
           websocketUrl: "ws://127.0.0.1:18789",
           token: "",
           password: "",
+          defaultPageSize: 10,
           configExists: false
         };
+        state.pageSize = state.config.defaultPageSize;
         setStatusMessage('读取本地配置失败，请重新配置连接信息。', 'error');
       }
 

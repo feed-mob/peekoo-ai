@@ -150,9 +150,7 @@ export function tool_openclaw_chat_send(): i32 {
 }
 
 function refreshSessions(page: i32, pageSize: i32): string {
-  const params =
-    '{"limit":100,"includeLastMessage":true,"includeDerivedTitles":true,' +
-    '"page":' + page.toString() + ',"pageSize":' + pageSize.toString() + '}';
+  const params = '{"limit":100,"includeLastMessage":true,"includeDerivedTitles":true}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
     state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
@@ -301,7 +299,14 @@ function secretFor(cfg: OpenClawConfig): string {
 }
 
 function configToJson(cfg: OpenClawConfig): string {
-  return '{"websocketUrl":' + quote(cfg.websocketUrl) + ',"token":' + quote(cfg.token) + ',"password":' + quote(cfg.password) + ',"configExists":' + boolJson(cfg.configExists) + '}';
+  return (
+    '{"websocketUrl":' + quote(cfg.websocketUrl) +
+    ',"token":' + quote(cfg.token) +
+    ',"password":' + quote(cfg.password) +
+    ',"configExists":' + boolJson(cfg.configExists) +
+    ',"defaultPageSize":' + resolveDefaultPageSize().toString() +
+    '}'
+  );
 }
 
 function loadConfig(): OpenClawConfig {
