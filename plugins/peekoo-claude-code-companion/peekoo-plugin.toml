@@ -1,0 +1,15 @@
+[plugin]
+key = "peekoo-claude-code-companion"
+name = "Claude Code Companion"
+version = "0.1.0"
+author = "Peekoo Team"
+description = "Tracks Claude Code sessions and reacts with moods and notifications."
+min_peekoo_version = "0.1.0"
+wasm = "build/peekoo_claude_code_companion.wasm"
+
+[permissions]
+required = ["fs:read", "notifications", "pet:mood", "scheduler", "state:read", "state:write"]
+allowed_paths = ["~/.claude/projects/"]
+
+[events]
+subscribe = ["schedule:fired"]

@@ -21,4 +21,8 @@ import * as log from "@peekoo/plugin-sdk/assembly/log";
 import * as schedule from "@peekoo/plugin-sdk/assembly/schedule";
 ```
 
+For AssemblyScript plugins, define a local `abort(...)` export and point `asconfig.json` at
+it with `"use": ["abort=assembly/index/abort"]`. This avoids a runtime failure from a missing
+`env::abort` import.
+
 See `docs/plugin-authoring.md` for a full plugin authoring walkthrough.

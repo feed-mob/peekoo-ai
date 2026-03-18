@@ -1,0 +1,2 @@
+{"parentUuid":"aaa","type":"assistant","message":{"id":"msg1","type":"message","role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","id":"toolu_01","name":"Bash","input":{"command":"cargo test"}}]},"sessionId":"session-interrupted","cwd":"/repo","timestamp":"2026-03-18T10:00:00Z","slug":"steady-alert-otter"}
+{"parentUuid":"bbb","type":"user","message":{"role":"user","content":[{"type":"text","text":"[Request interrupted by user]"}]},"sessionId":"session-interrupted","cwd":"/repo","timestamp":"2026-03-18T10:00:05Z","slug":"steady-alert-otter"}

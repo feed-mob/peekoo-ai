@@ -116,12 +116,27 @@ impl PluginRegistry {
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
+        let allowed_paths = manifest
+            .permissions
+            .as_ref()
+            .map(|permissions| {
+                permissions
+                    .allowed_paths
+                    .iter()
+                    .filter_map(|path| {
+                        let expanded = host_functions::expand_tilde_path(path);
+                        std::fs::canonicalize(&expanded).ok()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
 
         let host_fns = host_functions::build_host_functions(
             &key,
             &self.state,
             &self.permissions,
             declared_capabilities,
+            allowed_paths,
             &self.event_bus,
             &self.scheduler,
             &self.notifications,

@@ -1,0 +1,17 @@
+{
+  "name": "peekoo-claude-code-companion",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "asc assembly/index.ts --config asconfig.json --target release",
+    "test": "bun run build && node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@extism/as-pdk": "^1.0.0",
+    "@peekoo/plugin-sdk": "file:../../packages/plugin-sdk"
+  },
+  "devDependencies": {
+    "@extism/extism": "^2.0.0-rc.13",
+    "assemblyscript": "^0.27.0"
+  }
+}

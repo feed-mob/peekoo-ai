@@ -43,6 +43,8 @@ pub struct PermissionsBlock {
     pub required: Vec<String>,
     #[serde(default)]
     pub optional: Vec<String>,
+    #[serde(default)]
+    pub allowed_paths: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -273,6 +275,30 @@ max = 180
         let result = parse_manifest("not valid toml {{{}}}");
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), PluginError::ManifestParse(_)));
+    }
+
+    #[test]
+    fn parse_permissions_allowed_paths() {
+        let toml = r#"
+[plugin]
+key = "fs-reader"
+name = "FS Reader"
+version = "0.1.0"
+wasm = "plugin.wasm"
+
+[permissions]
+required = ["fs:read"]
+allowed_paths = ["~/.claude/projects/", "~/tmp/"]
+"#;
+
+        let manifest = parse_manifest(toml).unwrap();
+        let permissions = manifest.permissions.as_ref().unwrap();
+
+        assert_eq!(permissions.required, vec!["fs:read"]);
+        assert_eq!(
+            permissions.allowed_paths,
+            vec!["~/.claude/projects/", "~/tmp/"]
+        );
     }
 
     #[test]
