@@ -18,16 +18,23 @@ import {
   SPRITE_BUBBLE_EVENT,
   SpriteBubblePayloadSchema,
 } from "@/types/sprite-bubble";
+import type { PanelLabel } from "@/types/window";
 import type { AnimationType, SpriteState } from "@/types/sprite";
 
 // Duration (ms) a reaction-triggered mood override stays active before reverting
 const MOOD_OVERRIDE_DURATION_MS = 3000;
 
+export async function openSettingsPanelFromTray(
+  openPanel: (label: PanelLabel) => Promise<void>,
+) {
+  await openPanel("panel-settings");
+}
+
 export default function SpriteView() {
   const spriteState = useSpriteState();
   const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
   const { items: badgeItems, currentItem: badgeCurrentItem, expanded: badgeExpanded, toggleExpanded: toggleBadgeExpanded, collapse: collapseBadge } = usePeekBadge();
-  const { panels, pluginPanels, installedPlugins, togglePanel } = usePanelWindows();
+  const { panels, pluginPanels, installedPlugins, openPanel, togglePanel } = usePanelWindows();
   const [menuOpen, setMenuOpen] = useState(false);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
   const [dragAnimation, setDragAnimation] = useState<AnimationType | null>(null);
@@ -115,12 +122,12 @@ export default function SpriteView() {
   // Open settings panel when the tray menu "Settings" item is clicked
   useEffect(() => {
     const unlisten = listen("open-settings", () => {
-      void togglePanel("panel-settings");
+      void openSettingsPanelFromTray(openPanel);
     });
     return () => {
       unlisten.then((fn) => fn());
     };
-  }, [togglePanel]);
+  }, [openPanel]);
 
   // Determine effective sprite state with priority:
   // 1. moodOverride (reactions, reminders) - highest priority

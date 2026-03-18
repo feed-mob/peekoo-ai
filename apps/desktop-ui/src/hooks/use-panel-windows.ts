@@ -126,6 +126,7 @@ export function usePanelWindows() {
     panels,
     pluginPanels,
     installedPlugins,
+    openPanel,
     togglePanel,
   };
 }
