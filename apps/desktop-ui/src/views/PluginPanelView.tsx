@@ -8,15 +8,12 @@ import {
   injectPluginPanelBridge,
 } from "@/lib/plugin-panel-bridge";
 import { emitPetReaction } from "@/lib/pet-events";
-import { PanelShell } from "@/components/panels/PanelShell";
 
 export default function PluginPanelView() {
   const [html, setHtml] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const label = getCurrentWebviewWindow().label;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-
-  const isOpenClawSessions = label === "panel-openclaw-sessions";
 
   useEffect(() => {
     invoke<string>("plugin_panel_html", { label })
@@ -92,21 +89,6 @@ export default function PluginPanelView() {
       <div className="flex h-screen items-center justify-center bg-glass text-text-secondary">
         Failed to load plugin panel: {error}
       </div>
-    );
-  }
-
-  // Only show custom title bar for panel-openclaw-sessions
-  if (isOpenClawSessions) {
-    return (
-      <PanelShell title="Openclaw Sessions Management" showCloseButton>
-        <iframe
-          ref={iframeRef}
-          title={label}
-          srcDoc={html}
-          className="h-full w-full border-0 bg-transparent"
-          sandbox="allow-scripts"
-        />
-      </PanelShell>
     );
   }
 

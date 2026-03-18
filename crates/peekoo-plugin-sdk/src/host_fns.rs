@@ -123,6 +123,69 @@ pub(crate) struct SetMoodRequest {
     pub sticky: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketConnectRequest {
+    pub url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketConnectResponse {
+    pub socket_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketSendRequest {
+    pub socket_id: String,
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketRecvRequest {
+    pub socket_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketRecvResponse {
+    pub text: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct WebSocketCloseRequest {
+    pub socket_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SystemTimeMillisResponse {
+    pub time_millis: u64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SystemUuidV4Response {
+    pub uuid: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CryptoEd25519GetOrCreateRequest {
+    pub alias: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CryptoEd25519GetOrCreateResponse {
+    pub public_key_base64_url: String,
+    pub public_key_sha256_hex: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CryptoEd25519SignRequest {
+    pub alias: String,
+    pub payload: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct CryptoEd25519SignResponse {
+    pub signature_base64_url: String,
+}
+
 // ── Host function declarations ─────────────────────────────────
 
 #[host_fn]
@@ -141,5 +204,21 @@ extern "ExtismHost" {
     pub(crate) fn peekoo_bridge_fs_read(input: String) -> Json<BridgeFsReadResponse>;
     pub(crate) fn peekoo_fs_read(input: Json<FsReadRequest>) -> Json<FsReadResponse>;
     pub(crate) fn peekoo_fs_read_dir(input: Json<FsReadDirRequest>) -> Json<FsReadDirResponse>;
+    pub(crate) fn peekoo_websocket_connect(
+        input: Json<WebSocketConnectRequest>,
+    ) -> Json<WebSocketConnectResponse>;
+    pub(crate) fn peekoo_websocket_send(input: Json<WebSocketSendRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_websocket_recv(
+        input: Json<WebSocketRecvRequest>,
+    ) -> Json<WebSocketRecvResponse>;
+    pub(crate) fn peekoo_websocket_close(input: Json<WebSocketCloseRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_system_time_millis(input: String) -> Json<SystemTimeMillisResponse>;
+    pub(crate) fn peekoo_system_uuid_v4(input: String) -> Json<SystemUuidV4Response>;
+    pub(crate) fn peekoo_crypto_ed25519_get_or_create(
+        input: Json<CryptoEd25519GetOrCreateRequest>,
+    ) -> Json<CryptoEd25519GetOrCreateResponse>;
+    pub(crate) fn peekoo_crypto_ed25519_sign(
+        input: Json<CryptoEd25519SignRequest>,
+    ) -> Json<CryptoEd25519SignResponse>;
     pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
 }

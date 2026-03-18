@@ -31,9 +31,6 @@ function iconForPluginPanel(panel: PluginPanel): LucideIcon {
   if (panel.pluginKey === "health-reminders") {
     return HeartPulse;
   }
-  if (panel.pluginKey === "openclaw-sessions") {
-    return HeartPulse;
-  }
   return Puzzle;
 }
 

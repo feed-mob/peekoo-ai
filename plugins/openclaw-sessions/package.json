@@ -4,8 +4,8 @@
   "private": true,
   "description": "OpenClaw Sessions Manager Plugin for Peekoo",
   "scripts": {
-    "build": "asc assembly/index.ts --outFile build/openclaw_sessions.wasm --optimize --exportRuntime",
-    "build:debug": "asc assembly/index.ts --outFile build/openclaw_sessions.wasm --debug --exportRuntime"
+    "build": "asc assembly/index.ts --config asconfig.json --target release",
+    "build:debug": "asc assembly/index.ts --outFile build/openclaw_sessions.wasm --debug --exportRuntime --use abort=assembly/index/abort"
   },
   "dependencies": {
     "@peekoo/plugin-sdk": "file:../../packages/plugin-sdk",

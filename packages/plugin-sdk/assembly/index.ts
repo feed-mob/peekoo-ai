@@ -19,6 +19,9 @@ import * as bridge from "./bridge";
 import * as events from "./events";
 import * as fs from "./fs";
 import * as mood from "./mood";
+import * as crypto from "./crypto";
+import * as system from "./system";
+import * as websocket from "./websocket";
 
-export { state, log, notify, schedule, config, badge, bridge, events, fs, mood };
+export { state, log, notify, schedule, config, badge, bridge, events, fs, mood, crypto, system, websocket };
 export { ScheduleInfo, BadgeItem, FsEntry } from "./types";

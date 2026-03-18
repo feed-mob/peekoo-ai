@@ -1103,6 +1103,18 @@
       return window.__TAURI__.core.invoke(command, payload);
     }
 
+    async function invokePluginTool(toolName, args = {}) {
+      const result = await invokeTauri("plugin_call_tool", {
+        toolName,
+        argsJson: JSON.stringify(args),
+      });
+      const parsed = JSON.parse(result || "null");
+      if (parsed && parsed.success === false && typeof parsed.error === 'string') {
+        throw new Error(parsed.error);
+      }
+      return parsed;
+    }
+
     // ============================================
     // Helper Functions
     // ============================================
@@ -1595,7 +1607,7 @@
     }
 
     async function loadSessionHistory(sessionKey) {
-      const payload = await invokeTauri('openclaw_chat_history', {
+      const payload = await invokePluginTool('openclaw_chat_history', {
         sessionKey,
         limit: 200
       });
@@ -1681,7 +1693,7 @@
         state.assistantCountBaseline = assistantCountBefore;
         renderChatMessages();
 
-        const payload = await invokeTauri('openclaw_chat_send', { sessionKey, message });
+        const payload = await invokePluginTool('openclaw_chat_send', { sessionKey, message });
         elements.chatInput.value = '';
         if (payload && typeof payload === 'object' && payload.message) {
           const assistant = normalizeHistoryMessage(payload.message);
@@ -1813,7 +1825,7 @@
       }
 
       try {
-        const result = await invokeTauri("openclaw_config_set", {
+        const result = await invokePluginTool("save_openclaw_config", {
           websocketUrl,
           token,
           password
@@ -1833,7 +1845,7 @@
 
     async function loadPersistedConfig() {
       try {
-        const result = await invokeTauri("openclaw_config_get");
+        const result = await invokePluginTool("get_openclaw_config");
         state.config = normalizeConfig(result);
         if (state.config.configExists) {
           setStatusMessage('');
@@ -1869,7 +1881,7 @@
         elements.btnRefresh.style.opacity = "0.7";
       }
       try {
-        const payload = await invokeTauri("openclaw_sessions_refresh");
+        const payload = await invokePluginTool("refresh_sessions");
         const rawSessions = extractSessions(payload);
         state.sessions = rawSessions.map(normalizeSession);
         state.currentPage = 1;

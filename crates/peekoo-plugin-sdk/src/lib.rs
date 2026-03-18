@@ -43,6 +43,7 @@ pub mod types;
 pub mod badge;
 pub mod bridge;
 pub mod config;
+pub mod crypto;
 pub mod events;
 pub mod fs;
 pub mod log;
@@ -50,6 +51,8 @@ pub mod mood;
 pub mod notify;
 pub mod schedule;
 pub mod state;
+pub mod system;
+pub mod websocket;
 
 /// The `peekoo` namespace — plugin authors access all APIs through this.
 ///
@@ -66,6 +69,7 @@ pub mod peekoo {
     pub use crate::badge;
     pub use crate::bridge;
     pub use crate::config;
+    pub use crate::crypto;
     pub use crate::events;
     pub use crate::fs;
     pub use crate::log;
@@ -73,6 +77,8 @@ pub mod peekoo {
     pub use crate::notify;
     pub use crate::schedule;
     pub use crate::state;
+    pub use crate::system;
+    pub use crate::websocket;
 }
 
 /// Prelude — import everything you need with a single `use`.

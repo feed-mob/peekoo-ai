@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri = { version = "2", features = [ "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = { version = "2", features = ["tracing"] }
 tauri-plugin-notification = "2"
@@ -26,17 +26,8 @@ serde_json = "1"
 tokio = { version = "1.50.0", features = ["time"] }
 tokio-util = "0.7"
 tracing = "0.1"
-tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
-futures-util = "0.3"
-sha2 = "0.10"
-base64 = "0.22"
-ed25519-dalek = { version = "2", features = ["rand_core"] }
-rand = "0.8"
-hex = "0.4"
-uuid = { version = "1", features = ["v4"] }
 
 peekoo-agent-app = { path = "../../../crates/peekoo-agent-app", default-features = false }
-peekoo-paths = { path = "../../../crates/peekoo-paths" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dirs = "6"

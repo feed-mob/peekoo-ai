@@ -1,8 +1,12 @@
 {
-  "options": {
-    "outFile": "build/openclaw_sessions.wasm",
-    "optimize": true,
-    "exportRuntime": true
-  },
-  "entries": ["assembly/index.ts"]
+  "targets": {
+    "release": {
+      "outFile": "build/openclaw_sessions.wasm",
+      "optimizeLevel": 3,
+      "shrinkLevel": 0,
+      "exportRuntime": true,
+      "use": ["abort=assembly/index/abort"],
+      "bindings": "raw"
+    }
+  }
 }

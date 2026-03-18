@@ -1,248 +1,345 @@
-/**
- * OpenClaw Sessions Manager Plugin
- * Manage OpenClaw sessions with configuration and session list view
- */
-
 import { Host } from "@extism/as-pdk";
-import * as state from "@peekoo/plugin-sdk/assembly/state";
-import * as log from "@peekoo/plugin-sdk/assembly/log";
+import * as crypto from "@peekoo/plugin-sdk/assembly/crypto";
+import { extractIntField, extractRawField, extractStringField, quote } from "@peekoo/plugin-sdk/assembly/json";
 import * as notify from "@peekoo/plugin-sdk/assembly/notify";
-import { quote, extractStringField, extractIntField } from "@peekoo/plugin-sdk/assembly/json";
+import * as state from "@peekoo/plugin-sdk/assembly/state";
+import * as system from "@peekoo/plugin-sdk/assembly/system";
+import * as websocket from "@peekoo/plugin-sdk/assembly/websocket";
 
-// Configuration keys
 const CONFIG_WEBSOCKET_URL = "websocketUrl";
 const CONFIG_TOKEN = "token";
 const CONFIG_PASSWORD = "password";
-const CONFIG_PAGE_SIZE = "pageSize";
-
-// State keys
-const STATE_SESSIONS_CACHE = "sessionsCache";
-const STATE_CURRENT_PAGE = "currentPage";
-const STATE_TOTAL_SESSIONS = "totalSessions";
 const STATE_CONFIG_EXISTS = "configExists";
-
-// Default values
-const DEFAULT_WEBSOCKET_URL: string = "ws://127.0.0.1:18789";
+const STATE_SESSIONS_CACHE = "sessionsCache";
+const DEVICE_KEY_ALIAS = "openclaw-device-v2";
+const DEFAULT_WEBSOCKET_URL = "ws://127.0.0.1:18789";
 const DEFAULT_PAGE_SIZE: i32 = 10;
 
-// Mock sessions data for UI demonstration
-const MOCK_SESSIONS: string[] = [
-  '{"kind":"direct","key":"agent:main:main","age":"21h ago","model":"MiniMax-M2.5","tokens":"13k/200k","ctxPercent":"7%","flags":"system id:a0c932da-b65e-4c4f-a97e-a75d5e7a1aaf"}',
-  '{"kind":"direct","key":"agent:main:cron:task1","age":"22h ago","model":"MiniMax-M2.5","tokens":"27k/200k","ctxPercent":"14%","flags":"system id:b9f77996-4a54-4482-a662-e1707ac12ac5"}',
-  '{"kind":"direct","key":"agent:main:cron:task2","age":"22h ago","model":"MiniMax-M2.5","tokens":"26k/200k","ctxPercent":"13%","flags":"system id:af506100-2b36-495b-84bd-dfbc87d09323"}',
-  '{"kind":"direct","key":"agent:main:cron:daily","age":"23h ago","model":"GPT-4","tokens":"45k/128k","ctxPercent":"35%","flags":"system id:c8d4e5f6-a1b2-4c3d-8e9f-0a1b2c3d4e5f"}',
-  '{"kind":"direct","key":"agent:main:cron:weekly","age":"1d ago","model":"Claude-3.5","tokens":"82k/200k","ctxPercent":"41%","flags":"system id:d9e5f6a7-b2c3-4d5e-9f0a-1b2c3d4e5f6a"}',
-  '{"kind":"proxy","key":"agent:proxy:api","age":"2h ago","model":"GPT-3.5","tokens":"5k/16k","ctxPercent":"31%","flags":"system rate-limited"}',
-  '{"kind":"proxy","key":"agent:proxy:web","age":"3h ago","model":"GPT-4","tokens":"12k/128k","ctxPercent":"9%","flags":"system"}',
-  '{"kind":"direct","key":"agent:main:cron:hourly","age":"45m ago","model":"MiniMax-M2.5","tokens":"8k/200k","ctxPercent":"4%","flags":"system id:e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b"}',
-  '{"kind":"direct","key":"agent:main:test","age":"5m ago","model":"Claude-3.5","tokens":"2k/200k","ctxPercent":"1%","flags":"system id:f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c"}',
-  '{"kind":"proxy","key":"agent:proxy:mobile","age":"15m ago","model":"GPT-4","tokens":"18k/128k","ctxPercent":"14%","flags":"system"}'
-];
-
-// ═══════════════════════════════════════════════════════════════
-// Plugin Lifecycle
-// ═══════════════════════════════════════════════════════════════
-
-export function plugin_init(): i32 {
-  log.info("OpenClaw Sessions Manager 插件已加载");
-
-  // Initialize default configuration if not exists
-  const configExists = state.get(STATE_CONFIG_EXISTS);
-  if (configExists === "" || configExists === "false") {
-    state.set(CONFIG_WEBSOCKET_URL, DEFAULT_WEBSOCKET_URL);
-    state.set(CONFIG_TOKEN, "");
-    state.set(CONFIG_PASSWORD, "");
-    state.set(CONFIG_PAGE_SIZE, DEFAULT_PAGE_SIZE.toString());
-    state.set(STATE_CONFIG_EXISTS, "false");
-    log.info("默认配置已初始化");
-  }
-
-  // Initialize sessions cache with mock data
-  const existingCache = state.get(STATE_SESSIONS_CACHE);
-  if (existingCache === "") {
-    // Build mock sessions array string
-    let mockData = "[";
-    for (let i = 0; i < MOCK_SESSIONS.length; i++) {
-      if (i > 0) mockData += ",";
-      mockData += MOCK_SESSIONS[i];
-    }
-    mockData += "]";
-    state.set(STATE_SESSIONS_CACHE, mockData);
-    state.set(STATE_TOTAL_SESSIONS, MOCK_SESSIONS.length.toString());
-    state.set(STATE_CURRENT_PAGE, "1");
-    log.info("模拟会话数据已加载: " + MOCK_SESSIONS.length.toString() + " 条");
-  }
-
-  Host.outputString('{"status":"ok","message":"OpenClaw Sessions Manager initialized"}');
-  return 0;
+class OpenClawConfig {
+  constructor(
+    public websocketUrl: string,
+    public token: string,
+    public password: string,
+    public configExists: bool,
+  ) {}
 }
 
-export function plugin_shutdown(): i32 {
-  log.info("OpenClaw Sessions Manager 正在关闭...");
+export function abort(
+  message: string | null,
+  fileName: string | null,
+  lineNumber: u32,
+  columnNumber: u32,
+): void {
+  const messageText = message === null ? "abort" : changetype<string>(message);
+  const fileText = fileName === null ? "unknown" : changetype<string>(fileName);
+  Host.outputString(
+    '{"success":false,"error":' +
+      quote(fileText + ":" + lineNumber.toString() + ":" + columnNumber.toString() + ": " + messageText) +
+      "}",
+  );
+}
+
+export function plugin_init(): i32 {
+  initializeDefaults();
   Host.outputString('{"status":"ok"}');
   return 0;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Tool Functions
-// ═══════════════════════════════════════════════════════════════
+export function plugin_shutdown(): i32 {
+  Host.outputString('{"status":"ok"}');
+  return 0;
+}
 
 export function tool_get_openclaw_config(): i32 {
-  log.debug("获取 OpenClaw 配置");
-
-  const websocketUrl = state.get(CONFIG_WEBSOCKET_URL);
-  const token = state.get(CONFIG_TOKEN);
-  const password = state.get(CONFIG_PASSWORD);
-  const configExists = state.get(STATE_CONFIG_EXISTS);
-
-  const result = '{"websocketUrl":' + quote(websocketUrl) +
-                 ',"token":' + quote(token) +
-                 ',"password":' + quote(password) +
-                 ',"configExists":' + configExists + '}';
-
-  Host.outputString(result);
+  initializeDefaults();
+  Host.outputString(configToJson(loadConfig()));
   return 0;
 }
 
 export function tool_save_openclaw_config(): i32 {
-  const input = Host.inputString();
-  log.debug("保存 OpenClaw 配置: " + input);
+  initializeDefaults();
 
+  const input = Host.inputString();
   const websocketUrl = extractStringField(input, "websocketUrl");
   const token = extractStringField(input, "token");
   const password = extractStringField(input, "password");
 
-  // Validate: at least one of token or password must be provided
-  if (token === "" && password === "") {
-    Host.outputString('{"success":false,"error":"Either token or password must be provided"}');
+  if (websocketUrl == "") {
+    Host.outputString(errorJson("WebSocket URL is required"));
+    return 0;
+  }
+  if (token == "" && password == "") {
+    Host.outputString(errorJson("Either token or password must be provided"));
     return 0;
   }
 
-  // Save configuration
-  state.set(CONFIG_WEBSOCKET_URL, websocketUrl !== "" ? websocketUrl : DEFAULT_WEBSOCKET_URL);
+  state.set(CONFIG_WEBSOCKET_URL, websocketUrl);
   state.set(CONFIG_TOKEN, token);
   state.set(CONFIG_PASSWORD, password);
   state.set(STATE_CONFIG_EXISTS, "true");
 
-  log.info("OpenClaw 配置已保存");
-  Host.outputString('{"success":true}');
+  Host.outputString(configToJson(loadConfig()));
   return 0;
 }
 
 export function tool_list_sessions(): i32 {
+  initializeDefaults();
+
   const input = Host.inputString();
   const page = extractIntField(input, "page");
   const pageSize = extractIntField(input, "pageSize");
+  const cached = state.get(STATE_SESSIONS_CACHE);
+  if (cached != "") {
+    Host.outputString(cached);
+    return 0;
+  }
 
-  const currentPage: i32 = page > 0 ? page : 1;
-  const itemsPerPage: i32 = pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE;
-
-  log.debug("列出会话 - 页码: " + currentPage.toString() + ", 每页: " + itemsPerPage.toString());
-
-  // Get cached sessions
-  const sessionsData = state.get(STATE_SESSIONS_CACHE);
-  const totalStr = state.get(STATE_TOTAL_SESSIONS);
-  const totalSessions: i32 = totalStr != "" ? parseInt(totalStr) as i32 : 0;
-
-  // Calculate pagination
-  const totalPages: i32 = ceilDiv(totalSessions, itemsPerPage);
-  const safePage: i32 = currentPage > totalPages ? totalPages : currentPage;
-
-  // Build response - return all sessions with pagination info
-  // Client-side will handle the actual pagination display
-  const result = '{"sessions":' + sessionsData +
-                 ',"pagination":{"page":' + safePage.toString() +
-                 ',"pageSize":' + itemsPerPage.toString() +
-                 ',"total":' + totalSessions.toString() +
-                 ',"totalPages":' + totalPages.toString() + '}}';
-
-  Host.outputString(result);
+  Host.outputString(refreshSessions(page > 0 ? page : 1, pageSize > 0 ? pageSize : DEFAULT_PAGE_SIZE));
   return 0;
 }
 
 export function tool_refresh_sessions(): i32 {
-  log.info("刷新会话列表...");
-
-  // In a real implementation, this would fetch from OpenClaw WebSocket
-  // For now, we'll just reload the mock data with a timestamp update
-
-  notify.send("OpenClaw Sessions", "Sessions refreshed successfully");
-
-  Host.outputString('{"success":true,"message":"Sessions refreshed","timestamp":' + Date.now().toString() + '}');
+  initializeDefaults();
+  Host.outputString(refreshSessions(1, DEFAULT_PAGE_SIZE));
   return 0;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Data Providers
-// ═══════════════════════════════════════════════════════════════
+export function tool_openclaw_chat_history(): i32 {
+  initializeDefaults();
 
-export function data_session_stats(): i32 {
-  const sessionsData = state.get(STATE_SESSIONS_CACHE);
-  const totalStr = state.get(STATE_TOTAL_SESSIONS);
-  const totalSessions: i32 = totalStr != "" ? parseInt(totalStr) as i32 : 0;
+  const input = Host.inputString();
+  const sessionKey = extractStringField(input, "sessionKey");
+  const limit = extractIntField(input, "limit");
 
-  // Parse sessions to count by kind
-  let directCount: i32 = 0;
-  let proxyCount: i32 = 0;
-
-  // Simple string search for counting (simplified for AssemblyScript)
-  // Note: In real implementation, we'd parse the JSON properly
-  const searchPattern1: string = '"kind":"direct"';
-  const searchPattern2: string = '"kind":"proxy"';
-
-  // Count occurrences (simplified)
-  for (let i: i32 = 0; i < sessionsData.length - 14; i++) {
-    if (sessionsData.substring(i, i + 14) == searchPattern1) {
-      directCount++;
-    } else if (sessionsData.substring(i, i + 13) == searchPattern2) {
-      proxyCount++;
-    }
+  if (sessionKey == "") {
+    Host.outputString(errorJson("sessionKey is required"));
+    return 0;
   }
 
-  const result = '{"total":' + totalSessions.toString() +
-                 ',"direct":' + directCount.toString() +
-                 ',"proxy":' + proxyCount.toString() +
-                 ',"cachedAt":"' + getTimestamp() + '"}';
-
-  Host.outputString(result);
+  const params = '{"sessionKey":' + quote(sessionKey) + ',"limit":' + positiveInt(limit, 200).toString() + '}';
+  Host.outputString(gatewayRpc("chat.history", params));
   return 0;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Helper Functions
-// ═══════════════════════════════════════════════════════════════
+export function tool_openclaw_chat_send(): i32 {
+  initializeDefaults();
 
-function ceilDiv(a: i32, b: i32): i32 {
-  return (a + b - 1) / b;
-}
+  const input = Host.inputString();
+  const sessionKey = extractStringField(input, "sessionKey");
+  const message = extractStringField(input, "message");
 
-function parseInt(s: string): i32 {
-  if (s.length == 0) return 0;
-
-  let result: i32 = 0;
-  let negative: bool = false;
-  let start: i32 = 0;
-
-  if (s.charAt(0) == '-') {
-    negative = true;
-    start = 1;
+  if (sessionKey == "") {
+    Host.outputString(errorJson("sessionKey is required"));
+    return 0;
+  }
+  if (message == "") {
+    Host.outputString(errorJson("message is required"));
+    return 0;
   }
 
-  for (let i: i32 = start; i < s.length; i++) {
-    const c: i32 = s.charCodeAt(i);
-    if (c >= 48 && c <= 57) {
-      result = result * 10 + (c - 48);
-    } else {
-      break;
+  const params =
+    '{"sessionKey":' + quote(sessionKey) +
+    ',"message":' + quote(message) +
+    ',"idempotencyKey":' + quote(system.uuidV4()) + '}';
+  Host.outputString(gatewayRpc("chat.send", params));
+  return 0;
+}
+
+function refreshSessions(page: i32, pageSize: i32): string {
+  const params =
+    '{"limit":100,"includeLastMessage":true,"includeDerivedTitles":true,' +
+    '"page":' + page.toString() + ',"pageSize":' + pageSize.toString() + '}';
+  const payload = gatewayRpc("sessions.list", params);
+  if (!isErrorPayload(payload)) {
+    state.set(STATE_SESSIONS_CACHE, payload);
+    notify.send("OpenClaw Sessions", "Sessions refreshed successfully");
+  }
+  return payload;
+}
+
+function gatewayRpc(method: string, paramsJson: string): string {
+  const cfg = loadConfig();
+  if (!cfg.configExists) {
+    return errorJson("OpenClaw configuration is not set");
+  }
+
+  let socketId = "";
+  if (cfg.websocketUrl == "") {
+    return errorJson("WebSocket URL is required");
+  }
+
+  socketId = websocket.connect(cfg.websocketUrl);
+  if (socketId == "") {
+    return errorJson("Failed to open WebSocket connection");
+  }
+
+  const nonce = waitForConnectChallenge(socketId);
+  if (isErrorPayload(nonce)) {
+    websocket.close(socketId);
+    return nonce;
+  }
+
+  const device = crypto.ed25519GetOrCreate(DEVICE_KEY_ALIAS);
+  const signedAt = system.timeMillis();
+  const signedPayload = buildSignedPayload(device.publicKeySha256Hex, cfg, signedAt, nonce);
+  const signature = crypto.ed25519Sign(DEVICE_KEY_ALIAS, signedPayload);
+  const connectId = system.uuidV4();
+
+  const connectReq =
+    '{"type":"req","id":' + quote(connectId) + ',"method":"connect","params":{' +
+    '"minProtocol":3,"maxProtocol":3,' +
+    '"client":{' +
+    '"id":"gateway-client",' +
+    '"displayName":"OpenClaw Session Manager",' +
+    '"version":"1.0.0",' +
+    '"platform":"peekoo-plugin",' +
+    '"mode":"ui",' +
+    '"instanceId":' + quote(system.uuidV4()) + '},' +
+    '"auth":' + authJson(cfg) + ',' +
+    '"role":"operator",' +
+    '"scopes":["operator.admin"],' +
+    '"device":{' +
+    '"id":' + quote(device.publicKeySha256Hex) + ',' +
+    '"publicKey":' + quote(device.publicKeyBase64Url) + ',' +
+    '"signature":' + quote(signature) + ',' +
+    '"signedAt":' + signedAt.toString() + ',' +
+    '"nonce":' + (nonce == "" ? "null" : quote(nonce)) + '}}}';
+
+  websocket.send(socketId, connectReq);
+  const connectResult = waitForResponsePayload(socketId, connectId);
+  if (isErrorPayload(connectResult)) {
+    websocket.close(socketId);
+    return connectResult;
+  }
+
+  const requestId = system.uuidV4();
+  const request =
+    '{"type":"req","id":' + quote(requestId) + ',"method":' + quote(method) + ',"params":' + paramsJson + '}';
+  websocket.send(socketId, request);
+  const payload = waitForResponsePayload(socketId, requestId);
+  websocket.close(socketId);
+  return payload;
+}
+
+function waitForConnectChallenge(socketId: string): string {
+  for (let i = 0; i < 8; i++) {
+    const message = websocket.recv(socketId);
+    if (message == "") {
+      return errorJson("Gateway returned an empty challenge message");
+    }
+    if (extractStringField(message, "type") == "event" && extractStringField(message, "event") == "connect.challenge") {
+      return extractStringField(message, "nonce");
     }
   }
 
-  return negative ? -result : result;
+  return errorJson("Timed out waiting for connect.challenge");
 }
 
-// Get timestamp as string for session data
-function getTimestamp(): string {
-  // In real implementation, this would call a host function
-  // For now return empty string
-  return "";
+function waitForResponsePayload(socketId: string, expectedId: string): string {
+  for (let i = 0; i < 32; i++) {
+    const message = websocket.recv(socketId);
+    if (message == "") {
+      return errorJson("Gateway returned an empty response");
+    }
+    if (extractStringField(message, "type") != "res") {
+      continue;
+    }
+    if (extractStringField(message, "id") != expectedId) {
+      continue;
+    }
+    if (extractRawField(message, "ok") == "true") {
+      const payload = extractRawField(message, "payload");
+      return payload == "" ? "{}" : payload;
+    }
+
+    const errorPayload = extractRawField(message, "error");
+    const errorMessage = extractStringField(errorPayload, "message");
+    if (errorMessage != "") {
+      return errorJson(errorMessage);
+    }
+    return errorJson("Gateway request failed");
+  }
+
+  return errorJson("Timed out waiting for gateway response");
+}
+
+function buildSignedPayload(deviceId: string, cfg: OpenClawConfig, signedAt: u64, nonce: string): string {
+  let payload =
+    (nonce != "" ? "v2" : "v1") + "|" +
+    deviceId + "|" +
+    "gateway-client|ui|operator|operator.admin|" +
+    signedAt.toString() + "|" +
+    secretFor(cfg);
+
+  if (nonce != "") {
+    payload += "|" + nonce;
+  }
+
+  return payload;
+}
+
+function authJson(cfg: OpenClawConfig): string {
+  let body = "";
+  if (cfg.token != "") {
+    body += '"token":' + quote(cfg.token);
+  }
+  if (cfg.password != "") {
+    if (body != "") {
+      body += ",";
+    }
+    body += '"password":' + quote(cfg.password);
+  }
+  return "{" + body + "}";
+}
+
+function secretFor(cfg: OpenClawConfig): string {
+  return cfg.token != "" ? cfg.token : cfg.password;
+}
+
+function configToJson(cfg: OpenClawConfig): string {
+  return '{"websocketUrl":' + quote(cfg.websocketUrl) + ',"token":' + quote(cfg.token) + ',"password":' + quote(cfg.password) + ',"configExists":' + boolJson(cfg.configExists) + '}';
+}
+
+function loadConfig(): OpenClawConfig {
+  return new OpenClawConfig(
+    defaultIfEmpty(state.get(CONFIG_WEBSOCKET_URL), DEFAULT_WEBSOCKET_URL),
+    state.get(CONFIG_TOKEN),
+    state.get(CONFIG_PASSWORD),
+    state.get(STATE_CONFIG_EXISTS) == "true",
+  );
+}
+
+function initializeDefaults(): void {
+  if (state.get(CONFIG_WEBSOCKET_URL) == "") {
+    state.set(CONFIG_WEBSOCKET_URL, DEFAULT_WEBSOCKET_URL);
+  }
+  if (state.get(CONFIG_TOKEN) == "") {
+    state.set(CONFIG_TOKEN, "");
+  }
+  if (state.get(CONFIG_PASSWORD) == "") {
+    state.set(CONFIG_PASSWORD, "");
+  }
+  if (state.get(STATE_CONFIG_EXISTS) == "") {
+    state.set(STATE_CONFIG_EXISTS, "false");
+  }
+}
+
+function defaultIfEmpty(value: string, fallback: string): string {
+  return value == "" ? fallback : value;
+}
+
+function positiveInt(value: i32, fallback: i32): i32 {
+  return value > 0 ? value : fallback;
+}
+
+function boolJson(value: bool): string {
+  return value ? "true" : "false";
+}
+
+function isErrorPayload(payload: string): bool {
+  return extractRawField(payload, "success") == "false" && extractStringField(payload, "error") != "";
+}
+
+function errorJson(message: string): string {
+  return '{"success":false,"error":' + quote(message) + '}';
 }

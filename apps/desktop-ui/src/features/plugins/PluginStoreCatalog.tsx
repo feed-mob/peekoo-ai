@@ -12,14 +12,6 @@ const PERMISSION_LABELS: Record<string, string> = {
   "state:write": "State write",
 };
 
-const OPENCLAW_PLUGIN_KEY = "openclaw-sessions";
-const OPENCLAW_PREVIEW = {
-  name: "Openclaw Sessions Management",
-  description: "Manage OpenClaw sessions with configuration, pagination, and chat history tools.",
-  version: "v1.0.0 (pending review)",
-  author: "Peekoo Developer",
-} as const;
-
 function formatPermission(permission: string): string {
   return PERMISSION_LABELS[permission] ?? permission;
 }
@@ -45,8 +37,6 @@ export function PluginStoreCatalog({
   isInstalling,
   onRefresh,
 }: PluginStoreCatalogProps) {
-  const hasOpenClawInCatalog = catalog.some((plugin) => plugin.pluginKey === OPENCLAW_PLUGIN_KEY);
-
   if (isLoading && catalog.length === 0) {
     return <div className="text-sm text-text-muted">Loading plugin store...</div>;
   }
@@ -199,35 +189,6 @@ export function PluginStoreCatalog({
             );
           })}
 
-          {!hasOpenClawInCatalog ? (
-            <section className="rounded-2xl border border-glass-border bg-glass/50 p-4 shadow-panel overflow-hidden">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-space-overlay text-glow-cyan">
-                    <Puzzle size={18} />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="truncate text-sm font-semibold text-text-primary">
-                        {OPENCLAW_PREVIEW.name}
-                      </h3>
-                      <Badge variant="secondary">Pending review</Badge>
-                    </div>
-                    <p className="mt-1 truncate text-xs text-text-muted">
-                      {OPENCLAW_PLUGIN_KEY} · {OPENCLAW_PREVIEW.version} · {OPENCLAW_PREVIEW.author}
-                    </p>
-                  </div>
-                </div>
-                <Button size="sm" variant="outline" className="shrink-0" disabled>
-                  Install (Soon)
-                </Button>
-              </div>
-
-              <p className="mt-3 text-sm leading-6 text-text-secondary break-words">
-                {OPENCLAW_PREVIEW.description}
-              </p>
-            </section>
-          ) : null}
         </div>
       )}
     </div>

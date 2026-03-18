@@ -1,14 +1,22 @@
+use base64::Engine as _;
+use ed25519_dalek::SigningKey;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
+use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::UNIX_EPOCH;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use extism::{CurrentPlugin, Error, Function, UserData, Val, ValType};
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
+use rand::rngs::OsRng;
+use sha2::{Digest, Sha256};
+use tungstenite::stream::MaybeTlsStream;
+use tungstenite::{connect, Message, WebSocket};
+use url::Url;
 
 use crate::config::resolved_config_map;
 use crate::events::{EventBus, PluginEvent};
@@ -23,12 +31,22 @@ struct HostContext {
     permissions: PermissionStore,
     declared_capabilities: Vec<String>,
     allowed_paths: Vec<PathBuf>,
+    allowed_hosts: Vec<String>,
+    websockets: Arc<Mutex<WebSocketStore>>,
     event_bus: Arc<EventBus>,
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
     config_fields: Vec<ConfigFieldDef>,
+}
+
+type PluginWebSocket = WebSocket<MaybeTlsStream<TcpStream>>;
+
+#[derive(Default)]
+struct WebSocketStore {
+    next_id: u64,
+    sockets: std::collections::HashMap<String, PluginWebSocket>,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -38,6 +56,7 @@ pub fn build_host_functions(
     permissions: &PermissionStore,
     declared_capabilities: Vec<String>,
     allowed_paths: Vec<PathBuf>,
+    allowed_hosts: Vec<String>,
     event_bus: &Arc<EventBus>,
     scheduler: &Arc<Scheduler>,
     notifications: &Arc<NotificationService>,
@@ -51,6 +70,8 @@ pub fn build_host_functions(
         permissions: permissions.clone(),
         declared_capabilities,
         allowed_paths,
+        allowed_hosts,
+        websockets: Arc::new(Mutex::new(WebSocketStore::default())),
         event_bus: Arc::clone(event_bus),
         scheduler: Arc::clone(scheduler),
         notifications: Arc::clone(notifications),
@@ -150,6 +171,62 @@ pub fn build_host_functions(
             [ValType::I64],
             UserData::new(ctx.clone()),
             host_fs_read_dir,
+        ),
+        Function::new(
+            "peekoo_websocket_connect",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_websocket_connect,
+        ),
+        Function::new(
+            "peekoo_websocket_send",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_websocket_send,
+        ),
+        Function::new(
+            "peekoo_websocket_recv",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_websocket_recv,
+        ),
+        Function::new(
+            "peekoo_websocket_close",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_websocket_close,
+        ),
+        Function::new(
+            "peekoo_system_time_millis",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_system_time_millis,
+        ),
+        Function::new(
+            "peekoo_system_uuid_v4",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_system_uuid_v4,
+        ),
+        Function::new(
+            "peekoo_crypto_ed25519_get_or_create",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_crypto_ed25519_get_or_create,
+        ),
+        Function::new(
+            "peekoo_crypto_ed25519_sign",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_crypto_ed25519_sign,
         ),
         Function::new(
             "peekoo_set_mood",
@@ -507,6 +584,268 @@ fn host_set_mood(
     Ok(())
 }
 
+fn host_websocket_connect(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "net:websocket")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let url = req["url"].as_str().unwrap_or_default().trim();
+
+    if url.is_empty() {
+        return Err(Error::msg("websocket url is required"));
+    }
+
+    if !is_websocket_url_allowed(url, &ctx.allowed_hosts) {
+        return Err(Error::msg(format!(
+            "Plugin '{}' cannot connect to non-allowlisted host: {url}",
+            ctx.plugin_key
+        )));
+    }
+
+    let parsed = Url::parse(url).map_err(|e| Error::msg(format!("Invalid websocket url: {e}")))?;
+    match parsed.scheme() {
+        "ws" | "wss" => {}
+        scheme => {
+            return Err(Error::msg(format!(
+                "Unsupported websocket scheme: {scheme}"
+            )))
+        }
+    }
+
+    let (socket, _) = connect(parsed.as_str())
+        .map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
+    let mut websockets = ctx
+        .websockets
+        .lock()
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    websockets.next_id += 1;
+    let socket_id = format!("ws-{}", websockets.next_id);
+    websockets.sockets.insert(socket_id.clone(), socket);
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "socketId": socket_id }).to_string(),
+    )?;
+    Ok(())
+}
+
+fn host_websocket_send(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "net:websocket")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let socket_id = req["socketId"].as_str().unwrap_or_default();
+    let text = req["text"].as_str().unwrap_or_default();
+
+    let mut websockets = ctx
+        .websockets
+        .lock()
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    let socket = websockets
+        .sockets
+        .get_mut(socket_id)
+        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
+    socket
+        .send(Message::Text(text.to_string().into()))
+        .map_err(|e| Error::msg(format!("WebSocket send error: {e}")))?;
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)?;
+    Ok(())
+}
+
+fn host_websocket_recv(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "net:websocket")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let socket_id = req["socketId"].as_str().unwrap_or_default();
+
+    let mut websockets = ctx
+        .websockets
+        .lock()
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    let socket = websockets
+        .sockets
+        .get_mut(socket_id)
+        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
+
+    loop {
+        match socket.read() {
+            Ok(Message::Text(text)) => {
+                write_output(
+                    plugin,
+                    outputs,
+                    &serde_json::json!({ "text": text.to_string() }).to_string(),
+                )?;
+                return Ok(());
+            }
+            Ok(Message::Binary(bytes)) => {
+                let text = String::from_utf8_lossy(&bytes).into_owned();
+                write_output(
+                    plugin,
+                    outputs,
+                    &serde_json::json!({ "text": text }).to_string(),
+                )?;
+                return Ok(());
+            }
+            Ok(Message::Ping(payload)) => {
+                socket
+                    .send(Message::Pong(payload))
+                    .map_err(|e| Error::msg(format!("WebSocket pong error: {e}")))?;
+            }
+            Ok(Message::Pong(_)) => {}
+            Ok(Message::Frame(_)) => {}
+            Ok(Message::Close(_)) => {
+                websockets.sockets.remove(socket_id);
+                return Err(Error::msg("WebSocket closed by remote peer"));
+            }
+            Err(e) => {
+                websockets.sockets.remove(socket_id);
+                return Err(Error::msg(format!("WebSocket receive error: {e}")));
+            }
+        }
+    }
+}
+
+fn host_websocket_close(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "net:websocket")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let socket_id = req["socketId"].as_str().unwrap_or_default();
+
+    let mut websockets = ctx
+        .websockets
+        .lock()
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    if let Some(mut socket) = websockets.sockets.remove(socket_id) {
+        let _ = socket.close(None);
+    }
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)?;
+    Ok(())
+}
+
+fn host_system_time_millis(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let time_millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "timeMillis": time_millis }).to_string(),
+    )
+}
+
+fn host_system_uuid_v4(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "uuid": uuid::Uuid::new_v4().to_string() }).to_string(),
+    )
+}
+
+fn host_crypto_ed25519_get_or_create(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "crypto:ed25519")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let alias = req["alias"].as_str().unwrap_or_default();
+
+    if alias.trim().is_empty() {
+        return Err(Error::msg("crypto key alias is required"));
+    }
+
+    let key = load_or_create_signing_key(&ctx.plugin_key, alias)
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    let public_key = key.verifying_key().to_bytes();
+    let public_key_base64url = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public_key);
+    let public_key_sha256_hex = hex::encode(Sha256::digest(public_key));
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({
+            "publicKeyBase64Url": public_key_base64url,
+            "publicKeySha256Hex": public_key_sha256_hex,
+        })
+        .to_string(),
+    )
+}
+
+fn host_crypto_ed25519_sign(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "crypto:ed25519")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let alias = req["alias"].as_str().unwrap_or_default();
+    let payload = req["payload"].as_str().unwrap_or_default();
+
+    if alias.trim().is_empty() {
+        return Err(Error::msg("crypto key alias is required"));
+    }
+
+    let key = load_or_create_signing_key(&ctx.plugin_key, alias)
+        .map_err(|e| Error::msg(format!("{e}")))?;
+    let signature = ed25519_dalek::Signer::sign(&key, payload.as_bytes());
+    let signature_base64url =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes());
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "signatureBase64Url": signature_base64url }).to_string(),
+    )
+}
+
 fn write_schedule_response(
     plugin: &mut CurrentPlugin,
     outputs: &mut [Val],
@@ -580,6 +919,102 @@ fn is_path_allowed(path: &Path, allowed_paths: &[PathBuf]) -> bool {
         .any(|allowed_root| candidate.starts_with(allowed_root))
 }
 
+fn is_websocket_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
+    if allowed_hosts.is_empty() {
+        return false;
+    }
+
+    let Ok(parsed) = Url::parse(url) else {
+        return false;
+    };
+    let Some(host) = parsed.host_str() else {
+        return false;
+    };
+    let port = parsed.port_or_known_default();
+
+    allowed_hosts
+        .iter()
+        .any(|allowed| host_matches_rule(host, port, allowed))
+}
+
+fn host_matches_rule(host: &str, port: Option<u16>, rule: &str) -> bool {
+    let rule = rule.trim();
+    if rule.is_empty() {
+        return false;
+    }
+
+    if let Some(suffix) = rule.strip_prefix("*.") {
+        return host != suffix && host.ends_with(&format!(".{suffix}"));
+    }
+
+    match rule.split_once(':') {
+        Some((rule_host, rule_port)) => host == rule_host && port == rule_port.parse::<u16>().ok(),
+        None => host == rule,
+    }
+}
+
+fn load_or_create_signing_key(plugin_key: &str, alias: &str) -> Result<SigningKey, String> {
+    let path = crypto_key_alias_path(plugin_key, alias)?;
+    if path.exists() {
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Read signing key error ({}): {e}", path.display()))?;
+        let stored: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| format!("Parse signing key error ({}): {e}", path.display()))?;
+        let secret_base64 = stored["secretKeyBase64"]
+            .as_str()
+            .ok_or_else(|| "Missing secretKeyBase64 field".to_string())?;
+        let secret = base64::engine::general_purpose::STANDARD
+            .decode(secret_base64.as_bytes())
+            .map_err(|e| format!("Decode signing key error: {e}"))?;
+        let secret_arr: [u8; 32] = secret
+            .as_slice()
+            .try_into()
+            .map_err(|_| "Invalid ed25519 secret key length".to_string())?;
+        return Ok(SigningKey::from_bytes(&secret_arr));
+    }
+
+    let signing_key = SigningKey::generate(&mut OsRng);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Create signing key directory error: {e}"))?;
+    }
+
+    let payload = serde_json::json!({
+        "version": 1,
+        "algorithm": "ed25519",
+        "secretKeyBase64": base64::engine::general_purpose::STANDARD.encode(signing_key.to_bytes()),
+    });
+    fs::write(
+        &path,
+        serde_json::to_string_pretty(&payload)
+            .map_err(|e| format!("Serialize signing key error: {e}"))?,
+    )
+    .map_err(|e| format!("Write signing key error ({}): {e}", path.display()))?;
+
+    Ok(signing_key)
+}
+
+fn crypto_key_alias_path(plugin_key: &str, alias: &str) -> Result<PathBuf, String> {
+    Ok(peekoo_paths::peekoo_global_config_dir()?
+        .join("plugins")
+        .join(sanitize_key_component(plugin_key))
+        .join("keys")
+        .join(format!("{}.json", sanitize_key_component(alias))))
+}
+
+fn sanitize_key_component(value: &str) -> String {
+    let mut sanitized = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' {
+            sanitized.push(ch);
+        } else {
+            sanitized.push('_');
+        }
+    }
+
+    sanitized.trim_matches('_').to_string()
+}
+
 fn read_file_content(path: &Path, tail_bytes: Option<u64>) -> std::io::Result<Option<String>> {
     if let Some(tail_bytes) = tail_bytes {
         let mut file = fs::File::open(path)?;
@@ -643,7 +1078,10 @@ fn write_output(plugin: &mut CurrentPlugin, outputs: &mut [Val], data: &str) -> 
 mod tests {
     use std::fs;
 
-    use super::{is_path_allowed, read_file_content};
+    use super::{
+        crypto_key_alias_path, is_path_allowed, is_websocket_url_allowed, read_file_content,
+        sanitize_key_component,
+    };
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let dir =
@@ -681,5 +1119,47 @@ mod tests {
         fs::write(&outside, "nope").expect("outside file");
 
         assert!(!is_path_allowed(&outside, &[allowed]));
+    }
+
+    #[test]
+    fn websocket_url_is_allowed_for_exact_host_and_port() {
+        assert!(is_websocket_url_allowed(
+            "ws://127.0.0.1:18789/socket",
+            &["127.0.0.1:18789".to_string()],
+        ));
+    }
+
+    #[test]
+    fn websocket_url_is_allowed_for_wildcard_host() {
+        assert!(is_websocket_url_allowed(
+            "wss://gateway.feedmob.dev/rpc",
+            &["*.feedmob.dev".to_string()],
+        ));
+    }
+
+    #[test]
+    fn websocket_url_is_rejected_when_host_not_allowlisted() {
+        assert!(!is_websocket_url_allowed(
+            "ws://evil.example.com/socket",
+            &["127.0.0.1:18789".to_string(), "*.feedmob.dev".to_string()],
+        ));
+    }
+
+    #[test]
+    fn sanitize_key_component_replaces_unsafe_characters() {
+        assert_eq!(
+            sanitize_key_component("openclaw/device identity:v2"),
+            "openclaw_device_identity_v2"
+        );
+    }
+
+    #[test]
+    fn crypto_key_alias_path_is_namespaced_by_plugin() {
+        let path = crypto_key_alias_path("openclaw-sessions", "device identity:v2")
+            .expect("key path resolves");
+
+        let display = path.to_string_lossy();
+        assert!(display.contains("openclaw-sessions"));
+        assert!(display.contains("device_identity_v2.json"));
     }
 }
