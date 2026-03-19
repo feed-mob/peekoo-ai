@@ -15,7 +15,7 @@ use peekoo_scheduler::{ScheduleInfo, Scheduler};
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Message, WebSocket, connect};
+use tungstenite::{connect, Message, WebSocket};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -292,7 +292,7 @@ fn host_log(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_capability(&ctx, "notifications")?;
+    can_log(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
     let level = req["level"].as_str().unwrap_or("info");
@@ -318,7 +318,7 @@ fn host_emit_event(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_capability(&ctx, "scheduler")?;
+    can_emit_events(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
 
@@ -343,7 +343,7 @@ fn host_notify(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_capability(&ctx, "scheduler")?;
+    can_notify(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
 
@@ -369,7 +369,7 @@ fn host_schedule_set(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_capability(&ctx, "scheduler")?;
+    can_schedule(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
     let key = req["key"].as_str().unwrap_or_default();
@@ -397,7 +397,7 @@ fn host_schedule_cancel(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_capability(&ctx, "notifications")?;
+    can_schedule(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
     let key = req["key"].as_str().unwrap_or_default();
@@ -415,6 +415,7 @@ fn host_schedule_get(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_schedule(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
     let key = req["key"].as_str().unwrap_or_default();
@@ -882,6 +883,22 @@ fn require_capability(ctx: &HostContext, capability: &str) -> Result<(), Error> 
     Ok(())
 }
 
+fn can_log(_ctx: &HostContext) -> Result<(), Error> {
+    Ok(())
+}
+
+fn can_emit_events(_ctx: &HostContext) -> Result<(), Error> {
+    Ok(())
+}
+
+fn can_notify(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "notifications")
+}
+
+fn can_schedule(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "scheduler")
+}
+
 fn resolve_allowed_path(path: &str, allowed_paths: &[PathBuf]) -> Option<PathBuf> {
     let requested_path = expand_tilde_path(path);
     let requested_path = PathBuf::from(requested_path);
@@ -1081,10 +1098,19 @@ fn write_output(plugin: &mut CurrentPlugin, outputs: &mut [Val], data: &str) -> 
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::{Arc, Mutex};
+
+    use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+    use peekoo_scheduler::Scheduler;
+    use rusqlite::Connection;
+
+    use crate::events::EventBus;
+    use crate::permissions::PermissionStore;
+    use crate::state::PluginStateStore;
 
     use super::{
-        crypto_key_alias_path, is_path_allowed, is_websocket_url_allowed, read_file_content,
-        sanitize_key_component,
+        can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path, is_path_allowed,
+        is_websocket_url_allowed, read_file_content, sanitize_key_component, HostContext,
     };
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -1173,5 +1199,110 @@ mod tests {
         let display = path.to_string_lossy();
         assert!(display.contains("openclaw-sessions"));
         assert!(display.contains("device_identity_v2.json"));
+    }
+
+    fn permission_test_context(
+        declared_capabilities: &[&str],
+        granted_capabilities: &[&str],
+    ) -> HostContext {
+        let conn = Connection::open_in_memory().expect("in-memory db");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE plugins (
+              id TEXT PRIMARY KEY,
+              plugin_key TEXT NOT NULL,
+              version TEXT NOT NULL,
+              plugin_type TEXT NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              manifest_json TEXT NOT NULL,
+              installed_at TEXT NOT NULL
+            );
+
+            CREATE TABLE plugin_permissions (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              capability TEXT NOT NULL,
+              granted INTEGER NOT NULL
+            );
+
+            CREATE TABLE plugin_state (
+              id TEXT PRIMARY KEY,
+              plugin_id TEXT NOT NULL,
+              state_key TEXT NOT NULL,
+              value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            INSERT INTO plugins (id, plugin_key, version, plugin_type, enabled, manifest_json, installed_at)
+            VALUES ('plugin-1', 'openclaw-sessions', '1.0.0', 'wasm', 1, '{}', datetime('now'));
+            "#,
+        )
+        .expect("plugin schema");
+
+        let conn = Arc::new(Mutex::new(conn));
+        let permissions = PermissionStore::new(Arc::clone(&conn));
+        for capability in granted_capabilities {
+            permissions
+                .grant("openclaw-sessions", capability)
+                .expect("grant capability");
+        }
+
+        let (notifications, _receiver) = NotificationService::new();
+
+        HostContext {
+            plugin_key: "openclaw-sessions".to_string(),
+            state_store: PluginStateStore::new(conn),
+            permissions,
+            declared_capabilities: declared_capabilities
+                .iter()
+                .map(|cap| (*cap).to_string())
+                .collect(),
+            allowed_paths: vec![],
+            allowed_hosts: vec![],
+            websockets: Arc::new(Mutex::new(Default::default())),
+            event_bus: Arc::new(EventBus::new()),
+            scheduler: Arc::new(Scheduler::new()),
+            notifications: Arc::new(notifications),
+            peek_badges: Arc::new(PeekBadgeService::new()),
+            mood_reactions: Arc::new(MoodReactionService::new()),
+            config_fields: vec![],
+        }
+    }
+
+    #[test]
+    fn notify_requires_notifications_permission() {
+        let ctx = permission_test_context(&["notifications"], &[]);
+
+        let err = can_notify(&ctx).expect_err("notify should require a granted permission");
+
+        assert!(err
+            .to_string()
+            .contains("permission 'notifications' is not granted"));
+    }
+
+    #[test]
+    fn schedule_access_requires_scheduler_permission() {
+        let ctx = permission_test_context(&["scheduler"], &[]);
+
+        let err =
+            can_schedule(&ctx).expect_err("schedule access should require a granted permission");
+
+        assert!(err
+            .to_string()
+            .contains("permission 'scheduler' is not granted"));
+    }
+
+    #[test]
+    fn log_does_not_require_extra_permissions() {
+        let ctx = permission_test_context(&[], &[]);
+
+        can_log(&ctx).expect("logging should not require a declared capability");
+    }
+
+    #[test]
+    fn emit_event_does_not_require_extra_permissions() {
+        let ctx = permission_test_context(&[], &[]);
+
+        can_emit_events(&ctx).expect("event emission should not require a declared capability");
     }
 }
