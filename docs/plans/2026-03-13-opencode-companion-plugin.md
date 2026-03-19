@@ -38,7 +38,7 @@ Peekoo (desktop pet)
   │
   │  WASM plugin polls bridge file every 2s via peekoo_bridge_fs_read()
   │
-  ├──► peekoo::mood::set("opencode-working", sticky=true)
+  ├──► peekoo::mood::set("working", sticky=true)
   │         │
   │         └──► Tauri flush loop emits pet:react → Sprite shows WORKING animation
   │
@@ -141,9 +141,9 @@ New `PetReactionTrigger` values and their mood mappings:
 
 | Trigger | Mood | When |
 |---------|------|------|
-| `opencode-working` | `working` | OpenCode session is actively running |
-| `opencode-done` | `happy` | Agent answered the question |
-| `opencode-idle` | `idle` | No active session |
+| `working` | `working` | OpenCode session is actively running |
+| `happy` | `happy` | Agent answered the question |
+| `idle` | `idle` | No active session |
 
 ### OpenCode Plugin Events Used
 

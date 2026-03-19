@@ -6,7 +6,7 @@ import { writeString } from "./memory";
  * Set the sprite mood.
  *
  * `trigger` must be a valid PetReactionTrigger string (e.g.
- * "opencode-working", "opencode-done", "opencode-idle").
+ * "working", "happy", "idle", "reminder").
  *
  * When `sticky` is true, the mood persists until another mood is set.
  * When false, the mood reverts to idle after a short timeout.
