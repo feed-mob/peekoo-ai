@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
+    MIGRATION_0005_PLUGINS,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -446,6 +447,12 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "0003_provider_compat",
         "agent_provider_configs",
         MIGRATION_0003_PROVIDER_COMPAT,
+    )?;
+    apply_migration_if_needed(
+        conn,
+        "0005_plugins",
+        "plugins",
+        MIGRATION_0005_PLUGINS,
     )?;
 
     conn.execute(

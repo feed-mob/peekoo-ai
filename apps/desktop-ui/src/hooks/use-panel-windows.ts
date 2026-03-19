@@ -49,6 +49,22 @@ export async function openPanelWindow(
     return existing;
   }
 
+  // Restore saved size if available
+  const savedSizeJson = localStorage.getItem(`panel-size-${label}`);
+  let width = config.width;
+  let height = config.height;
+  if (savedSizeJson) {
+      try {
+          const saved = JSON.parse(savedSizeJson);
+          if (saved.width && saved.height) {
+              width = saved.width;
+              height = saved.height;
+          }
+      } catch (e) {
+          console.warn("Failed to parse saved window size", e);
+      }
+  }
+
   const spriteWindow = getCurrentWindow();
   const spritePos = await spriteWindow.outerPosition();
   const spriteSize = await spriteWindow.outerSize();
@@ -56,11 +72,11 @@ export async function openPanelWindow(
   const panelX = spritePos.x + spriteSize.width + PANEL_OFFSET_X;
   const panelY = spritePos.y;
 
-  return new WebviewWindow(label, {
+  const webview = new WebviewWindow(label, {
     url: "/",
     title: config.title,
-    width: config.width,
-    height: config.height,
+    width,
+    height,
     x: panelX,
     y: panelY,
     decorations: false,
@@ -70,6 +86,16 @@ export async function openPanelWindow(
     skipTaskbar: true,
     resizable: true,
   });
+
+  // Persist size on resize
+  void webview.onResized(({ payload: size }) => {
+     localStorage.setItem(`panel-size-${label}`, JSON.stringify({
+         width: size.width,
+         height: size.height
+     }));
+  });
+
+  return webview;
 }
 
 export async function closePanelWindow(label: PanelLabel): Promise<void> {

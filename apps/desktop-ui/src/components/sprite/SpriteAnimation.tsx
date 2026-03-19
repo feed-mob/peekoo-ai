@@ -128,6 +128,12 @@ export default function SpriteAnimation({
     const displayWidth = parseFloat(canvasRef.current.style.width || "0");
     const displayHeight = parseFloat(canvasRef.current.style.height || "0");
     
+    // Calculate targeted height based on the actual (trimmed) source height to prevent stretching
+    const targetHeight = sourceFrame.sh * scale;
+    // Calculate horizontal offset if we wanted centering, but currently we stay top-aligned or left-aligned
+    // Typically these sprites are centered in their frame
+    const targetWidth = sourceFrame.sw * scale;
+
     ctx.clearRect(0, 0, displayWidth, displayHeight);
     ctx.drawImage(
       sourceRef.current,
@@ -135,10 +141,10 @@ export default function SpriteAnimation({
       sourceFrame.sy,
       sourceFrame.sw,
       sourceFrame.sh,
-      0,
-      0,
-      displayWidth,
-      displayHeight
+      (displayWidth - targetWidth) / 2, // Center horizontally in canvas
+      0, // Draw from top
+      targetWidth,
+      targetHeight
     );
   };
 

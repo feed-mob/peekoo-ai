@@ -10,8 +10,15 @@ import {
 const ROTATION_INTERVAL_MS = 5000;
 const COUNTDOWN_TICK_MS = 1000;
 
-function formatCountdown(seconds: number): string {
+function formatCountdown(seconds: number, isPrecise: boolean = false): string {
   if (seconds <= 0) return "now";
+  
+  if (isPrecise) {
+     const mins = Math.floor(seconds / 60);
+     const secs = seconds % 60;
+     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  }
+
   const minutes = Math.max(1, Math.floor(seconds / 60));
   if (minutes < 60) return `~${minutes} min`;
   const hours = Math.floor(minutes / 60);
@@ -29,8 +36,7 @@ export function usePeekBadge() {
   });
 
   // Listen for backend push events, then signal the backend that the UI is
-  // ready to receive badge updates.  This prevents the background flush loop
-  // from emitting (and discarding) badge data before this listener exists.
+  // ready to receive badge updates.
   useEffect(() => {
     const unlisten = listen(PEEK_BADGES_EVENT, (event) => {
       const parsed = PeekBadgesPayloadSchema.safeParse(event.payload);
@@ -67,7 +73,10 @@ export function usePeekBadge() {
             : undefined,
         value:
           item.countdown_secs != null
-            ? formatCountdown(Math.max(0, item.countdown_secs - elapsed))
+            ? formatCountdown(
+                Math.max(0, item.countdown_secs - elapsed), 
+                item.icon === "brain" || item.icon === "coffee"
+              )
             : item.value,
       }));
       setItems(ticked);
