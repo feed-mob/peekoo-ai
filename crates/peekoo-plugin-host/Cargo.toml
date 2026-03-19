@@ -14,12 +14,16 @@ base64 = "0.22"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 hex = "0.4"
 peekoo-notifications = { path = "../peekoo-notifications" }
+peekoo-agent-auth = { path = "../peekoo-agent-auth" }
 peekoo-paths = { path = "../peekoo-paths" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
+peekoo-security = { path = "../security" }
 rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+tokio = { version = "1.50.0", features = ["rt"] }
 toml = "0.8"
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }

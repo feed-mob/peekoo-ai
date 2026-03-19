@@ -7,6 +7,48 @@ description = "Upcoming, daily, and weekly Google Calendar agenda with reminders
 min_peekoo_version = "0.1.0"
 wasm = "target/wasm32-wasip1/release/google_calendar.wasm"
 
+[permissions]
+required = ["scheduler", "notifications", "state:read", "state:write", "oauth", "secrets:read", "secrets:write", "net:http"]
+allowed_hosts = ["oauth2.googleapis.com", "www.googleapis.com"]
+
+[[tools.definitions]]
+name = "google_calendar_set_client_json"
+description = "Store Google OAuth client credentials from client.json"
+parameters = '{"type":"object","properties":{"clientJson":{"type":"string"}},"required":["clientJson"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_connect_start"
+description = "Start Google Calendar OAuth flow"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_connect_status"
+description = "Poll Google Calendar OAuth flow status"
+parameters = '{"type":"object","properties":{"flow_id":{"type":"string"}},"required":["flow_id"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_disconnect"
+description = "Disconnect the current Google Calendar account"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_refresh"
+description = "Refresh Google Calendar events immediately"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[events]
+subscribe = ["schedule:fired"]
+
+[[data.providers]]
+name = "panel_snapshot"
+description = "Current Google Calendar panel snapshot"
+schema = '{"type":"object"}'
+
 [[ui.panels]]
 label = "panel-google-calendar"
 title = "Google Calendar"

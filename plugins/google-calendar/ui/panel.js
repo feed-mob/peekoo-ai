@@ -110,7 +110,17 @@ function applySnapshot(snapshot) {
 
 async function refreshSnapshot(refresh = false) {
   try {
-    const snapshot = await invoke("google_calendar_panel_snapshot", { refresh });
+    if (refresh) {
+      await invoke("plugin_call_tool", {
+        toolName: "google_calendar_refresh",
+        argsJson: "{}",
+      });
+    }
+    const raw = await invoke("plugin_query_data", {
+      pluginKey: "google-calendar",
+      providerName: "panel_snapshot",
+    });
+    const snapshot = JSON.parse(raw);
     applySnapshot(snapshot);
   } catch (error) {
     showError(String(error));
@@ -122,9 +132,11 @@ async function pollOauthStatus() {
     return;
   }
   try {
-    const result = await invoke("google_calendar_connect_status", {
-      req: { flowId: oauthFlowId },
+    const raw = await invoke("plugin_call_tool", {
+      toolName: "google_calendar_connect_status",
+      argsJson: JSON.stringify({ flow_id: oauthFlowId }),
     });
+    const result = JSON.parse(raw);
     if (result.status === "completed") {
       oauthFlowId = null;
       stopOauthPolling();
@@ -159,8 +171,13 @@ function stopOauthPolling() {
 connectButton.addEventListener("click", async () => {
   showError(null);
   try {
-    const result = await invoke("google_calendar_connect_start");
+    const raw = await invoke("plugin_call_tool", {
+      toolName: "google_calendar_connect_start",
+      argsJson: "{}",
+    });
+    const result = JSON.parse(raw);
     oauthFlowId = result.flowId;
+    await invoke("system_open_url", { url: result.authorizeUrl });
     startOauthPolling();
   } catch (error) {
     showError(String(error));
@@ -174,7 +191,10 @@ refreshButton.addEventListener("click", () => {
 disconnectButton.addEventListener("click", async () => {
   showError(null);
   try {
-    await invoke("google_calendar_disconnect");
+    await invoke("plugin_call_tool", {
+      toolName: "google_calendar_disconnect",
+      argsJson: "{}",
+    });
     await refreshSnapshot(false);
   } catch (error) {
     showError(String(error));
@@ -190,7 +210,10 @@ saveClientJsonButton.addEventListener("click", async () => {
       return;
     }
     const clientJson = await file.text();
-    await invoke("google_calendar_set_client_json", { clientJson });
+    await invoke("plugin_call_tool", {
+      toolName: "google_calendar_set_client_json",
+      argsJson: JSON.stringify({ clientJson }),
+    });
     clientJsonInput.value = "";
     await refreshSnapshot(false);
   } catch (error) {

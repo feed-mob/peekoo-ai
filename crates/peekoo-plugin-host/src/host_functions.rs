@@ -8,14 +8,19 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use extism::{CurrentPlugin, Error, Function, UserData, Val, ValType};
+use peekoo_agent_auth::OAuthService;
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
+use peekoo_security::{
+    FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
+};
 use rand::rngs::OsRng;
+use reqwest::Method;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Message, WebSocket, connect};
+use tungstenite::{connect, Message, WebSocket};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -32,6 +37,8 @@ struct HostContext {
     declared_capabilities: Vec<String>,
     allowed_paths: Vec<PathBuf>,
     allowed_hosts: Vec<String>,
+    oauth: Arc<OAuthService>,
+    secret_store: Arc<dyn SecretStore>,
     websockets: Arc<Mutex<WebSocketStore>>,
     event_bus: Arc<EventBus>,
     scheduler: Arc<Scheduler>,
@@ -64,6 +71,13 @@ pub fn build_host_functions(
     mood_reactions: &Arc<MoodReactionService>,
     config_fields: Vec<ConfigFieldDef>,
 ) -> Vec<Function> {
+    let secret_root = peekoo_paths::peekoo_global_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("peekoo"))
+        .join("plugin-secrets");
+    let secret_store: Arc<dyn SecretStore> = Arc::new(FallbackSecretStore::new(
+        Box::new(KeyringSecretStore::new("peekoo-desktop")),
+        Box::new(FileSecretStore::new(secret_root)),
+    ));
     let ctx = HostContext {
         plugin_key: plugin_key.to_string(),
         state_store: state_store.clone(),
@@ -71,6 +85,8 @@ pub fn build_host_functions(
         declared_capabilities,
         allowed_paths,
         allowed_hosts,
+        oauth: Arc::new(OAuthService::new()),
+        secret_store,
         websockets: Arc::new(Mutex::new(WebSocketStore::default())),
         event_bus: Arc::clone(event_bus),
         scheduler: Arc::clone(scheduler),
@@ -143,6 +159,55 @@ pub fn build_host_functions(
             [ValType::I64],
             UserData::new(ctx.clone()),
             host_config_get,
+        ),
+        Function::new(
+            "peekoo_oauth_start",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_start,
+        ),
+        Function::new(
+            "peekoo_oauth_status",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_status,
+        ),
+        Function::new(
+            "peekoo_oauth_cancel",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_cancel,
+        ),
+        Function::new(
+            "peekoo_secret_get",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_get,
+        ),
+        Function::new(
+            "peekoo_secret_set",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_set,
+        ),
+        Function::new(
+            "peekoo_secret_delete",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_delete,
+        ),
+        Function::new(
+            "peekoo_http_request",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_http_request,
         ),
         Function::new(
             "peekoo_set_peek_badge",
@@ -452,6 +517,227 @@ fn host_config_get(
 
     write_output(plugin, outputs, &response.to_string())?;
     Ok(())
+}
+
+fn host_oauth_start(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let provider_id = req["providerId"].as_str().unwrap_or_default();
+    let client_id = req["clientId"].as_str().unwrap_or_default();
+    let client_secret = req["clientSecret"].as_str();
+
+    let started = match provider_id {
+        "google-calendar" => ctx
+            .oauth
+            .start_google_calendar_with_secret(client_id, client_secret)
+            .map_err(|e| Error::msg(format!("Plugin OAuth start error: {e}")))?,
+        _ => {
+            return Err(Error::msg(format!(
+                "Unsupported plugin OAuth provider: {provider_id}"
+            )))
+        }
+    };
+
+    let response = serde_json::json!({
+        "flowId": started.flow_id,
+        "authorizeUrl": started.authorize_url,
+    })
+    .to_string();
+    write_output(plugin, outputs, &response)
+}
+
+fn host_oauth_status(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let flow_id = req["flowId"].as_str().unwrap_or_default();
+
+    let status = block_on_oauth_status(Arc::clone(&ctx.oauth), flow_id)
+        .map_err(|e| Error::msg(format!("Plugin OAuth status error: {e}")))?;
+
+    let response = serde_json::json!({
+        "providerId": status.provider_id,
+        "status": status.status.as_str(),
+        "accessToken": status.access_token,
+        "refreshToken": status.refresh_token,
+        "expiresAt": status.expires_at,
+        "error": status.error,
+    })
+    .to_string();
+    write_output(plugin, outputs, &response)
+}
+
+fn host_oauth_cancel(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let flow_id = req["flowId"].as_str().unwrap_or_default();
+    let cancelled = ctx
+        .oauth
+        .cancel(flow_id)
+        .map_err(|e| Error::msg(format!("Plugin OAuth cancel error: {e}")))?;
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "cancelled": cancelled }).to_string(),
+    )
+}
+
+fn host_secret_get(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_read(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+
+    let value = match ctx.secret_store.get(&key) {
+        Ok(value) => Some(value),
+        Err(SecretStoreError::NotFound) => None,
+        Err(err) => return Err(Error::msg(format!("Plugin secret get error: {err}"))),
+    };
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "value": value }).to_string(),
+    )
+}
+
+fn host_secret_set(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_write(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+    let value = req["value"].as_str().unwrap_or_default();
+    ctx.secret_store
+        .put(&key, value)
+        .map_err(|e| Error::msg(format!("Plugin secret set error: {e}")))?;
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)
+}
+
+fn host_secret_delete(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_write(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+
+    match ctx.secret_store.delete(&key) {
+        Ok(()) | Err(SecretStoreError::NotFound) => {}
+        Err(err) => return Err(Error::msg(format!("Plugin secret delete error: {err}"))),
+    }
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)
+}
+
+fn host_http_request(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_http(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let method = req["method"].as_str().unwrap_or("GET");
+    let url = req["url"].as_str().unwrap_or_default();
+    if !is_http_url_allowed(url, &ctx.allowed_hosts) {
+        return Err(Error::msg(format!(
+            "HTTP host is not allowlisted for plugin '{}': {url}",
+            ctx.plugin_key
+        )));
+    }
+
+    let method = Method::from_bytes(method.as_bytes())
+        .map_err(|e| Error::msg(format!("Invalid HTTP method: {e}")))?;
+    let client = reqwest::blocking::Client::new();
+    let mut request = client.request(method, url);
+    if let Some(headers) = req["headers"].as_array() {
+        for header in headers {
+            if let (Some(name), Some(value)) = (header["name"].as_str(), header["value"].as_str()) {
+                request = request.header(name, value);
+            }
+        }
+    }
+    if let Some(body) = req["body"].as_str() {
+        request = request.body(body.to_string());
+    }
+
+    let response = request
+        .send()
+        .map_err(|e| Error::msg(format!("HTTP request failed: {e}")))?;
+    let status = response.status().as_u16();
+    let headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value.to_str().ok().map(|value| {
+                serde_json::json!({
+                    "name": name.as_str(),
+                    "value": value,
+                })
+            })
+        })
+        .collect::<Vec<_>>();
+    let body = response
+        .text()
+        .map_err(|e| Error::msg(format!("HTTP response body read failed: {e}")))?;
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({
+            "status": status,
+            "body": body,
+            "headers": headers,
+        })
+        .to_string(),
+    )
 }
 
 fn host_set_peek_badge(
@@ -899,6 +1185,22 @@ fn can_schedule(ctx: &HostContext) -> Result<(), Error> {
     require_capability(ctx, "scheduler")
 }
 
+fn can_oauth(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "oauth")
+}
+
+fn can_secret_read(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "secrets:read")
+}
+
+fn can_secret_write(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "secrets:write")
+}
+
+fn can_http(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "net:http")
+}
+
 fn resolve_allowed_path(path: &str, allowed_paths: &[PathBuf]) -> Option<PathBuf> {
     let requested_path = expand_tilde_path(path);
     let requested_path = PathBuf::from(requested_path);
@@ -937,6 +1239,14 @@ fn is_path_allowed(path: &Path, allowed_paths: &[PathBuf]) -> bool {
 }
 
 fn is_websocket_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
+    is_network_url_allowed(url, allowed_hosts)
+}
+
+fn is_http_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
+    is_network_url_allowed(url, allowed_hosts)
+}
+
+fn is_network_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     if allowed_hosts.is_empty() {
         return false;
     }
@@ -952,6 +1262,33 @@ fn is_websocket_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     allowed_hosts
         .iter()
         .any(|allowed| host_matches_rule(host, port, allowed))
+}
+
+fn plugin_secret_key(plugin_key: &str, key: &str) -> String {
+    format!("plugin/{plugin_key}/{key}")
+}
+
+fn block_on_oauth_status(
+    oauth: Arc<OAuthService>,
+    flow_id: &str,
+) -> Result<peekoo_agent_auth::OAuthStatusResult, String> {
+    let flow_id = flow_id.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build();
+        let result = match runtime {
+            Ok(runtime) => runtime
+                .block_on(oauth.status(&flow_id))
+                .map_err(|e| e.to_string()),
+            Err(err) => Err(format!("Create OAuth runtime error: {err}")),
+        };
+        let _ = tx.send(result);
+    });
+
+    rx.recv()
+        .map_err(|err| format!("Receive OAuth status error: {err}"))?
 }
 
 fn host_matches_rule(host: &str, port: Option<u16>, rule: &str) -> bool {
@@ -1100,8 +1437,10 @@ mod tests {
     use std::fs;
     use std::sync::{Arc, Mutex};
 
+    use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
+    use peekoo_security::InMemorySecretStore;
     use rusqlite::Connection;
 
     use crate::events::EventBus;
@@ -1109,8 +1448,9 @@ mod tests {
     use crate::state::PluginStateStore;
 
     use super::{
-        HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
-        is_path_allowed, is_websocket_url_allowed, read_file_content, sanitize_key_component,
+        can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
+        is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
+        read_file_content, sanitize_key_component, HostContext,
     };
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -1184,6 +1524,25 @@ mod tests {
     }
 
     #[test]
+    fn http_url_is_allowed_for_exact_host_and_port() {
+        assert!(is_http_url_allowed(
+            "https://oauth2.googleapis.com/token",
+            &["oauth2.googleapis.com".to_string()],
+        ));
+    }
+
+    #[test]
+    fn http_url_is_rejected_when_host_not_allowlisted() {
+        assert!(!is_http_url_allowed(
+            "https://evil.example.com/token",
+            &[
+                "oauth2.googleapis.com".to_string(),
+                "www.googleapis.com".to_string()
+            ],
+        ));
+    }
+
+    #[test]
     fn sanitize_key_component_replaces_unsafe_characters() {
         assert_eq!(
             sanitize_key_component("openclaw/device identity:v2"),
@@ -1199,6 +1558,14 @@ mod tests {
         let display = path.to_string_lossy();
         assert!(display.contains("openclaw-sessions"));
         assert!(display.contains("device_identity_v2.json"));
+    }
+
+    #[test]
+    fn plugin_secret_key_is_namespaced_by_plugin() {
+        assert_eq!(
+            plugin_secret_key("google-calendar", "oauth-token"),
+            "plugin/google-calendar/oauth-token"
+        );
     }
 
     fn permission_test_context(
@@ -1259,6 +1626,8 @@ mod tests {
                 .collect(),
             allowed_paths: vec![],
             allowed_hosts: vec![],
+            oauth: Arc::new(OAuthService::new()),
+            secret_store: Arc::new(InMemorySecretStore::default()),
             websockets: Arc::new(Mutex::new(Default::default())),
             event_bus: Arc::new(EventBus::new()),
             scheduler: Arc::new(Scheduler::new()),
@@ -1275,10 +1644,9 @@ mod tests {
 
         let err = can_notify(&ctx).expect_err("notify should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'notifications' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'notifications' is not granted"));
     }
 
     #[test]
@@ -1288,10 +1656,9 @@ mod tests {
         let err =
             can_schedule(&ctx).expect_err("schedule access should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'scheduler' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'scheduler' is not granted"));
     }
 
     #[test]
