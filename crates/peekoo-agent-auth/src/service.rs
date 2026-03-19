@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use reqwest::Client;
 use uuid::Uuid;
 
 use crate::callback::spawn_callback_listener;
 use crate::error::OAuthError;
-use crate::flow::{OAuthFlow, OAuthFlowStatus, OAuthStartResult, OAuthStatusResult};
+use crate::flow::{
+    OAuthFlow, OAuthFlowStatus, OAuthQueryParam, OAuthStartConfig, OAuthStartResult,
+    OAuthStatusResult,
+};
 use crate::pkce::generate_pkce;
-use crate::provider::google_calendar;
 use crate::provider::openai_codex;
+use crate::url::build_url_with_query;
 
 pub struct OAuthService {
     flows: Arc<Mutex<HashMap<String, OAuthFlow>>>,
@@ -28,40 +32,17 @@ impl OAuthService {
     }
 
     pub fn start(&self, provider_id: &str) -> Result<OAuthStartResult, OAuthError> {
-        self.start_with_credentials(provider_id, None, None)
-    }
-
-    pub fn start_google_calendar(&self, client_id: &str) -> Result<OAuthStartResult, OAuthError> {
-        self.start_google_calendar_with_secret(client_id, None)
-    }
-
-    pub fn start_google_calendar_with_secret(
-        &self,
-        client_id: &str,
-        client_secret: Option<&str>,
-    ) -> Result<OAuthStartResult, OAuthError> {
-        self.start_with_credentials("google-calendar", Some(client_id), client_secret)
-    }
-
-    fn start_with_credentials(
-        &self,
-        provider_id: &str,
-        client_id: Option<&str>,
-        client_secret: Option<&str>,
-    ) -> Result<OAuthStartResult, OAuthError> {
-        let flow_id = Uuid::new_v4().to_string();
-        let (verifier, challenge) = generate_pkce();
-
-        let authorize_url = match provider_id {
-            "openai-codex" => openai_codex::build_authorize_url(&challenge, &verifier),
-            "google-calendar" => {
-                let client_id = client_id.ok_or_else(|| {
-                    OAuthError::TokenExchange("missing Google Calendar OAuth client id".to_string())
-                })?;
-                google_calendar::build_authorize_url(client_id, &challenge, &verifier)
-            }
+        let config = match provider_id {
+            "openai-codex" => openai_codex::start_config(),
             _ => return Err(OAuthError::UnsupportedProvider(provider_id.to_string())),
         };
+        self.start_custom(config)
+    }
+
+    pub fn start_custom(&self, config: OAuthStartConfig) -> Result<OAuthStartResult, OAuthError> {
+        let flow_id = Uuid::new_v4().to_string();
+        let (verifier, challenge) = generate_pkce();
+        let authorize_url = build_authorize_url(&config, &challenge, &verifier);
 
         let mut lock = self
             .flows
@@ -70,9 +51,8 @@ impl OAuthService {
         lock.insert(
             flow_id.clone(),
             OAuthFlow {
-                provider_id: provider_id.to_string(),
-                client_id: client_id.map(ToString::to_string),
-                client_secret: client_secret.map(ToString::to_string),
+                provider_id: config.provider_id.clone(),
+                start_config: config,
                 verifier,
                 auth_code: None,
                 status: OAuthFlowStatus::Pending,
@@ -143,38 +123,8 @@ impl OAuthService {
         };
 
         match flow.provider_id.as_str() {
-            "openai-codex" => {
-                let token = openai_codex::exchange_token(&auth_code, &flow.verifier).await?;
-
-                let mut lock = self
-                    .flows
-                    .lock()
-                    .map_err(|e| OAuthError::FlowLock(e.to_string()))?;
-                if let Some(stored) = lock.get_mut(flow_id) {
-                    stored.status = OAuthFlowStatus::Completed;
-                    stored.auth_code = None;
-                }
-
-                Ok(OAuthStatusResult {
-                        provider_id: flow.provider_id,
-                        status: OAuthFlowStatus::Completed,
-                        access_token: Some(token.access_token),
-                        refresh_token: None,
-                        expires_at: Some(oauth_expires_at_iso(token.expires_in)),
-                        error: None,
-                    })
-            }
-            "google-calendar" => {
-                let client_id = flow.client_id.as_deref().ok_or_else(|| {
-                    OAuthError::TokenExchange("missing Google Calendar OAuth client id".to_string())
-                })?;
-                let token = google_calendar::exchange_token(
-                    client_id,
-                    flow.client_secret.as_deref(),
-                    &auth_code,
-                    &flow.verifier,
-                )
-                .await?;
+            _ => {
+                let token = exchange_token(&flow.start_config, &auth_code, &flow.verifier).await?;
 
                 let mut lock = self
                     .flows
@@ -194,7 +144,6 @@ impl OAuthService {
                     error: None,
                 })
             }
-            _ => Err(OAuthError::UnsupportedProvider(flow.provider_id)),
         }
     }
 
@@ -205,6 +154,116 @@ impl OAuthService {
             .map_err(|e| OAuthError::FlowLock(e.to_string()))?;
         Ok(lock.remove(flow_id).is_some())
     }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct OAuthTokenResponse {
+    access_token: String,
+    #[serde(default)]
+    expires_in: i64,
+    refresh_token: Option<String>,
+}
+
+fn build_authorize_url(config: &OAuthStartConfig, challenge: &str, state: &str) -> String {
+    let mut params = vec![
+        ("response_type", "code".to_string()),
+        ("client_id", config.client_id.clone()),
+        ("redirect_uri", config.redirect_uri.clone()),
+        ("scope", config.scope.clone()),
+        ("code_challenge", challenge.to_string()),
+        ("code_challenge_method", "S256".to_string()),
+        ("state", state.to_string()),
+    ];
+    params.extend(
+        config
+            .authorize_params
+            .iter()
+            .map(|param| (param.key.as_str(), param.value.clone())),
+    );
+    let borrowed = params
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect::<Vec<_>>();
+    build_url_with_query(&config.authorize_url, &borrowed)
+}
+
+async fn exchange_token(
+    config: &OAuthStartConfig,
+    authorization_code: &str,
+    verifier: &str,
+) -> Result<OAuthTokenResponse, OAuthError> {
+    let form_body = build_token_form_body(config, authorization_code, verifier);
+    let client = Client::new();
+    let response = client
+        .post(&config.token_exchange.token_url)
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .header("Accept", "application/json")
+        .body(form_body)
+        .send()
+        .await
+        .map_err(|e| OAuthError::TokenExchange(e.to_string()))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<failed to read body>".to_string());
+    if !status.is_success() {
+        return Err(OAuthError::TokenExchange(format!(
+            "OAuth token exchange failed ({status}): {body}"
+        )));
+    }
+
+    serde_json::from_str(&body).map_err(|e| OAuthError::InvalidTokenResponse(e.to_string()))
+}
+
+fn build_token_form_body(
+    config: &OAuthStartConfig,
+    authorization_code: &str,
+    verifier: &str,
+) -> String {
+    let mut params = vec![
+        OAuthQueryParam::new("grant_type", "authorization_code"),
+        OAuthQueryParam::new("client_id", config.client_id.clone()),
+        OAuthQueryParam::new("code", authorization_code),
+        OAuthQueryParam::new("code_verifier", verifier),
+        OAuthQueryParam::new("redirect_uri", config.redirect_uri.clone()),
+    ];
+    if let Some(client_secret) = config.client_secret.as_deref().filter(|value| !value.trim().is_empty()) {
+        params.push(OAuthQueryParam::new("client_secret", client_secret));
+    }
+    params.extend(config.token_exchange.token_params.clone());
+    build_form_body(&params)
+}
+
+fn build_form_body(params: &[OAuthQueryParam]) -> String {
+    params
+        .iter()
+        .map(|param| {
+            format!(
+                "{}={}",
+                percent_encode_component(&param.key),
+                percent_encode_component(&param.value)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn percent_encode_component(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match *byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                out.push(*byte as char)
+            }
+            b' ' => out.push_str("%20"),
+            other => {
+                let _ = std::fmt::Write::write_fmt(&mut out, format_args!("%{other:02X}"));
+            }
+        }
+    }
+    out
 }
 
 fn oauth_expires_at_iso(expires_in_seconds: i64) -> String {

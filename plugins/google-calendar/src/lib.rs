@@ -10,6 +10,11 @@ const CONNECTED_ACCOUNT_KEY: &str = "connected-account";
 const STATE_KEY: &str = "calendar-state";
 const SYNC_SCHEDULE_KEY: &str = "calendar-sync";
 const GOOGLE_PROVIDER_ID: &str = "google-calendar";
+const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
+const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const GOOGLE_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
+const GOOGLE_SCOPES: &str =
+    "https://www.googleapis.com/auth/calendar.readonly openid email profile";
 const DEFAULT_REFRESH_INTERVAL_SECS: i64 = 300;
 const DEFAULT_REMINDER_LEAD_MINUTES: i64 = 10;
 const DEFAULT_UPCOMING_LIMIT: usize = 5;
@@ -213,8 +218,14 @@ pub fn tool_google_calendar_connect_start(_: String) -> FnResult<String> {
     let credentials = load_client_credentials().map_err(Error::msg)?;
     let result = peekoo::oauth::start(peekoo::oauth::StartRequest {
         provider_id: GOOGLE_PROVIDER_ID,
+        authorize_url: GOOGLE_AUTHORIZE_URL,
+        token_url: GOOGLE_TOKEN_URL,
         client_id: &credentials.client_id,
         client_secret: Some(&credentials.client_secret),
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        scope: GOOGLE_SCOPES,
+        authorize_params: vec![("access_type", "offline"), ("prompt", "consent")],
+        token_params: vec![],
     })?;
     let mut state = load_calendar_state().map_err(Error::msg)?;
     state.oauth_flow_id = Some(result.flow_id.clone());

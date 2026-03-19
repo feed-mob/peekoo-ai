@@ -89,8 +89,23 @@ pub(crate) struct ConfigGetResponse {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct OAuthStartRequest {
     pub provider_id: String,
+    pub authorize_url: String,
+    pub token_url: String,
     pub client_id: String,
     pub client_secret: Option<String>,
+    pub redirect_uri: String,
+    pub scope: String,
+    #[serde(default)]
+    pub authorize_params: Vec<OAuthKeyValue>,
+    #[serde(default)]
+    pub token_params: Vec<OAuthKeyValue>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthKeyValue {
+    pub key: String,
+    pub value: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -332,7 +347,7 @@ extern "ExtismHost" {
 #[cfg(test)]
 mod tests {
     use super::{
-        CryptoEd25519GetOrCreateResponse, CryptoEd25519SignResponse, HttpRequest,
+        CryptoEd25519GetOrCreateResponse, CryptoEd25519SignResponse, HttpRequest, OAuthKeyValue,
         OAuthStartRequest, SecretSetRequest, SystemTimeMillisResponse, WebSocketConnectRequest,
         WebSocketConnectResponse,
     };
@@ -388,8 +403,17 @@ mod tests {
     fn oauth_start_request_serializes_camel_case() {
         let json = serde_json::to_value(OAuthStartRequest {
             provider_id: "google-calendar".to_string(),
+            authorize_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+            token_url: "https://oauth2.googleapis.com/token".to_string(),
             client_id: "client-id".to_string(),
             client_secret: Some("secret".to_string()),
+            redirect_uri: "http://localhost:1455/auth/callback".to_string(),
+            scope: "openid email profile".to_string(),
+            authorize_params: vec![OAuthKeyValue {
+                key: "prompt".to_string(),
+                value: "consent".to_string(),
+            }],
+            token_params: vec![],
         })
         .expect("serialize request");
 
@@ -404,6 +428,14 @@ mod tests {
         assert_eq!(
             json.get("clientSecret").and_then(|v| v.as_str()),
             Some("secret")
+        );
+        assert_eq!(
+            json.get("authorizeUrl").and_then(|v| v.as_str()),
+            Some("https://accounts.google.com/o/oauth2/v2/auth")
+        );
+        assert_eq!(
+            json.get("tokenUrl").and_then(|v| v.as_str()),
+            Some("https://oauth2.googleapis.com/token")
         );
     }
 

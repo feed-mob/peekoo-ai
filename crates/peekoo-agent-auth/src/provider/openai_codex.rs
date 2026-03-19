@@ -1,4 +1,5 @@
 use crate::error::OAuthError;
+use crate::flow::{OAuthQueryParam, OAuthStartConfig, OAuthTokenExchangeConfig};
 use crate::url::build_url_with_query;
 use serde::Deserialize;
 
@@ -30,6 +31,26 @@ pub fn build_authorize_url(challenge: &str, verifier: &str) -> String {
             ("originator", "pi"),
         ],
     )
+}
+
+pub fn start_config() -> OAuthStartConfig {
+    OAuthStartConfig {
+        provider_id: "openai-codex".to_string(),
+        authorize_url: OPENAI_CODEX_OAUTH_AUTHORIZE_URL.to_string(),
+        client_id: OPENAI_CODEX_OAUTH_CLIENT_ID.to_string(),
+        client_secret: None,
+        redirect_uri: OPENAI_CODEX_OAUTH_REDIRECT_URI.to_string(),
+        scope: OPENAI_CODEX_OAUTH_SCOPES.to_string(),
+        authorize_params: vec![
+            OAuthQueryParam::new("id_token_add_organizations", "true"),
+            OAuthQueryParam::new("codex_cli_simplified_flow", "true"),
+            OAuthQueryParam::new("originator", "pi"),
+        ],
+        token_exchange: OAuthTokenExchangeConfig {
+            token_url: OPENAI_CODEX_OAUTH_TOKEN_URL.to_string(),
+            token_params: vec![],
+        },
+    }
 }
 
 pub async fn exchange_token(

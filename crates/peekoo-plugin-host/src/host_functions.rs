@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use extism::{CurrentPlugin, Error, Function, UserData, Val, ValType};
-use peekoo_agent_auth::OAuthService;
+use peekoo_agent_auth::{
+    OAuthQueryParam, OAuthService, OAuthStartConfig, OAuthTokenExchangeConfig,
+};
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
@@ -530,21 +532,24 @@ fn host_oauth_start(
     can_oauth(&ctx)?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
-    let provider_id = req["providerId"].as_str().unwrap_or_default();
-    let client_id = req["clientId"].as_str().unwrap_or_default();
-    let client_secret = req["clientSecret"].as_str();
-
-    let started = match provider_id {
-        "google-calendar" => ctx
-            .oauth
-            .start_google_calendar_with_secret(client_id, client_secret)
-            .map_err(|e| Error::msg(format!("Plugin OAuth start error: {e}")))?,
-        _ => {
-            return Err(Error::msg(format!(
-                "Unsupported plugin OAuth provider: {provider_id}"
-            )))
-        }
+    let start_config = OAuthStartConfig {
+        provider_id: req["providerId"].as_str().unwrap_or_default().to_string(),
+        authorize_url: req["authorizeUrl"].as_str().unwrap_or_default().to_string(),
+        token_exchange: OAuthTokenExchangeConfig {
+            token_url: req["tokenUrl"].as_str().unwrap_or_default().to_string(),
+            token_params: json_params_to_query_params(&req["tokenParams"]),
+        },
+        client_id: req["clientId"].as_str().unwrap_or_default().to_string(),
+        client_secret: req["clientSecret"].as_str().map(ToString::to_string),
+        redirect_uri: req["redirectUri"].as_str().unwrap_or_default().to_string(),
+        scope: req["scope"].as_str().unwrap_or_default().to_string(),
+        authorize_params: json_params_to_query_params(&req["authorizeParams"]),
     };
+
+    let started = ctx
+        .oauth
+        .start_custom(start_config)
+        .map_err(|e| Error::msg(format!("Plugin OAuth start error: {e}")))?;
 
     let response = serde_json::json!({
         "flowId": started.flow_id,
@@ -1227,6 +1232,20 @@ fn is_network_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
 
 fn plugin_secret_key(plugin_key: &str, key: &str) -> String {
     format!("plugin/{plugin_key}/{key}")
+}
+
+fn json_params_to_query_params(value: &serde_json::Value) -> Vec<OAuthQueryParam> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            Some(OAuthQueryParam::new(
+                entry.get("key")?.as_str()?,
+                entry.get("value")?.as_str()?,
+            ))
+        })
+        .collect()
 }
 
 fn block_on_oauth_status(

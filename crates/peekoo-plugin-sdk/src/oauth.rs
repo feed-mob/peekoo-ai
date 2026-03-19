@@ -2,14 +2,20 @@ use extism_pdk::{Error, Json};
 
 use crate::host_fns::{
     peekoo_oauth_cancel, peekoo_oauth_start, peekoo_oauth_status, OAuthCancelResponse,
-    OAuthStartRequest, OAuthStartResponse, OAuthStatusRequest, OAuthStatusResponse,
+    OAuthKeyValue, OAuthStartRequest, OAuthStartResponse, OAuthStatusRequest, OAuthStatusResponse,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StartRequest<'a> {
     pub provider_id: &'a str,
+    pub authorize_url: &'a str,
+    pub token_url: &'a str,
     pub client_id: &'a str,
     pub client_secret: Option<&'a str>,
+    pub redirect_uri: &'a str,
+    pub scope: &'a str,
+    pub authorize_params: Vec<(&'a str, &'a str)>,
+    pub token_params: Vec<(&'a str, &'a str)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -32,8 +38,28 @@ pub fn start(req: StartRequest<'_>) -> Result<StartResponse, Error> {
     let response = unsafe {
         peekoo_oauth_start(Json(OAuthStartRequest {
             provider_id: req.provider_id.to_string(),
+            authorize_url: req.authorize_url.to_string(),
+            token_url: req.token_url.to_string(),
             client_id: req.client_id.to_string(),
             client_secret: req.client_secret.map(ToString::to_string),
+            redirect_uri: req.redirect_uri.to_string(),
+            scope: req.scope.to_string(),
+            authorize_params: req
+                .authorize_params
+                .into_iter()
+                .map(|(key, value)| OAuthKeyValue {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                })
+                .collect(),
+            token_params: req
+                .token_params
+                .into_iter()
+                .map(|(key, value)| OAuthKeyValue {
+                    key: key.to_string(),
+                    value: value.to_string(),
+                })
+                .collect(),
         }))?
     };
 

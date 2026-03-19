@@ -7,5 +7,8 @@ pub mod service;
 pub mod url;
 
 pub use error::OAuthError;
-pub use flow::{OAuthFlowStatus, OAuthStartResult, OAuthStatusResult};
+pub use flow::{
+    OAuthFlowStatus, OAuthQueryParam, OAuthStartConfig, OAuthStartResult,
+    OAuthStatusResult, OAuthTokenExchangeConfig,
+};
 pub use service::OAuthService;
