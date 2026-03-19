@@ -24,6 +24,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::ShellExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -272,6 +273,15 @@ async fn agent_oauth_cancel(
     state.app.oauth_cancel(req)
 }
 
+#[tauri::command]
+async fn system_open_url(url: String, app: AppHandle) -> Result<(), String> {
+    #[allow(deprecated)]
+    app.shell()
+        .open(&url, None)
+        .map(|_| ())
+        .map_err(|e| format!("Open URL error: {e}"))
+}
+
 // ── Global app settings ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -402,6 +412,21 @@ async fn plugin_call_tool(
     let result = state.app.call_plugin_tool(&tool_name, &args_json)?;
     flush_plugin_notifications(&app, &state)?;
 
+    Ok(result)
+}
+
+#[tauri::command]
+async fn plugin_call_panel_tool(
+    plugin_key: String,
+    tool_name: String,
+    args_json: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let result = state
+        .app
+        .call_plugin_panel_tool(&plugin_key, &tool_name, &args_json)?;
+    flush_plugin_notifications(&app, &state)?;
     Ok(result)
 }
 
@@ -767,6 +792,7 @@ pub fn run() {
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
+            system_open_url,
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
@@ -778,6 +804,7 @@ pub fn run() {
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,
+            plugin_call_panel_tool,
             plugin_query_data,
             plugin_panel_html,
             plugin_dispatch_event,
