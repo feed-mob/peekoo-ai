@@ -38,11 +38,23 @@ fn custom_start_builds_authorize_url_with_standard_and_extra_params() {
         })
         .expect("custom oauth start");
 
-    assert!(started.authorize_url.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
+    assert!(
+        started
+            .authorize_url
+            .starts_with("https://accounts.google.com/o/oauth2/v2/auth?")
+    );
     assert!(started.authorize_url.contains("response_type=code"));
     assert!(started.authorize_url.contains("client_id=client-id"));
-    assert!(started.authorize_url.contains("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback"));
-    assert!(started.authorize_url.contains("scope=openid%20email%20profile"));
+    assert!(
+        started
+            .authorize_url
+            .contains("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback")
+    );
+    assert!(
+        started
+            .authorize_url
+            .contains("scope=openid%20email%20profile")
+    );
     assert!(started.authorize_url.contains("code_challenge_method=S256"));
     assert!(started.authorize_url.contains("access_type=offline"));
     assert!(started.authorize_url.contains("prompt=consent"));

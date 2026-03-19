@@ -5,9 +5,8 @@ use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto,
-    ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto,
+    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
+    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
 use std::env;

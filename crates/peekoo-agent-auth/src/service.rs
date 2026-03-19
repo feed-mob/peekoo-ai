@@ -122,29 +122,25 @@ impl OAuthService {
             });
         };
 
-        match flow.provider_id.as_str() {
-            _ => {
-                let token = exchange_token(&flow.start_config, &auth_code, &flow.verifier).await?;
+        let token = exchange_token(&flow.start_config, &auth_code, &flow.verifier).await?;
 
-                let mut lock = self
-                    .flows
-                    .lock()
-                    .map_err(|e| OAuthError::FlowLock(e.to_string()))?;
-                if let Some(stored) = lock.get_mut(flow_id) {
-                    stored.status = OAuthFlowStatus::Completed;
-                    stored.auth_code = None;
-                }
-
-                Ok(OAuthStatusResult {
-                    provider_id: flow.provider_id,
-                    status: OAuthFlowStatus::Completed,
-                    access_token: Some(token.access_token),
-                    refresh_token: token.refresh_token,
-                    expires_at: Some(oauth_expires_at_iso(token.expires_in)),
-                    error: None,
-                })
-            }
+        let mut lock = self
+            .flows
+            .lock()
+            .map_err(|e| OAuthError::FlowLock(e.to_string()))?;
+        if let Some(stored) = lock.get_mut(flow_id) {
+            stored.status = OAuthFlowStatus::Completed;
+            stored.auth_code = None;
         }
+
+        Ok(OAuthStatusResult {
+            provider_id: flow.provider_id,
+            status: OAuthFlowStatus::Completed,
+            access_token: Some(token.access_token),
+            refresh_token: token.refresh_token,
+            expires_at: Some(oauth_expires_at_iso(token.expires_in)),
+            error: None,
+        })
     }
 
     pub fn cancel(&self, flow_id: &str) -> Result<bool, OAuthError> {
@@ -229,7 +225,11 @@ fn build_token_form_body(
         OAuthQueryParam::new("code_verifier", verifier),
         OAuthQueryParam::new("redirect_uri", config.redirect_uri.clone()),
     ];
-    if let Some(client_secret) = config.client_secret.as_deref().filter(|value| !value.trim().is_empty()) {
+    if let Some(client_secret) = config
+        .client_secret
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
         params.push(OAuthQueryParam::new("client_secret", client_secret));
     }
     params.extend(config.token_exchange.token_params.clone());

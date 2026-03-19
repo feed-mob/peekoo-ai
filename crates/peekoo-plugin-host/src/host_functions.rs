@@ -22,7 +22,7 @@ use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{connect, Message, WebSocket};
+use tungstenite::{Message, WebSocket, connect};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -1488,9 +1488,9 @@ mod tests {
     use crate::state::PluginStateStore;
 
     use super::{
-        can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
+        HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
         is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
-        read_file_content, sanitize_key_component, HostContext,
+        read_file_content, sanitize_key_component,
     };
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
@@ -1684,9 +1684,10 @@ mod tests {
 
         let err = can_notify(&ctx).expect_err("notify should require a granted permission");
 
-        assert!(err
-            .to_string()
-            .contains("permission 'notifications' is not granted"));
+        assert!(
+            err.to_string()
+                .contains("permission 'notifications' is not granted")
+        );
     }
 
     #[test]
@@ -1696,9 +1697,10 @@ mod tests {
         let err =
             can_schedule(&ctx).expect_err("schedule access should require a granted permission");
 
-        assert!(err
-            .to_string()
-            .contains("permission 'scheduler' is not granted"));
+        assert!(
+            err.to_string()
+                .contains("permission 'scheduler' is not granted")
+        );
     }
 
     #[test]
