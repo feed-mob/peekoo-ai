@@ -107,6 +107,15 @@ fn should_refresh_working_mood(current_status: &str, new_completion_count: usize
     matches!(current_status, "working" | "thinking") && new_completion_count == 0
 }
 
+fn mood_trigger_for_status(status: &str) -> &'static str {
+    match status {
+        "working" | "thinking" => "working",
+        "waiting" => "reminder",
+        "happy" | "done" => "happy",
+        _ => "idle",
+    }
+}
+
 fn current_unix_timestamp() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -301,7 +310,7 @@ fn poll_bridge() -> Result<(), extism_pdk::Error> {
 }
 
 fn handle_completed_session(session: &CompletedSession) -> Result<(), extism_pdk::Error> {
-    peekoo::mood::set("opencode-done", false)?;
+    peekoo::mood::set(mood_trigger_for_status("done"), false)?;
 
     let body = match completed_session_notification_title(session) {
         Some(title) => format!("🎉 {} is done!", title),
@@ -320,18 +329,18 @@ fn handle_status_change(
     match new_status {
         "working" => {
             if should_refresh_working_mood(new_status, new_completion_count) {
-                peekoo::mood::set("opencode-working", true)?;
+                peekoo::mood::set(mood_trigger_for_status(new_status), true)?;
             }
             update_badge(state)?;
         }
         "thinking" => {
             if should_refresh_working_mood(new_status, new_completion_count) {
-                peekoo::mood::set("opencode-working", true)?;
+                peekoo::mood::set(mood_trigger_for_status(new_status), true)?;
             }
             update_badge(state)?;
         }
         "waiting" => {
-            peekoo::mood::set("opencode-reminder", false)?;
+            peekoo::mood::set(mood_trigger_for_status(new_status), false)?;
             let _ = peekoo::notify::send("OpenCode", "OpenCode needs your input");
             update_badge(state)?;
         }
@@ -350,7 +359,7 @@ fn handle_status_change(
         }
         _ => {
             // "idle" or unknown
-            peekoo::mood::set("opencode-idle", false)?;
+            peekoo::mood::set(mood_trigger_for_status(new_status), false)?;
             peekoo::badge::set(&[])?;
         }
     }
@@ -611,6 +620,21 @@ mod tests {
     #[test]
     fn waiting_status_does_not_refresh_working_mood() {
         assert!(!should_refresh_working_mood("waiting", 0));
+    }
+
+    #[test]
+    fn mood_trigger_for_active_statuses_uses_canonical_sprite_names() {
+        assert_eq!(mood_trigger_for_status("working"), "working");
+        assert_eq!(mood_trigger_for_status("thinking"), "working");
+        assert_eq!(mood_trigger_for_status("waiting"), "reminder");
+    }
+
+    #[test]
+    fn mood_trigger_for_terminal_statuses_uses_canonical_sprite_names() {
+        assert_eq!(mood_trigger_for_status("happy"), "happy");
+        assert_eq!(mood_trigger_for_status("done"), "happy");
+        assert_eq!(mood_trigger_for_status("idle"), "idle");
+        assert_eq!(mood_trigger_for_status("unknown"), "idle");
     }
 
     #[test]
