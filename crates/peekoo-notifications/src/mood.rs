@@ -75,14 +75,14 @@ mod tests {
     #[test]
     fn drain_retains_reactions_until_ui_ready() {
         let service = MoodReactionService::new();
-        service.set("opencode-working", true);
+        service.set("working", true);
 
         assert!(service.drain().is_empty());
 
         service.mark_ui_ready();
         let drained = service.drain();
         assert_eq!(drained.len(), 1);
-        assert_eq!(drained[0].trigger, "opencode-working");
+        assert_eq!(drained[0].trigger, "working");
         assert!(drained[0].sticky);
         assert!(service.drain().is_empty());
     }

@@ -1,6 +1,6 @@
 {
   "name": "peekoo-opencode-companion",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "description": "OpenCode plugin that bridges session events to the Peekoo desktop pet",
   "scripts": {
