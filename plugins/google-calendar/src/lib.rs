@@ -74,6 +74,25 @@ struct GoogleCalendarPanelDto {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct GoogleCalendarAgentEventsDto {
+    connected: bool,
+    last_sync_at: Option<String>,
+    count: usize,
+    events: Vec<CalendarEvent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleCalendarRefreshDto {
+    connected: bool,
+    last_sync_at: Option<String>,
+    upcoming_count: usize,
+    daily_count: usize,
+    weekly_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct GoogleCalendarOauthStatusDto {
     status: String,
     connected: bool,
@@ -283,7 +302,37 @@ pub fn tool_google_calendar_disconnect(_: String) -> FnResult<String> {
 #[plugin_fn]
 pub fn tool_google_calendar_refresh(_: String) -> FnResult<String> {
     let snapshot = refresh_snapshot(true).map_err(Error::msg)?;
-    Ok(serde_json::to_string(&snapshot)?)
+    Ok(serde_json::to_string(&build_refresh_response(&snapshot))?)
+}
+
+#[plugin_fn]
+pub fn tool_google_calendar_get_upcoming_events(_: String) -> FnResult<String> {
+    let snapshot = agent_snapshot().map_err(Error::msg)?;
+    Ok(serde_json::to_string(&build_agent_events_response(
+        snapshot.status.last_sync_at,
+        snapshot.status.connected,
+        snapshot.upcoming.into_iter().map(bucket_to_event).collect(),
+    ))?)
+}
+
+#[plugin_fn]
+pub fn tool_google_calendar_get_daily_events(_: String) -> FnResult<String> {
+    let snapshot = agent_snapshot().map_err(Error::msg)?;
+    Ok(serde_json::to_string(&build_agent_events_response(
+        snapshot.status.last_sync_at,
+        snapshot.status.connected,
+        snapshot.today.into_iter().map(bucket_to_event).collect(),
+    ))?)
+}
+
+#[plugin_fn]
+pub fn tool_google_calendar_get_weekly_events(_: String) -> FnResult<String> {
+    let snapshot = agent_snapshot().map_err(Error::msg)?;
+    Ok(serde_json::to_string(&build_agent_events_response(
+        snapshot.status.last_sync_at,
+        snapshot.status.connected,
+        snapshot.week.into_iter().map(bucket_to_event).collect(),
+    ))?)
 }
 
 #[plugin_fn]
@@ -315,6 +364,51 @@ fn panel_snapshot() -> Result<GoogleCalendarPanelDto, String> {
         today: bucketed.today,
         week: bucketed.week,
     })
+}
+
+fn agent_snapshot() -> Result<GoogleCalendarPanelDto, String> {
+    let snapshot = refresh_snapshot(false)?;
+    if snapshot.status.connected && snapshot.status.last_sync_at.is_none() {
+        return refresh_snapshot(true);
+    }
+    Ok(snapshot)
+}
+
+fn build_agent_events_response(
+    last_sync_at: Option<String>,
+    connected: bool,
+    events: Vec<CalendarEvent>,
+) -> GoogleCalendarAgentEventsDto {
+    GoogleCalendarAgentEventsDto {
+        connected,
+        last_sync_at,
+        count: events.len(),
+        events,
+    }
+}
+
+fn build_refresh_response(snapshot: &GoogleCalendarPanelDto) -> GoogleCalendarRefreshDto {
+    GoogleCalendarRefreshDto {
+        connected: snapshot.status.connected,
+        last_sync_at: snapshot.status.last_sync_at.clone(),
+        upcoming_count: snapshot.upcoming.len(),
+        daily_count: snapshot.today.len(),
+        weekly_count: snapshot.week.len(),
+    }
+}
+
+fn bucket_to_event(bucket: CalendarEventBucket) -> CalendarEvent {
+    CalendarEvent {
+        id: bucket.id,
+        title: bucket.title,
+        start_at: bucket.start_at.clone(),
+        end_at: bucket.end_at,
+        all_day: bucket.all_day,
+        location: bucket.location,
+        calendar_name: bucket.calendar_name,
+        html_link: bucket.html_link,
+        status: "confirmed".to_string(),
+    }
 }
 
 fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
@@ -887,5 +981,68 @@ mod tests {
             serde_json::from_str(r#"{"flow_id":"flow-123"}"#).expect("flow id input parses");
 
         assert_eq!(parsed.flow_id, "flow-123");
+    }
+
+    #[test]
+    fn agenda_tool_response_includes_metadata_and_events() {
+        let response = build_agent_events_response(
+            Some("2026-03-19T17:06:12Z".to_string()),
+            true,
+            vec![CalendarEvent {
+                id: "evt_1".to_string(),
+                title: "Design review".to_string(),
+                start_at: "2026-03-20T09:30:00Z".to_string(),
+                end_at: "2026-03-20T10:00:00Z".to_string(),
+                all_day: false,
+                location: Some("Zoom".to_string()),
+                calendar_name: "Primary".to_string(),
+                html_link: Some("https://example.com".to_string()),
+                status: "confirmed".to_string(),
+            }],
+        );
+
+        assert!(response.connected);
+        assert_eq!(
+            response.last_sync_at.as_deref(),
+            Some("2026-03-19T17:06:12Z")
+        );
+        assert_eq!(response.count, 1);
+        assert_eq!(response.events[0].title, "Design review");
+    }
+
+    #[test]
+    fn refresh_response_reports_bucket_counts() {
+        let response = build_refresh_response(&GoogleCalendarPanelDto {
+            status: GoogleCalendarStatusDto {
+                connected: true,
+                client_configured: true,
+                client_json_uploaded: true,
+                effective_client_id: "client-id".to_string(),
+                connected_account: None,
+                last_sync_at: Some("2026-03-19T17:06:12Z".to_string()),
+                last_error: None,
+            },
+            upcoming: vec![sample_bucket("evt_1")],
+            today: vec![sample_bucket("evt_2"), sample_bucket("evt_3")],
+            week: vec![sample_bucket("evt_4")],
+        });
+
+        assert!(response.connected);
+        assert_eq!(response.upcoming_count, 1);
+        assert_eq!(response.daily_count, 2);
+        assert_eq!(response.weekly_count, 1);
+    }
+
+    fn sample_bucket(id: &str) -> CalendarEventBucket {
+        CalendarEventBucket {
+            id: id.to_string(),
+            title: "Event".to_string(),
+            start_at: "2026-03-20T09:30:00Z".to_string(),
+            end_at: "2026-03-20T10:00:00Z".to_string(),
+            all_day: false,
+            location: None,
+            calendar_name: "Primary".to_string(),
+            html_link: None,
+        }
     }
 }
