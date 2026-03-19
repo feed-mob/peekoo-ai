@@ -1,6 +1,7 @@
 export function quote(value: string): string {
   let escaped = "";
   for (let i = 0; i < value.length; i++) {
+    const code = value.charCodeAt(i);
     const ch = value.charAt(i);
     if (ch == "\\") {
       escaped += "\\\\";
@@ -12,6 +13,16 @@ export function quote(value: string): string {
       escaped += "\\r";
     } else if (ch == "\t") {
       escaped += "\\t";
+    } else if (code == 8) {
+      escaped += "\\b";
+    } else if (code == 12) {
+      escaped += "\\f";
+    } else if (code < 32) {
+      escaped += "\\u00";
+      const hi = (code >> 4) & 0x0f;
+      const lo = code & 0x0f;
+      escaped += hi < 10 ? String.fromCharCode(48 + hi) : String.fromCharCode(87 + hi);
+      escaped += lo < 10 ? String.fromCharCode(48 + lo) : String.fromCharCode(87 + lo);
     } else {
       escaped += ch;
     }

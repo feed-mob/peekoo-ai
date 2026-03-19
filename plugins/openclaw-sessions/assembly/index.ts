@@ -150,7 +150,9 @@ export function tool_openclaw_chat_send(): i32 {
 }
 
 function refreshSessions(page: i32, pageSize: i32): string {
-  const params = '{"limit":100,"includeLastMessage":true,"includeDerivedTitles":true}';
+  // Keep refresh payload small and stable. Large preview/title fields can make
+  // gateway responses brittle for downstream parsing in constrained runtimes.
+  const params = '{"limit":100}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
     state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
@@ -205,7 +207,7 @@ function gatewayRpc(method: string, paramsJson: string): string {
     '"publicKey":' + quote(device.publicKeyBase64Url) + ',' +
     '"signature":' + quote(signature) + ',' +
     '"signedAt":' + signedAt.toString() + ',' +
-    '"nonce":' + (nonce == "" ? "null" : quote(nonce)) + '}}}';
+    '"nonce":' + quote(nonce) + '}}}';
 
   websocket.send(socketId, connectReq);
   const connectResult = waitForResponsePayload(socketId, connectId);
@@ -230,6 +232,11 @@ function waitForConnectChallenge(socketId: string): string {
       return errorJson("Gateway returned an empty challenge message");
     }
     if (extractStringField(message, "type") == "event" && extractStringField(message, "event") == "connect.challenge") {
+      const payload = extractRawField(message, "payload");
+      const nestedNonce = extractStringField(payload, "nonce");
+      if (nestedNonce != "") {
+        return nestedNonce;
+      }
       return extractStringField(message, "nonce");
     }
   }
@@ -250,8 +257,9 @@ function waitForResponsePayload(socketId: string, expectedId: string): string {
       continue;
     }
     if (extractRawField(message, "ok") == "true") {
-      const payload = extractRawField(message, "payload");
-      return payload == "" ? "{}" : payload;
+      // Return the full response envelope to avoid lossy raw JSON slicing.
+      // The panel already supports both top-level payload and nested payload payloads.
+      return message;
     }
 
     const errorPayload = extractRawField(message, "error");
