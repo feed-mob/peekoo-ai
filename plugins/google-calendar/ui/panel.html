@@ -7,54 +7,57 @@
     <link rel="stylesheet" href="panel.css" />
   </head>
   <body>
-    <main class="app-shell">
-      <section class="hero-card">
-        <div>
-          <p class="eyebrow">Calendar plugin</p>
-          <h1>Google Calendar</h1>
-          <p id="statusLine" class="hero-copy">Connect your calendar to see your agenda.</p>
+    <main class="panel">
+      <section class="header-card">
+        <div class="header-row">
+          <div>
+            <p class="kicker">Google Calendar</p>
+            <h1 class="title">Agenda</h1>
+          </div>
+          <button id="refreshButton" class="btn btn-primary" type="button">Refresh</button>
         </div>
-        <section id="accountCard" class="account-card hidden">
-          <p class="eyebrow">Connected account</p>
-          <p id="accountName" class="account-name"></p>
-          <p id="accountEmail" class="account-email"></p>
-        </section>
-        <label class="client-id-field">
-          <span>Google OAuth client.json</span>
+        <p id="statusLine" class="status-copy">Connect your calendar to see your agenda.</p>
+      </section>
+
+      <section id="errorBanner" class="message message-error hidden"></section>
+
+      <section class="control-card">
+        <div class="account-row">
+          <div class="account-copy">
+            <p class="section-label">Connected account</p>
+            <p id="accountName" class="account-name">Not connected</p>
+            <p id="accountEmail" class="account-email">Upload your client.json and connect Google Calendar.</p>
+          </div>
+          <div id="accountBadge" class="account-badge">Offline</div>
+        </div>
+
+        <label class="file-field">
+          <span class="section-label">Google OAuth client.json</span>
           <input id="clientJsonInput" type="file" accept="application/json,.json" />
         </label>
-        <div class="hero-actions">
-          <button id="saveClientJsonButton" class="secondary-button">Upload client.json</button>
-          <button id="connectButton" class="primary-button">Connect</button>
-          <button id="refreshButton" class="secondary-button">Refresh</button>
-          <button id="disconnectButton" class="ghost-button">Disconnect</button>
+
+        <div class="action-row">
+          <button id="saveClientJsonButton" class="btn btn-secondary" type="button">Upload</button>
+          <button id="connectButton" class="btn btn-primary" type="button">Connect</button>
+          <button id="disconnectButton" class="btn btn-secondary" type="button">Disconnect</button>
         </div>
       </section>
 
-      <section id="errorBanner" class="error-banner hidden"></section>
-
-      <section class="agenda-section">
-        <div class="section-header">
-          <h2>Upcoming Events</h2>
-          <span>Next 5</span>
+      <section class="agenda-card">
+        <div class="tabs" role="tablist" aria-label="Agenda views">
+          <button id="tabUpcoming" class="tab-button active" type="button" role="tab" aria-selected="true">Upcoming</button>
+          <button id="tabDaily" class="tab-button" type="button" role="tab" aria-selected="false">Daily</button>
+          <button id="tabWeekly" class="tab-button" type="button" role="tab" aria-selected="false">Weekly</button>
         </div>
-        <div id="upcomingList" class="agenda-list"></div>
-      </section>
 
-      <section class="agenda-section">
-        <div class="section-header">
-          <h2>Daily Events</h2>
-          <span>Today</span>
+        <div class="agenda-header">
+          <div>
+            <p id="agendaLabel" class="section-label">Upcoming</p>
+            <h2 id="agendaTitle" class="agenda-title">Next 5 events</h2>
+          </div>
         </div>
-        <div id="todayList" class="agenda-list"></div>
-      </section>
 
-      <section class="agenda-section">
-        <div class="section-header">
-          <h2>Weekly Events</h2>
-          <span>This week</span>
-        </div>
-        <div id="weekList" class="agenda-list"></div>
+        <div id="agendaList" class="agenda-list"></div>
       </section>
     </main>
 

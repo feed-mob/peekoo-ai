@@ -5,15 +5,44 @@ const saveClientJsonButton = document.getElementById("saveClientJsonButton");
 const statusLine = document.getElementById("statusLine");
 const errorBanner = document.getElementById("errorBanner");
 const clientJsonInput = document.getElementById("clientJsonInput");
-const accountCard = document.getElementById("accountCard");
+const accountBadge = document.getElementById("accountBadge");
 const accountName = document.getElementById("accountName");
 const accountEmail = document.getElementById("accountEmail");
-const upcomingList = document.getElementById("upcomingList");
-const todayList = document.getElementById("todayList");
-const weekList = document.getElementById("weekList");
+const agendaLabel = document.getElementById("agendaLabel");
+const agendaTitle = document.getElementById("agendaTitle");
+const agendaList = document.getElementById("agendaList");
+const tabUpcoming = document.getElementById("tabUpcoming");
+const tabDaily = document.getElementById("tabDaily");
+const tabWeekly = document.getElementById("tabWeekly");
+
+const TAB_CONFIG = {
+  upcoming: {
+    button: tabUpcoming,
+    label: "Upcoming",
+    title: "Next 5 events",
+    emptyTitle: "No upcoming events",
+    key: "upcoming",
+  },
+  daily: {
+    button: tabDaily,
+    label: "Daily",
+    title: "Today",
+    emptyTitle: "No daily events",
+    key: "today",
+  },
+  weekly: {
+    button: tabWeekly,
+    label: "Weekly",
+    title: "This week",
+    emptyTitle: "No weekly events",
+    key: "week",
+  },
+};
 
 let oauthFlowId = null;
 let pollHandle = null;
+let activeTab = "upcoming";
+let lastSnapshot = null;
 
 async function invoke(command, payload = {}) {
   return window.__TAURI__.core.invoke(command, payload);
@@ -49,7 +78,7 @@ function renderList(root, events, emptyTitle) {
   if (!events.length) {
     const empty = document.createElement("article");
     empty.className = "empty-card";
-    empty.innerHTML = `<strong>${emptyTitle}</strong><p class="hero-copy">Nothing scheduled here right now.</p>`;
+    empty.innerHTML = `<strong>${emptyTitle}</strong><p class="empty-copy">Nothing scheduled here right now.</p>`;
     root.appendChild(empty);
     return;
   }
@@ -70,42 +99,55 @@ function renderList(root, events, emptyTitle) {
   });
 }
 
+function renderAgenda(snapshot) {
+  const tab = TAB_CONFIG[activeTab];
+  const events = snapshot[tab.key] || [];
+
+  agendaLabel.textContent = tab.label;
+  agendaTitle.textContent = tab.title;
+  renderList(agendaList, events, tab.emptyTitle);
+
+  Object.entries(TAB_CONFIG).forEach(([key, config]) => {
+    const isActive = key === activeTab;
+    config.button.classList.toggle("active", isActive);
+    config.button.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
+}
+
 function applySnapshot(snapshot) {
+  lastSnapshot = snapshot;
   const { status } = snapshot;
   const connectedAccount = status.connectedAccount;
 
   if (!status.clientConfigured) {
     statusLine.textContent = "Upload your Google OAuth client.json file before connecting.";
   } else if (!status.connected) {
-    statusLine.textContent = "Connect your Google Calendar to load upcoming, daily, and weekly views.";
+    statusLine.textContent = "Connect Google Calendar to load your agenda views.";
   } else if (status.lastSyncAt) {
-    statusLine.textContent = `Last synced ${new Date(status.lastSyncAt).toLocaleString()}.`;
+    statusLine.textContent = `Connected. Last synced ${new Date(status.lastSyncAt).toLocaleString()}.`;
   } else {
     statusLine.textContent = "Connected. Pulling your agenda now.";
   }
 
-  if (status.clientJsonUploaded && status.effectiveClientId) {
-    statusLine.textContent += ` Client loaded: ${status.effectiveClientId}.`;
-  }
-
   if (connectedAccount?.email) {
-    accountCard.classList.remove("hidden");
     accountName.textContent = connectedAccount.name || "Google account";
     accountEmail.textContent = connectedAccount.email;
-    disconnectButton.disabled = false;
+    accountBadge.textContent = "Connected";
+    accountBadge.classList.add("connected");
   } else {
-    accountCard.classList.add("hidden");
-    accountName.textContent = "";
-    accountEmail.textContent = "";
-    disconnectButton.disabled = !status.connected;
+    accountName.textContent = status.clientConfigured ? "Not connected" : "Client setup required";
+    accountEmail.textContent = status.clientConfigured
+      ? "Connect Google Calendar to start syncing events."
+      : "Upload your Google OAuth client.json to enable connection.";
+    accountBadge.textContent = "Offline";
+    accountBadge.classList.remove("connected");
   }
 
+  disconnectButton.disabled = !status.connected;
   connectButton.disabled = !status.clientConfigured;
 
   showError(status.lastError ?? null);
-  renderList(upcomingList, snapshot.upcoming, "No upcoming events");
-  renderList(todayList, snapshot.today, "No daily events");
-  renderList(weekList, snapshot.week, "No weekly events");
+  renderAgenda(snapshot);
 }
 
 async function refreshSnapshot(refresh = false) {
@@ -121,8 +163,7 @@ async function refreshSnapshot(refresh = false) {
       pluginKey: "google-calendar",
       providerName: "panel_snapshot",
     });
-    const snapshot = JSON.parse(raw);
-    applySnapshot(snapshot);
+    applySnapshot(JSON.parse(raw));
   } catch (error) {
     showError(String(error));
   }
@@ -169,6 +210,17 @@ function stopOauthPolling() {
     pollHandle = null;
   }
 }
+
+function setActiveTab(tab) {
+  activeTab = tab;
+  if (lastSnapshot) {
+    renderAgenda(lastSnapshot);
+  }
+}
+
+tabUpcoming.addEventListener("click", () => setActiveTab("upcoming"));
+tabDaily.addEventListener("click", () => setActiveTab("daily"));
+tabWeekly.addEventListener("click", () => setActiveTab("weekly"));
 
 connectButton.addEventListener("click", async () => {
   showError(null);
