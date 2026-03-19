@@ -417,6 +417,21 @@ async fn plugin_call_tool(
 }
 
 #[tauri::command]
+async fn plugin_call_panel_tool(
+    plugin_key: String,
+    tool_name: String,
+    args_json: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let result = state
+        .app
+        .call_plugin_panel_tool(&plugin_key, &tool_name, &args_json)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(result)
+}
+
+#[tauri::command]
 async fn plugin_query_data(
     plugin_key: String,
     provider_name: String,
@@ -790,6 +805,7 @@ pub fn run() {
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,
+            plugin_call_panel_tool,
             plugin_query_data,
             plugin_panel_html,
             plugin_dispatch_event,

@@ -450,6 +450,17 @@ impl AgentApplication {
             .map_err(|e| e.to_string())
     }
 
+    pub fn call_plugin_panel_tool(
+        &self,
+        plugin_key: &str,
+        tool_name: &str,
+        args_json: &str,
+    ) -> Result<String, String> {
+        self.plugin_registry
+            .call_tool(plugin_key, tool_name, args_json)
+            .map_err(|e| e.to_string())
+    }
+
     /// Read the plugin panel HTML and inline any sibling CSS/JS files.
     ///
     /// This keeps file-system assembly logic in the app layer rather than the

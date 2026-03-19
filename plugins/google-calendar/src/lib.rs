@@ -85,6 +85,7 @@ struct ConnectStartDto {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct FlowIdInput {
+    #[serde(alias = "flow_id")]
     flow_id: String,
 }
 
@@ -867,5 +868,13 @@ mod tests {
         .expect("notification ids");
 
         assert!(ids.is_empty());
+    }
+
+    #[test]
+    fn flow_id_input_accepts_snake_case_payload_from_panel() {
+        let parsed: FlowIdInput =
+            serde_json::from_str(r#"{"flow_id":"flow-123"}"#).expect("flow id input parses");
+
+        assert_eq!(parsed.flow_id, "flow-123");
     }
 }

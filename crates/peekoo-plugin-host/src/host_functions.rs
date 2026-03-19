@@ -693,51 +693,12 @@ fn host_http_request(
         )));
     }
 
-    let method = Method::from_bytes(method.as_bytes())
-        .map_err(|e| Error::msg(format!("Invalid HTTP method: {e}")))?;
-    let client = reqwest::blocking::Client::new();
-    let mut request = client.request(method, url);
-    if let Some(headers) = req["headers"].as_array() {
-        for header in headers {
-            if let (Some(name), Some(value)) = (header["name"].as_str(), header["value"].as_str()) {
-                request = request.header(name, value);
-            }
-        }
-    }
-    if let Some(body) = req["body"].as_str() {
-        request = request.body(body.to_string());
-    }
+    let headers = req["headers"].as_array().cloned().unwrap_or_default();
+    let body = req["body"].as_str().map(ToString::to_string);
+    let response = execute_http_request(method.to_string(), url.to_string(), headers, body)
+        .map_err(Error::msg)?;
 
-    let response = request
-        .send()
-        .map_err(|e| Error::msg(format!("HTTP request failed: {e}")))?;
-    let status = response.status().as_u16();
-    let headers = response
-        .headers()
-        .iter()
-        .filter_map(|(name, value)| {
-            value.to_str().ok().map(|value| {
-                serde_json::json!({
-                    "name": name.as_str(),
-                    "value": value,
-                })
-            })
-        })
-        .collect::<Vec<_>>();
-    let body = response
-        .text()
-        .map_err(|e| Error::msg(format!("HTTP response body read failed: {e}")))?;
-
-    write_output(
-        plugin,
-        outputs,
-        &serde_json::json!({
-            "status": status,
-            "body": body,
-            "headers": headers,
-        })
-        .to_string(),
-    )
+    write_output(plugin, outputs, &response)
 }
 
 fn host_set_peek_badge(
@@ -1289,6 +1250,66 @@ fn block_on_oauth_status(
 
     rx.recv()
         .map_err(|err| format!("Receive OAuth status error: {err}"))?
+}
+
+fn execute_http_request(
+    method: String,
+    url: String,
+    headers: Vec<serde_json::Value>,
+    body: Option<String>,
+) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = (|| {
+            let method = Method::from_bytes(method.as_bytes())
+                .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+            let client = reqwest::blocking::Client::new();
+            let mut request = client.request(method, &url);
+            for header in headers {
+                if let (Some(name), Some(value)) =
+                    (header["name"].as_str(), header["value"].as_str())
+                {
+                    request = request.header(name, value);
+                }
+            }
+            if let Some(body) = body {
+                request = request.body(body);
+            }
+
+            let response = request
+                .send()
+                .map_err(|e| format!("HTTP request failed: {e}"))?;
+            let status = response.status().as_u16();
+            let headers = response
+                .headers()
+                .iter()
+                .filter_map(|(name, value)| {
+                    value.to_str().ok().map(|value| {
+                        serde_json::json!({
+                            "name": name.as_str(),
+                            "value": value,
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            let body = response
+                .text()
+                .map_err(|e| format!("HTTP response body read failed: {e}"))?;
+
+            Ok::<String, String>(
+                serde_json::json!({
+                    "status": status,
+                    "body": body,
+                    "headers": headers,
+                })
+                .to_string(),
+            )
+        })();
+        let _ = tx.send(result);
+    });
+
+    rx.recv()
+        .map_err(|err| format!("Receive HTTP response error: {err}"))?
 }
 
 fn host_matches_rule(host: &str, port: Option<u16>, rule: &str) -> bool {

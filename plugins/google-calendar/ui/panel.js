@@ -111,7 +111,8 @@ function applySnapshot(snapshot) {
 async function refreshSnapshot(refresh = false) {
   try {
     if (refresh) {
-      await invoke("plugin_call_tool", {
+      await invoke("plugin_call_panel_tool", {
+        pluginKey: "google-calendar",
         toolName: "google_calendar_refresh",
         argsJson: "{}",
       });
@@ -132,7 +133,8 @@ async function pollOauthStatus() {
     return;
   }
   try {
-    const raw = await invoke("plugin_call_tool", {
+    const raw = await invoke("plugin_call_panel_tool", {
+      pluginKey: "google-calendar",
       toolName: "google_calendar_connect_status",
       argsJson: JSON.stringify({ flow_id: oauthFlowId }),
     });
@@ -171,7 +173,8 @@ function stopOauthPolling() {
 connectButton.addEventListener("click", async () => {
   showError(null);
   try {
-    const raw = await invoke("plugin_call_tool", {
+    const raw = await invoke("plugin_call_panel_tool", {
+      pluginKey: "google-calendar",
       toolName: "google_calendar_connect_start",
       argsJson: "{}",
     });
@@ -191,7 +194,8 @@ refreshButton.addEventListener("click", () => {
 disconnectButton.addEventListener("click", async () => {
   showError(null);
   try {
-    await invoke("plugin_call_tool", {
+    await invoke("plugin_call_panel_tool", {
+      pluginKey: "google-calendar",
       toolName: "google_calendar_disconnect",
       argsJson: "{}",
     });
@@ -210,7 +214,8 @@ saveClientJsonButton.addEventListener("click", async () => {
       return;
     }
     const clientJson = await file.text();
-    await invoke("plugin_call_tool", {
+    await invoke("plugin_call_panel_tool", {
+      pluginKey: "google-calendar",
       toolName: "google_calendar_set_client_json",
       argsJson: JSON.stringify({ clientJson }),
     });
