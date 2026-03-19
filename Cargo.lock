@@ -5690,6 +5690,7 @@ name = "peekoo-agent-app"
 version = "0.1.0"
 dependencies = [
  "asupersync",
+ "chrono",
  "peekoo-agent",
  "peekoo-agent-auth",
  "peekoo-app-settings",
@@ -5702,6 +5703,7 @@ dependencies = [
  "peekoo-scheduler",
  "peekoo-security",
  "pi_agent_rust",
+ "reqwest 0.12.28",
  "rusqlite",
  "serde",
  "serde_json",

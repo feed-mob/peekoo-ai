@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Calendar</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero-card">
+        <div>
+          <p class="eyebrow">Calendar plugin</p>
+          <h1>Google Calendar</h1>
+          <p id="statusLine" class="hero-copy">Connect your calendar to see your agenda.</p>
+        </div>
+        <section id="accountCard" class="account-card hidden">
+          <p class="eyebrow">Connected account</p>
+          <p id="accountName" class="account-name"></p>
+          <p id="accountEmail" class="account-email"></p>
+        </section>
+        <label class="client-id-field">
+          <span>Google OAuth client.json</span>
+          <input id="clientJsonInput" type="file" accept="application/json,.json" />
+        </label>
+        <div class="hero-actions">
+          <button id="saveClientJsonButton" class="secondary-button">Upload client.json</button>
+          <button id="connectButton" class="primary-button">Connect</button>
+          <button id="refreshButton" class="secondary-button">Refresh</button>
+          <button id="disconnectButton" class="ghost-button">Disconnect</button>
+        </div>
+      </section>
+
+      <section id="errorBanner" class="error-banner hidden"></section>
+
+      <section class="agenda-section">
+        <div class="section-header">
+          <h2>Upcoming Events</h2>
+          <span>Next 5</span>
+        </div>
+        <div id="upcomingList" class="agenda-list"></div>
+      </section>
+
+      <section class="agenda-section">
+        <div class="section-header">
+          <h2>Daily Events</h2>
+          <span>Today</span>
+        </div>
+        <div id="todayList" class="agenda-list"></div>
+      </section>
+
+      <section class="agenda-section">
+        <div class="section-header">
+          <h2>Weekly Events</h2>
+          <span>This week</span>
+        </div>
+        <div id="weekList" class="agenda-list"></div>
+      </section>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

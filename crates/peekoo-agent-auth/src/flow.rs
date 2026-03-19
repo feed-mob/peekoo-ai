@@ -20,6 +20,8 @@ impl OAuthFlowStatus {
 #[derive(Debug, Clone)]
 pub struct OAuthFlow {
     pub provider_id: String,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
     pub verifier: String,
     pub auth_code: Option<String>,
     pub status: OAuthFlowStatus,
@@ -37,6 +39,7 @@ pub struct OAuthStatusResult {
     pub provider_id: String,
     pub status: OAuthFlowStatus,
     pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
     pub expires_at: Option<String>,
     pub error: Option<String>,
 }

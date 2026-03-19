@@ -1,0 +1,13 @@
+[package]
+name = "google-calendar"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+peekoo-plugin-sdk = { path = "../../crates/peekoo-plugin-sdk" }
+extism-pdk = "1.4"

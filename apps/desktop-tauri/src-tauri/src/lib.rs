@@ -3,10 +3,11 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
-    OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
+    GoogleCalendarOauthStatusDto, GoogleCalendarPanelDto, LastSessionDto, OauthCancelResponse,
+    OauthStartResponse, OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto,
+    PluginNotificationDto, PluginPanelDto, PluginSummaryDto, PomodoroSessionDto,
+    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
 };
 use serde::Serialize;
 use std::env;
@@ -24,6 +25,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::ShellExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -270,6 +272,49 @@ async fn agent_oauth_cancel(
     state: State<'_, AgentState>,
 ) -> Result<OauthCancelResponse, String> {
     state.app.oauth_cancel(req)
+}
+
+#[tauri::command]
+async fn google_calendar_connect_start(
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<OauthStartResponse, String> {
+    let mut started = state.app.google_calendar_connect_start()?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(&started.authorize_url, None)
+        .map_err(|e| format!("Open Google Calendar OAuth browser error: {e}"))?;
+    started.opened_browser = true;
+    Ok(started)
+}
+
+#[tauri::command]
+async fn google_calendar_connect_status(
+    req: OauthStatusRequest,
+    state: State<'_, AgentState>,
+) -> Result<GoogleCalendarOauthStatusDto, String> {
+    state.app.google_calendar_connect_status(req).await
+}
+
+#[tauri::command]
+async fn google_calendar_disconnect(state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.google_calendar_disconnect()
+}
+
+#[tauri::command]
+async fn google_calendar_set_client_json(
+    client_json: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.google_calendar_set_client_json(&client_json)
+}
+
+#[tauri::command]
+async fn google_calendar_panel_snapshot(
+    refresh: bool,
+    state: State<'_, AgentState>,
+) -> Result<GoogleCalendarPanelDto, String> {
+    state.app.google_calendar_panel_snapshot(refresh).await
 }
 
 // ── Global app settings ─────────────────────────────────────────────────
@@ -767,6 +812,11 @@ pub fn run() {
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
+            google_calendar_connect_start,
+            google_calendar_connect_status,
+            google_calendar_disconnect,
+            google_calendar_set_client_json,
+            google_calendar_panel_snapshot,
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,

@@ -1,0 +1,211 @@
+:root {
+  color-scheme: dark;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  --bg: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+  --panel: rgba(15, 23, 42, 0.88);
+  --panel-border: rgba(148, 163, 184, 0.18);
+  --text: #e5eefc;
+  --muted: #94a3b8;
+  --accent: #f59e0b;
+  --accent-strong: #f97316;
+  --danger: #fb7185;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.hero-card,
+.agenda-section,
+.account-card,
+.empty-card,
+.event-card,
+.error-banner {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  backdrop-filter: blur(16px);
+  border-radius: 18px;
+}
+
+.hero-card {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eyebrow,
+.section-header span,
+.meta-line {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+.hero-copy {
+  margin-top: 8px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.account-card {
+  padding: 14px;
+}
+
+.account-name {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.account-email {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.client-id-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.client-id-field span {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.client-id-field input {
+  width: 100%;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  color: var(--text);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.client-id-field input::placeholder {
+  color: #64748b;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 10px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #1f2937;
+  font-weight: 700;
+}
+
+.secondary-button,
+.ghost-button {
+  background: rgba(148, 163, 184, 0.12);
+  color: var(--text);
+}
+
+.agenda-section {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.agenda-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.event-card,
+.empty-card {
+  padding: 14px;
+}
+
+.event-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.event-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.event-time {
+  color: #fde68a;
+  font-size: 13px;
+}
+
+.event-location {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.error-banner {
+  padding: 12px 14px;
+  color: #ffe4e6;
+  border-color: rgba(251, 113, 133, 0.35);
+}
+
+.hidden {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .app-shell {
+    padding: 12px;
+  }
+
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  button {
+    width: 100%;
+  }
+}

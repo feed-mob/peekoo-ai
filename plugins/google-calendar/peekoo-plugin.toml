@@ -1,0 +1,15 @@
+[plugin]
+key = "google-calendar"
+name = "Google Calendar"
+version = "0.1.0"
+author = "Peekoo Team"
+description = "Upcoming, daily, and weekly Google Calendar agenda with reminders."
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-wasip1/release/google_calendar.wasm"
+
+[[ui.panels]]
+label = "panel-google-calendar"
+title = "Google Calendar"
+width = 420
+height = 560
+entry = "ui/panel.html"

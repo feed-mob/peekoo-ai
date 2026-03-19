@@ -7,6 +7,7 @@ use crate::callback::spawn_callback_listener;
 use crate::error::OAuthError;
 use crate::flow::{OAuthFlow, OAuthFlowStatus, OAuthStartResult, OAuthStatusResult};
 use crate::pkce::generate_pkce;
+use crate::provider::google_calendar;
 use crate::provider::openai_codex;
 
 pub struct OAuthService {
@@ -27,11 +28,38 @@ impl OAuthService {
     }
 
     pub fn start(&self, provider_id: &str) -> Result<OAuthStartResult, OAuthError> {
+        self.start_with_credentials(provider_id, None, None)
+    }
+
+    pub fn start_google_calendar(&self, client_id: &str) -> Result<OAuthStartResult, OAuthError> {
+        self.start_google_calendar_with_secret(client_id, None)
+    }
+
+    pub fn start_google_calendar_with_secret(
+        &self,
+        client_id: &str,
+        client_secret: Option<&str>,
+    ) -> Result<OAuthStartResult, OAuthError> {
+        self.start_with_credentials("google-calendar", Some(client_id), client_secret)
+    }
+
+    fn start_with_credentials(
+        &self,
+        provider_id: &str,
+        client_id: Option<&str>,
+        client_secret: Option<&str>,
+    ) -> Result<OAuthStartResult, OAuthError> {
         let flow_id = Uuid::new_v4().to_string();
         let (verifier, challenge) = generate_pkce();
 
         let authorize_url = match provider_id {
             "openai-codex" => openai_codex::build_authorize_url(&challenge, &verifier),
+            "google-calendar" => {
+                let client_id = client_id.ok_or_else(|| {
+                    OAuthError::TokenExchange("missing Google Calendar OAuth client id".to_string())
+                })?;
+                google_calendar::build_authorize_url(client_id, &challenge, &verifier)
+            }
             _ => return Err(OAuthError::UnsupportedProvider(provider_id.to_string())),
         };
 
@@ -43,6 +71,8 @@ impl OAuthService {
             flow_id.clone(),
             OAuthFlow {
                 provider_id: provider_id.to_string(),
+                client_id: client_id.map(ToString::to_string),
+                client_secret: client_secret.map(ToString::to_string),
                 verifier,
                 auth_code: None,
                 status: OAuthFlowStatus::Pending,
@@ -73,6 +103,7 @@ impl OAuthService {
                 provider_id: String::new(),
                 status: OAuthFlowStatus::Expired,
                 access_token: None,
+                refresh_token: None,
                 expires_at: None,
                 error: Some("OAuth flow not found".to_string()),
             });
@@ -83,6 +114,7 @@ impl OAuthService {
                 provider_id: flow.provider_id,
                 status: OAuthFlowStatus::Failed,
                 access_token: None,
+                refresh_token: None,
                 expires_at: None,
                 error: Some(error),
             });
@@ -93,6 +125,7 @@ impl OAuthService {
                 provider_id: flow.provider_id,
                 status: OAuthFlowStatus::Completed,
                 access_token: None,
+                refresh_token: None,
                 expires_at: None,
                 error: None,
             });
@@ -103,6 +136,7 @@ impl OAuthService {
                 provider_id: flow.provider_id,
                 status: OAuthFlowStatus::Pending,
                 access_token: None,
+                refresh_token: None,
                 expires_at: None,
                 error: None,
             });
@@ -122,9 +156,40 @@ impl OAuthService {
                 }
 
                 Ok(OAuthStatusResult {
+                        provider_id: flow.provider_id,
+                        status: OAuthFlowStatus::Completed,
+                        access_token: Some(token.access_token),
+                        refresh_token: None,
+                        expires_at: Some(oauth_expires_at_iso(token.expires_in)),
+                        error: None,
+                    })
+            }
+            "google-calendar" => {
+                let client_id = flow.client_id.as_deref().ok_or_else(|| {
+                    OAuthError::TokenExchange("missing Google Calendar OAuth client id".to_string())
+                })?;
+                let token = google_calendar::exchange_token(
+                    client_id,
+                    flow.client_secret.as_deref(),
+                    &auth_code,
+                    &flow.verifier,
+                )
+                .await?;
+
+                let mut lock = self
+                    .flows
+                    .lock()
+                    .map_err(|e| OAuthError::FlowLock(e.to_string()))?;
+                if let Some(stored) = lock.get_mut(flow_id) {
+                    stored.status = OAuthFlowStatus::Completed;
+                    stored.auth_code = None;
+                }
+
+                Ok(OAuthStatusResult {
                     provider_id: flow.provider_id,
                     status: OAuthFlowStatus::Completed,
                     access_token: Some(token.access_token),
+                    refresh_token: token.refresh_token,
                     expires_at: Some(oauth_expires_at_iso(token.expires_in)),
                     error: None,
                 })

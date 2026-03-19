@@ -20,6 +20,9 @@ use peekoo_plugin_host::PluginRegistry;
 use peekoo_scheduler::Scheduler;
 
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
+use crate::google_calendar_service::{
+    GoogleCalendarOauthStatusDto, GoogleCalendarPanelDto, GoogleCalendarService,
+};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
@@ -39,6 +42,7 @@ use crate::workspace_bootstrap::ensure_agent_workspace;
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
+    google_calendar: GoogleCalendarService,
     app_settings: AppSettingsService,
     productivity: ProductivityService,
     plugin_registry: Arc<PluginRegistry>,
@@ -100,6 +104,7 @@ impl AgentApplication {
         Ok(Self {
             agent: Mutex::new(None),
             settings,
+            google_calendar: GoogleCalendarService::new(Arc::clone(&notifications))?,
             app_settings,
             productivity: ProductivityService::new(),
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
@@ -120,6 +125,7 @@ impl AgentApplication {
 
     pub fn start_plugin_runtime(&self) {
         self.plugin_registry.start_scheduler();
+        self.google_calendar.start_runtime();
     }
 
     pub async fn prompt_streaming<F>(&self, message: &str, on_event: F) -> Result<String, String>
@@ -252,6 +258,32 @@ impl AgentApplication {
 
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
+    }
+
+    pub fn google_calendar_connect_start(&self) -> Result<OauthStartResponse, String> {
+        self.google_calendar.connect_start()
+    }
+
+    pub async fn google_calendar_connect_status(
+        &self,
+        req: OauthStatusRequest,
+    ) -> Result<GoogleCalendarOauthStatusDto, String> {
+        self.google_calendar.connect_status(req).await
+    }
+
+    pub fn google_calendar_disconnect(&self) -> Result<(), String> {
+        self.google_calendar.disconnect()
+    }
+
+    pub fn google_calendar_set_client_json(&self, client_json: &str) -> Result<(), String> {
+        self.google_calendar.set_client_json(client_json)
+    }
+
+    pub async fn google_calendar_panel_snapshot(
+        &self,
+        refresh: bool,
+    ) -> Result<GoogleCalendarPanelDto, String> {
+        self.google_calendar.panel_snapshot(refresh).await
     }
 
     // ── Global app settings ────────────────────────────────────────────
