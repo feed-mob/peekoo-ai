@@ -35,9 +35,10 @@ input {
 .message,
 .event-card,
 .empty-card {
-  background: var(--space-surface, oklch(0.28 0.05 280));
+  background: var(--glass, rgba(28, 53, 45, 0.65));
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
   border-radius: 1rem;
+  backdrop-filter: blur(18px);
 }
 
 .header-card,
@@ -126,8 +127,8 @@ input {
   min-width: 70px;
   padding: 6px 10px;
   border-radius: 999px;
-  background: rgba(255, 211, 126, 0.14);
-  color: #ffd37e;
+  background: color-mix(in srgb, var(--space-deep, #3d342e) 78%, transparent);
+  color: var(--text-secondary, #f3deba);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.05em;
@@ -135,8 +136,8 @@ input {
 }
 
 .account-badge.connected {
-  background: rgba(61, 217, 182, 0.16);
-  color: #85f2db;
+  background: color-mix(in srgb, var(--glow-green, #a6b28b) 28%, transparent);
+  color: var(--glow-olive, #8dd9cf);
 }
 
 .file-field {
@@ -149,7 +150,7 @@ input {
   width: 100%;
   border-radius: 0.9rem;
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--space-deep, #3d342e) 70%, transparent);
   color: var(--text-primary, #f2f0f9);
   padding: 10px 12px;
 }
@@ -190,12 +191,12 @@ input {
 }
 
 .btn-primary {
-  background: var(--glow-blue, oklch(0.72 0.14 260));
-  color: var(--space-void, oklch(0.2 0.03 280));
+  background: var(--glow-green, #a6b28b);
+  color: var(--space-void, #1c352d);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.06);
+  background: color-mix(in srgb, var(--space-deep, #3d342e) 68%, transparent);
   color: var(--text-primary, #f2f0f9);
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.1));
 }
@@ -205,7 +206,7 @@ input {
   gap: 8px;
   padding: 4px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.04);
+  background: color-mix(in srgb, var(--space-deep, #3d342e) 58%, transparent);
   border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.08));
 }
 
@@ -224,8 +225,8 @@ input {
 }
 
 .tab-button.active {
-  background: var(--glow-purple, oklch(0.68 0.18 300));
-  color: var(--space-void, oklch(0.2 0.03 280));
+  background: var(--glow-green, #a6b28b);
+  color: var(--space-void, #1c352d);
 }
 
 .agenda-list {
@@ -243,7 +244,7 @@ input {
 
 .event-time {
   margin: 0;
-  color: var(--glow-blue, oklch(0.72 0.14 260));
+  color: var(--glow-olive, #8dd9cf);
   font-size: 13px;
   font-weight: 600;
 }

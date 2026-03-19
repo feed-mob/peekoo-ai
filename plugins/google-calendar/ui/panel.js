@@ -59,17 +59,24 @@ function showError(message) {
 }
 
 function formatWhen(event) {
-  if (event.allDay) {
-    return "All day";
-  }
   try {
-    return new Date(event.startAt).toLocaleString([], {
+    const date = new Date(event.startAt);
+    if (event.allDay) {
+      return `${date.toLocaleDateString([], {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })} • All day`;
+    }
+    return date.toLocaleString([], {
       weekday: "short",
+      month: "short",
+      day: "numeric",
       hour: "numeric",
       minute: "2-digit",
     });
   } catch {
-    return event.startAt;
+    return event.allDay ? `${event.startAt} • All day` : event.startAt;
   }
 }
 
