@@ -19,101 +19,15 @@ export function quote(value: string): string {
   return '"' + escaped + '"';
 }
 
-function findFieldValueStart(json: string, field: string): i32 {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < json.length; i++) {
-    const ch = json.charAt(i);
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (ch == "\\") {
-        escaped = true;
-      } else if (ch == '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch == '"') {
-      if (depth != 1) {
-        inString = true;
-        continue;
-      }
-
-      let key = "";
-      let keyEscaped = false;
-      let closed = false;
-      let j = i + 1;
-      for (; j < json.length; j++) {
-        const keyCh = json.charAt(j);
-        if (keyEscaped) {
-          key += keyCh;
-          keyEscaped = false;
-          continue;
-        }
-        if (keyCh == "\\") {
-          keyEscaped = true;
-          continue;
-        }
-        if (keyCh == '"') {
-          closed = true;
-          break;
-        }
-        key += keyCh;
-      }
-
-      if (!closed) {
-        return -1;
-      }
-
-      if (key == field) {
-        let valueStart = j + 1;
-        while (valueStart < json.length) {
-          const valueCh = json.charAt(valueStart);
-          if (valueCh == ' ' || valueCh == '\n' || valueCh == '\r' || valueCh == '\t') {
-            valueStart++;
-            continue;
-          }
-          if (valueCh != ':') {
-            break;
-          }
-          valueStart++;
-          while (valueStart < json.length) {
-            const rawCh = json.charAt(valueStart);
-            if (rawCh == ' ' || rawCh == '\n' || rawCh == '\r' || rawCh == '\t') {
-              valueStart++;
-              continue;
-            }
-            return valueStart;
-          }
-          break;
-        }
-      }
-
-      i = j;
-      continue;
-    }
-
-    if (ch == '{' || ch == '[') {
-      depth++;
-      continue;
-    }
-
-    if (ch == '}' || ch == ']') {
-      depth--;
-    }
+export function extractStringField(json: string, field: string): string {
+  const marker = '"' + field + '":';
+  const markerIndex = json.indexOf(marker);
+  if (markerIndex < 0) {
+    return "";
   }
 
-  return -1;
-}
-
-export function extractStringField(json: string, field: string): string {
-  const start = findFieldValueStart(json, field);
-  if (start < 0 || json.charAt(start) != '"') {
+  const start = json.indexOf('"', markerIndex + marker.length);
+  if (start < 0) {
     return "";
   }
 
@@ -151,9 +65,15 @@ export function extractStringField(json: string, field: string): string {
 }
 
 export function extractRawField(json: string, field: string): string {
-  const start = findFieldValueStart(json, field);
-  if (start < 0) {
+  const marker = '"' + field + '":';
+  const markerIndex = json.indexOf(marker);
+  if (markerIndex < 0) {
     return "";
+  }
+
+  let start = markerIndex + marker.length;
+  while (start < json.length && (json.charAt(start) == ' ' || json.charAt(start) == '\n')) {
+    start++;
   }
 
   let end = start;
