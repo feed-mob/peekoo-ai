@@ -3,11 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
+    MIGRATION_0005_TASK_EXTENSIONS,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
+    default_model_for_provider, normalize_model_for_provider, DEFAULT_MODEL, DEFAULT_PROVIDER,
 };
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
@@ -456,6 +457,28 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         params![DEFAULT_PROVIDER, DEFAULT_MODEL],
     )
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
+
+    // ALTER TABLE migration — sentinel table already exists, so check the
+    // migration record directly instead of the sentinel table.
+    let already_applied: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0005_task_extensions'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0005 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied {
+        conn.execute_batch(MIGRATION_0005_TASK_EXTENSIONS)
+            .map_err(|e| format!("Apply migration 0005_task_extensions error: {e}"))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0005_task_extensions')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0005 state error: {e}"))?;
+    }
 
     Ok(())
 }

@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use peekoo_paths::peekoo_global_data_dir;
 use peekoo_plugin_host::manifest::parse_manifest;
 use peekoo_plugin_host::{
-    CompanionDef, PluginManifest, PluginRegistry, resolve_companion_install_path,
+    resolve_companion_install_path, CompanionDef, PluginManifest, PluginRegistry,
 };
 
 const GITHUB_API_CONTENTS_URL: &str =
@@ -584,12 +584,40 @@ mod tests {
     use std::sync::OnceLock;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
+    use peekoo_plugin_host::{resolve_companion_target, PluginRegistry};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::*;
     use peekoo_plugin_host::manifest::parse_manifest;
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn make_store() -> PluginStoreService {
         PluginStoreService::new()
@@ -636,6 +664,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         ))
     }
 
@@ -885,6 +914,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());
@@ -946,6 +976,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());
@@ -966,12 +997,10 @@ wasm = "plugin.wasm"
         registry
             .install_plugin(&plugin_dir)
             .expect("initial plugin install should succeed");
-        assert!(
-            registry
-                .loaded_keys()
-                .iter()
-                .any(|key| key == "health-reminders")
-        );
+        assert!(registry
+            .loaded_keys()
+            .iter()
+            .any(|key| key == "health-reminders"));
 
         let err = store
             .replace_installed_plugin("health-reminders", &plugin_dir, &registry, |_| {

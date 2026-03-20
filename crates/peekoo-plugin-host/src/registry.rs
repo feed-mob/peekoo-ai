@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+use peekoo_productivity_domain::task::TaskService;
 use peekoo_scheduler::Scheduler;
 use rusqlite::{Connection, OptionalExtension};
 
@@ -31,6 +32,7 @@ pub struct PluginRegistry {
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     scheduler_started: AtomicBool,
     scheduler_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
@@ -43,6 +45,7 @@ impl PluginRegistry {
         notifications: Arc<NotificationService>,
         peek_badges: Arc<PeekBadgeService>,
         mood_reactions: Arc<MoodReactionService>,
+        task_service: Arc<dyn TaskService>,
     ) -> Self {
         let permissions = PermissionStore::new(Arc::clone(&db_conn));
         let state = PluginStateStore::new(Arc::clone(&db_conn));
@@ -58,6 +61,7 @@ impl PluginRegistry {
             notifications,
             peek_badges,
             mood_reactions,
+            task_service,
             scheduler_started: AtomicBool::new(false),
             scheduler_handle: Mutex::new(None),
         }
@@ -148,6 +152,7 @@ impl PluginRegistry {
             &self.notifications,
             &self.peek_badges,
             &self.mood_reactions,
+            Arc::clone(&self.task_service),
             manifest
                 .config
                 .as_ref()
@@ -771,12 +776,22 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use crate::PluginError;
 
     use super::PluginRegistry;
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> { Err("noop".into()) }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> { Ok(vec![]) }
+        fn update_task(&self, _: &str, _: Option<&str>, _: Option<&str>, _: Option<&str>, _: Option<&str>, _: Option<&[String]>) -> Result<TaskDto, String> { Err("noop".into()) }
+        fn delete_task(&self, _: &str) -> Result<(), String> { Ok(()) }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> { Err("noop".into()) }
+    }
 
     fn test_registry(plugin_dirs: Vec<std::path::PathBuf>) -> PluginRegistry {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -819,6 +834,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         )
     }
 

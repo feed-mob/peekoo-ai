@@ -1,10 +1,21 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CheckCircle2 } from "lucide-react";
-import type { Task } from "@/types/task";
-import { emitPetReaction } from "@/lib/pet-events";
+import type { TaskStatus } from "@/types/task";
+import { useTasks } from "./use-tasks";
 import { TaskItem } from "./TaskItem";
 import { TaskInput } from "./TaskInput";
+import { ActivityView } from "./ActivityView";
+
+type Tab = "tasks" | "activity";
+type StatusFilter = "all" | TaskStatus;
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "todo", label: "Todo" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "done", label: "Done" },
+];
 
 function EmptyState() {
   return (
@@ -17,46 +28,40 @@ function EmptyState() {
 }
 
 export function TasksPanel() {
-  const [tasks, setTasks] = useState<Task[]>([
-    { id: "1", title: "Complete project documentation", completed: false, priority: "high" },
-    { id: "2", title: "Review pull requests", completed: true, priority: "medium" },
-    { id: "3", title: "Update dependencies", completed: false, priority: "low" },
-  ]);
+  const {
+    tasks,
+    activityEvents,
+    loading,
+    addTask,
+    toggleTask,
+    updateTaskStatus,
+    deleteTask,
+  } = useTasks();
+
+  const [tab, setTab] = useState<Tab>("tasks");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  const filteredTasks = useMemo(() => {
+    if (statusFilter === "all") return tasks;
+    return tasks.filter((t) => t.status === statusFilter);
+  }, [tasks, statusFilter]);
 
   const stats = useMemo(() => {
     const total = tasks.length;
-    const completed = tasks.filter(t => t.completed).length;
+    const completed = tasks.filter((t) => t.status === "done").length;
     return { total, completed };
   }, [tasks]);
 
-  const handleAddTask = (title: string, priority: Task["priority"]) => {
-    const task: Task = {
-      id: Date.now().toString(),
-      title,
-      completed: false,
-      priority,
-    };
-    setTasks([...tasks, task]);
-  };
-
-  const toggleTask = (id: string) => {
-    const shouldCelebrate = tasks.some((task) => task.id === id && !task.completed);
-
-    setTasks(tasks.map(task =>
-      task.id === id ? { ...task, completed: !task.completed } : task
-    ));
-
-    if (shouldCelebrate) {
-      void emitPetReaction("task-completed");
-    }
-  };
-
-  const deleteTask = (id: string) => {
-    setTasks(tasks.filter(task => task.id !== id));
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <p className="text-sm text-text-muted">Loading tasks...</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col h-full gap-4">
+    <div className="flex flex-col h-full gap-3">
       {/* Header with stats */}
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
@@ -65,26 +70,78 @@ export function TasksPanel() {
         </span>
       </div>
 
-      {/* Input */}
-      <TaskInput onAdd={handleAddTask} />
-      
-      {/* Task List */}
-      <ScrollArea className="flex-1 -mx-1 px-1">
-        {tasks.length === 0 ? (
-          <EmptyState />
-        ) : (
-          <div className="space-y-3 pr-2">
-            {tasks.map((task) => (
-              <TaskItem
-                key={task.id}
-                task={task}
-                onToggle={() => toggleTask(task.id)}
-                onDelete={() => deleteTask(task.id)}
-              />
+      {/* Tabs */}
+      <div className="flex gap-1 bg-space-deep rounded-lg p-1">
+        <button
+          onClick={() => setTab("tasks")}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            tab === "tasks"
+              ? "bg-space-surface text-text-primary shadow-sm"
+              : "text-text-muted hover:text-text-primary"
+          }`}
+        >
+          Tasks
+        </button>
+        <button
+          onClick={() => setTab("activity")}
+          className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            tab === "activity"
+              ? "bg-space-surface text-text-primary shadow-sm"
+              : "text-text-muted hover:text-text-primary"
+          }`}
+        >
+          Activity
+        </button>
+      </div>
+
+      {tab === "tasks" ? (
+        <>
+          {/* Input */}
+          <TaskInput onAdd={addTask} />
+
+          {/* Status filters */}
+          <div className="flex gap-1">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                onClick={() => setStatusFilter(f.value)}
+                className={`px-2.5 py-1 text-[10px] font-medium rounded-full transition-colors ${
+                  statusFilter === f.value
+                    ? "bg-[var(--glow-green)]/20 text-[var(--glow-green)] border border-[var(--glow-green)]/40"
+                    : "bg-space-deep text-text-muted border border-glass-border hover:text-text-primary"
+                }`}
+              >
+                {f.label}
+              </button>
             ))}
           </div>
-        )}
-      </ScrollArea>
+
+          {/* Task list */}
+          <ScrollArea className="flex-1 -mx-1 px-1">
+            {filteredTasks.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="space-y-2 pr-2">
+                {filteredTasks.map((task) => (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onToggle={() => toggleTask(task.id)}
+                    onDelete={() => deleteTask(task.id)}
+                    onStatusChange={(status) => updateTaskStatus(task.id, status)}
+                  />
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </>
+      ) : (
+        <ScrollArea className="flex-1 -mx-1 px-1">
+          <div className="pr-2">
+            <ActivityView events={activityEvents} />
+          </div>
+        </ScrollArea>
+      )}
     </div>
   );
 }

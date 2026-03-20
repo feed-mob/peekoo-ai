@@ -5690,6 +5690,7 @@ name = "peekoo-agent-app"
 version = "0.1.0"
 dependencies = [
  "asupersync",
+ "async-trait",
  "chrono",
  "peekoo-agent",
  "peekoo-agent-auth",
@@ -5792,6 +5793,7 @@ dependencies = [
  "peekoo-agent-auth",
  "peekoo-notifications",
  "peekoo-paths",
+ "peekoo-productivity-domain",
  "peekoo-scheduler",
  "peekoo-security",
  "rand 0.8.5",
@@ -5816,6 +5818,7 @@ dependencies = [
  "peekoo-notifications",
  "peekoo-paths",
  "peekoo-plugin-host",
+ "peekoo-productivity-domain",
  "peekoo-scheduler",
  "rusqlite",
  "semver",
@@ -5830,6 +5833,7 @@ name = "peekoo-productivity-domain"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

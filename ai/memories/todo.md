@@ -19,11 +19,17 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
-- [ ] Implement Tasks component with full CRUD
-  - Connect to create_task Tauri command
-  - Display task list with filters
-  - Implement task completion animations
-  - Connect to backend-driven refresh/update flow
+- [x] Implement Tasks component with full CRUD
+  - Connected to real SQLite-backed CRUD via Tauri commands
+  - List with status filter tabs (All/Todo/In Progress/Done)
+  - Status badge click-to-cycle on TaskItem
+  - Hybrid labels (predefined + custom) with colored pills
+  - User/agent assignment with icon display
+  - Activity tab with grouped-by-day event feed
+  - Agent tools (task_create/list/update/delete/toggle/assign) for LLM
+  - Plugin host functions (peekoo_task_*) gated by "tasks" capability
+  - Task activity summary injected into agent system prompt
+  - See changelog: `ai/memories/changelogs/202603201200-feat-tasks-panel-full-crud.md`
 
 - [ ] Implement Pomodoro timer UI
   - Actual countdown timer logic in frontend
@@ -63,4 +69,4 @@
 ---
 
 **Last updated**: 2026-03-20
-**Status**: Tauri MVP implementation in progress, including constrained sprite window auto-resize improvements
+**Status**: Tasks panel CRUD complete with labels, assignment, agent tools, plugin host functions, and activity feed

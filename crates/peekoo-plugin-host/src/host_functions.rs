@@ -14,6 +14,7 @@ use peekoo_agent_auth::{
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
+use peekoo_productivity_domain::task::TaskService;
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
@@ -22,7 +23,7 @@ use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Message, WebSocket, connect};
+use tungstenite::{connect, Message, WebSocket};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -47,6 +48,7 @@ struct HostContext {
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 }
 
@@ -71,6 +73,7 @@ pub fn build_host_functions(
     notifications: &Arc<NotificationService>,
     peek_badges: &Arc<PeekBadgeService>,
     mood_reactions: &Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 ) -> Vec<Function> {
     let secret_root = peekoo_paths::peekoo_global_data_dir()
@@ -95,6 +98,7 @@ pub fn build_host_functions(
         notifications: Arc::clone(notifications),
         peek_badges: Arc::clone(peek_badges),
         mood_reactions: Arc::clone(mood_reactions),
+        task_service,
         config_fields,
     };
 
@@ -299,8 +303,50 @@ pub fn build_host_functions(
             "peekoo_set_mood",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx),
+            UserData::new(ctx.clone()),
             host_set_mood,
+        ),
+        Function::new(
+            "peekoo_task_create",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_create,
+        ),
+        Function::new(
+            "peekoo_task_list",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_list,
+        ),
+        Function::new(
+            "peekoo_task_update",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_update,
+        ),
+        Function::new(
+            "peekoo_task_delete",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_delete,
+        ),
+        Function::new(
+            "peekoo_task_toggle",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_toggle,
+        ),
+        Function::new(
+            "peekoo_task_assign",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_task_assign,
         ),
     ]
 }
@@ -835,6 +881,179 @@ fn host_set_mood(
 
     write_output(plugin, outputs, r#"{"ok":true}"#)?;
     Ok(())
+}
+
+// ── Task host functions ──────────────────────────────────────────────
+
+fn host_task_create(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let title = req["title"].as_str().unwrap_or("");
+    let priority = req["priority"].as_str().unwrap_or("medium");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    let labels: Vec<String> = req["labels"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    match ctx
+        .task_service
+        .create_task(title, priority, assignee, &labels)
+    {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task create error: {e}"))),
+    }
+}
+
+fn host_task_list(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    match ctx.task_service.list_tasks() {
+        Ok(tasks) => {
+            let filtered: Vec<_> = match req["status_filter"].as_str() {
+                Some(status) => tasks.into_iter().filter(|t| t.status == status).collect(),
+                None => tasks,
+            };
+            write_output(
+                plugin,
+                outputs,
+                &serde_json::to_string(&filtered).unwrap_or_default(),
+            )
+        }
+        Err(e) => Err(Error::msg(format!("Task list error: {e}"))),
+    }
+}
+
+fn host_task_update(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let title = req["title"].as_str();
+    let priority = req["priority"].as_str();
+    let status = req["status"].as_str();
+    let assignee = req["assignee"].as_str();
+    let labels: Option<Vec<String>> = req["labels"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    });
+    let labels_ref = labels.as_deref();
+
+    match ctx
+        .task_service
+        .update_task(id, title, priority, status, assignee, labels_ref)
+    {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task update error: {e}"))),
+    }
+}
+
+fn host_task_delete(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.delete_task(id) {
+        Ok(()) => write_output(plugin, outputs, r#"{"ok":true}"#),
+        Err(e) => Err(Error::msg(format!("Task delete error: {e}"))),
+    }
+}
+
+fn host_task_toggle(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.toggle_task(id) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task toggle error: {e}"))),
+    }
+}
+
+fn host_task_assign(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    match ctx
+        .task_service
+        .update_task(id, None, None, None, Some(assignee), None)
+    {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task assign error: {e}"))),
+    }
 }
 
 fn host_websocket_connect(
@@ -1479,6 +1698,7 @@ mod tests {
 
     use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use peekoo_security::InMemorySecretStore;
     use rusqlite::Connection;
@@ -1488,10 +1708,37 @@ mod tests {
     use crate::state::PluginStateStore;
 
     use super::{
-        HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
+        can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
         is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
-        read_file_content, sanitize_key_component,
+        read_file_content, sanitize_key_component, HostContext,
     };
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let dir =
@@ -1674,6 +1921,7 @@ mod tests {
             notifications: Arc::new(notifications),
             peek_badges: Arc::new(PeekBadgeService::new()),
             mood_reactions: Arc::new(MoodReactionService::new()),
+            task_service: Arc::new(NoopTaskService),
             config_fields: vec![],
         }
     }
@@ -1684,10 +1932,9 @@ mod tests {
 
         let err = can_notify(&ctx).expect_err("notify should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'notifications' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'notifications' is not granted"));
     }
 
     #[test]
@@ -1697,10 +1944,9 @@ mod tests {
         let err =
             can_schedule(&ctx).expect_err("schedule access should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'scheduler' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'scheduler' is not granted"));
     }
 
     #[test]

@@ -6,7 +6,7 @@ use peekoo_agent_app::{
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
     PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
+    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
 };
 use serde::Serialize;
 use std::env;
@@ -364,9 +364,56 @@ async fn chat_new_session(state: State<'_, AgentState>) -> Result<(), String> {
 async fn create_task(
     title: String,
     priority: String,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
     state: State<'_, AgentState>,
 ) -> Result<TaskDto, String> {
-    state.app.create_task(&title, &priority)
+    let assignee = assignee.as_deref().unwrap_or("user");
+    let labels = labels.as_deref().unwrap_or(&[]);
+    state.app.create_task(&title, &priority, assignee, labels)
+}
+
+#[tauri::command]
+async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String> {
+    state.app.list_tasks()
+}
+
+#[tauri::command]
+async fn update_task(
+    id: String,
+    title: Option<String>,
+    priority: Option<String>,
+    status: Option<String>,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    state: State<'_, AgentState>,
+) -> Result<TaskDto, String> {
+    state.app.update_task(
+        &id,
+        title.as_deref(),
+        priority.as_deref(),
+        status.as_deref(),
+        assignee.as_deref(),
+        labels.as_deref(),
+    )
+}
+
+#[tauri::command]
+async fn delete_task(id: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_task(&id)
+}
+
+#[tauri::command]
+async fn toggle_task(id: String, state: State<'_, AgentState>) -> Result<TaskDto, String> {
+    state.app.toggle_task(&id)
+}
+
+#[tauri::command]
+async fn task_list_events(
+    limit: Option<i64>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.list_task_events(limit.unwrap_or(50))
 }
 
 #[tauri::command]
@@ -822,6 +869,11 @@ pub fn run() {
             app_settings_set,
             app_settings_list_sprites,
             create_task,
+            list_tasks,
+            update_task,
+            delete_task,
+            toggle_task,
+            task_list_events,
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
