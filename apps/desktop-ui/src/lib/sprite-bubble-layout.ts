@@ -30,7 +30,7 @@ export const MINI_CHAT_EXTRA_HEIGHT = 70;
  * extra bottom room needed to keep the input row visible.
  */
 export const MINI_CHAT_WITH_BUBBLE_HEIGHT = 390;
-export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 470;
+export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 520;
 export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
 export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 280;
 
@@ -134,7 +134,7 @@ export function getSpriteStagePadding(
   return {
     paddingTop:
       state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
-        ? 160
+        ? 224
         : 12,
     paddingBottom: state.miniChatOpen ? 86 : 12,
     paddingLeft: extraLeft,

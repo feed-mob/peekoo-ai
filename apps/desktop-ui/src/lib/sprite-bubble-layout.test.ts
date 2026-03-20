@@ -55,7 +55,7 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: 280,
-      height: 470,
+      height: 520,
       extraLeft: 40,
       extraTop: 200,
     });
@@ -112,7 +112,7 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: true,
       }),
     ).toEqual({
-      paddingTop: 160,
+      paddingTop: 224,
       paddingBottom: 86,
       paddingLeft: 40,
       paddingRight: 40,
