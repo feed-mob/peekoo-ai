@@ -19,8 +19,8 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: MINI_CHAT_OPEN_WIDTH,
-      height: 320,
-      extraLeft: 20,
+      height: 350,
+      extraLeft: 40,
       extraTop: 0,
     });
   });
@@ -54,9 +54,9 @@ describe("getSpriteWindowSize", () => {
         miniChatBubbleExpanded: true,
       }),
     ).toEqual({
-      width: 280,
+      width: 320,
       height: 580,
-      extraLeft: 40,
+      extraLeft: 60,
       extraTop: 200,
     });
   });
@@ -74,7 +74,7 @@ describe("getSpriteWindowSize", () => {
     ).toEqual({
       width: MINI_CHAT_OPEN_WIDTH,
       height: 430,
-      extraLeft: 20,
+      extraLeft: 40,
       extraTop: 120,
     });
   });
@@ -93,10 +93,10 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: false,
       }),
     ).toEqual({
-      paddingTop: 12,
-      paddingBottom: 86,
-      paddingLeft: 20,
-      paddingRight: 20,
+      paddingTop: 13,
+      paddingBottom: 87,
+      paddingLeft: 40,
+      paddingRight: 40,
     });
   });
 
@@ -114,8 +114,8 @@ describe("getSpriteStagePadding", () => {
     ).toEqual({
       paddingTop: 234,
       paddingBottom: 96,
-      paddingLeft: 40,
-      paddingRight: 40,
+      paddingLeft: 60,
+      paddingRight: 60,
     });
   });
 
@@ -133,8 +133,8 @@ describe("getSpriteStagePadding", () => {
     ).toEqual({
       paddingTop: 87,
       paddingBottom: 93,
-      paddingLeft: 20,
-      paddingRight: 20,
+      paddingLeft: 40,
+      paddingRight: 40,
     });
   });
 

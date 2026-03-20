@@ -19,10 +19,10 @@ export const SPRITE_MENU_WINDOW_SIZE = {
 export const BUBBLE_EXTRA_HEIGHT = 120;
 
 /** Width of the sprite window when mini chat input is visible. */
-export const MINI_CHAT_OPEN_WIDTH = 240;
+export const MINI_CHAT_OPEN_WIDTH = 280;
 
 /** Extra height added below the sprite when mini chat input is visible. */
-export const MINI_CHAT_EXTRA_HEIGHT = 70;
+export const MINI_CHAT_EXTRA_HEIGHT = 100;
 
 /**
  * Combined height when mini chat is open and also showing a reply bubble.
@@ -32,7 +32,7 @@ export const MINI_CHAT_EXTRA_HEIGHT = 70;
 export const MINI_CHAT_WITH_BUBBLE_HEIGHT = 430;
 export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 580;
 export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
-export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 280;
+export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 320;
 
 export const SPRITE_BUBBLE_WINDOW_SIZE = {
   width: SPRITE_WIDTH,
@@ -54,10 +54,17 @@ export const PEEK_BADGE_ROW_HEIGHT = 28;
 /** Total vertical padding inside the expanded badge container. */
 export const PEEK_BADGE_EXPANDED_VERTICAL_PADDING = 16;
 
-export function peekBadgeExtraHeight(itemCount: number, expanded: boolean): number {
+export function peekBadgeExtraHeight(
+  itemCount: number,
+  expanded: boolean,
+): number {
   if (itemCount === 0) return 0;
   if (!expanded) return PEEK_BADGE_HEIGHT + PEEK_BADGE_PADDING;
-  return itemCount * PEEK_BADGE_ROW_HEIGHT + PEEK_BADGE_PADDING + PEEK_BADGE_EXPANDED_VERTICAL_PADDING;
+  return (
+    itemCount * PEEK_BADGE_ROW_HEIGHT +
+    PEEK_BADGE_PADDING +
+    PEEK_BADGE_EXPANDED_VERTICAL_PADDING
+  );
 }
 
 interface SpriteWindowState {
@@ -78,7 +85,11 @@ interface SpriteStagePadding {
 }
 
 function getMiniChatWidth(state: SpriteWindowState): number {
-  if (state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded) {
+  if (
+    state.miniChatOpen &&
+    state.miniChatBubbleOpen &&
+    state.miniChatBubbleExpanded
+  ) {
     return MINI_CHAT_EXPANDED_BUBBLE_WIDTH;
   }
   if (state.miniChatOpen) {
@@ -105,8 +116,12 @@ export function getSpriteWindowSize(state: SpriteWindowState) {
     width,
     height: Math.max(
       SPRITE_WINDOW_SIZE.height,
-      state.menuOpen ? SPRITE_MENU_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
-      state.bubbleOpen ? SPRITE_BUBBLE_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
+      state.menuOpen
+        ? SPRITE_MENU_WINDOW_SIZE.height
+        : SPRITE_WINDOW_SIZE.height,
+      state.bubbleOpen
+        ? SPRITE_BUBBLE_WINDOW_SIZE.height
+        : SPRITE_WINDOW_SIZE.height,
       SPRITE_WINDOW_SIZE.height + badgeExtra,
       SPRITE_WINDOW_SIZE.height + miniChatExtra,
       miniChatBubbleHeight,

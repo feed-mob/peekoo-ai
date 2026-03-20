@@ -50,25 +50,52 @@ export async function openAboutPanelFromTray(
 
 export default function SpriteView() {
   const spriteState = useSpriteState();
-  const { payload: bubblePayload, visible: bubbleVisible, showBubble, clearBubble } = useSpriteBubble();
-  const { items: badgeItems, currentItem: badgeCurrentItem, expanded: badgeExpanded, toggleExpanded: toggleBadgeExpanded, collapse: collapseBadge } = usePeekBadge();
-  const { panels, pluginPanels, installedPlugins, openPanel, togglePanel } = usePanelWindows();
-  const { messages: chatMessages, isTyping: chatIsTyping, sendMessage } = useChatSession();
+  const {
+    payload: bubblePayload,
+    visible: bubbleVisible,
+    showBubble,
+    clearBubble,
+  } = useSpriteBubble();
+  const {
+    items: badgeItems,
+    currentItem: badgeCurrentItem,
+    expanded: badgeExpanded,
+    toggleExpanded: toggleBadgeExpanded,
+    collapse: collapseBadge,
+  } = usePeekBadge();
+  const { panels, pluginPanels, installedPlugins, openPanel, togglePanel } =
+    usePanelWindows();
+  const {
+    messages: chatMessages,
+    isTyping: chatIsTyping,
+    sendMessage,
+  } = useChatSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [miniChatOpen, setMiniChatOpen] = useState(false);
-  const [miniChatActiveReplyId, setMiniChatActiveReplyId] = useState<string | null>(null);
+  const [miniChatActiveReplyId, setMiniChatActiveReplyId] = useState<
+    string | null
+  >(null);
   const [miniChatAwaitingReply, setMiniChatAwaitingReply] = useState(false);
   const [moodOverride, setMoodOverride] = useState<string | null>(null);
-  const [dragAnimation, setDragAnimation] = useState<AnimationType | null>(null);
+  const [dragAnimation, setDragAnimation] = useState<AnimationType | null>(
+    null,
+  );
   const moodResetTimerRef = useRef<number | null>(null);
   const interactionRootRef = useRef<HTMLDivElement | null>(null);
-  const dragStateRef = useRef<{ startX: number; startY: number; dragging: boolean } | null>(null);
+  const dragStateRef = useRef<{
+    startX: number;
+    startY: number;
+    dragging: boolean;
+  } | null>(null);
   const latestMiniChatMessage = getMiniChatVisibleMessage({
     messages: chatMessages,
     activeReplyId: miniChatActiveReplyId,
   });
-  const miniChatReplyDisplayMode = getMiniChatReplyDisplayMode(latestMiniChatMessage);
-  const miniChatBubbleVisible = miniChatOpen && (chatIsTyping || latestMiniChatMessage !== null);
+  const miniChatReplyDisplayMode = getMiniChatReplyDisplayMode(
+    latestMiniChatMessage,
+  );
+  const miniChatBubbleVisible =
+    miniChatOpen && (chatIsTyping || latestMiniChatMessage !== null);
   const spriteWindowState = useMemo(
     () => ({
       menuOpen,
@@ -77,7 +104,8 @@ export default function SpriteView() {
       peekBadgeExpanded: badgeExpanded,
       miniChatOpen,
       miniChatBubbleOpen: miniChatBubbleVisible,
-      miniChatBubbleExpanded: !chatIsTyping && miniChatReplyDisplayMode === "expanded",
+      miniChatBubbleExpanded:
+        !chatIsTyping && miniChatReplyDisplayMode === "expanded",
     }),
     [
       badgeExpanded,
@@ -107,7 +135,8 @@ export default function SpriteView() {
   const { randomState, resetIdleTimer } = useIdleStateManager({
     enabled: true,
     isUserInteracting: menuOpen || dragAnimation !== null,
-    hasActiveNotification: moodOverride === "reminder" || (bubblePayload !== null && bubbleVisible),
+    hasActiveNotification:
+      moodOverride === "reminder" || (bubblePayload !== null && bubbleVisible),
   });
 
   const clearMoodResetTimer = useCallback(() => {
@@ -117,17 +146,20 @@ export default function SpriteView() {
     }
   }, []);
 
-  const handleMoodChange = useCallback((mood: string, sticky: boolean) => {
-    clearMoodResetTimer();
-    setMoodOverride(mood);
+  const handleMoodChange = useCallback(
+    (mood: string, sticky: boolean) => {
+      clearMoodResetTimer();
+      setMoodOverride(mood);
 
-    if (!sticky) {
-      moodResetTimerRef.current = window.setTimeout(() => {
-        setMoodOverride(null);
-        moodResetTimerRef.current = null;
-      }, MOOD_OVERRIDE_DURATION_MS);
-    }
-  }, [clearMoodResetTimer]);
+      if (!sticky) {
+        moodResetTimerRef.current = window.setTimeout(() => {
+          setMoodOverride(null);
+          moodResetTimerRef.current = null;
+        }, MOOD_OVERRIDE_DURATION_MS);
+      }
+    },
+    [clearMoodResetTimer],
+  );
 
   useEffect(() => {
     return () => {
@@ -141,7 +173,8 @@ export default function SpriteView() {
   const prevExtraLeftRef = useRef(0);
 
   // Auto-expand/shrink the main window when bubble visibility or menu state changes.
-  // We invoke a Rust command instead of JS setSize() because resizable:false blocks the JS API.
+  // We invoke a Rust command so the backend can keep size constraints synchronized
+  // with the current target size for reliable constrained resizing across platforms.
   useEffect(() => {
     const nextSize = getSpriteWindowSize(spriteWindowState);
     const deltaTop = nextSize.extraTop - prevExtraTopRef.current;
@@ -235,14 +268,16 @@ export default function SpriteView() {
   const effectiveSpriteState: SpriteState = moodOverride
     ? { ...spriteState, mood: moodOverride }
     : randomState
-    ? { ...spriteState, mood: randomState }
-    : spriteState;
+      ? { ...spriteState, mood: randomState }
+      : spriteState;
 
   const startWindowDrag = useCallback(async () => {
     setDragAnimation("dragging");
 
     try {
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => resolve(null)),
+      );
       await getCurrentWindow().startDragging();
     } catch (error) {
       console.error("Failed to start dragging sprite window", error);
@@ -254,74 +289,77 @@ export default function SpriteView() {
     const handleGlobalMouseUp = () => {
       setDragAnimation(null);
     };
-    
-    // We only listen to mouseup. 
+
+    // We only listen to mouseup.
     // We EXCLUDE 'blur' because startDragging often causes the window to lose focus on Windows,
     // which was likely causing the premature reset to Idle animation.
     window.addEventListener("mouseup", handleGlobalMouseUp);
-    
+
     return () => {
       window.removeEventListener("mouseup", handleGlobalMouseUp);
     };
   }, []);
 
-  const handleMouseDown = useCallback(async (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
+  const handleMouseDown = useCallback(
+    async (e: React.MouseEvent) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
 
-    resetIdleTimer();
+      resetIdleTimer();
 
-    dragStateRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      dragging: false,
-    };
+      dragStateRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        dragging: false,
+      };
 
-    const handleMouseMove = (event: MouseEvent) => {
-      const dragState = dragStateRef.current;
-      if (!dragState || dragState.dragging) {
-        return;
-      }
-
-      const deltaX = event.clientX - dragState.startX;
-      const deltaY = event.clientY - dragState.startY;
-      if (Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) {
-        return;
-      }
-
-      dragState.dragging = true;
-      void startWindowDrag();
-    };
-
-    const handleMouseUp = () => {
-      const dragState = dragStateRef.current;
-      dragStateRef.current = null;
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-
-      if (!dragState?.dragging) {
-        collapseBadge();
-        setMenuOpen(false);
-        setMiniChatOpen((prev) => !prev);
-        if (miniChatOpen) {
-          setMiniChatActiveReplyId(null);
-          setMiniChatAwaitingReply(false);
+      const handleMouseMove = (event: MouseEvent) => {
+        const dragState = dragStateRef.current;
+        if (!dragState || dragState.dragging) {
+          return;
         }
-      }
-    };
 
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  }, [collapseBadge, miniChatOpen, resetIdleTimer, startWindowDrag]);
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+        if (Math.hypot(deltaX, deltaY) < DRAG_THRESHOLD_PX) {
+          return;
+        }
+
+        dragState.dragging = true;
+        void startWindowDrag();
+      };
+
+      const handleMouseUp = () => {
+        const dragState = dragStateRef.current;
+        dragStateRef.current = null;
+        window.removeEventListener("mousemove", handleMouseMove);
+        window.removeEventListener("mouseup", handleMouseUp);
+
+        if (!dragState?.dragging) {
+          collapseBadge();
+          setMenuOpen(false);
+          setMiniChatOpen((prev) => !prev);
+          if (miniChatOpen) {
+            setMiniChatActiveReplyId(null);
+            setMiniChatAwaitingReply(false);
+          }
+        }
+      };
+
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    },
+    [collapseBadge, miniChatOpen, resetIdleTimer, startWindowDrag],
+  );
 
   // Right click: toggle menu
   const handleContextMenu = useCallback(
     async (e: React.MouseEvent) => {
       e.preventDefault();
-      
+
       // Reset idle timer on user interaction
       resetIdleTimer();
-      
+
       if (menuOpen) {
         setMenuOpen(false);
       } else {
@@ -339,7 +377,7 @@ export default function SpriteView() {
     async (label: Parameters<typeof togglePanel>[0]) => {
       // Reset idle timer on user interaction
       resetIdleTimer();
-      
+
       await togglePanel(label);
       setMenuOpen(false);
       setMiniChatOpen(false);
@@ -382,9 +420,7 @@ export default function SpriteView() {
   }, []);
 
   return (
-    <div
-      className="w-full h-full bg-transparent"
-    >
+    <div className="w-full h-full bg-transparent">
       <div ref={interactionRootRef} className="relative w-full h-full">
         <div
           style={{
@@ -396,9 +432,9 @@ export default function SpriteView() {
           className="flex h-full w-full items-center justify-center"
         >
           <div
-          onMouseDown={handleMouseDown}
-          onContextMenu={handleContextMenu}
-          className="cursor-pointer"
+            onMouseDown={handleMouseDown}
+            onContextMenu={handleContextMenu}
+            className="cursor-pointer"
           >
             <Sprite
               state={effectiveSpriteState}
@@ -418,7 +454,12 @@ export default function SpriteView() {
           items={badgeItems}
           currentItem={badgeCurrentItem}
           expanded={badgeExpanded}
-          visible={!miniChatOpen && !menuOpen && !(bubblePayload !== null && bubbleVisible) && badgeItems.length > 0}
+          visible={
+            !miniChatOpen &&
+            !menuOpen &&
+            !(bubblePayload !== null && bubbleVisible) &&
+            badgeItems.length > 0
+          }
           onToggle={toggleBadgeExpanded}
         />
         <SpriteMiniChatBubble
