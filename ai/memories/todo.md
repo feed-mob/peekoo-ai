@@ -42,11 +42,16 @@
   - Test on macOS/Linux only
 
 ### Polish
-- [ ] Add system tray icon
+- [x] Add system tray icon
 - [ ] Global keyboard shortcuts
 - [ ] Sound effects for events
-- [ ] Desktop notifications
+- [x] Desktop notifications
 - [ ] Dark mode theme
+- [x] Sprite window auto-resize for mini chat and reply bubble states
+  - Main sprite window now auto-expands/shrinks for mini chat open/close
+  - Expanded reading mode uses wider/taller constrained window sizing
+  - Rust-managed resize constraints improve behavior on Linux/Wayland
+  - See changelog: `ai/memories/changelogs/202603200347-fix-sprite-window-constrained-resize.md`
 
 ### Testing
 - [ ] End-to-end integration tests
@@ -57,5 +62,5 @@
 
 ---
 
-**Last updated**: 2026-03-12
-**Status**: Tauri MVP implementation in progress
+**Last updated**: 2026-03-20
+**Status**: Tauri MVP implementation in progress, including constrained sprite window auto-resize improvements
