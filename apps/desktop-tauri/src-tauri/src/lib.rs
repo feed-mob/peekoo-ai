@@ -17,7 +17,8 @@ use std::time::Duration;
 #[cfg(target_os = "macos")]
 use tauri::utils::config::Color;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, State, Window,
+    AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, State, Window,
+    WindowSizeConstraints,
     image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
@@ -142,35 +143,59 @@ fn apply_macos_transparent_background(_: &tauri::App) {}
 // Tauri Commands
 // ============================================================================
 
-/// Resize the sprite window from Rust, bypassing the `resizable: false` JS restriction.
-/// The window is intentionally non-resizable by the user but we need programmatic control.
+/// Resize the sprite window from Rust and keep tight size constraints in sync.
+/// This is more reliable on Linux / Wayland compositors than resizing a non-resizable window.
 /// `delta_top` shifts the window vertically in logical pixels (positive = move up, negative = move down).
+/// `delta_left` shifts the window horizontally in logical pixels (positive = move left, negative = move right).
 #[tauri::command]
 async fn resize_sprite_window(
     width: f64,
     height: f64,
+    delta_left: f64,
     delta_top: f64,
     window: Window,
 ) -> Result<(), String> {
-    if delta_top.abs() > 0.5 {
+    window
+        .set_resizable(true)
+        .map_err(|e| format!("set resizable error: {e}"))?;
+
+    let constraints = WindowSizeConstraints {
+        min_width: Some(PixelUnit::Logical(LogicalUnit(width))),
+        min_height: Some(PixelUnit::Logical(LogicalUnit(height))),
+        max_width: Some(PixelUnit::Logical(LogicalUnit(width))),
+        max_height: Some(PixelUnit::Logical(LogicalUnit(height))),
+    };
+
+    window
+        .set_size_constraints(constraints)
+        .map_err(|e| format!("set size constraints error: {e}"))?;
+
+    if delta_top.abs() > 0.5 || delta_left.abs() > 0.5 {
         let pos = window
             .outer_position()
             .map_err(|e| format!("get position error: {e}"))?;
         let scale = window
             .scale_factor()
             .map_err(|e| format!("scale error: {e}"))?;
+        let logical_x = pos.x as f64 / scale - delta_left;
         let logical_y = pos.y as f64 / scale - delta_top;
+        let physical_x = (logical_x * scale).round() as i32;
         let physical_y = (logical_y * scale).round() as i32;
         window
             .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: pos.x,
+                x: physical_x,
                 y: physical_y,
             }))
             .map_err(|e| format!("set position error: {e}"))?;
     }
+
     window
         .set_size(LogicalSize::new(width, height))
-        .map_err(|e| format!("resize error: {e}"))
+        .map_err(|e| format!("resize error: {e}"))?;
+
+    window
+        .set_resizable(false)
+        .map_err(|e| format!("restore resizable error: {e}"))
 }
 
 #[tauri::command]
