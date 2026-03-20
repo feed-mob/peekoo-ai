@@ -55,7 +55,7 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: 280,
-      height: 520,
+      height: 580,
       extraLeft: 40,
       extraTop: 200,
     });
@@ -73,7 +73,7 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: MINI_CHAT_OPEN_WIDTH,
-      height: 390,
+      height: 430,
       extraLeft: 20,
       extraTop: 120,
     });
@@ -112,10 +112,29 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: true,
       }),
     ).toEqual({
-      paddingTop: 224,
-      paddingBottom: 86,
+      paddingTop: 234,
+      paddingBottom: 96,
       paddingLeft: 40,
       paddingRight: 40,
+    });
+  });
+
+  test("centers sprite between compact bubble and input tray", () => {
+    expect(
+      getSpriteStagePadding({
+        menuOpen: false,
+        bubbleOpen: false,
+        peekBadgeItemCount: 0,
+        peekBadgeExpanded: false,
+        miniChatOpen: true,
+        miniChatBubbleOpen: true,
+        miniChatBubbleExpanded: false,
+      }),
+    ).toEqual({
+      paddingTop: 87,
+      paddingBottom: 93,
+      paddingLeft: 20,
+      paddingRight: 20,
     });
   });
 

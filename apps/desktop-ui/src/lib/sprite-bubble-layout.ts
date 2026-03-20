@@ -29,8 +29,8 @@ export const MINI_CHAT_EXTRA_HEIGHT = 70;
  * The sprite window already shifts upward for the bubble, so we only add the
  * extra bottom room needed to keep the input row visible.
  */
-export const MINI_CHAT_WITH_BUBBLE_HEIGHT = 390;
-export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 520;
+export const MINI_CHAT_WITH_BUBBLE_HEIGHT = 430;
+export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 580;
 export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
 export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 280;
 
@@ -126,17 +126,35 @@ export function getSpriteWindowSize(state: SpriteWindowState) {
 export function getSpriteStagePadding(
   state: SpriteWindowState,
 ): SpriteStagePadding {
-  const extraLeft =
-    state.miniChatOpen
-      ? (getMiniChatWidth(state) - SPRITE_WIDTH) / 2
-      : 0;
+  const { width, height } = getSpriteWindowSize(state);
+  const extraLeft = state.miniChatOpen ? (width - SPRITE_WIDTH) / 2 : 0;
+
+  // Bottom section: Mini chat input tray height is ~54px (p-1.5 + h-7 + mt-2 + h-7)
+  // We use 86px total to keep a nice gap and account for the absolute positioning.
+  const trayHeight = state.miniChatOpen ? 86 : 12;
+
+  // Top section: Reply bubble height.
+  // Compact is ~80px (header + 2 short lines), Expanded is ~224px (header + 156px scrollable).
+  let bubbleHeight = 12;
+  if (state.miniChatOpen && state.miniChatBubbleOpen) {
+    bubbleHeight = state.miniChatBubbleExpanded ? 224 : 80;
+  } else if (state.bubbleOpen) {
+    bubbleHeight = BUBBLE_EXTRA_HEIGHT;
+  }
+
+  // Calculate available space for sprite (SPRITE_HEIGHT = 250)
+  // We want to center the sprite in the gap between bubbleHeight and trayHeight.
+  const totalContentHeight = bubbleHeight + SPRITE_HEIGHT + trayHeight;
+  const verticalGap = Math.max(0, height - totalContentHeight);
+
+  // Distribute half of the gap to top and half to bottom,
+  // added to their respective base heights.
+  const paddingTop = bubbleHeight + verticalGap / 2;
+  const paddingBottom = trayHeight + verticalGap / 2;
 
   return {
-    paddingTop:
-      state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
-        ? 224
-        : 12,
-    paddingBottom: state.miniChatOpen ? 86 : 12,
+    paddingTop,
+    paddingBottom,
     paddingLeft: extraLeft,
     paddingRight: extraLeft,
   };
