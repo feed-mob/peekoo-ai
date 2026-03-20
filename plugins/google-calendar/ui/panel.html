@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google Calendar</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <section class="header-card">
+        <div class="header-row">
+          <div>
+            <p class="kicker">Google Calendar</p>
+            <h1 class="title">Agenda</h1>
+          </div>
+          <button id="refreshButton" class="btn btn-primary" type="button">Refresh</button>
+        </div>
+        <p id="statusLine" class="status-copy">Connect your calendar to see your agenda.</p>
+      </section>
+
+      <section id="errorBanner" class="message message-error hidden"></section>
+
+      <section class="control-card">
+        <div class="account-row">
+          <div class="account-copy">
+            <p class="section-label">Connected account</p>
+            <p id="accountName" class="account-name">Not connected</p>
+            <p id="accountEmail" class="account-email">Upload your client.json and connect Google Calendar.</p>
+          </div>
+          <div id="accountBadge" class="account-badge">Offline</div>
+        </div>
+
+        <label class="file-field">
+          <span class="section-label">Google OAuth client.json</span>
+          <input id="clientJsonInput" type="file" accept="application/json,.json" />
+        </label>
+
+        <div class="action-row">
+          <button id="saveClientJsonButton" class="btn btn-secondary" type="button">Upload</button>
+          <button id="connectButton" class="btn btn-primary" type="button">Connect</button>
+          <button id="disconnectButton" class="btn btn-secondary" type="button">Disconnect</button>
+        </div>
+      </section>
+
+      <section class="agenda-card">
+        <div class="tabs" role="tablist" aria-label="Agenda views">
+          <button id="tabUpcoming" class="tab-button active" type="button" role="tab" aria-selected="true">Upcoming</button>
+          <button id="tabDaily" class="tab-button" type="button" role="tab" aria-selected="false">Daily</button>
+          <button id="tabWeekly" class="tab-button" type="button" role="tab" aria-selected="false">Weekly</button>
+        </div>
+
+        <div class="agenda-header">
+          <div>
+            <p id="agendaLabel" class="section-label">Upcoming</p>
+            <h2 id="agendaTitle" class="agenda-title">Next 5 events</h2>
+          </div>
+        </div>
+
+        <div id="agendaList" class="agenda-list"></div>
+      </section>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

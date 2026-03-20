@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { MessageSquarePlus, Send, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -6,32 +6,13 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { emitPetReaction } from "@/lib/pet-events";
-import type {
-  Message,
-  AgentEvent,
-  AgentEventToolStart,
-  AgentEventToolEnd,
-  AgentEventMessageUpdate,
-  AssistantMessageEvent,
-  LastSessionDto,
-} from "@/types/chat";
+import { useChatSession } from "./chat-session";
 
 export function ChatPanel() {
-  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Refs to accumulate streaming content without causing re-renders per token
-  const streamingTextRef = useRef("");
-  const streamingIdRef = useRef<string | null>(null);
-  const toolStatusRef = useRef<Map<string, { name: string; done: boolean }>>(
-    new Map()
-  );
+  const { messages, isTyping, sendMessage, startNewChat } = useChatSession();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,202 +22,29 @@ export function ChatPanel() {
     scrollToBottom();
   }, [messages]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadLastSession = async () => {
-      try {
-        const session = await invoke<LastSessionDto | null>("chat_get_last_session");
-        if (cancelled || !session?.messages?.length) {
-          return;
-        }
-
-        setMessages(
-          session.messages.map((message, index) => ({
-            id: `history-${index}`,
-            role: message.role === "user" ? "user" : "pet",
-            text: message.text,
-          }))
-        );
-      } catch {
-        // Keep the chat usable even if history loading fails.
-      }
-    };
-
-    void loadLastSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  /** Build the streaming message text from accumulated state */
-  const buildStreamingText = useCallback(() => {
-    let text = "";
-
-    // Show active / completed tool calls
-    const tools = toolStatusRef.current;
-    if (tools.size > 0) {
-      for (const [, tool] of tools) {
-        if (tool.done) {
-          text += `> ✅ **${tool.name}** — done\n`;
-        } else {
-          text += `> 🔧 Running **${tool.name}**…\n`;
-        }
-      }
-      text += "\n";
-    }
-
-    // Append streamed text
-    text += streamingTextRef.current;
-
-    return text;
-  }, []);
-
-  /** Push the latest streaming snapshot into React state */
-  const flushStreaming = useCallback(() => {
-    const id = streamingIdRef.current;
-    if (!id) return;
-    const text = buildStreamingText();
-
-    setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.id === id);
-      if (idx === -1) {
-        // First time — append
-        return [
-          ...prev,
-          { id, role: "pet", text, streaming: true },
-        ];
-      }
-      // Update in-place
-      const updated = [...prev];
-      updated[idx] = { ...updated[idx], text, streaming: true };
-      return updated;
-    });
-  }, [buildStreamingText]);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim()) {
+      return;
+    }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: "user",
-      text: input,
-    };
-    setMessages((prev) => [...prev, userMessage]);
-    setInput("");
-    setIsTyping(true);
-
-    // Reset streaming state
-    streamingTextRef.current = "";
-    streamingIdRef.current = (Date.now() + 1).toString();
-    toolStatusRef.current = new Map();
-
-    void emitPetReaction("chat-message");
-
-    // Listen for agent events
-    const unlisten = await listen<AgentEvent>("agent-event", (ev) => {
-      const event = ev.payload;
-
-      switch (event.type) {
-        case "tool_execution_start": {
-          const e = event as AgentEventToolStart;
-          toolStatusRef.current.set(e.toolCallId, {
-            name: e.toolName,
-            done: false,
-          });
-          flushStreaming();
-          break;
-        }
-
-        case "tool_execution_end": {
-          const e = event as AgentEventToolEnd;
-          if (toolStatusRef.current.has(e.toolCallId)) {
-            toolStatusRef.current.set(e.toolCallId, {
-              name: e.toolName,
-              done: true,
-            });
-          }
-          flushStreaming();
-          break;
-        }
-
-        case "message_update": {
-          const e = event as AgentEventMessageUpdate;
-          const ame = e.assistantMessageEvent as AssistantMessageEvent;
-          if (ame?.Text) {
-            streamingTextRef.current += ame.Text.text;
-            flushStreaming();
-          }
-          break;
-        }
-      }
-    });
-
-    void emitPetReaction("ai-processing", { sticky: true });
-
-    try {
-      const result = await invoke<{ response: string }>("agent_prompt", {
-        message: input,
-      });
-
-      // Replace the streaming message with the final clean response
-      const finalId = streamingIdRef.current!;
-      setMessages((prev) => {
-        const idx = prev.findIndex((m) => m.id === finalId);
-        const finalMsg: Message = {
-          id: finalId,
-          role: "pet",
-          text: result.response,
-          streaming: false,
-        };
-        if (idx === -1) {
-          return [...prev, finalMsg];
-        }
-        const updated = [...prev];
-        updated[idx] = finalMsg;
-        return updated;
-      });
-
-      void emitPetReaction("agent-result");
-    } catch (err) {
-      const errorMessage: Message = {
-        id: (Date.now() + 2).toString(),
-        role: "error",
-        text: `Error: ${err}`,
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-      void emitPetReaction("agent-result");
-    } finally {
-      unlisten();
-      streamingIdRef.current = null;
-      setIsTyping(false);
+    const didSend = await sendMessage(input);
+    if (didSend) {
+      setInput("");
     }
   };
 
   const handleNewChat = async () => {
-    if (isTyping) {
-      return;
-    }
-
-    try {
-      await invoke("chat_new_session");
-      setMessages([]);
+    const didStart = await startNewChat();
+    if (didStart) {
       setInput("");
-      setIsTyping(false);
-      streamingTextRef.current = "";
-      streamingIdRef.current = null;
-      toolStatusRef.current = new Map();
-    } catch {
-      // Keep the current chat visible if the backend fails to rotate sessions.
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 mb-4">
-        <div className="mb-3 flex justify-end gap-2">
+    <div className="flex min-h-0 h-full flex-col">
+      <div className="mb-3 shrink-0 space-y-3">
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="glass"
@@ -259,11 +67,11 @@ export function ChatPanel() {
         </div>
 
         {showSettings && (
-          <div className="mb-4">
-            <ChatSettingsPanel onClose={() => setShowSettings(false)} />
-          </div>
+          <ChatSettingsPanel onClose={() => setShowSettings(false)} />
         )}
+      </div>
 
+      <ScrollArea className="mb-4 min-h-0 flex-1">
         {messages.length === 0 ? (
           <div className="text-center text-text-muted py-8 italic">
             Start chatting with your Peekoo pet!
@@ -273,7 +81,7 @@ export function ChatPanel() {
             {messages.map((msg) => (
               <ChatMessage key={msg.id} message={msg} />
             ))}
-            {isTyping && !streamingIdRef.current && (
+            {isTyping && messages.every((message) => !message.streaming) && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}

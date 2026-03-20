@@ -1,7 +1,7 @@
 [plugin]
 key = "peekoo-opencode-companion"
 name = "OpenCode Companion"
-version = "0.1.2"
+version = "0.1.4"
 author = "Peekoo Team"
 description = "Makes Peekoo react to OpenCode sessions — shows working/thinking/happy sprites and session info badges"
 min_peekoo_version = "0.1.0"

@@ -1,0 +1,4 @@
+- Moved Google Calendar connection, token handling, event sync, and reminder logic into the `plugins/google-calendar` wasm plugin.
+- Added generic plugin host capabilities for OAuth flow start/status/cancel, plugin-scoped secret storage, and outbound HTTP requests via `peekoo-plugin-host` and `peekoo-plugin-sdk`.
+- Replaced Google-specific Tauri/app-layer commands with generic plugin tool/data calls plus a generic `system_open_url` command for panel-driven OAuth browser launch.
+- Removed the app-layer Google Calendar service and its dedicated tests, leaving the desktop host provider-agnostic while preserving secure secret storage in the host.

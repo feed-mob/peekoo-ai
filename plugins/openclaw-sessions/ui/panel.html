@@ -1030,11 +1030,11 @@
       currentPage: 1,
       pageSize: 10,
       searchQuery: '',
-      autoRefreshTimer: null,
       activeSessionKey: '',
       chatMessages: [],
       chatSending: false,
       chatLiveTimer: null,
+      lastChatPanelRefreshAt: 0,
       chatPollToken: 0,
       awaitingAssistantReply: false,
       assistantCountBaseline: 0,
@@ -1047,8 +1047,8 @@
       },
       isConnected: false
     };
-    const AUTO_REFRESH_INTERVAL_MS = 15000;
     const CHAT_LIVE_REFRESH_INTERVAL_MS = 1500;
+    const CHAT_PANEL_REFRESH_INTERVAL_MS = 6000;
 
     // ============================================
     // DOM Elements
@@ -1109,7 +1109,7 @@
         toolName,
         argsJson: JSON.stringify(args),
       });
-      const parsed = JSON.parse(result || "null");
+      const parsed = parsePluginJson(result);
       if (parsed && parsed.success === false && typeof parsed.error === 'string') {
         throw new Error(parsed.error);
       }
@@ -1156,6 +1156,226 @@
         return String(error.message);
       }
       return String(error);
+    }
+
+    function repairPossiblyBrokenJson(raw) {
+      const input = typeof raw === "string" ? raw : String(raw ?? "");
+      if (!input) return "null";
+
+      let out = "";
+      let inString = false;
+      let escaped = false;
+      const stack = [];
+
+      for (let i = 0; i < input.length; i += 1) {
+        const ch = input[i];
+        const code = input.charCodeAt(i);
+
+        if (!inString) {
+          if (ch === '"') {
+            inString = true;
+            out += ch;
+            continue;
+          }
+          if (ch === "{") stack.push("}");
+          if (ch === "[") stack.push("]");
+          if (ch === "}" || ch === "]") {
+            const expected = stack[stack.length - 1];
+            if ((ch === "}" && expected === "}") || (ch === "]" && expected === "]")) {
+              stack.pop();
+              out += ch;
+            }
+            continue;
+          }
+          if (code < 0x20 && ch !== "\n" && ch !== "\r" && ch !== "\t") {
+            continue;
+          }
+          out += ch;
+          continue;
+        }
+
+        if (escaped) {
+          escaped = false;
+          out += ch;
+          continue;
+        }
+
+        if (ch === "\\") {
+          escaped = true;
+          out += ch;
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = false;
+          out += ch;
+          continue;
+        }
+
+        if (ch === "\n") {
+          out += "\\n";
+          continue;
+        }
+        if (ch === "\r") {
+          out += "\\r";
+          continue;
+        }
+        if (ch === "\t") {
+          out += "\\t";
+          continue;
+        }
+        if (code < 0x20) {
+          const hex = code.toString(16).padStart(2, "0");
+          out += `\\u00${hex}`;
+          continue;
+        }
+        out += ch;
+      }
+
+      if (escaped) out += "\\\\";
+      if (inString) out += '"';
+      while (stack.length > 0) out += stack.pop();
+
+      return out.replace(/,(\s*[}\]])/g, "$1");
+    }
+
+    function parsePluginJson(rawResult) {
+      const raw = typeof rawResult === "string" ? rawResult : String(rawResult ?? "");
+      try {
+        return JSON.parse(raw || "null");
+      } catch (firstError) {
+        const repaired = repairPossiblyBrokenJson(raw);
+        try {
+          const parsed = JSON.parse(repaired || "null");
+          console.warn("plugin JSON repaired after parse failure", {
+            originalLength: raw.length,
+            repairedLength: repaired.length,
+          });
+          return parsed;
+        } catch (secondError) {
+          const salvaged = salvageTruncatedJson(raw);
+          try {
+            const parsed = JSON.parse(salvaged || "null");
+            console.warn("plugin JSON salvaged from truncated payload", {
+              originalLength: raw.length,
+              salvagedLength: salvaged.length,
+            });
+            return parsed;
+          } catch (thirdError) {
+            const salvagedRepaired = repairPossiblyBrokenJson(salvaged);
+            try {
+              const parsed = JSON.parse(salvagedRepaired || "null");
+              console.warn("plugin JSON salvaged+repaired from truncated payload", {
+                originalLength: raw.length,
+                salvagedLength: salvaged.length,
+                repairedLength: salvagedRepaired.length,
+              });
+              return parsed;
+            } catch (fourthError) {
+              const head = raw.slice(0, 220);
+              const tail = raw.slice(-220);
+              throw new Error(
+                `Plugin returned invalid JSON: ${toErrorString(firstError)} | len=${raw.length} | head=${head} | tail=${tail} | repairError=${toErrorString(secondError)} | salvageError=${toErrorString(thirdError)} | salvageRepairError=${toErrorString(fourthError)}`
+              );
+            }
+          }
+        }
+      }
+    }
+
+    function salvageTruncatedJson(raw) {
+      const input = typeof raw === "string" ? raw : String(raw ?? "");
+      if (!input) return "null";
+
+      let inString = false;
+      let escaped = false;
+      const stack = [];
+      let lastSafeCut = -1;
+
+      for (let i = 0; i < input.length; i += 1) {
+        const ch = input[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === "{") {
+          stack.push("}");
+          continue;
+        }
+        if (ch === "[") {
+          stack.push("]");
+          continue;
+        }
+        if (ch === "}" || ch === "]") {
+          const top = stack[stack.length - 1];
+          if ((ch === "}" && top === "}") || (ch === "]" && top === "]")) {
+            stack.pop();
+            lastSafeCut = i + 1;
+          }
+          continue;
+        }
+        if (ch === ",") {
+          lastSafeCut = i;
+        }
+      }
+
+      let base = input;
+      if (lastSafeCut > 0 && lastSafeCut < input.length) {
+        base = input.slice(0, lastSafeCut);
+      }
+      base = base.replace(/,(\s*)$/, "$1");
+
+      inString = false;
+      escaped = false;
+      const closeStack = [];
+      for (let i = 0; i < base.length; i += 1) {
+        const ch = base[i];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === "\\") {
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') inString = false;
+          continue;
+        }
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === "{") closeStack.push("}");
+        else if (ch === "[") closeStack.push("]");
+        else if (ch === "}" || ch === "]") {
+          const top = closeStack[closeStack.length - 1];
+          if ((ch === "}" && top === "}") || (ch === "]" && top === "]")) {
+            closeStack.pop();
+          }
+        }
+      }
+
+      if (inString) base += '"';
+      while (closeStack.length > 0) {
+        base += closeStack.pop();
+      }
+      return base;
     }
 
     function escapeHtml(text) {
@@ -1634,7 +1854,14 @@
       stopChatLiveRefresh();
       state.chatLiveTimer = setInterval(() => {
         if (!state.activeSessionKey || state.activeSessionKey !== sessionKey) return;
-        void loadSessionHistory(sessionKey).catch((error) => {
+        void loadSessionHistory(sessionKey).then(() => {
+          const now = Date.now();
+          if (now - state.lastChatPanelRefreshAt >= CHAT_PANEL_REFRESH_INTERVAL_MS) {
+            state.lastChatPanelRefreshAt = now;
+            return refreshSessions({ silent: true });
+          }
+          return undefined;
+        }).catch((error) => {
           console.error('chat live refresh failed:', error);
         });
       }, CHAT_LIVE_REFRESH_INTERVAL_MS);
@@ -1668,6 +1895,7 @@
       state.activeSessionKey = '';
       state.chatMessages = [];
       state.chatSending = false;
+      state.lastChatPanelRefreshAt = 0;
       state.awaitingAssistantReply = false;
       state.assistantCountBaseline = 0;
     }
@@ -1737,6 +1965,7 @@
       } finally {
         state.chatSending = false;
         elements.btnSendChat.disabled = false;
+        void refreshSessions({ silent: true });
         elements.chatInput.focus();
       }
     }
@@ -1798,20 +2027,6 @@
       elements.configModal.classList.remove('active');
     }
 
-    function stopAutoRefresh() {
-      if (!state.autoRefreshTimer) return;
-      clearInterval(state.autoRefreshTimer);
-      state.autoRefreshTimer = null;
-    }
-
-    function startAutoRefresh() {
-      stopAutoRefresh();
-      if (!state.config.configExists) return;
-      state.autoRefreshTimer = setInterval(() => {
-        void refreshSessions({ silent: true });
-      }, AUTO_REFRESH_INTERVAL_MS);
-    }
-
     async function saveConfig() {
       const websocketUrl = elements.inputWsUrl.value.trim();
       const token = elements.inputToken.value.trim();
@@ -1839,7 +2054,6 @@
         state.isConnected = state.config.configExists;
         renderConnectionStatus();
         closeConfigModal();
-        startAutoRefresh();
         await refreshSessions({ silent: false });
         console.log('Configuration saved successfully');
       } catch (error) {
@@ -1877,7 +2091,6 @@
     async function refreshSessions(options = {}) {
       const silent = Boolean(options.silent);
       if (!state.config.configExists) {
-        stopAutoRefresh();
         if (!silent) {
           openConfigModal();
         }
@@ -1993,7 +2206,6 @@
           openConfigModal();
         }, 500);
       } else {
-        startAutoRefresh();
         await refreshSessions({ silent: false });
       }
     }

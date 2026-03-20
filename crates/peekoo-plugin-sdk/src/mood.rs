@@ -8,8 +8,8 @@
 //! use peekoo_plugin_sdk::prelude::*;
 //!
 //! fn example() -> Result<(), Error> {
-//!     peekoo::mood::set("opencode-done", false)?;
-//!     peekoo::mood::set("opencode-working", true)?;
+//!     peekoo::mood::set("happy", false)?;
+//!     peekoo::mood::set("working", true)?;
 //!     Ok(())
 //! }
 //! ```
@@ -23,7 +23,7 @@ use crate::host_fns::{peekoo_set_mood, SetMoodRequest};
 /// Set the sprite mood.
 ///
 /// `trigger` must be a valid `PetReactionTrigger` string (e.g.
-/// `"opencode-working"`, `"opencode-done"`, `"opencode-idle"`).
+/// `"working"`, `"happy"`, `"idle"`, `"reminder"`).
 ///
 /// When `sticky` is `true`, the mood persists until another mood is set.
 /// When `false`, the mood reverts to idle after a short timeout.
