@@ -34,6 +34,9 @@ export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 580;
 export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
 export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 320;
 
+/** Height of the mini chat input tray including vertical gap for absolute positioning. */
+export const MINI_CHAT_TRAY_TOTAL_HEIGHT = 86;
+
 export const SPRITE_BUBBLE_WINDOW_SIZE = {
   width: SPRITE_WIDTH,
   height: SPRITE_HEIGHT + BUBBLE_EXTRA_HEIGHT,
@@ -144,9 +147,9 @@ export function getSpriteStagePadding(
   const { width, height } = getSpriteWindowSize(state);
   const extraLeft = state.miniChatOpen ? (width - SPRITE_WIDTH) / 2 : 0;
 
-  // Bottom section: Mini chat input tray height is ~54px (p-1.5 + h-7 + mt-2 + h-7)
-  // We use 86px total to keep a nice gap and account for the absolute positioning.
-  const trayHeight = state.miniChatOpen ? 86 : 12;
+  // Bottom section: Mini chat input tray height is ~54px (p-1.5 + h-7 + mt-2 + h-7).
+  // MINI_CHAT_TRAY_TOTAL_HEIGHT adds extra gap and accounts for absolute positioning.
+  const trayHeight = state.miniChatOpen ? MINI_CHAT_TRAY_TOTAL_HEIGHT : 12;
 
   // Top section: Reply bubble height.
   // Compact is ~80px (header + 2 short lines), Expanded is ~224px (header + 156px scrollable).

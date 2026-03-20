@@ -72,6 +72,7 @@ export default function SpriteView() {
   } = useChatSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [miniChatOpen, setMiniChatOpen] = useState(false);
+  const miniChatOpenRef = useRef(false);
   const [miniChatActiveReplyId, setMiniChatActiveReplyId] = useState<
     string | null
   >(null);
@@ -87,6 +88,10 @@ export default function SpriteView() {
     startY: number;
     dragging: boolean;
   } | null>(null);
+  useEffect(() => {
+    miniChatOpenRef.current = miniChatOpen;
+  }, [miniChatOpen]);
+
   const latestMiniChatMessage = getMiniChatVisibleMessage({
     messages: chatMessages,
     activeReplyId: miniChatActiveReplyId,
@@ -339,7 +344,7 @@ export default function SpriteView() {
           collapseBadge();
           setMenuOpen(false);
           setMiniChatOpen((prev) => !prev);
-          if (miniChatOpen) {
+          if (miniChatOpenRef.current) {
             setMiniChatActiveReplyId(null);
             setMiniChatAwaitingReply(false);
           }
@@ -349,7 +354,7 @@ export default function SpriteView() {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
     },
-    [collapseBadge, miniChatOpen, resetIdleTimer, startWindowDrag],
+    [collapseBadge, resetIdleTimer, startWindowDrag],
   );
 
   // Right click: toggle menu

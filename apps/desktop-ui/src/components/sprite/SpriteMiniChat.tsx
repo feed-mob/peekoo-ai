@@ -68,8 +68,7 @@ export function SpriteMiniChat({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.98 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2 pointer-events-auto"
-          style={{ width: "calc(100% - 16px)" }}
+          className="absolute bottom-2 left-1/2 z-30 w-[calc(100%-16px)] -translate-x-1/2 pointer-events-auto"
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
