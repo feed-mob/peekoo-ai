@@ -42,9 +42,9 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      <ScrollArea className="flex-1 mb-4">
-        <div className="mb-3 flex justify-end gap-2">
+    <div className="flex min-h-0 h-full flex-col">
+      <div className="mb-3 shrink-0 space-y-3">
+        <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="glass"
@@ -67,11 +67,11 @@ export function ChatPanel() {
         </div>
 
         {showSettings && (
-          <div className="mb-4">
-            <ChatSettingsPanel onClose={() => setShowSettings(false)} />
-          </div>
+          <ChatSettingsPanel onClose={() => setShowSettings(false)} />
         )}
+      </div>
 
+      <ScrollArea className="mb-4 min-h-0 flex-1">
         {messages.length === 0 ? (
           <div className="text-center text-text-muted py-8 italic">
             Start chatting with your Peekoo pet!

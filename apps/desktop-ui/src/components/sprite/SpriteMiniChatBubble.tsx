@@ -34,7 +34,7 @@ export function SpriteMiniChatBubble({
           transition={{ duration: 0.2, ease: "easeOut" }}
           className={cn(
             "absolute left-1/2 top-2 z-30 -translate-x-1/2 rounded-2xl border border-glass-border bg-glass/95 px-4 py-3 shadow-panel backdrop-blur-xl",
-            isExpanded ? "w-[248px]" : "w-[184px]",
+            isExpanded ? "w-[264px]" : "w-[224px]",
           )}
         >
           <div className="absolute bottom-[-7px] left-1/2 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-b border-r border-glass-border bg-glass/95" />

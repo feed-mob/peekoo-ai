@@ -18,6 +18,9 @@ export const SPRITE_MENU_WINDOW_SIZE = {
 /** Extra height added above the sprite when a speech bubble is visible. */
 export const BUBBLE_EXTRA_HEIGHT = 120;
 
+/** Width of the sprite window when mini chat input is visible. */
+export const MINI_CHAT_OPEN_WIDTH = 240;
+
 /** Extra height added below the sprite when mini chat input is visible. */
 export const MINI_CHAT_EXTRA_HEIGHT = 70;
 
@@ -74,6 +77,16 @@ interface SpriteStagePadding {
   paddingRight: number;
 }
 
+function getMiniChatWidth(state: SpriteWindowState): number {
+  if (state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded) {
+    return MINI_CHAT_EXPANDED_BUBBLE_WIDTH;
+  }
+  if (state.miniChatOpen) {
+    return MINI_CHAT_OPEN_WIDTH;
+  }
+  return SPRITE_WIDTH;
+}
+
 export function getSpriteWindowSize(state: SpriteWindowState) {
   const badgeExtra =
     state.bubbleOpen || state.menuOpen || state.miniChatOpen
@@ -86,10 +99,7 @@ export function getSpriteWindowSize(state: SpriteWindowState) {
         ? MINI_CHAT_EXPANDED_BUBBLE_HEIGHT
         : MINI_CHAT_WITH_BUBBLE_HEIGHT
       : SPRITE_WINDOW_SIZE.height;
-  const width =
-    state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
-      ? MINI_CHAT_EXPANDED_BUBBLE_WIDTH
-      : SPRITE_WIDTH;
+  const width = getMiniChatWidth(state);
 
   return {
     width,
@@ -117,8 +127,8 @@ export function getSpriteStagePadding(
   state: SpriteWindowState,
 ): SpriteStagePadding {
   const extraLeft =
-    state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
-      ? (MINI_CHAT_EXPANDED_BUBBLE_WIDTH - SPRITE_WIDTH) / 2
+    state.miniChatOpen
+      ? (getMiniChatWidth(state) - SPRITE_WIDTH) / 2
       : 0;
 
   return {

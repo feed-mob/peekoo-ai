@@ -68,15 +68,16 @@ export function SpriteMiniChat({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.98 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          className="absolute bottom-2 left-1/2 z-30 w-[184px] -translate-x-1/2 pointer-events-auto"
+          className="absolute bottom-2 left-1/2 z-30 -translate-x-1/2 pointer-events-auto"
+          style={{ width: "calc(100% - 16px)" }}
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
           <form
             onSubmit={(event) => void handleSubmit(event)}
-            className="rounded-[24px] border border-glass-border bg-glass/95 p-2 shadow-panel backdrop-blur-xl"
+            className="rounded-[20px] border border-glass-border bg-glass/95 p-1.5 shadow-panel backdrop-blur-xl"
           >
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <Input
                 ref={inputRef}
                 type="text"
@@ -84,19 +85,17 @@ export function SpriteMiniChat({
                 onChange={(event) => setInput(event.target.value)}
                 placeholder={isTyping ? "Thinking..." : "Ask Peekoo..."}
                 disabled={isTyping}
-                className="h-8 rounded-full border-glass-border bg-space-deep/80 px-3 text-xs text-text-primary placeholder:text-text-muted"
+                className="h-7 rounded-full border-glass-border bg-space-deep/80 px-2.5 text-[11px] text-text-primary placeholder:text-text-muted"
               />
               <Button
                 type="submit"
                 size="icon"
                 variant="gradient"
                 disabled={isTyping || !input.trim()}
-                className="h-8 w-8 rounded-full"
+                className="h-7 w-7 rounded-full"
               >
-                <Send size={14} />
+                <Send size={12} />
               </Button>
-            </div>
-            <div className="mt-2 flex justify-end">
               <button
                 type="button"
                 onClick={() => void onOpenFullChat()}
@@ -104,7 +103,7 @@ export function SpriteMiniChat({
                 title="Open full chat"
                 className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-glass-border/70 bg-space-deep/50 text-text-secondary transition-colors hover:border-glow-cyan/40 hover:text-glow-cyan"
               >
-                <Expand size={13} />
+                <Expand size={11} />
               </button>
             </div>
           </form>
