@@ -232,10 +232,17 @@ pub fn build_host_functions(
             "peekoo_set_mood",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx),
+            UserData::new(ctx.clone()),
             host_set_mood,
         ),
-    ]
+    Function::new(
+        "peekoo_system_local_date",
+        [ValType::I64],
+        [ValType::I64],
+        UserData::new(ctx),
+        host_system_local_date,
+    ),
+  ]
 }
 
 fn host_state_get(
@@ -766,6 +773,21 @@ fn host_system_time_millis(
         plugin,
         outputs,
         &serde_json::json!({ "timeMillis": time_millis }).to_string(),
+    )
+}
+
+fn host_system_local_date(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    use chrono::Local;
+    let local_date = Local::now().format("%Y-%m-%d").to_string();
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "date": local_date }).to_string(),
     )
 }
 

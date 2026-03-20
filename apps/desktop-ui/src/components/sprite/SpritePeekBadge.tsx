@@ -76,11 +76,12 @@ function BadgeRow({ item, compact }: BadgeRowProps) {
   );
 }
 
-interface PomodoroBadgeProps {
+interface StyledBadgeProps {
   item: PeekBadgeItem;
 }
 
-function PomodoroBadge({ item }: PomodoroBadgeProps) {
+function StyledBadge({ item }: StyledBadgeProps) {
+  const isPomodoro = item.icon === "brain" || item.icon === "coffee";
   const isPaused = item.label.includes("(Paused)");
   
   const lightGray = "#75787B";
@@ -88,19 +89,68 @@ function PomodoroBadge({ item }: PomodoroBadgeProps) {
   
   const handleControl = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    const toolName = isPaused ? "pomodoro_resume" : "pomodoro_pause";
-    try {
-        await invoke("plugin_call_tool", {
-          toolName,
-          argsJson: JSON.stringify({})
-        });
-    } catch (err) {
-        console.error("Failed to toggle pomodoro from badge:", err);
+    
+    if (isPomodoro) {
+        const toolName = isPaused ? "pomodoro_resume" : "pomodoro_pause";
+        try {
+            await invoke("plugin_call_tool", {
+              toolName,
+              argsJson: JSON.stringify({})
+            });
+        } catch (err) {
+            console.error("Failed to toggle pomodoro from badge:", err);
+        }
+    } else {
+        // Health reminder - dismiss/reset timer
+        let reminder_type = item.icon === "droplet" ? "water" : item.icon === "eye" ? "eye_rest" : "standup";
+        try {
+            await invoke("plugin_call_tool", {
+                toolName: "health_dismiss",
+                argsJson: JSON.stringify({ reminder_type })
+            });
+        } catch (err) {
+            console.error("Failed to dismiss health reminder from badge:", err);
+        }
     }
   };
 
+  const Icon = item.icon ? ICON_MAP[item.icon] : undefined;
+
+  const healthColors: Record<string, string> = {
+    droplet: "#3b82f6", // Blue
+    "person-standing": "#eab308", // Yellow
+    eye: "#22c55e", // Green
+  };
+  const iconColor = (item.icon && healthColors[item.icon]) || (document.documentElement.classList.contains('dark') ? darkWhite : lightGray);
+  const isReminder = !isPomodoro;
+
+  const healthBgs: Record<string, string> = {
+    droplet: "bg-blue-500/10 dark:bg-blue-400/10 border-blue-500/20 dark:border-blue-400/20",
+    "person-standing": "bg-yellow-500/10 dark:bg-yellow-400/10 border-yellow-500/20 dark:border-yellow-400/20",
+    eye: "bg-green-500/10 dark:bg-green-400/10 border-green-500/20 dark:border-green-400/20",
+  };
+  
+  const containerStyle = isPomodoro 
+    ? "bg-white/60 dark:bg-black/60 border-white/10 dark:border-white/5" 
+    : (item.icon && healthBgs[item.icon]) ? healthBgs[item.icon] : "bg-white/10 dark:bg-black/20 border-white/20 dark:border-white/10";
+
   return (
-    <div className="flex items-center justify-between w-full h-full pl-3.5 pr-2.5 rounded-full backdrop-blur-3xl shadow-panel/10 border border-white/10 dark:border-white/5 transition-all duration-300 bg-white/60 dark:bg-black/60">
+    <motion.div 
+      className={`flex items-center justify-between w-full h-full pl-3.5 pr-2.5 rounded-full backdrop-blur-3xl shadow-panel/10 border transition-all duration-300 ${containerStyle}`}
+      animate={isReminder ? {
+        scale: [1, 1.02, 1],
+        boxShadow: [
+          "0 0 0px rgba(0,0,0,0)",
+          `0 0 12px ${iconColor}44`,
+          "0 0 0px rgba(0,0,0,0)"
+        ]
+      } : {}}
+      transition={isReminder ? {
+        duration: 2,
+        repeat: Infinity,
+        ease: "easeInOut"
+      } : {}}
+    >
       <div className="flex flex-col items-center justify-center min-w-0 flex-1">
          <span 
            className="text-[22px] font-[100] tabular-nums tracking-[0.05em] whitespace-nowrap leading-none select-none"
@@ -121,49 +171,75 @@ function PomodoroBadge({ item }: PomodoroBadgeProps) {
       <div className="flex items-center justify-center ml-2">
           <button
             onClick={handleControl}
-            className={`w-[22px] h-[22px] flex-shrink-0 flex items-center justify-center rounded-[4px] backdrop-blur-3xl hover:bg-current/10 active:scale-95 transition-all group overflow-hidden relative border-[0.6px] border-dashed border-black/20 dark:border-white/20`}
+            className={`w-[22px] h-[22px] flex-shrink-0 flex items-center justify-center rounded-[4px] backdrop-blur-3xl hover:bg-current/10 active:scale-95 transition-all group overflow-hidden relative border-[0.6px] ${isPomodoro ? 'border-dashed border-black/20 dark:border-white/20' : 'border-none'}`}
             style={{ 
                 background: 'rgba(255, 255, 255, 0.05)',
             }}
           >
             <div className={`w-full h-full flex items-center justify-center transition-opacity`}>
-              {isPaused ? (
-                 <Play 
-                   className="w-[12px] h-[12px] mb-[-0.5px]" 
-                   style={{ 
-                       // Match the hollow style of digits: outline only
-                       color: 'transparent',
-                       stroke: 'currentColor',
-                       strokeWidth: '1.5px',
-                       fill: 'none',
-                       color: isPaused ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? darkWhite : lightGray) : 'inherit'
-                   }} 
-                 />
+              {isPomodoro ? (
+                isPaused ? (
+                    <Play 
+                      className="w-[12px] h-[12px] mb-[-0.5px]" 
+                      style={{ 
+                          stroke: 'currentColor',
+                          strokeWidth: '1.5px',
+                          fill: 'none',
+                          color: window.matchMedia("(prefers-color-scheme: dark)").matches ? darkWhite : lightGray
+                      }} 
+                    />
+                ) : (
+                    <Pause 
+                      className="w-[11px] h-[11px]" 
+                      style={{ 
+                          color: 'transparent',
+                          stroke: document.documentElement.classList.contains('dark') ? darkWhite : lightGray,
+                          strokeWidth: '1.2px',
+                          fill: 'none',
+                      }} 
+                    />
+                )
               ) : (
-                  <Pause 
-                    className="w-[11px] h-[11px]" 
+                Icon && (
+                  <Icon 
+                    className="w-[12px] h-[12px]" 
                     style={{ 
-                        // Match hollow style for Pause bars
-                        color: 'transparent',
-                        stroke: isPaused ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? darkWhite : lightGray) : (document.documentElement.classList.contains('dark') ? darkWhite : lightGray),
-                        strokeWidth: '1.2px',
-                        fill: 'none',
+                        color: iconColor,
+                        fill: (item.icon === "droplet" || item.icon === "eye") ? iconColor : 'none',
+                        stroke: (item.icon === "person-standing") ? iconColor : 'transparent',
+                        strokeWidth: '1.5px',
+                        filter: `drop-shadow(0 0 3px ${iconColor}88)`
                     }} 
                   />
+                )
               )}
               
-              {/* Force color match logic using tailwind utility for easier maintainability if classes work */}
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                 {isPaused ? (
-                    <Play className={`w-[12px] h-[12px] mb-[-0.5px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                 {isPomodoro ? (
+                    isPaused ? (
+                       <Play className={`w-[12px] h-[12px] mb-[-0.5px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                    ) : (
+                       <Pause className={`w-[11px] h-[11px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                    )
                  ) : (
-                    <Pause className={`w-[11px] h-[11px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                    Icon && (
+                      <Icon 
+                        className={`w-[11px] h-[11px]`} 
+                        style={{
+                           color: iconColor,
+                           fill: (item.icon === "droplet" || item.icon === "eye") ? iconColor : 'none',
+                           stroke: (item.icon === "person-standing") ? iconColor : 'none',
+                           strokeWidth: (item.icon === "person-standing") ? '1.5px' : '0',
+                           filter: `drop-shadow(0 0 2px ${iconColor}aa)`
+                        }}
+                      />
+                    )
                  )}
               </div>
             </div>
           </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -184,8 +260,8 @@ export function SpritePeekBadge({
 }: SpritePeekBadgeProps) {
   if (!visible || items.length === 0 || !currentItem) return null;
 
-  const isPomodoro = currentItem.icon === "brain" || currentItem.icon === "coffee";
-  const effectiveWidth = (isPomodoro && !expanded) ? POMODORO_BADGE_WIDTH : BADGE_WIDTH;
+  const isStyledBadge = ["brain", "coffee", "droplet", "eye", "person-standing"].includes(currentItem.icon || "");
+  const effectiveWidth = (isStyledBadge && !expanded) ? POMODORO_BADGE_WIDTH : BADGE_WIDTH;
   const expandedHeight = items.length * PEEK_BADGE_ROW_HEIGHT + PEEK_BADGE_EXPANDED_VERTICAL_PADDING;
 
   return (
@@ -212,12 +288,12 @@ export function SpritePeekBadge({
         </motion.div>
       ) : (
         <motion.div
-          key={`collapsed-${currentItem.label}`}
+          key={`collapsed-${currentItem.icon || currentItem.label}`}
           initial={{ opacity: 0, y: 0 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 0 }}
           className={`pointer-events-auto absolute z-10 cursor-pointer overflow-visible ${
-            isPomodoro 
+            isStyledBadge 
             ? "bg-transparent h-12" 
             : "rounded-xl border border-glass-border/60 bg-glass/80 px-3 py-1 h-12 backdrop-blur-md shadow-panel/40"
           }`}
@@ -228,10 +304,10 @@ export function SpritePeekBadge({
             width: effectiveWidth,
             height: PEEK_BADGE_HEIGHT,
           }}
-          onClick={isPomodoro ? undefined : onToggle}
+          onClick={isStyledBadge ? undefined : onToggle}
         >
-          {isPomodoro ? (
-             <PomodoroBadge item={currentItem} />
+          {isStyledBadge ? (
+             <StyledBadge item={currentItem} />
           ) : (
              <BadgeRow item={currentItem} />
           )}

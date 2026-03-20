@@ -16,7 +16,7 @@ export const SPRITE_MENU_WINDOW_SIZE = {
 } as const;
 
 /** Extra height added above the sprite when a speech bubble is visible. */
-export const BUBBLE_EXTRA_HEIGHT = 120;
+export const BUBBLE_EXTRA_HEIGHT = 90;
 
 export const SPRITE_BUBBLE_WINDOW_SIZE = {
   width: SPRITE_WIDTH,

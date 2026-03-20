@@ -2,6 +2,7 @@
 
 use peekoo_plugin_sdk::prelude::*;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 
 const POMODORO_TIMER_KEY: &str = "pomodoro_timer";
 
@@ -11,6 +12,13 @@ pub enum PomodoroState {
     Running,
     Paused,
     Completed,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct DayStats {
+    pub completed_focus: u32,
+    pub completed_breaks: u32,
+    pub memos: Vec<Value>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -31,6 +39,8 @@ struct PomodoroSession {
     memos: Vec<Value>,
     #[serde(default)]
     last_date: String,
+    #[serde(default)]
+    pub history: HashMap<String, DayStats>,
     // Configuration
     #[serde(default)]
     default_work_minutes: u32,
@@ -52,6 +62,7 @@ impl PomodoroSession {
             enable_memo: false,
             memos: Vec::new(),
             last_date: String::new(),
+            history: HashMap::new(),
             default_work_minutes: 25,
             default_break_minutes: 5,
         }
@@ -60,7 +71,7 @@ impl PomodoroSession {
 
 #[plugin_fn]
 pub fn plugin_init(_input: String) -> FnResult<String> {
-    log_info("Pomodoro plugin initialized");
+    log_info("Pomodoro plugin initialized (v2-history)");
     if get_session().is_none() {
         save_session(&PomodoroSession::unwrap_or_default_session());
     }
@@ -249,7 +260,42 @@ pub fn tool_pomodoro_add_memo(input: String) -> FnResult<String> {
 // ---------------------------------------------------------
 
 fn get_session() -> Option<PomodoroSession> {
-    peekoo::state::get::<PomodoroSession>("pomodoro_session").ok().flatten()
+    let session = peekoo::state::get::<PomodoroSession>("pomodoro_session").ok().flatten();
+    if let Some(mut session) = session {
+        if check_daily_reset(&mut session) {
+            save_session(&session);
+        }
+        Some(session)
+    } else {
+        None
+    }
+}
+
+fn check_daily_reset(session: &mut PomodoroSession) -> bool {
+    let today = peekoo::system::local_date().unwrap_or_else(|_| "unknown".to_string());
+    log_info(&format!("Checking reset: last_date='{}', today='{}'", session.last_date, today));
+
+    if today != "unknown" && session.last_date != today {
+        log_info(&format!("New day detected ({}). Handling daily reset.", today));
+        
+        // Archive previous day's stats if they exist
+        if !session.last_date.is_empty() {
+            let stats = DayStats {
+                completed_focus: session.completed_focus,
+                completed_breaks: session.completed_breaks,
+                memos: session.memos.clone(),
+            };
+            session.history.insert(session.last_date.clone(), stats);
+        }
+
+        // Reset for the new day
+        session.completed_focus = 0;
+        session.completed_breaks = 0;
+        session.memos = Vec::new();
+        session.last_date = today;
+        return true;
+    }
+    false
 }
 
 fn save_session(session: &PomodoroSession) {
@@ -330,8 +376,8 @@ fn push_peek_badges() {
             if session.mode == "work" { "Focus".to_string() } else { "Break".to_string() }
         };
 
-        let countdown = if session.state == PomodoroState::Running {
-            Some(session.time_remaining_secs)
+        let target_epoch = if session.state == PomodoroState::Running {
+            Some(session.expected_fire_at_epoch)
         } else {
             None
         };
@@ -340,7 +386,7 @@ fn push_peek_badges() {
             label,
             value: format_countdown(session.time_remaining_secs),
             icon: Some(icon.to_string()),
-            countdown_secs: countdown,
+            target_epoch_secs: target_epoch,
         };
         let _ = peekoo::badge::set(&[badge]);
     } else {

@@ -11,7 +11,7 @@ const ROTATION_INTERVAL_MS = 5000;
 const COUNTDOWN_TICK_MS = 1000;
 
 function formatCountdown(seconds: number, isPrecise: boolean = false): string {
-  if (seconds <= 0) return "now";
+  if (seconds <= 0) return isPrecise ? "00:00" : "now";
   
   if (isPrecise) {
      const mins = Math.floor(seconds / 60);
@@ -62,23 +62,23 @@ export function usePeekBadge() {
     if (items.length === 0) return;
 
     const id = setInterval(() => {
-      const elapsed = Math.floor(
-        (Date.now() - snapshotRef.current.at) / 1000,
-      );
-      const ticked = snapshotRef.current.items.map((item) => ({
-        ...item,
-        countdown_secs:
-          item.countdown_secs != null
-            ? Math.max(0, item.countdown_secs - elapsed)
-            : undefined,
-        value:
-          item.countdown_secs != null
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      
+      const ticked = snapshotRef.current.items.map((item) => {
+        const remaining = item.target_epoch_secs != null 
+          ? Math.max(0, item.target_epoch_secs - nowEpoch)
+          : null;
+
+        return {
+          ...item,
+          value: remaining !== null
             ? formatCountdown(
-                Math.max(0, item.countdown_secs - elapsed), 
-                item.icon === "brain" || item.icon === "coffee"
+                remaining, 
+                ["brain", "coffee", "droplet", "eye", "person-standing"].includes(item.icon || "")
               )
             : item.value,
-      }));
+        };
+      });
       setItems(ticked);
     }, COUNTDOWN_TICK_MS);
 

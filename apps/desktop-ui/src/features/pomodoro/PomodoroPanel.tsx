@@ -71,14 +71,23 @@ export function PomodoroPanel() {
           lastCompletedRef.current = s.completed_focus;
           const config = PANEL_WINDOW_CONFIGS["panel-pomodoro-memo"];
           if (config) {
-            void new WebviewWindow(config.label, {
-                title: config.title,
-                width: config.width,
-                height: config.height,
-                decorations: true,
-                alwaysOnTop: true,
-                center: true,
-                resizable: false,
+            void WebviewWindow.getByLabel(config.label).then(async (existing) => {
+              if (existing) {
+                await existing.setFocus();
+              } else {
+                new WebviewWindow(config.label, {
+                  url: "/",
+                  title: config.title,
+                  width: config.width,
+                  height: config.height,
+                  decorations: false,
+                  transparent: true,
+                  alwaysOnTop: true,
+                  center: true,
+                  resizable: false,
+                  shadow: true,
+                });
+              }
             });
           }
         }
