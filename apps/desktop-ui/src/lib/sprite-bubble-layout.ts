@@ -18,6 +18,19 @@ export const SPRITE_MENU_WINDOW_SIZE = {
 /** Extra height added above the sprite when a speech bubble is visible. */
 export const BUBBLE_EXTRA_HEIGHT = 120;
 
+/** Extra height added below the sprite when mini chat input is visible. */
+export const MINI_CHAT_EXTRA_HEIGHT = 70;
+
+/**
+ * Combined height when mini chat is open and also showing a reply bubble.
+ * The sprite window already shifts upward for the bubble, so we only add the
+ * extra bottom room needed to keep the input row visible.
+ */
+export const MINI_CHAT_WITH_BUBBLE_HEIGHT = 390;
+export const MINI_CHAT_EXPANDED_BUBBLE_HEIGHT = 470;
+export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
+export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 280;
+
 export const SPRITE_BUBBLE_WINDOW_SIZE = {
   width: SPRITE_WIDTH,
   height: SPRITE_HEIGHT + BUBBLE_EXTRA_HEIGHT,
@@ -49,25 +62,72 @@ interface SpriteWindowState {
   bubbleOpen: boolean;
   peekBadgeItemCount: number;
   peekBadgeExpanded: boolean;
+  miniChatOpen?: boolean;
+  miniChatBubbleOpen?: boolean;
+  miniChatBubbleExpanded?: boolean;
+}
+
+interface SpriteStagePadding {
+  paddingTop: number;
+  paddingBottom: number;
+  paddingLeft: number;
+  paddingRight: number;
 }
 
 export function getSpriteWindowSize(state: SpriteWindowState) {
   const badgeExtra =
-    state.bubbleOpen || state.menuOpen
+    state.bubbleOpen || state.menuOpen || state.miniChatOpen
       ? 0
       : peekBadgeExtraHeight(state.peekBadgeItemCount, state.peekBadgeExpanded);
+  const miniChatExtra = state.miniChatOpen ? MINI_CHAT_EXTRA_HEIGHT : 0;
+  const miniChatBubbleHeight =
+    state.miniChatOpen && state.miniChatBubbleOpen
+      ? state.miniChatBubbleExpanded
+        ? MINI_CHAT_EXPANDED_BUBBLE_HEIGHT
+        : MINI_CHAT_WITH_BUBBLE_HEIGHT
+      : SPRITE_WINDOW_SIZE.height;
+  const width =
+    state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
+      ? MINI_CHAT_EXPANDED_BUBBLE_WIDTH
+      : SPRITE_WIDTH;
 
   return {
-    width: SPRITE_WIDTH,
+    width,
     height: Math.max(
       SPRITE_WINDOW_SIZE.height,
       state.menuOpen ? SPRITE_MENU_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
       state.bubbleOpen ? SPRITE_BUBBLE_WINDOW_SIZE.height : SPRITE_WINDOW_SIZE.height,
       SPRITE_WINDOW_SIZE.height + badgeExtra,
+      SPRITE_WINDOW_SIZE.height + miniChatExtra,
+      miniChatBubbleHeight,
     ),
+    /** How much the window grows leftward to keep the sprite centered. */
+    extraLeft: Math.max(0, (width - SPRITE_WIDTH) / 2),
     /** How much the window grows upward (positive = window top moves up). */
-    extraTop: state.bubbleOpen
-      ? BUBBLE_EXTRA_HEIGHT
-      : badgeExtra,
+    extraTop:
+      state.miniChatBubbleOpen && state.miniChatBubbleExpanded
+        ? MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP
+        : state.bubbleOpen || state.miniChatBubbleOpen
+          ? BUBBLE_EXTRA_HEIGHT
+          : badgeExtra,
+  };
+}
+
+export function getSpriteStagePadding(
+  state: SpriteWindowState,
+): SpriteStagePadding {
+  const extraLeft =
+    state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
+      ? (MINI_CHAT_EXPANDED_BUBBLE_WIDTH - SPRITE_WIDTH) / 2
+      : 0;
+
+  return {
+    paddingTop:
+      state.miniChatOpen && state.miniChatBubbleOpen && state.miniChatBubbleExpanded
+        ? 160
+        : 12,
+    paddingBottom: state.miniChatOpen ? 86 : 12,
+    paddingLeft: extraLeft,
+    paddingRight: extraLeft,
   };
 }

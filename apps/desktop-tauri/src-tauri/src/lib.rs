@@ -145,25 +145,29 @@ fn apply_macos_transparent_background(_: &tauri::App) {}
 /// Resize the sprite window from Rust, bypassing the `resizable: false` JS restriction.
 /// The window is intentionally non-resizable by the user but we need programmatic control.
 /// `delta_top` shifts the window vertically in logical pixels (positive = move up, negative = move down).
+/// `delta_left` shifts the window horizontally in logical pixels (positive = move left, negative = move right).
 #[tauri::command]
 async fn resize_sprite_window(
     width: f64,
     height: f64,
+    delta_left: f64,
     delta_top: f64,
     window: Window,
 ) -> Result<(), String> {
-    if delta_top.abs() > 0.5 {
+    if delta_top.abs() > 0.5 || delta_left.abs() > 0.5 {
         let pos = window
             .outer_position()
             .map_err(|e| format!("get position error: {e}"))?;
         let scale = window
             .scale_factor()
             .map_err(|e| format!("scale error: {e}"))?;
+        let logical_x = pos.x as f64 / scale - delta_left;
         let logical_y = pos.y as f64 / scale - delta_top;
+        let physical_x = (logical_x * scale).round() as i32;
         let physical_y = (logical_y * scale).round() as i32;
         window
             .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: pos.x,
+                x: physical_x,
                 y: physical_y,
             }))
             .map_err(|e| format!("set position error: {e}"))?;
