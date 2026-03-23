@@ -60,6 +60,8 @@ pub struct AgentApplication {
     resume_session_path: Mutex<Option<PathBuf>>,
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
     conversation_generation: AtomicU64,
+    /// Scheduler for agent task execution.
+    agent_scheduler: Mutex<Option<crate::agent_scheduler::AgentScheduler>>,
 }
 
 impl AgentApplication {
@@ -99,6 +101,10 @@ impl AgentApplication {
         }
         let workspace_dir = ensure_agent_workspace()?;
 
+        // Create agent scheduler for task execution
+        let agent_scheduler =
+            crate::agent_scheduler::AgentScheduler::new(Arc::new(productivity.clone()));
+
         Ok(Self {
             agent: Mutex::new(None),
             settings,
@@ -117,11 +123,19 @@ impl AgentApplication {
             workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
+            agent_scheduler: Mutex::new(Some(agent_scheduler)),
         })
     }
 
     pub fn start_plugin_runtime(&self) {
         self.plugin_registry.start_scheduler();
+
+        // Start agent scheduler for task execution
+        if let Ok(guard) = self.agent_scheduler.lock()
+            && let Some(ref scheduler) = *guard
+        {
+            scheduler.start();
+        }
     }
 
     pub async fn prompt_streaming<F>(&self, message: &str, on_event: F) -> Result<String, String>
