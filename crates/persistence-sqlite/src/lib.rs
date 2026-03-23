@@ -6,8 +6,8 @@ pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
 pub const MIGRATION_0004_GLOBAL_SETTINGS: &str =
     include_str!("../migrations/0004_global_settings.sql");
 pub const MIGRATION_0005_PLUGINS: &str = include_str!("../migrations/0005_plugins.sql");
-pub const MIGRATION_0005_TASK_EXTENSIONS: &str =
-    include_str!("../migrations/0005_task_extensions.sql");
+pub const MIGRATION_0006_TASK_EXTENSIONS: &str =
+    include_str!("../migrations/0006_task_extensions.sql");
 
 #[cfg(test)]
 mod tests {
@@ -40,7 +40,7 @@ mod tests {
 
     #[test]
     fn migration_contains_task_extensions() {
-        assert!(MIGRATION_0005_TASK_EXTENSIONS.contains("assignee"));
-        assert!(MIGRATION_0005_TASK_EXTENSIONS.contains("labels_json"));
+        assert!(MIGRATION_0006_TASK_EXTENSIONS.contains("assignee"));
+        assert!(MIGRATION_0006_TASK_EXTENSIONS.contains("labels_json"));
     }
 }
