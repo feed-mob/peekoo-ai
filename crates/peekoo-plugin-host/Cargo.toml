@@ -32,4 +32,3 @@ tracing = "0.1"
 rusqlite = { version = "0.38" }
 tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 url = "2"
-chrono = "0.4"

@@ -4,6 +4,7 @@ pub mod plugin;
 pub mod plugin_tool_impl;
 pub mod productivity;
 pub mod settings;
+pub mod task_parser;
 pub mod task_tools;
 mod workspace_bootstrap;
 

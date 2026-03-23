@@ -361,16 +361,42 @@ async fn chat_new_session(state: State<'_, AgentState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn create_task(
     title: String,
     priority: String,
     assignee: Option<String>,
     labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<u32>,
+    recurrence_rule: Option<String>,
+    recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
 ) -> Result<TaskDto, String> {
     let assignee = assignee.as_deref().unwrap_or("user");
     let labels = labels.as_deref().unwrap_or(&[]);
-    state.app.create_task(&title, &priority, assignee, labels)
+    state.app.create_task(
+        &title,
+        &priority,
+        assignee,
+        labels,
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_deref(),
+        recurrence_time_of_day.as_deref(),
+    )
+}
+
+#[tauri::command]
+async fn create_task_from_text(
+    text: String,
+    state: State<'_, AgentState>,
+) -> Result<TaskDto, String> {
+    state.app.create_task_from_text(&text)
 }
 
 #[tauri::command]
@@ -379,6 +405,8 @@ async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
+#[allow(clippy::too_many_arguments)]
 async fn update_task(
     id: String,
     title: Option<String>,
@@ -386,8 +414,17 @@ async fn update_task(
     status: Option<String>,
     assignee: Option<String>,
     labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<Option<u32>>,
+    recurrenceRule: Option<Option<String>>,
+    recurrenceTimeOfDay: Option<Option<String>>,
     state: State<'_, AgentState>,
 ) -> Result<TaskDto, String> {
+    println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
+    let recurrence_rule = recurrenceRule;
+    let recurrence_time_of_day = recurrenceTimeOfDay;
     state.app.update_task(
         &id,
         title.as_deref(),
@@ -395,6 +432,12 @@ async fn update_task(
         status.as_deref(),
         assignee.as_deref(),
         labels.as_deref(),
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_ref().map(|o| o.as_deref()),
+        recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
     )
 }
 
@@ -409,11 +452,38 @@ async fn toggle_task(id: String, state: State<'_, AgentState>) -> Result<TaskDto
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
+async fn get_task_activity(
+    taskId: String,
+    limit: Option<u32>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.get_task_activity(&taskId, limit.unwrap_or(50))
+}
+
+#[tauri::command]
 async fn task_list_events(
     limit: Option<i64>,
     state: State<'_, AgentState>,
 ) -> Result<Vec<TaskEventDto>, String> {
     state.app.list_task_events(limit.unwrap_or(50))
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn add_task_comment(
+    taskId: String,
+    text: String,
+    author: String,
+    state: State<'_, AgentState>,
+) -> Result<TaskEventDto, String> {
+    state.app.add_task_comment(&taskId, &text, &author)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn delete_task_event(eventId: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_task_event(&eventId)
 }
 
 #[tauri::command]
@@ -869,11 +939,15 @@ pub fn run() {
             app_settings_set,
             app_settings_list_sprites,
             create_task,
+            create_task_from_text,
             list_tasks,
             update_task,
             delete_task,
             toggle_task,
+            get_task_activity,
             task_list_events,
+            add_task_comment,
+            delete_task_event,
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
