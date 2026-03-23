@@ -204,19 +204,31 @@ async fn execute_task_acp(
 
     tracing::info!("AgentScheduler: Spawning peekoo-agent-acp subprocess for task {}", task.id);
 
-    let mut child = match Command::new("peekoo-agent-acp")
+    let bin_name = if cfg!(windows) {
+        "peekoo-agent-acp.exe"
+    } else {
+        "peekoo-agent-acp"
+    };
+
+    let command_path = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|p| p.join(bin_name)))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from(bin_name));
+
+    let mut child = match Command::new(&command_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
     {
         Ok(child) => {
-            tracing::info!("AgentScheduler: Successfully spawned peekoo-agent-acp subprocess (pid: {:?})", child.id());
+            tracing::info!("AgentScheduler: Successfully spawned {:?} subprocess (pid: {:?})", command_path, child.id());
             child
         }
         Err(e) => {
-            tracing::error!("AgentScheduler: Failed to spawn peekoo-agent-acp: {}. Is the binary in PATH?", e);
-            return Err(format!("Failed to spawn peekoo-agent-acp: {}. Is the binary in PATH?", e));
+            tracing::error!("AgentScheduler: Failed to spawn {:?}: {}", command_path, e);
+            return Err(format!("Failed to spawn {:?}: {}", command_path, e));
         }
     };
 
