@@ -12,7 +12,6 @@ export interface Task {
   recurrence_rule: string | null;
   recurrence_time_of_day: string | null;
   parent_task_id: string | null;
-  order_index: number;
   created_at: string;
 }
 

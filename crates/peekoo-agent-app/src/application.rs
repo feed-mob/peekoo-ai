@@ -72,13 +72,10 @@ impl AgentApplication {
         // uses mandatory file locks in the default DELETE journal mode.
         //
         // Legacy migration MUST run before Connection::open because open()
-        // creates the file as a side-effect, which would cause the migration
-        // to skip (it exits early when the target file already exists).
         let db_path = peekoo_paths::peekoo_settings_db_path()?;
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("Create db dir error: {e}"))?;
         }
-        SettingsService::migrate_legacy_db(&db_path)?;
         let conn =
             Connection::open(&db_path).map_err(|e| format!("Open settings db error: {e}"))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
@@ -283,21 +280,39 @@ impl AgentApplication {
 
     // ── Productivity ────────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_task(
         &self,
         title: &str,
         priority: &str,
         assignee: &str,
         labels: &[String],
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<u32>,
+        recurrence_rule: Option<&str>,
+        recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.productivity
-            .create_task(title, priority, assignee, labels)
+        self.productivity.create_task(
+            title,
+            priority,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
     }
 
     pub fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
         self.productivity.list_tasks()
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_task(
         &self,
         id: &str,
@@ -306,9 +321,27 @@ impl AgentApplication {
         status: Option<&str>,
         assignee: Option<&str>,
         labels: Option<&[String]>,
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<Option<u32>>,
+        recurrence_rule: Option<Option<&str>>,
+        recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.productivity
-            .update_task(id, title, priority, status, assignee, labels)
+        self.productivity.update_task(
+            id,
+            title,
+            priority,
+            status,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
     }
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
@@ -319,8 +352,51 @@ impl AgentApplication {
         self.productivity.toggle_task(id)
     }
 
+    /// Create a task from natural language text
+    /// Parses the text to extract title, priority, schedule, duration, etc.
+    /// Falls back to using the whole text as title if parsing fails.
+    pub fn create_task_from_text(&self, text: &str) -> Result<TaskDto, String> {
+        use crate::task_parser::parse_task_text;
+
+        let parsed = parse_task_text(text);
+
+        self.productivity.create_task(
+            &parsed.title,
+            parsed.priority.as_deref().unwrap_or("medium"),
+            parsed.assignee.as_deref().unwrap_or("user"),
+            &parsed.labels,
+            parsed.description.as_deref(),
+            parsed.scheduled_start_at.as_deref(),
+            parsed.scheduled_end_at.as_deref(),
+            parsed.estimated_duration_min,
+            parsed.recurrence_rule.as_deref(),
+            parsed.recurrence_time_of_day.as_deref(),
+        )
+    }
+
+    pub fn get_task_activity(
+        &self,
+        task_id: &str,
+        limit: u32,
+    ) -> Result<Vec<TaskEventDto>, String> {
+        self.productivity.get_task_activity(task_id, limit)
+    }
+
     pub fn list_task_events(&self, limit: i64) -> Result<Vec<TaskEventDto>, String> {
         self.productivity.list_task_events(limit)
+    }
+
+    pub fn add_task_comment(
+        &self,
+        task_id: &str,
+        text: &str,
+        author: &str,
+    ) -> Result<TaskEventDto, String> {
+        self.productivity.add_task_comment(task_id, text, author)
+    }
+
+    pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
+        self.productivity.delete_task_event(event_id)
     }
 
     pub fn task_activity_summary(&self) -> Result<String, String> {
@@ -846,7 +922,19 @@ mod tests {
     struct NoopTaskService;
 
     impl TaskService for NoopTaskService {
-        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
         fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
@@ -860,6 +948,12 @@ mod tests {
             _: Option<&str>,
             _: Option<&str>,
             _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
         ) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
@@ -867,6 +961,21 @@ mod tests {
             Ok(())
         }
         fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn get_task_activity(
+            &self,
+            _: &str,
+            _: u32,
+        ) -> Result<Vec<peekoo_productivity_domain::task::TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<peekoo_productivity_domain::task::TaskEventDto, String> {
             Err("not implemented".into())
         }
     }

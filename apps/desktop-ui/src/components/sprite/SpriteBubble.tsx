@@ -1,6 +1,4 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Droplet, Eye, PersonStanding, Brain, Coffee, type LucideIcon } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
 import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
 import type { SpriteBubblePayload } from "@/types/sprite-bubble";
 
@@ -9,130 +7,34 @@ interface SpriteBubbleProps {
   visible: boolean;
 }
 
-const ICON_MAP: Record<string, LucideIcon> = {
-  water: Droplet,
-  eye: Eye,
-  stand: PersonStanding,
-  focus: Brain,
-  break: Coffee,
-};
-
-const COLOR_MAP: Record<string, string> = {
-  water: "#3b82f6",
-  eye: "#22c55e",
-  stand: "#eab308",
-  focus: "#689B8A",
-  break: "#E9762B",
-};
-
-
 export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
-  const bodyLower = payload?.body.toLowerCase() || "";
-  const titleLower = payload?.title.toLowerCase() || "";
-  
-  const isHealth = titleLower.includes("health");
-  const isPomodoroWork = titleLower.includes("focus");
-  const isPomodoroBreak = titleLower.includes("break");
-  
-  const type = isHealth
-    ? (bodyLower.includes("water") ? "water" : bodyLower.includes("eye") ? "eye" : bodyLower.includes("stand") ? "stand" : null)
-    : isPomodoroWork ? "focus" : isPomodoroBreak ? "break" : null;
-    
-  const isStyled = isHealth || isPomodoroWork || isPomodoroBreak;
-
-  const Icon = type ? ICON_MAP[type] : null;
-  const themeColor = type ? COLOR_MAP[type] : "currentColor";
-
-  const handleDismiss = async () => {
-    if (!isStyled || !type) return;
-    try {
-      if (isHealth) {
-        await invoke("plugin_call_tool", {
-          toolName: "health_dismiss",
-          argsJson: JSON.stringify({ reminder_type: type === "stand" ? "standup" : type === "eye" ? "eye_rest" : "water" })
-        });
-      } else {
-        // Pomodoro dismiss
-        await invoke("plugin_call_tool", {
-            toolName: "pomodoro_finish",
-            argsJson: JSON.stringify({})
-        });
-      }
-    } catch (err) {
-      console.error("Failed to dismiss reminder from bubble:", err);
-    }
-  };
-
   return (
     <AnimatePresence>
       {payload && visible ? (
         <motion.div
           key={`${payload.title}-${payload.body}`}
-          initial={{ opacity: 0, y: 10, scale: 0.96 }}
+          initial={{ opacity: 0, y: 8, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 5, scale: 0.98 }}
-          transition={{ 
-            type: "spring",
-            damping: 25,
-            stiffness: 150
-          }}
-          onClick={handleDismiss}
-          className={`absolute z-20 cursor-pointer ${
-             isStyled 
-             ? "rounded-xl transition-all duration-300 hover:shadow-lg pointer-events-auto bg-white/80 dark:bg-black/80 border border-white/20 dark:border-white/10 shadow-xl backdrop-blur-3xl px-3.5 py-2" 
-             : "pointer-events-none rounded-2xl border border-glass-border bg-glass/95 px-4 py-3 shadow-panel backdrop-blur-xl"
-          }`}
+          exit={{ opacity: 0, y: 4, scale: 0.97 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="pointer-events-none absolute z-20 rounded-2xl border border-glass-border bg-glass/95 px-4 py-3 shadow-panel backdrop-blur-xl"
           style={{
-            top: 40,
+            top: 8,
             left: "50%",
             marginLeft: -(BUBBLE_WIDTH / 2),
             width: BUBBLE_WIDTH,
             maxHeight: BUBBLE_EXTRA_HEIGHT - 16,
           }}
         >
-          {/* Non-overlapping Tail pointing down (left-aligned) */}
-          <div 
-            className="absolute bottom-[-5px] left-8 w-[10px] h-[5px] bg-white/80 dark:bg-black/80 backdrop-blur-3xl" 
-            style={{ 
-              clipPath: 'polygon(0% 0%, 100% 0%, 50% 100%)',
-              // Add borders to the triangle sides using filter shadow to match bubble border
-              filter: `drop-shadow(0px 1px 0px ${document.documentElement.classList.contains('dark') ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'})`
-            }}
-          />
+          {/* Tail pointing down toward the sprite */}
+          <div className="absolute bottom-[-7px] left-1/2 h-3.5 w-3.5 -translate-x-1/2 rotate-45 border-b border-r border-glass-border bg-glass/95" />
 
-          {isStyled ? (
-            <div className="flex items-start gap-2.5">
-              {Icon && (
-                <div 
-                  className="flex items-center justify-center w-5 h-5 rounded-full shrink-0"
-                  style={{ background: `${themeColor}15` }}
-                >
-                   <Icon 
-                     size={12} 
-                     style={{ 
-                       color: themeColor, 
-                       fill: (type !== 'stand' && type !== 'focus' && type !== 'break') ? themeColor : 'none',
-                       stroke: themeColor,
-                       strokeWidth: (type === 'stand' || type === 'focus' || type === 'break') ? '2.5px' : '0px',
-                       filter: `drop-shadow(0 0 4px ${themeColor}88)` 
-                     }} 
-                   />
-                </div>
-              )}
-              <p className="text-[12px] font-medium leading-tight text-text-primary/90 dark:text-white/90">
-                {payload.body}
-              </p>
-            </div>
-          ) : (
-            <>
-              <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-glow-cyan/80">
-                {payload.title}
-              </p>
-              <p className="mt-1 text-[13px] leading-[18px] text-text-primary line-clamp-3">
-                {payload.body}
-              </p>
-            </>
-          )}
+          <p className="text-[9px] font-semibold uppercase tracking-[0.2em] text-glow-cyan/80">
+            {payload.title}
+          </p>
+          <p className="mt-1 text-[13px] leading-[18px] text-text-primary line-clamp-3">
+            {payload.body}
+          </p>
         </motion.div>
       ) : null}
     </AnimatePresence>

@@ -68,5 +68,16 @@
 
 ---
 
-**Last updated**: 2026-03-20
-**Status**: Tasks panel CRUD complete with labels, assignment, agent tools, plugin host functions, and activity feed
+**Last updated**: 2026-03-21
+**Status**: Tasks UI fully refactored with optimistic updates, drag-and-drop, and improved UX
+
+### Recent Major Refactor (2026-03-21)
+- [x] Complete Tasks UI refactoring
+  - Optimistic updates with rollback on error
+  - Drag-and-drop task reordering with persistence
+  - Activity section in task detail view
+  - Delete confirmation dialogs
+  - Toast notifications for user feedback
+  - Proper Date handling utilities
+  - Fixed formatTimeRange bug (missing recurrence parameters)
+  - See changelog: `ai/memories/changelogs/202603210345-feat-tasks-ui-refactor.md`

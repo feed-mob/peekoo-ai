@@ -32,6 +32,8 @@ tokio = { version = "1.50.0", features = ["sync"] }
 tokio-util = "0.7"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+regex = "1"
+lazy_static = "1"
 
 [dev-dependencies]
 pi = { version = "0.1.7", package = "pi_agent_rust", default-features = false, features = ["image-resize", "clipboard", "sqlite-sessions"] }

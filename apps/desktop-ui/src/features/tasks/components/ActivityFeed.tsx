@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import type { TaskEvent } from "@/types/task";
-import { ActivityItem } from "./ActivityItem";
+import { ActivityFeedItem } from "./ActivityFeedItem";
+import { LoadingSpinner } from "./LoadingSpinner";
 
-interface ActivityViewProps {
+interface ActivityFeedProps {
   events: TaskEvent[];
+  isLoading?: boolean;
 }
 
 function groupByDay(events: TaskEvent[]): { label: string; events: TaskEvent[] }[] {
@@ -30,14 +32,24 @@ function groupByDay(events: TaskEvent[]): { label: string; events: TaskEvent[] }
   return result;
 }
 
-export function ActivityView({ events }: ActivityViewProps) {
+export function ActivityFeed({ events, isLoading = false }: ActivityFeedProps) {
   const grouped = useMemo(() => groupByDay(events), [events]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <LoadingSpinner />
+      </div>
+    );
+  }
 
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
         <p className="text-sm text-text-muted">No activity yet</p>
-        <p className="text-xs text-text-muted/60 mt-1">Task events will appear here</p>
+        <p className="text-xs text-text-muted/60 mt-1">
+          Task events will appear here
+        </p>
       </div>
     );
   }
@@ -51,7 +63,7 @@ export function ActivityView({ events }: ActivityViewProps) {
           </h3>
           <div className="divide-y divide-glass-border/50">
             {group.events.map((event) => (
-              <ActivityItem key={event.id} event={event} />
+              <ActivityFeedItem key={event.id} event={event} />
             ))}
           </div>
         </div>

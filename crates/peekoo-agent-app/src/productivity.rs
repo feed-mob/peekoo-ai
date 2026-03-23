@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use chrono::Utc;
+use chrono::{Timelike, Utc};
 use peekoo_productivity_domain::pomodoro::{PomodoroError, PomodoroSession, PomodoroState};
 use peekoo_productivity_domain::task::{
     TaskDto, TaskEventDto, TaskEventType, TaskPriority, TaskService, TaskStatus,
@@ -44,46 +44,93 @@ impl ProductivityService {
             .map_err(|e| format!("DB lock error: {e}"))
     }
 
+    /// Checkpoint the WAL to ensure data is persisted to disk.
+    /// This is called after write operations. Errors are logged but not returned
+    /// to avoid failing operations when the database is busy.
+    fn checkpoint(&self) {
+        if let Ok(conn) = self.conn()
+            && let Err(e) = conn.execute_batch("PRAGMA wal_checkpoint(PASSIVE);")
+        {
+            tracing::warn!("WAL checkpoint failed (this is usually ok): {e}");
+        }
+    }
+
     // ── Task CRUD ───────────────────────────────────────────────────
 
+    #[allow(clippy::too_many_arguments)]
     pub fn create_task(
         &self,
         title: &str,
         priority: &str,
         assignee: &str,
         labels: &[String],
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<u32>,
+        recurrence_rule: Option<&str>,
+        recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
         let title = title.trim();
         if title.is_empty() {
             return Err("Task title cannot be empty".to_string());
         }
 
+        if let (Some(start), Some(end)) = (scheduled_start_at, scheduled_end_at)
+            && start >= end
+        {
+            return Err("scheduled_end_at must be after scheduled_start_at".to_string());
+        }
+
         let parsed_priority = parse_task_priority(priority)?;
         let now = Utc::now().to_rfc3339();
         let id = Uuid::new_v4().to_string();
         let labels_json = serde_json::to_string(labels).unwrap_or_else(|_| "[]".to_string());
+        let desc = description.filter(|d| !d.is_empty());
 
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO tasks (id, title, status, priority, assignee, labels_json, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![id, title, "todo", priority.to_lowercase(), assignee, labels_json, now, now],
+        let mut conn = self.conn()?;
+
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Begin transaction error: {e}"))?;
+
+        tx.execute(
+            "INSERT INTO tasks (id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13, ?14)",
+            params![&id, title, desc, "todo", priority.to_lowercase(), assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min.map(|v| v as i64), recurrence_rule, recurrence_time_of_day, now, now],
         )
         .map_err(|e| format!("Insert task error: {e}"))?;
 
-        self.write_event_inner(
-            &conn,
-            &id,
-            TaskEventType::Created,
+        let event_id = Uuid::new_v4().to_string();
+        let payload_json = serde_json::to_string(
             &serde_json::json!({"title": title, "priority": priority, "assignee": assignee}),
-        )?;
+        )
+        .unwrap_or_else(|_| "{}".to_string());
+        tx.execute(
+            "INSERT INTO task_events (id, task_id, event_type, payload_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![event_id, &id, "created", payload_json, now],
+        )
+        .map_err(|e| format!("Write task event error: {e}"))?;
+
+        tx.commit().map_err(|e| format!("Commit error: {e}"))?;
+
+        drop(conn);
+        self.checkpoint();
 
         Ok(TaskDto {
             id,
             title: title.to_string(),
+            description: desc.map(String::from),
             status: "todo".to_string(),
             priority: task_priority_to_str(parsed_priority).to_string(),
             assignee: assignee.to_string(),
             labels: labels.to_vec(),
+            scheduled_start_at: scheduled_start_at.map(String::from),
+            scheduled_end_at: scheduled_end_at.map(String::from),
+            estimated_duration_min,
+            recurrence_rule: recurrence_rule.map(String::from),
+            recurrence_time_of_day: recurrence_time_of_day.map(String::from),
+            parent_task_id: None,
+            created_at: now,
         })
     }
 
@@ -91,26 +138,30 @@ impl ProductivityService {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, status, priority, assignee, labels_json FROM tasks ORDER BY created_at DESC",
+                "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at FROM tasks ORDER BY created_at DESC",
             )
             .map_err(|e| format!("Prepare list_tasks error: {e}"))?;
 
         let tasks = stmt
             .query_map([], |row| {
-                let id: String = row.get(0)?;
-                let title: String = row.get(1)?;
-                let status: String = row.get(2)?;
-                let priority: String = row.get(3)?;
-                let assignee: String = row.get(4)?;
-                let labels_json: String = row.get(5)?;
+                let labels_json: String = row.get(6)?;
                 let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
+                let notes: Option<String> = row.get(2)?;
                 Ok(TaskDto {
-                    id,
-                    title,
-                    status,
-                    priority,
-                    assignee,
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    description: notes,
+                    status: row.get(3)?,
+                    priority: row.get(4)?,
+                    assignee: row.get(5)?,
                     labels,
+                    scheduled_start_at: row.get(7)?,
+                    scheduled_end_at: row.get(8)?,
+                    estimated_duration_min: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+                    recurrence_rule: row.get(10)?,
+                    recurrence_time_of_day: row.get(11)?,
+                    parent_task_id: row.get(12)?,
+                    created_at: row.get(13)?,
                 })
             })
             .map_err(|e| format!("Query tasks error: {e}"))?;
@@ -120,6 +171,7 @@ impl ProductivityService {
             .map_err(|e| format!("Collect tasks error: {e}"))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_task(
         &self,
         id: &str,
@@ -128,6 +180,12 @@ impl ProductivityService {
         status: Option<&str>,
         assignee: Option<&str>,
         labels: Option<&[String]>,
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<Option<u32>>,
+        recurrence_rule: Option<Option<&str>>,
+        recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
         let conn = self.conn()?;
 
@@ -145,6 +203,15 @@ impl ProductivityService {
             )
             .map_err(|e| format!("Update task title error: {e}"))?;
             current.title = t.to_string();
+        }
+
+        if let Some(d) = description {
+            conn.execute(
+                "UPDATE tasks SET notes = ?1, updated_at = ?2 WHERE id = ?3",
+                params![d, Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task description error: {e}"))?;
+            current.description = Some(d.to_string());
         }
 
         if let Some(p) = priority {
@@ -206,22 +273,95 @@ impl ProductivityService {
             current.labels = l.to_vec();
         }
 
+        if let Some(s) = scheduled_start_at {
+            conn.execute(
+                "UPDATE tasks SET scheduled_start_at = ?1, updated_at = ?2 WHERE id = ?3",
+                params![s, Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task scheduled_start_at error: {e}"))?;
+            current.scheduled_start_at = Some(s.to_string());
+        }
+
+        if let Some(e) = scheduled_end_at {
+            if let Some(ref start) = current.scheduled_start_at
+                && start.as_str() >= e
+            {
+                return Err("scheduled_end_at must be after scheduled_start_at".to_string());
+            }
+            conn.execute(
+                "UPDATE tasks SET scheduled_end_at = ?1, updated_at = ?2 WHERE id = ?3",
+                params![e, Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task scheduled_end_at error: {e}"))?;
+            current.scheduled_end_at = Some(e.to_string());
+        }
+
+        if let Some(dur) = estimated_duration_min {
+            conn.execute(
+                "UPDATE tasks SET estimated_duration_min = ?1, updated_at = ?2 WHERE id = ?3",
+                params![dur.map(|v| v as i64), Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task estimated_duration_min error: {e}"))?;
+            current.estimated_duration_min = dur;
+        }
+
+        if let Some(rr) = recurrence_rule {
+            tracing::info!(
+                "[productivity] update_task recurrence_rule received: {:?}",
+                rr
+            );
+            conn.execute(
+                "UPDATE tasks SET recurrence_rule = ?1, updated_at = ?2 WHERE id = ?3",
+                params![rr, Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task recurrence_rule error: {e}"))?;
+            current.recurrence_rule = rr.map(String::from);
+        }
+
+        if let Some(rtod) = recurrence_time_of_day {
+            conn.execute(
+                "UPDATE tasks SET recurrence_time_of_day = ?1, updated_at = ?2 WHERE id = ?3",
+                params![rtod, Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|e| format!("Update task recurrence_time_of_day error: {e}"))?;
+            current.recurrence_time_of_day = rtod.map(String::from);
+        }
+
+        // Ensure data is persisted to disk
+        drop(conn);
+        self.checkpoint();
+
         Ok(current)
     }
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn()?;
+        let mut conn = self.conn()?;
         let task = self.load_task(&conn, id)?;
 
-        conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])
+        // Use rusqlite's transaction API for atomic operations
+        let tx = conn
+            .transaction()
+            .map_err(|e| format!("Begin transaction error: {e}"))?;
+
+        tx.execute("DELETE FROM tasks WHERE id = ?1", params![id])
             .map_err(|e| format!("Delete task error: {e}"))?;
 
-        self.write_event_inner(
-            &conn,
-            id,
-            TaskEventType::Deleted,
-            &serde_json::json!({"title": task.title}),
-        )?;
+        // Write event using the transaction
+        let event_id = Uuid::new_v4().to_string();
+        let payload_json = serde_json::to_string(&serde_json::json!({"title": task.title}))
+            .unwrap_or_else(|_| "{}".to_string());
+        let now = Utc::now().to_rfc3339();
+        tx.execute(
+            "INSERT INTO task_events (id, task_id, event_type, payload_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![event_id, id, "deleted", payload_json, now],
+        )
+        .map_err(|e| format!("Write task event error: {e}"))?;
+
+        tx.commit().map_err(|e| format!("Commit error: {e}"))?;
+
+        // Ensure data is persisted to disk
+        drop(conn);
+        self.checkpoint();
 
         Ok(())
     }
@@ -249,6 +389,52 @@ impl ProductivityService {
             TaskEventType::StatusChanged,
             &serde_json::json!({"title": current.title, "from": current.status, "to": new_status}),
         )?;
+
+        // Just-in-Time recurrence: when marking a recurring task done, generate the next occurrence
+        if new_status == "done"
+            && let Some(ref rule) = current.recurrence_rule
+        {
+            let next_start = calculate_next_occurrence(
+                rule,
+                &current.scheduled_start_at,
+                current.recurrence_time_of_day.as_deref(),
+            );
+            if let Some(next_start) = next_start {
+                let id = Uuid::new_v4().to_string();
+                let duration_min = current.estimated_duration_min;
+
+                // Calculate next end by adding duration to next_start
+                let next_end = duration_min.and_then(|min| {
+                    chrono::DateTime::parse_from_rfc3339(&next_start)
+                        .ok()
+                        .map(|start| (start + chrono::Duration::minutes(min as i64)).to_rfc3339())
+                });
+
+                conn.execute(
+                    "INSERT INTO tasks (id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at) VALUES (?1, ?2, ?3, 'todo', ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    params![
+                        id, current.title, current.description.as_deref().unwrap_or(""),
+                        current.priority, current.assignee,
+                        serde_json::to_string(&current.labels).unwrap_or_else(|_| "[]".to_string()),
+                        next_start, next_end, duration_min.map(|v| v as i64),
+                        rule, current.recurrence_time_of_day.as_deref(),
+                        current.id, now, now
+                    ],
+                )
+                .map_err(|e| format!("Insert next recurring task error: {e}"))?;
+
+                self.write_event_inner(
+                    &conn,
+                    &id,
+                    TaskEventType::Created,
+                    &serde_json::json!({"title": current.title, "recurrence": "next_occurrence", "from_task": current.id}),
+                )?;
+            }
+        }
+
+        // Ensure data is persisted to disk
+        drop(conn);
+        self.checkpoint();
 
         let mut updated = current;
         updated.status = new_status.to_string();
@@ -370,18 +556,27 @@ impl ProductivityService {
 
     fn load_task(&self, conn: &Connection, id: &str) -> Result<TaskDto, String> {
         conn.query_row(
-            "SELECT id, title, status, priority, assignee, labels_json FROM tasks WHERE id = ?1",
+            "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at FROM tasks WHERE id = ?1",
             params![id],
             |row| {
-                let labels_json: String = row.get(5)?;
+                let labels_json: String = row.get(6)?;
                 let labels: Vec<String> = serde_json::from_str(&labels_json).unwrap_or_default();
+                let notes: Option<String> = row.get(2)?;
                 Ok(TaskDto {
                     id: row.get(0)?,
                     title: row.get(1)?,
-                    status: row.get(2)?,
-                    priority: row.get(3)?,
-                    assignee: row.get(4)?,
+                    description: notes,
+                    status: row.get(3)?,
+                    priority: row.get(4)?,
+                    assignee: row.get(5)?,
                     labels,
+                    scheduled_start_at: row.get(7)?,
+                    scheduled_end_at: row.get(8)?,
+                    estimated_duration_min: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+                    recurrence_rule: row.get(10)?,
+                    recurrence_time_of_day: row.get(11)?,
+                    parent_task_id: row.get(12)?,
+                    created_at: row.get(13)?,
                 })
             },
         )
@@ -405,6 +600,7 @@ impl ProductivityService {
             TaskEventType::Labeled => "labeled",
             TaskEventType::Unlabeled => "unlabeled",
             TaskEventType::Deleted => "deleted",
+            TaskEventType::Comment => "comment",
         };
         let payload_json = serde_json::to_string(payload).unwrap_or_else(|_| "{}".to_string());
         let now = Utc::now().to_rfc3339();
@@ -417,23 +613,123 @@ impl ProductivityService {
 
         Ok(())
     }
+
+    pub fn get_task_activity(
+        &self,
+        task_id: &str,
+        limit: u32,
+    ) -> Result<Vec<TaskEventDto>, String> {
+        let conn = self.conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, task_id, event_type, payload_json, created_at FROM task_events WHERE task_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+            )
+            .map_err(|e| format!("Prepare get_task_activity error: {e}"))?;
+
+        let events = stmt
+            .query_map(params![task_id, limit], |row| {
+                let payload_json: String = row.get(3)?;
+                let payload: serde_json::Value =
+                    serde_json::from_str(&payload_json).unwrap_or_default();
+                Ok(TaskEventDto {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    event_type: row.get(2)?,
+                    payload,
+                    created_at: row.get(4)?,
+                })
+            })
+            .map_err(|e| format!("Query task activity error: {e}"))?;
+
+        events
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| format!("Collect task activity error: {e}"))
+    }
+
+    pub fn add_task_comment(
+        &self,
+        task_id: &str,
+        text: &str,
+        author: &str,
+    ) -> Result<TaskEventDto, String> {
+        let conn = self.conn()?;
+
+        // Verify task exists
+        let _task = self.load_task(&conn, task_id)?;
+
+        let event_id = Uuid::new_v4().to_string();
+        let payload = serde_json::json!({
+            "text": text,
+            "author": author,
+        });
+        let payload_json = serde_json::to_string(&payload).unwrap_or_else(|_| "{}".to_string());
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "INSERT INTO task_events (id, task_id, event_type, payload_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![event_id, task_id, "comment", payload_json, now],
+        )
+        .map_err(|e| format!("Insert comment error: {e}"))?;
+
+        drop(conn);
+        self.checkpoint();
+
+        Ok(TaskEventDto {
+            id: event_id,
+            task_id: task_id.to_string(),
+            event_type: "comment".to_string(),
+            payload,
+            created_at: now,
+        })
+    }
+
+    pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
+        let conn = self.conn()?;
+
+        conn.execute("DELETE FROM task_events WHERE id = ?1", params![event_id])
+            .map_err(|e| format!("Delete task event error: {e}"))?;
+
+        drop(conn);
+        self.checkpoint();
+
+        Ok(())
+    }
 }
 
 impl TaskService for ProductivityService {
+    #[allow(clippy::too_many_arguments)]
     fn create_task(
         &self,
         title: &str,
         priority: &str,
         assignee: &str,
         labels: &[String],
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<u32>,
+        recurrence_rule: Option<&str>,
+        recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.create_task(title, priority, assignee, labels)
+        self.create_task(
+            title,
+            priority,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
     }
 
     fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
         self.list_tasks()
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn update_task(
         &self,
         id: &str,
@@ -442,8 +738,27 @@ impl TaskService for ProductivityService {
         status: Option<&str>,
         assignee: Option<&str>,
         labels: Option<&[String]>,
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<Option<u32>>,
+        recurrence_rule: Option<Option<&str>>,
+        recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.update_task(id, title, priority, status, assignee, labels)
+        self.update_task(
+            id,
+            title,
+            priority,
+            status,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
     }
 
     fn delete_task(&self, id: &str) -> Result<(), String> {
@@ -452,6 +767,19 @@ impl TaskService for ProductivityService {
 
     fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
         self.toggle_task(id)
+    }
+
+    fn get_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskEventDto>, String> {
+        self.get_task_activity(task_id, limit)
+    }
+
+    fn add_task_comment(
+        &self,
+        task_id: &str,
+        text: &str,
+        author: &str,
+    ) -> Result<TaskEventDto, String> {
+        self.add_task_comment(task_id, text, author)
     }
 }
 
@@ -517,7 +845,14 @@ fn format_event_summary(event: &TaskEventDto) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("Unknown task");
     match event.event_type.as_str() {
-        "created" => format!("Created \"{title}\""),
+        "created" => {
+            if let Some(recurrence) = event.payload.get("recurrence").and_then(|v| v.as_str())
+                && recurrence == "next_occurrence"
+            {
+                return format!("Generated next recurring instance of \"{title}\"");
+            }
+            format!("Created \"{title}\"")
+        }
         "status_changed" => {
             let from = event
                 .payload
@@ -558,4 +893,135 @@ fn format_event_summary(event: &TaskEventDto) -> String {
         "deleted" => format!("Deleted \"{title}\""),
         other => format!("{other} \"{title}\""),
     }
+}
+
+// ── RRULE recurrence calculation ──────────────────────────────────────
+
+fn parse_time_of_day(tod: &str) -> Option<(u32, u32)> {
+    let parts: Vec<&str> = tod.split(':').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let hour: u32 = parts[0].parse().ok()?;
+    let minute: u32 = parts[1].parse().ok()?;
+    if hour > 23 || minute > 59 {
+        return None;
+    }
+    Some((hour, minute))
+}
+
+fn apply_time_of_day(
+    date: chrono::DateTime<chrono::FixedOffset>,
+    tod: &str,
+) -> chrono::DateTime<chrono::FixedOffset> {
+    if let Some((hour, minute)) = parse_time_of_day(tod) {
+        let mut d = date;
+        d = d.with_hour(hour).unwrap_or(d);
+        d = d.with_minute(minute).unwrap_or(d);
+        d = d.with_second(0).unwrap_or(d);
+        d = d.with_nanosecond(0).unwrap_or(d);
+        d
+    } else {
+        date
+    }
+}
+
+/// Calculate the next occurrence date from an RRULE string.
+/// When `time_of_day` is provided (e.g. "09:00"), the returned datetime will have
+/// that time applied. When `time_of_day` is None, the base_time's time is preserved.
+fn calculate_next_occurrence(
+    rule: &str,
+    current_start: &Option<String>,
+    time_of_day: Option<&str>,
+) -> Option<String> {
+    let base_time = current_start
+        .as_ref()
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .unwrap_or_else(|| {
+            let now = Utc::now();
+            now.with_timezone(&chrono::FixedOffset::east_opt(0).unwrap())
+        });
+
+    let mut interval: u32 = 1;
+    let mut freq: Option<&str> = None;
+    let mut by_day: Vec<String> = Vec::new();
+    let mut count: Option<u32> = None;
+
+    for part in rule.split(';') {
+        let mut kv = part.splitn(2, '=');
+        let key = kv.next()?.trim();
+        let value = kv.next()?.trim();
+        match key.to_ascii_uppercase().as_str() {
+            "FREQ" => freq = Some(value),
+            "INTERVAL" => interval = value.parse().unwrap_or(1),
+            "BYDAY" => by_day = value.split(',').map(|s| s.trim().to_string()).collect(),
+            "COUNT" => count = value.parse().ok(),
+            _ => {}
+        }
+    }
+
+    let freq = freq?;
+
+    let next = match freq.to_ascii_uppercase().as_str() {
+        "DAILY" => base_time + chrono::Duration::days(interval as i64),
+        "WEEKLY" => {
+            if by_day.is_empty() {
+                base_time + chrono::Duration::weeks(interval as i64)
+            } else {
+                find_next_weekday(&base_time, &by_day, interval)
+            }
+        }
+        "MONTHLY" => base_time + chrono::Months::new(interval),
+        "HOURLY" => base_time + chrono::Duration::hours(interval as i64),
+        _ => return None,
+    };
+
+    if let Some(max) = count
+        && max == 0
+    {
+        return None;
+    }
+
+    let final_next = if let Some(tod) = time_of_day {
+        apply_time_of_day(next, tod)
+    } else {
+        next
+    };
+
+    Some(final_next.to_rfc3339())
+}
+
+fn find_next_weekday(
+    base: &chrono::DateTime<chrono::FixedOffset>,
+    by_day: &[String],
+    interval: u32,
+) -> chrono::DateTime<chrono::FixedOffset> {
+    use chrono::Datelike;
+
+    let day_offset = |abbrev: &str| -> Option<u32> {
+        match abbrev {
+            "MO" => Some(1),
+            "TU" => Some(2),
+            "WE" => Some(3),
+            "TH" => Some(4),
+            "FR" => Some(5),
+            "SA" => Some(6),
+            "SU" => Some(7),
+            _ => None,
+        }
+    };
+
+    let target_days: Vec<u32> = by_day.iter().filter_map(|d| day_offset(d)).collect();
+
+    let mut candidate = *base + chrono::Duration::days(1);
+
+    for _ in 0..14 {
+        let wd = candidate.weekday().num_days_from_monday() + 1;
+        if target_days.contains(&wd) {
+            return candidate;
+        }
+        candidate += chrono::Duration::days(1);
+    }
+
+    *base + chrono::Duration::weeks(interval as i64)
 }

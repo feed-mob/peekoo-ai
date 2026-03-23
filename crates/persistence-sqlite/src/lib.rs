@@ -5,9 +5,14 @@ pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
     include_str!("../migrations/0003_provider_compat.sql");
 pub const MIGRATION_0004_GLOBAL_SETTINGS: &str =
     include_str!("../migrations/0004_global_settings.sql");
-pub const MIGRATION_0005_PLUGINS: &str = include_str!("../migrations/0005_plugins.sql");
-pub const MIGRATION_0006_TASK_EXTENSIONS: &str =
-    include_str!("../migrations/0006_task_extensions.sql");
+pub const MIGRATION_0005_TASK_EXTENSIONS: &str =
+    include_str!("../migrations/0005_task_extensions.sql");
+pub const MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE: &str =
+    include_str!("../migrations/0006_task_scheduling_and_recurrence.sql");
+pub const MIGRATION_0007_RECURRENCE_TIME_OF_DAY: &str =
+    include_str!("../migrations/0007_recurrence_time_of_day.sql");
+pub const MIGRATION_0008_TASK_ORDER_INDEX: &str =
+    include_str!("../migrations/0008_task_order_index.sql");
 
 #[cfg(test)]
 mod tests {
@@ -40,7 +45,21 @@ mod tests {
 
     #[test]
     fn migration_contains_task_extensions() {
-        assert!(MIGRATION_0006_TASK_EXTENSIONS.contains("assignee"));
-        assert!(MIGRATION_0006_TASK_EXTENSIONS.contains("labels_json"));
+        assert!(MIGRATION_0005_TASK_EXTENSIONS.contains("assignee"));
+        assert!(MIGRATION_0005_TASK_EXTENSIONS.contains("labels_json"));
+    }
+
+    #[test]
+    fn migration_contains_task_scheduling_and_recurrence() {
+        assert!(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE.contains("scheduled_start_at"));
+        assert!(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE.contains("scheduled_end_at"));
+        assert!(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE.contains("estimated_duration_min"));
+        assert!(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE.contains("recurrence_rule"));
+        assert!(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE.contains("parent_task_id"));
+    }
+
+    #[test]
+    fn migration_contains_task_created_at() {
+        assert!(MIGRATION_0008_TASK_ORDER_INDEX.contains("created_at"));
     }
 }

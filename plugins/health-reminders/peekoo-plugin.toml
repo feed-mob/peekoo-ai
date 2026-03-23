@@ -29,14 +29,8 @@ description = "Dismiss a due reminder and reset its timer"
 parameters = '{"type":"object","properties":{"reminder_type":{"type":"string"}},"required":["reminder_type"]}'
 return_type = "object"
 
-[[tools.definitions]]
-name = "health_add_event_reminder"
-description = "Schedule a one-time reminder when a specific event occurs (e.g. pomodoro:completed)"
-parameters = '{"type":"object","properties":{"event_name":{"type":"string"},"message":{"type":"string"}},"required":["event_name","message"]}'
-return_type = "object"
-
 [events]
-subscribe = ["schedule:fired", "system:wake", "pomodoro:completed"]
+subscribe = ["schedule:fired", "system:wake"]
 emit = ["health:reminder-due"]
 
 [[config.fields]]
@@ -49,13 +43,6 @@ min = 5
 max = 180
 
 [[config.fields]]
-key = "water_enabled"
-label = "Water reminder enabled"
-description = "Enable or disable water reminders"
-type = "boolean"
-default = true
-
-[[config.fields]]
 key = "eye_rest_interval_min"
 label = "Eye rest interval"
 description = "Minutes between eye rest reminders"
@@ -65,13 +52,6 @@ min = 5
 max = 120
 
 [[config.fields]]
-key = "eye_rest_enabled"
-label = "Eye rest enabled"
-description = "Enable or disable eye rest reminders"
-type = "boolean"
-default = true
-
-[[config.fields]]
 key = "standup_interval_min"
 label = "Stand up interval"
 description = "Minutes between stand-up reminders"
@@ -79,13 +59,6 @@ type = "integer"
 default = 60
 min = 10
 max = 180
-
-[[config.fields]]
-key = "standup_enabled"
-label = "Stand up enabled"
-description = "Enable or disable stand-up reminders"
-type = "boolean"
-default = true
 
 [[data.providers]]
 name = "health_reminder_status"

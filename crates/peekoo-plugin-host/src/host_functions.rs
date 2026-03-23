@@ -345,15 +345,8 @@ pub fn build_host_functions(
             "peekoo_task_assign",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx.clone()),
-            host_task_assign,
-        ),
-        Function::new(
-            "peekoo_system_local_date",
-            [ValType::I64],
-            [ValType::I64],
             UserData::new(ctx),
-            host_system_local_date,
+            host_task_assign,
         ),
     ]
 }
@@ -916,10 +909,25 @@ fn host_task_create(
         })
         .unwrap_or_default();
 
-    match ctx
-        .task_service
-        .create_task(title, priority, assignee, &labels)
-    {
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min = req["estimated_duration_min"].as_u64().map(|v| v as u32);
+    let recurrence_rule = req["recurrence_rule"].as_str();
+    let recurrence_time_of_day = req["recurrence_time_of_day"].as_str();
+
+    match ctx.task_service.create_task(
+        title,
+        priority,
+        assignee,
+        &labels,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
         Ok(dto) => write_output(
             plugin,
             outputs,
@@ -980,11 +988,41 @@ fn host_task_update(
             .collect()
     });
     let labels_ref = labels.as_deref();
-
-    match ctx
-        .task_service
-        .update_task(id, title, priority, status, assignee, labels_ref)
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min: Option<Option<u32>> = if req.get("estimated_duration_min").is_some()
     {
+        Some(req["estimated_duration_min"].as_u64().map(|v| v as u32))
+    } else {
+        None
+    };
+    let recurrence_rule: Option<Option<&str>> = if req.get("recurrence_rule").is_some() {
+        Some(req["recurrence_rule"].as_str())
+    } else {
+        None
+    };
+    let recurrence_time_of_day: Option<Option<&str>> =
+        if req.get("recurrence_time_of_day").is_some() {
+            Some(req["recurrence_time_of_day"].as_str())
+        } else {
+            None
+        };
+
+    match ctx.task_service.update_task(
+        id,
+        title,
+        priority,
+        status,
+        assignee,
+        labels_ref,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
         Ok(dto) => write_output(
             plugin,
             outputs,
@@ -1050,10 +1088,20 @@ fn host_task_assign(
 
     let id = req["id"].as_str().unwrap_or("");
     let assignee = req["assignee"].as_str().unwrap_or("user");
-    match ctx
-        .task_service
-        .update_task(id, None, None, None, Some(assignee), None)
-    {
+    match ctx.task_service.update_task(
+        id,
+        None,
+        None,
+        None,
+        Some(assignee),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ) {
         Ok(dto) => write_output(
             plugin,
             outputs,
@@ -1244,21 +1292,6 @@ fn host_system_time_millis(
         plugin,
         outputs,
         &serde_json::json!({ "timeMillis": time_millis }).to_string(),
-    )
-}
-
-fn host_system_local_date(
-    plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
-    outputs: &mut [Val],
-    _user_data: UserData<HostContext>,
-) -> Result<(), Error> {
-    use chrono::Local;
-    let local_date = Local::now().format("%Y-%m-%d").to_string();
-    write_output(
-        plugin,
-        outputs,
-        &serde_json::json!({ "date": local_date }).to_string(),
     )
 }
 
@@ -1720,7 +1753,7 @@ mod tests {
 
     use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_productivity_domain::task::{TaskDto, TaskService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use peekoo_security::InMemorySecretStore;
     use rusqlite::Connection;
@@ -1737,7 +1770,19 @@ mod tests {
 
     struct NoopTaskService;
     impl TaskService for NoopTaskService {
-        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
             Err("noop".into())
         }
         fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
@@ -1751,6 +1796,12 @@ mod tests {
             _: Option<&str>,
             _: Option<&str>,
             _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
         ) -> Result<TaskDto, String> {
             Err("noop".into())
         }
@@ -1758,6 +1809,12 @@ mod tests {
             Ok(())
         }
         fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
             Err("noop".into())
         }
     }

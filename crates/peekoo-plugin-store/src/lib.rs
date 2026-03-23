@@ -585,7 +585,7 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
-    use peekoo_productivity_domain::task::{TaskDto, TaskService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -594,7 +594,19 @@ mod tests {
 
     struct NoopTaskService;
     impl TaskService for NoopTaskService {
-        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
             Err("noop".into())
         }
         fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
@@ -608,6 +620,12 @@ mod tests {
             _: Option<&str>,
             _: Option<&str>,
             _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
         ) -> Result<TaskDto, String> {
             Err("noop".into())
         }
@@ -615,6 +633,12 @@ mod tests {
             Ok(())
         }
         fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
             Err("noop".into())
         }
     }
