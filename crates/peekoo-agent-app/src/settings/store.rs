@@ -3,12 +3,12 @@ use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-    MIGRATION_0005_TASK_EXTENSIONS,
+    MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
+    default_model_for_provider, normalize_model_for_provider, DEFAULT_MODEL, DEFAULT_PROVIDER,
 };
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
@@ -448,6 +448,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "agent_provider_configs",
         MIGRATION_0003_PROVIDER_COMPAT,
     )?;
+    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
 
     conn.execute(
         &format!(

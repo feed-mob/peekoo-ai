@@ -23,7 +23,7 @@ use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
 use tungstenite::stream::MaybeTlsStream;
-use tungstenite::{Message, WebSocket, connect};
+use tungstenite::{connect, Message, WebSocket};
 use url::Url;
 
 use crate::config::resolved_config_map;
@@ -345,8 +345,15 @@ pub fn build_host_functions(
             "peekoo_task_assign",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx),
+            UserData::new(ctx.clone()),
             host_task_assign,
+        ),
+        Function::new(
+            "peekoo_system_local_date",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_system_local_date,
         ),
     ]
 }
@@ -1240,6 +1247,21 @@ fn host_system_time_millis(
     )
 }
 
+fn host_system_local_date(
+    plugin: &mut CurrentPlugin,
+    _inputs: &[Val],
+    outputs: &mut [Val],
+    _user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    use chrono::Local;
+    let local_date = Local::now().format("%Y-%m-%d").to_string();
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "date": local_date }).to_string(),
+    )
+}
+
 fn host_system_uuid_v4(
     plugin: &mut CurrentPlugin,
     _inputs: &[Val],
@@ -1708,9 +1730,9 @@ mod tests {
     use crate::state::PluginStateStore;
 
     use super::{
-        HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
+        can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
         is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
-        read_file_content, sanitize_key_component,
+        read_file_content, sanitize_key_component, HostContext,
     };
 
     struct NoopTaskService;
@@ -1932,10 +1954,9 @@ mod tests {
 
         let err = can_notify(&ctx).expect_err("notify should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'notifications' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'notifications' is not granted"));
     }
 
     #[test]
@@ -1945,10 +1966,9 @@ mod tests {
         let err =
             can_schedule(&ctx).expect_err("schedule access should require a granted permission");
 
-        assert!(
-            err.to_string()
-                .contains("permission 'scheduler' is not granted")
-        );
+        assert!(err
+            .to_string()
+            .contains("permission 'scheduler' is not granted"));
     }
 
     #[test]
