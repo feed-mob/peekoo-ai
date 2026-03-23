@@ -3,6 +3,14 @@
 ## Tauri Version (Current Focus)
 
 ### Completed
+- [x] Agent Task Execution via ACP
+  - Full ACP subprocess communication for agent task execution
+  - AgentScheduler with 30-second polling for task execution
+  - Agent registry table and task work tracking columns
+  - Frontend agent selector for task assignment
+  - See changelog: `ai/memories/changelogs/202603232317-feat-agent-task-execution.md`
+  - PR #125: https://github.com/feed-mob/peekoo-ai/pull/125
+
 - [x] Project structure setup (agent-first workspace)
 - [x] Core Rust business logic crates (`peekoo-agent`, `peekoo-agent-app`, `peekoo-agent-auth`, `peekoo-productivity-domain`, `persistence-sqlite`, `security`, `peekoo-paths`)
 - [x] Tauri app scaffolding with 19 Rust commands (`greet`, `get_sprite_state`, `agent_prompt`, `agent_set_model`, `agent_get_model`, `agent_settings_get`, `agent_settings_update`, `agent_settings_catalog`, `agent_provider_auth_set_api_key`, `agent_provider_auth_clear`, `agent_provider_config_set`, `agent_oauth_start`, `agent_oauth_status`, `agent_oauth_cancel`, `create_task`, `pomodoro_start`, `pomodoro_pause`, `pomodoro_resume`, `pomodoro_finish`)
@@ -68,8 +76,8 @@
 
 ---
 
-**Last updated**: 2026-03-21
-**Status**: Tasks UI fully refactored with optimistic updates, drag-and-drop, and improved UX
+**Last updated**: 2026-03-23
+**Status**: Agent task execution implemented via ACP protocol - tasks can now be assigned to AI agents for automatic execution
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring
