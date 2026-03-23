@@ -11,7 +11,7 @@ pub struct PeekBadgeItem {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub countdown_secs: Option<u64>,
+    pub target_epoch_secs: Option<u64>,
 }
 
 /// Collects badge updates from plugins and merges them into a single list.
@@ -124,7 +124,7 @@ mod tests {
                 label: "A".into(),
                 value: "one".into(),
                 icon: None,
-                countdown_secs: None,
+                target_epoch_secs: None,
             }],
         );
         service.set(
@@ -133,7 +133,7 @@ mod tests {
                 label: "B".into(),
                 value: "two".into(),
                 icon: None,
-                countdown_secs: None,
+                target_epoch_secs: None,
             }],
         );
 

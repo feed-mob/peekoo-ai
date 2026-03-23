@@ -267,6 +267,11 @@ pub(crate) struct SystemTimeMillisResponse {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct SystemLocalDateResponse {
+    pub date: String,
+}
+
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SystemUuidV4Response {
     pub uuid: String,
@@ -342,6 +347,7 @@ extern "ExtismHost" {
         input: Json<CryptoEd25519SignRequest>,
     ) -> Json<CryptoEd25519SignResponse>;
     pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_system_local_date(input: String) -> Json<SystemLocalDateResponse>;
 }
 
 #[cfg(test)]

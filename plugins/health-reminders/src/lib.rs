@@ -10,8 +10,11 @@ const STANDUP_KEY: &str = "standup";
 #[derive(Clone, Serialize, Deserialize)]
 struct ReminderConfig {
     water_interval_min: u32,
+    water_enabled: bool,
     eye_rest_interval_min: u32,
+    eye_rest_enabled: bool,
     standup_interval_min: u32,
+    standup_enabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -26,6 +29,15 @@ struct ReminderState {
 struct HealthStatus {
     config: ReminderConfig,
     reminders: Vec<ReminderState>,
+    #[serde(default)]
+    event_reminders: Vec<EventReminder>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct EventReminder {
+    event_name: String,
+    message: String,
+    created_at: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -50,13 +62,19 @@ pub fn on_event(input: String) -> FnResult<String> {
     match event_name {
         "schedule:fired" => {
             if let Some(key) = event["payload"]["key"].as_str() {
-                handle_schedule_fired(key);
+                if key.ends_with(":pre") {
+                    // Pre-events only trigger a badge refresh, which happens at the end of this function
+                } else {
+                    handle_schedule_fired(key);
+                }
             }
         }
         "system:wake" => {
             sync_schedules();
         }
-        _ => {}
+        _ => {
+            handle_custom_event(event_name);
+        }
     }
 
     push_peek_badges();
@@ -76,12 +94,24 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
     if let Some(value) = patch["water_interval_min"].as_u64() {
         config.water_interval_min = (value as u32).clamp(5, 180);
     }
+    if let Some(value) = patch["water_enabled"].as_bool() {
+        config.water_enabled = value;
+    }
+
     if let Some(value) = patch["eye_rest_interval_min"].as_u64() {
         config.eye_rest_interval_min = (value as u32).clamp(5, 120);
     }
+    if let Some(value) = patch["eye_rest_enabled"].as_bool() {
+        config.eye_rest_enabled = value;
+    }
+
     if let Some(value) = patch["standup_interval_min"].as_u64() {
         config.standup_interval_min = (value as u32).clamp(10, 180);
     }
+    if let Some(value) = patch["standup_enabled"].as_bool() {
+        config.standup_enabled = value;
+    }
+
     save_config(&config);
     sync_schedules();
     push_peek_badges();
@@ -93,6 +123,18 @@ pub fn tool_health_dismiss(input: String) -> FnResult<String> {
     let args: DismissInput = serde_json::from_str(&input)?;
     reset_schedule(&args.reminder_type);
     push_peek_badges();
+    Ok(serde_json::to_string(&load_status())?)
+}
+
+#[plugin_fn]
+pub fn tool_health_add_event_reminder(input: String) -> FnResult<String> {
+    let reminder: EventReminder = serde_json::from_str(&input)?;
+    let mut reminders = load_event_reminders();
+    reminders.push(EventReminder {
+        created_at: current_epoch_secs(),
+        ..reminder
+    });
+    save_event_reminders(&reminders);
     Ok(serde_json::to_string(&load_status())?)
 }
 
@@ -128,18 +170,35 @@ fn sync_schedules() {
     cancel_all_schedules();
     let config = load_config();
 
-    let reminders = [
-        (WATER_KEY, u64::from(config.water_interval_min) * 60),
-        (EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60),
-        (STANDUP_KEY, u64::from(config.standup_interval_min) * 60),
-    ];
+    let mut reminders = Vec::new();
+    if config.water_enabled {
+        reminders.push((WATER_KEY, u64::from(config.water_interval_min) * 60));
+    }
+    if config.eye_rest_enabled {
+        reminders.push((EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60));
+    }
+    if config.standup_enabled {
+        reminders.push((STANDUP_KEY, u64::from(config.standup_interval_min) * 60));
+    }
 
     let now = current_epoch_secs();
     for (key, interval_secs) in reminders {
-        // Health reminders skip missed timers rather than firing immediately
-        // on restart -- the user doesn't need a stale "drink water" alert.
         let delay = compute_remaining_delay(key, interval_secs, now, false);
         schedule_set_with_delay(key, interval_secs, delay);
+
+        // Schedule pre-event 60s before the primary reminder
+        let pre_threshold = 60;
+        if interval_secs > pre_threshold {
+            let pre_key = format!("{}:pre", key);
+            let effective_delay = delay.unwrap_or(interval_secs);
+            let pre_delay = if effective_delay > pre_threshold {
+                Some(effective_delay - pre_threshold)
+            } else {
+                Some(0)
+            };
+            // Note: pre-events use the same interval but fire earlier
+            let _ = peekoo::schedule::set(&pre_key, interval_secs, true, pre_delay);
+        }
     }
 }
 
@@ -187,6 +246,7 @@ fn compute_remaining_delay(
 fn cancel_all_schedules() {
     for key in [WATER_KEY, EYE_REST_KEY, STANDUP_KEY] {
         schedule_cancel(key);
+        schedule_cancel(&format!("{}:pre", key));
     }
 }
 
@@ -212,6 +272,7 @@ fn load_status() -> HealthStatus {
             load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min),
             load_reminder_state(STANDUP_KEY, config.standup_interval_min),
         ],
+        event_reminders: load_event_reminders(),
     }
 }
 
@@ -231,16 +292,34 @@ fn load_reminder_state(reminder_type: &str, interval_min: u32) -> ReminderState 
 fn load_config() -> ReminderConfig {
     let config = config_get();
     ReminderConfig {
-        water_interval_min: config["water_interval_min"].as_u64().unwrap_or(45) as u32,
-        eye_rest_interval_min: config["eye_rest_interval_min"].as_u64().unwrap_or(20) as u32,
-        standup_interval_min: config["standup_interval_min"].as_u64().unwrap_or(60) as u32,
+        water_interval_min: state_get("water_interval_min")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_else(|| config["water_interval_min"].as_u64().unwrap_or(45)) as u32,
+        water_enabled: state_get("water_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_else(|| config["water_enabled"].as_bool().unwrap_or(true)),
+        eye_rest_interval_min: state_get("eye_rest_interval_min")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_else(|| config["eye_rest_interval_min"].as_u64().unwrap_or(20)) as u32,
+        eye_rest_enabled: state_get("eye_rest_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_else(|| config["eye_rest_enabled"].as_bool().unwrap_or(true)),
+        standup_interval_min: state_get("standup_interval_min")
+            .and_then(|v| v.as_u64())
+            .unwrap_or_else(|| config["standup_interval_min"].as_u64().unwrap_or(60)) as u32,
+        standup_enabled: state_get("standup_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or_else(|| config["standup_enabled"].as_bool().unwrap_or(true)),
     }
 }
 
 fn save_config(config: &ReminderConfig) {
     state_set("water_interval_min", json!(config.water_interval_min));
+    state_set("water_enabled", json!(config.water_enabled));
     state_set("eye_rest_interval_min", json!(config.eye_rest_interval_min));
+    state_set("eye_rest_enabled", json!(config.eye_rest_enabled));
     state_set("standup_interval_min", json!(config.standup_interval_min));
+    state_set("standup_enabled", json!(config.standup_enabled));
 }
 
 /// Persist the wall-clock epoch when the timer for `key` will next fire.
@@ -267,6 +346,34 @@ fn current_epoch_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+fn load_event_reminders() -> Vec<EventReminder> {
+    state_get("event_reminders")
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default()
+}
+
+fn save_event_reminders(reminders: &[EventReminder]) {
+    state_set("event_reminders", json!(reminders));
+}
+
+fn handle_custom_event(event_name: &str) {
+    let reminders = load_event_reminders();
+    let original_count = reminders.len();
+    
+    // Find matching reminders
+    let (to_trigger, to_keep): (Vec<_>, Vec<_>) = reminders
+        .into_iter()
+        .partition(|r| r.event_name == event_name);
+    
+    for r in to_trigger {
+        notify("Linked Reminder", &r.message);
+    }
+    
+    if to_keep.len() != original_count {
+        save_event_reminders(&to_keep);
+    }
 }
 
 fn config_get() -> Value {
@@ -308,6 +415,8 @@ fn emit_event(event: &str, payload: Value) {
 
 fn push_peek_badges() {
     let status = load_status();
+    let threshold_secs = 60; // Only show badge 60s before due
+
     let icon_for = |reminder_type: &str| -> &str {
         match reminder_type {
             "water" => "droplet",
@@ -320,7 +429,7 @@ fn push_peek_badges() {
     let items: Vec<BadgeItem> = status
         .reminders
         .iter()
-        .filter(|reminder| reminder.active)
+        .filter(|reminder| reminder.active && reminder.time_remaining_secs <= threshold_secs)
         .map(|reminder| BadgeItem {
             label: reminder
                 .reminder_type
@@ -337,7 +446,7 @@ fn push_peek_badges() {
                 .join(" "),
             value: format_countdown(reminder.time_remaining_secs),
             icon: Some(icon_for(&reminder.reminder_type).to_string()),
-            countdown_secs: Some(reminder.time_remaining_secs),
+            target_epoch_secs: Some(current_epoch_secs() + reminder.time_remaining_secs),
         })
         .collect();
 
@@ -345,10 +454,12 @@ fn push_peek_badges() {
 }
 
 fn format_countdown(seconds: u64) -> String {
-    if seconds == 0 {
-        return "now".to_string();
+    if seconds <= 60 {
+        let mins = seconds / 60;
+        let secs = seconds % 60;
+        return format!("{:02}:{:02}", mins, secs);
     }
-    let minutes = (seconds / 60).max(1); // floor, but at least 1
+    let minutes = seconds / 60;
     if minutes < 60 {
         format!("~{minutes} min")
     } else {

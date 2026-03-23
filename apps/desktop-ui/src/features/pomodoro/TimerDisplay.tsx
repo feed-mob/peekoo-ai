@@ -6,14 +6,14 @@ interface TimerDisplayProps {
 }
 
 export function TimerDisplay({ time, status, progress, isWorkMode }: TimerDisplayProps) {
-  const radius = 80;
+  const radius = 75;
   const stroke = 6;
   const normalizedProgress = 100 - progress;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (normalizedProgress / 100) * circumference;
 
   return (
-    <div className="relative flex flex-col items-center mb-6">
+    <div className="relative flex flex-col items-center mb-2">
       {/* Circular progress ring */}
       <div className="relative">
         <svg

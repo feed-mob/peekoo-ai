@@ -9,6 +9,7 @@ const PluginsView = lazy(() => import("@/views/PluginsView"));
 const PluginPanelView = lazy(() => import("@/views/PluginPanelView"));
 const SettingsView = lazy(() => import("@/views/SettingsView"));
 const AboutView = lazy(() => import("@/views/AboutView"));
+const PomodoroMemoView = lazy(() => import("@/views/PomodoroMemoView"));
 
 function UnknownView({ label }: { label: string }) {
   return (
@@ -43,6 +44,8 @@ function viewForLabel(label: string) {
       return <SettingsView />;
     case "panel-about":
       return <AboutView />;
+    case "panel-pomodoro-memo":
+      return <PomodoroMemoView />;
   }
 }
 
