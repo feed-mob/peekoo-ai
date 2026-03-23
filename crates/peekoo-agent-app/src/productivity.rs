@@ -6,7 +6,7 @@ use peekoo_productivity_domain::pomodoro::{PomodoroError, PomodoroSession, Pomod
 use peekoo_productivity_domain::task::{
     TaskDto, TaskEventDto, TaskEventType, TaskPriority, TaskService, TaskStatus,
 };
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

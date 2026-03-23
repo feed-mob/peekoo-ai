@@ -290,7 +290,8 @@ impl AgentApplication {
         assignee: &str,
         labels: &[String],
     ) -> Result<TaskDto, String> {
-        self.productivity.create_task(title, priority, assignee, labels)
+        self.productivity
+            .create_task(title, priority, assignee, labels)
     }
 
     pub fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
@@ -725,10 +726,7 @@ impl AgentApplication {
         };
 
         // Inject task activity summary so the agent has context.
-        let system_prompt = self
-            .productivity
-            .task_activity_summary()
-            .ok();
+        let system_prompt = self.productivity.task_activity_summary().ok();
 
         Ok(AgentServiceConfig {
             working_directory: self.workspace_dir.clone(),
@@ -851,12 +849,26 @@ mod tests {
         fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
-        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> { Ok(vec![]) }
-        fn update_task(&self, _: &str, _: Option<&str>, _: Option<&str>, _: Option<&str>, _: Option<&str>, _: Option<&[String]>) -> Result<TaskDto, String> {
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+        ) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
-        fn delete_task(&self, _: &str) -> Result<(), String> { Ok(()) }
-        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> { Err("not implemented".into()) }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

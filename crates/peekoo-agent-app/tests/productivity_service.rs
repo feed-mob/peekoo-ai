@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use peekoo_agent_app::productivity::ProductivityService;
-use peekoo_productivity_domain::task::TaskService;
 use rusqlite::Connection;
 
 fn setup_service() -> ProductivityService {

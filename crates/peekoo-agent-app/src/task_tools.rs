@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use peekoo_productivity_domain::task::TaskService;
 use pi::error::Result;
 use pi::model::{ContentBlock, TextContent};
 use pi::tools::{Tool, ToolOutput, ToolUpdate};
-use peekoo_productivity_domain::task::TaskService;
 
 fn ok_json(value: serde_json::Value) -> Result<ToolOutput> {
     Ok(ToolOutput {
@@ -189,7 +189,10 @@ impl Tool for UpdateTaskTool {
         });
         let labels_ref = labels.as_deref();
 
-        match self.service.update_task(id, title, priority, status, assignee, labels_ref) {
+        match self
+            .service
+            .update_task(id, title, priority, status, assignee, labels_ref)
+        {
             Ok(dto) => ok_json(serde_json::to_value(&dto).unwrap_or_default()),
             Err(e) => err_json(format!("Update task error: {e}")),
         }
@@ -329,7 +332,10 @@ impl Tool for AssignTaskTool {
     ) -> Result<ToolOutput> {
         let id = input["id"].as_str().unwrap_or("");
         let assignee = input["assignee"].as_str().unwrap_or("user");
-        match self.service.update_task(id, None, None, None, Some(assignee), None) {
+        match self
+            .service
+            .update_task(id, None, None, None, Some(assignee), None)
+        {
             Ok(dto) => ok_json(serde_json::to_value(&dto).unwrap_or_default()),
             Err(e) => err_json(format!("Assign task error: {e}")),
         }
