@@ -25,7 +25,9 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
-use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
+use peekoo_productivity_domain::task::{TaskDto, TaskEventDto};
+
+use crate::productivity::{PomodoroSessionDto, ProductivityService};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -85,8 +87,11 @@ impl AgentApplication {
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
         let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
+        let productivity = ProductivityService::new(Arc::clone(&db_conn));
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(productivity.clone());
         let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
-            create_plugin_registry(db_conn)?;
+            create_plugin_registry(db_conn, task_service)?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -101,7 +106,7 @@ impl AgentApplication {
             agent: Mutex::new(None),
             settings,
             app_settings,
-            productivity: ProductivityService::new(),
+            productivity,
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
@@ -278,8 +283,48 @@ impl AgentApplication {
 
     // ── Productivity ────────────────────────────────────────────────────
 
-    pub fn create_task(&self, title: &str, priority: &str) -> Result<TaskDto, String> {
-        self.productivity.create_task(title, priority)
+    pub fn create_task(
+        &self,
+        title: &str,
+        priority: &str,
+        assignee: &str,
+        labels: &[String],
+    ) -> Result<TaskDto, String> {
+        self.productivity
+            .create_task(title, priority, assignee, labels)
+    }
+
+    pub fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+        self.productivity.list_tasks()
+    }
+
+    pub fn update_task(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        priority: Option<&str>,
+        status: Option<&str>,
+        assignee: Option<&str>,
+        labels: Option<&[String]>,
+    ) -> Result<TaskDto, String> {
+        self.productivity
+            .update_task(id, title, priority, status, assignee, labels)
+    }
+
+    pub fn delete_task(&self, id: &str) -> Result<(), String> {
+        self.productivity.delete_task(id)
+    }
+
+    pub fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
+        self.productivity.toggle_task(id)
+    }
+
+    pub fn list_task_events(&self, limit: i64) -> Result<Vec<TaskEventDto>, String> {
+        self.productivity.list_task_events(limit)
+    }
+
+    pub fn task_activity_summary(&self) -> Result<String, String> {
+        self.productivity.task_activity_summary()
     }
 
     pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
@@ -663,6 +708,12 @@ impl AgentApplication {
         // result -> next turn).
         service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
 
+        // Register native task tools so the LLM can manage tasks.
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(self.productivity.clone());
+        let task_tools = crate::task_tools::create_task_tools(task_service);
+        service.register_native_tools(task_tools);
+
         Ok((service, settings_version))
     }
 
@@ -674,10 +725,14 @@ impl AgentApplication {
             Vec::new()
         };
 
+        // Inject task activity summary so the agent has context.
+        let system_prompt = self.productivity.task_activity_summary().ok();
+
         Ok(AgentServiceConfig {
             working_directory: self.workspace_dir.clone(),
             persona_dir: Some(self.workspace_dir.clone()),
             agent_skills,
+            system_prompt,
             auto_discover: false,
             ..Default::default()
         })
@@ -691,6 +746,7 @@ fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bo
 #[allow(clippy::type_complexity)]
 fn create_plugin_registry(
     db_conn: Arc<Mutex<Connection>>,
+    task_service: Arc<dyn peekoo_productivity_domain::task::TaskService>,
 ) -> Result<
     (
         Arc<PluginRegistry>,
@@ -719,6 +775,7 @@ fn create_plugin_registry(
         Arc::clone(&notifications),
         Arc::clone(&peek_badges),
         Arc::clone(&mood_reactions),
+        task_service,
     ));
 
     Ok((
@@ -780,10 +837,39 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
+    use peekoo_productivity_domain::task::{TaskDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::{install_discovered_plugins, should_restore_agent};
+
+    struct NoopTaskService;
+
+    impl TaskService for NoopTaskService {
+        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+        ) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+    }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -831,6 +917,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         ))
     }
 

@@ -585,11 +585,39 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::*;
     use peekoo_plugin_host::manifest::parse_manifest;
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(&self, _: &str, _: &str, _: &str, _: &[String]) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn make_store() -> PluginStoreService {
         PluginStoreService::new()
@@ -636,6 +664,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         ))
     }
 
@@ -885,6 +914,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());
@@ -946,6 +976,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());

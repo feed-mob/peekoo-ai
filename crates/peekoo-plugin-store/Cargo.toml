@@ -13,5 +13,6 @@ tracing = "0.1"
 ureq = { version = "2", features = ["json"] }
 
 peekoo-notifications = { path = "../peekoo-notifications" }
+peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
 rusqlite = { version = "0.38" }
