@@ -94,9 +94,16 @@ impl ProductivityService {
             .transaction()
             .map_err(|e| format!("Begin transaction error: {e}"))?;
 
+        // Set agent_work_status to 'pending' for agent-assigned tasks
+        let agent_work_status: Option<&str> = if assignee != "user" {
+            Some("pending")
+        } else {
+            None
+        };
+
         tx.execute(
-            "INSERT INTO tasks (id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13, ?14)",
-            params![&id, title, desc, "todo", priority.to_lowercase(), assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min.map(|v| v as i64), recurrence_rule, recurrence_time_of_day, now, now],
+            "INSERT INTO tasks (id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at, agent_work_status) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, NULL, ?13, ?14, ?15)",
+            params![&id, title, desc, "todo", priority.to_lowercase(), assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min.map(|v| v as i64), recurrence_rule, recurrence_time_of_day, now, now, agent_work_status],
         )
         .map_err(|e| format!("Insert task error: {e}"))?;
 
@@ -131,9 +138,9 @@ impl ProductivityService {
             recurrence_time_of_day: recurrence_time_of_day.map(String::from),
             parent_task_id: None,
             created_at: now,
-            agent_work_status: None,
+            agent_work_status: agent_work_status.map(String::from),
             agent_work_session_id: None,
-            agent_work_attempt_count: None,
+            agent_work_attempt_count: Some(0),
             agent_work_started_at: None,
             agent_work_completed_at: None,
         })
@@ -264,6 +271,34 @@ impl ProductivityService {
                 params![a, Utc::now().to_rfc3339(), id],
             )
             .map_err(|e| format!("Update task assignee error: {e}"))?;
+
+            // Reset agent work tracking when reassigning
+            if a != "user" {
+                // Assigned to an agent — reset status to pending so the scheduler picks it up
+                conn.execute(
+                    "UPDATE tasks SET agent_work_status = 'pending', agent_work_session_id = NULL, agent_work_attempt_count = 0, agent_work_started_at = NULL, agent_work_completed_at = NULL WHERE id = ?1",
+                    params![id],
+                )
+                .map_err(|e| format!("Reset agent work status error: {e}"))?;
+                current.agent_work_status = Some("pending".to_string());
+                current.agent_work_session_id = None;
+                current.agent_work_attempt_count = Some(0);
+                current.agent_work_started_at = None;
+                current.agent_work_completed_at = None;
+            } else {
+                // Assigned back to user — clear agent work tracking
+                conn.execute(
+                    "UPDATE tasks SET agent_work_status = NULL, agent_work_session_id = NULL, agent_work_attempt_count = 0, agent_work_started_at = NULL, agent_work_completed_at = NULL WHERE id = ?1",
+                    params![id],
+                )
+                .map_err(|e| format!("Clear agent work status error: {e}"))?;
+                current.agent_work_status = None;
+                current.agent_work_session_id = None;
+                current.agent_work_attempt_count = Some(0);
+                current.agent_work_started_at = None;
+                current.agent_work_completed_at = None;
+            }
+
             current.assignee = a.to_string();
             self.write_event_inner(
                 &conn,
@@ -713,32 +748,31 @@ impl ProductivityService {
     pub fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String> {
         let conn = self.conn()?;
 
-        let current_status: Option<String> = conn
+        // Use Option<Option<String>> to distinguish "row not found" from "NULL column value"
+        let row_result: Option<Option<String>> = conn
             .query_row(
                 "SELECT agent_work_status FROM tasks WHERE id = ?1",
                 params![task_id],
-                |row| row.get(0),
+                |row| row.get::<_, Option<String>>(0),
             )
             .optional()
             .map_err(|e| format!("Query task error: {e}"))?;
 
-        if current_status.is_none() {
-            return Err("Task not found".to_string());
+        match row_result {
+            None => return Err("Task not found".to_string()),
+            Some(None) => return Ok(false), // NULL status — not an agent task
+            Some(Some(ref status)) if status == "pending" || status == "failed" => {
+                let rows = conn.execute(
+                    "UPDATE tasks SET agent_work_status = 'claimed' WHERE id = ?1 AND agent_work_status IN ('pending', 'failed')",
+                    params![task_id],
+                )
+                .map_err(|e| format!("Claim task error: {e}"))?;
+                drop(conn);
+                self.checkpoint();
+                return Ok(rows > 0);
+            }
+            _ => return Ok(false), // Already claimed, executing, completed, etc.
         }
-
-        let status = current_status.unwrap();
-        if status == "pending" {
-            conn.execute(
-                "UPDATE tasks SET agent_work_status = 'claimed' WHERE id = ?1 AND agent_work_status = 'pending'",
-                params![task_id],
-            )
-            .map_err(|e| format!("Claim task error: {e}"))?;
-            drop(conn);
-            self.checkpoint();
-            return Ok(true);
-        }
-
-        Ok(false)
     }
 
     pub fn update_agent_work_status(
@@ -816,6 +850,7 @@ impl ProductivityService {
                  WHERE assignee != 'user'
                    AND status != 'done'
                    AND agent_work_status IN ('pending', 'failed')
+                   AND (agent_work_attempt_count IS NULL OR agent_work_attempt_count < 3)
                    AND (scheduled_start_at IS NULL OR scheduled_start_at <= ?1)
                  ORDER BY created_at DESC",
             )

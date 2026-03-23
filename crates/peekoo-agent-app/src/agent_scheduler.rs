@@ -11,6 +11,9 @@ use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::productivity::ProductivityService;
 
+/// Maximum number of agent execution attempts before a task is permanently marked as failed.
+const MAX_AGENT_ATTEMPTS: u32 = 3;
+
 pub struct AgentScheduler {
     scheduler: Scheduler,
     task_service: Arc<ProductivityService>,
@@ -116,12 +119,13 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
             task.agent_work_status.as_deref().unwrap_or("none")
         );
 
-        let claimed = task_service
-            .claim_task_for_agent(&task.id)
-            .map_err(|e| {
+        let claimed = match task_service.claim_task_for_agent(&task.id) {
+            Ok(c) => c,
+            Err(e) => {
                 tracing::error!("AgentScheduler: Failed to claim task {}: {}", task.id, e);
-                e.to_string()
-            })?;
+                continue;
+            }
+        };
 
         if !claimed {
             tracing::warn!("AgentScheduler: Task {} already claimed by another scheduler, skipping", task.id);
@@ -145,7 +149,12 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
             }
             
             match task_service.increment_attempt_count(&task.id) {
-                Ok(count) => tracing::info!("AgentScheduler: Incremented attempt count for task {} to {}", task.id, count),
+                Ok(count) => {
+                    tracing::info!("AgentScheduler: Incremented attempt count for task {} to {}", task.id, count);
+                    if count >= MAX_AGENT_ATTEMPTS {
+                        tracing::warn!("AgentScheduler: Task {} has exhausted all {} retry attempts, will not be retried", task.id, MAX_AGENT_ATTEMPTS);
+                    }
+                }
                 Err(e) => tracing::error!("AgentScheduler: Failed to increment attempt count for task {}: {}", task.id, e),
             }
         } else {

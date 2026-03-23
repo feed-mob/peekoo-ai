@@ -5,11 +5,16 @@
 UPDATE tasks SET assignee = 'peekoo-agent' WHERE assignee = 'agent';
 
 -- Add agent work tracking columns to tasks
-ALTER TABLE tasks ADD COLUMN agent_work_status TEXT;
+ALTER TABLE tasks ADD COLUMN agent_work_status TEXT DEFAULT 'pending';
 ALTER TABLE tasks ADD COLUMN agent_work_session_id TEXT;
 ALTER TABLE tasks ADD COLUMN agent_work_attempt_count INTEGER DEFAULT 0;
 ALTER TABLE tasks ADD COLUMN agent_work_started_at TEXT;
 ALTER TABLE tasks ADD COLUMN agent_work_completed_at TEXT;
+
+-- Set agent_work_status to 'pending' for existing agent-assigned tasks
+UPDATE tasks SET agent_work_status = 'pending' WHERE assignee != 'user' AND status != 'done';
+-- User-assigned tasks don't need agent work tracking
+UPDATE tasks SET agent_work_status = NULL WHERE assignee = 'user';
 
 -- Create agent_registry table
 CREATE TABLE IF NOT EXISTS agent_registry (
