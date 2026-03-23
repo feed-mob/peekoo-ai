@@ -978,6 +978,18 @@ mod tests {
         ) -> Result<peekoo_productivity_domain::task::TaskEventDto, String> {
             Err("not implemented".into())
         }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("not implemented".into())
+        }
+        fn update_agent_work_status(&self, _: &str, _: &str, _: Option<&str>) -> Result<(), String> {
+            Err("not implemented".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("not implemented".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

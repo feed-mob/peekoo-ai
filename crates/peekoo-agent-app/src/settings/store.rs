@@ -5,11 +5,12 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
     MIGRATION_0005_TASK_EXTENSIONS, MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE,
     MIGRATION_0007_RECURRENCE_TIME_OF_DAY, MIGRATION_0008_TASK_ORDER_INDEX,
+    MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
 };
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
+    default_model_for_provider, normalize_model_for_provider, DEFAULT_MODEL, DEFAULT_PROVIDER,
 };
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
@@ -558,6 +559,44 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|e| format!("Record migration 0008 state error: {e}"))?;
+    }
+
+    // Migration 0009: Agent task assignment
+    let already_applied_0009: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0009_agent_task_assignment'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0009 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0009 {
+        let migration_sql = MIGRATION_0009_AGENT_TASK_ASSIGNMENT;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name")
+                    && !e_str.contains("table agent_registry already exists")
+                    && !e_str.contains("UNIQUE constraint failed: agent_registry.id")
+                    && !e_str.contains("index.*already exists")
+                {
+                    return Err(format!(
+                        "Apply migration 0009_agent_task_assignment error: {e}"
+                    ));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0009_agent_task_assignment')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0009 state error: {e}"))?;
     }
 
     Ok(())

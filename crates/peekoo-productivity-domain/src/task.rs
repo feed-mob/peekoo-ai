@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentWorkStatus {
+    Pending,
+    Claimed,
+    Executing,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskPriority {
     Low,
     Medium,
@@ -143,6 +152,15 @@ pub trait TaskService: Send + Sync {
         text: &str,
         author: &str,
     ) -> Result<TaskEventDto, String>;
+    fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String>;
+    fn update_agent_work_status(
+        &self,
+        task_id: &str,
+        status: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), String>;
+    fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String>;
+    fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -161,6 +179,11 @@ pub struct TaskDto {
     pub recurrence_time_of_day: Option<String>,
     pub parent_task_id: Option<String>,
     pub created_at: String,
+    pub agent_work_status: Option<String>,
+    pub agent_work_session_id: Option<String>,
+    pub agent_work_attempt_count: Option<u32>,
+    pub agent_work_started_at: Option<String>,
+    pub agent_work_completed_at: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

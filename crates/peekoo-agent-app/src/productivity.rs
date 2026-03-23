@@ -131,6 +131,11 @@ impl ProductivityService {
             recurrence_time_of_day: recurrence_time_of_day.map(String::from),
             parent_task_id: None,
             created_at: now,
+            agent_work_status: None,
+            agent_work_session_id: None,
+            agent_work_attempt_count: None,
+            agent_work_started_at: None,
+            agent_work_completed_at: None,
         })
     }
 
@@ -138,7 +143,7 @@ impl ProductivityService {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at FROM tasks ORDER BY created_at DESC",
+                "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks ORDER BY created_at DESC",
             )
             .map_err(|e| format!("Prepare list_tasks error: {e}"))?;
 
@@ -162,6 +167,11 @@ impl ProductivityService {
                     recurrence_time_of_day: row.get(11)?,
                     parent_task_id: row.get(12)?,
                     created_at: row.get(13)?,
+                    agent_work_status: row.get(14)?,
+                    agent_work_session_id: row.get(15)?,
+                    agent_work_attempt_count: row.get(16)?,
+                    agent_work_started_at: row.get(17)?,
+                    agent_work_completed_at: row.get(18)?,
                 })
             })
             .map_err(|e| format!("Query tasks error: {e}"))?;
@@ -556,7 +566,7 @@ impl ProductivityService {
 
     fn load_task(&self, conn: &Connection, id: &str) -> Result<TaskDto, String> {
         conn.query_row(
-            "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at FROM tasks WHERE id = ?1",
+            "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks WHERE id = ?1",
             params![id],
             |row| {
                 let labels_json: String = row.get(6)?;
@@ -577,6 +587,11 @@ impl ProductivityService {
                     recurrence_time_of_day: row.get(11)?,
                     parent_task_id: row.get(12)?,
                     created_at: row.get(13)?,
+                    agent_work_status: row.get(14)?,
+                    agent_work_session_id: row.get(15)?,
+                    agent_work_attempt_count: row.get(16)?,
+                    agent_work_started_at: row.get(17)?,
+                    agent_work_completed_at: row.get(18)?,
                 })
             },
         )
@@ -694,6 +709,148 @@ impl ProductivityService {
 
         Ok(())
     }
+
+    pub fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String> {
+        let conn = self.conn()?;
+
+        let current_status: Option<String> = conn
+            .query_row(
+                "SELECT agent_work_status FROM tasks WHERE id = ?1",
+                params![task_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| format!("Query task error: {e}"))?;
+
+        if current_status.is_none() {
+            return Err("Task not found".to_string());
+        }
+
+        let status = current_status.unwrap();
+        if status == "pending" {
+            conn.execute(
+                "UPDATE tasks SET agent_work_status = 'claimed' WHERE id = ?1 AND agent_work_status = 'pending'",
+                params![task_id],
+            )
+            .map_err(|e| format!("Claim task error: {e}"))?;
+            drop(conn);
+            self.checkpoint();
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    pub fn update_agent_work_status(
+        &self,
+        task_id: &str,
+        status: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), String> {
+        let conn = self.conn()?;
+        let now = Utc::now().to_rfc3339();
+
+        match status {
+            "executing" => {
+                conn.execute(
+                    "UPDATE tasks SET agent_work_status = ?1, agent_work_session_id = ?2, agent_work_started_at = ?3 WHERE id = ?4",
+                    params![status, session_id, now, task_id],
+                )
+                .map_err(|e| format!("Update agent work status error: {e}"))?;
+            }
+            "completed" | "failed" => {
+                conn.execute(
+                    "UPDATE tasks SET agent_work_status = ?1, agent_work_completed_at = ?2 WHERE id = ?3",
+                    params![status, now, task_id],
+                )
+                .map_err(|e| format!("Update agent work status error: {e}"))?;
+            }
+            _ => {
+                conn.execute(
+                    "UPDATE tasks SET agent_work_status = ?1 WHERE id = ?2",
+                    params![status, task_id],
+                )
+                .map_err(|e| format!("Update agent work status error: {e}"))?;
+            }
+        }
+
+        drop(conn);
+        self.checkpoint();
+        Ok(())
+    }
+
+    pub fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String> {
+        let conn = self.conn()?;
+
+        conn.execute(
+            "UPDATE tasks SET agent_work_attempt_count = agent_work_attempt_count + 1 WHERE id = ?1",
+            params![task_id],
+        )
+        .map_err(|e| format!("Increment attempt count error: {e}"))?;
+
+        let count: u32 = conn
+            .query_row(
+                "SELECT agent_work_attempt_count FROM tasks WHERE id = ?1",
+                params![task_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| format!("Query attempt count error: {e}"))?;
+
+        drop(conn);
+        self.checkpoint();
+        Ok(count)
+    }
+
+    pub fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+        let conn = self.conn()?;
+        let now = Utc::now().to_rfc3339();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, title, notes, status, priority, assignee, labels_json,
+                        scheduled_start_at, scheduled_end_at, estimated_duration_min,
+                        recurrence_rule, recurrence_time_of_day, parent_task_id, created_at,
+                        agent_work_status, agent_work_session_id, agent_work_attempt_count,
+                        agent_work_started_at, agent_work_completed_at
+                 FROM tasks
+                 WHERE assignee != 'user'
+                   AND status != 'done'
+                   AND agent_work_status IN ('pending', 'failed')
+                   AND (scheduled_start_at IS NULL OR scheduled_start_at <= ?1)
+                 ORDER BY created_at DESC",
+            )
+            .map_err(|e| format!("Prepare statement error: {e}"))?;
+
+        let tasks = stmt
+            .query_map(params![now], |row| {
+                Ok(TaskDto {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    description: row.get(2)?,
+                    status: row.get(3)?,
+                    priority: row.get(4)?,
+                    assignee: row.get(5)?,
+                    labels: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
+                    scheduled_start_at: row.get(7)?,
+                    scheduled_end_at: row.get(8)?,
+                    estimated_duration_min: row.get(9)?,
+                    recurrence_rule: row.get(10)?,
+                    recurrence_time_of_day: row.get(11)?,
+                    parent_task_id: row.get(12)?,
+                    created_at: row.get(13)?,
+                    agent_work_status: row.get(14)?,
+                    agent_work_session_id: row.get(15)?,
+                    agent_work_attempt_count: row.get(16)?,
+                    agent_work_started_at: row.get(17)?,
+                    agent_work_completed_at: row.get(18)?,
+                })
+            })
+            .map_err(|e| format!("Query tasks error: {e}"))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(tasks)
+    }
 }
 
 impl TaskService for ProductivityService {
@@ -780,6 +937,27 @@ impl TaskService for ProductivityService {
         author: &str,
     ) -> Result<TaskEventDto, String> {
         self.add_task_comment(task_id, text, author)
+    }
+
+    fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String> {
+        self.claim_task_for_agent(task_id)
+    }
+
+    fn update_agent_work_status(
+        &self,
+        task_id: &str,
+        status: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), String> {
+        self.update_agent_work_status(task_id, status, session_id)
+    }
+
+    fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String> {
+        self.increment_attempt_count(task_id)
+    }
+
+    fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+        self.list_tasks_for_agent_execution()
     }
 }
 

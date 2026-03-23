@@ -833,6 +833,18 @@ mod tests {
         fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
             Err("noop".into())
         }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(&self, _: &str, _: &str, _: Option<&str>) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
     }
 
     fn test_registry(plugin_dirs: Vec<std::path::PathBuf>) -> PluginRegistry {

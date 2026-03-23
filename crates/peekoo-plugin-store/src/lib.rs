@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use peekoo_paths::peekoo_global_data_dir;
 use peekoo_plugin_host::manifest::parse_manifest;
 use peekoo_plugin_host::{
-    CompanionDef, PluginManifest, PluginRegistry, resolve_companion_install_path,
+    resolve_companion_install_path, CompanionDef, PluginManifest, PluginRegistry,
 };
 
 const GITHUB_API_CONTENTS_URL: &str =
@@ -584,7 +584,7 @@ mod tests {
     use std::sync::OnceLock;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
+    use peekoo_plugin_host::{resolve_companion_target, PluginRegistry};
     use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
@@ -640,6 +640,23 @@ mod tests {
         }
         fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
             Err("noop".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
         }
     }
 
@@ -1021,12 +1038,10 @@ wasm = "plugin.wasm"
         registry
             .install_plugin(&plugin_dir)
             .expect("initial plugin install should succeed");
-        assert!(
-            registry
-                .loaded_keys()
-                .iter()
-                .any(|key| key == "health-reminders")
-        );
+        assert!(registry
+            .loaded_keys()
+            .iter()
+            .any(|key| key == "health-reminders"));
 
         let err = store
             .replace_installed_plugin("health-reminders", &plugin_dir, &registry, |_| {

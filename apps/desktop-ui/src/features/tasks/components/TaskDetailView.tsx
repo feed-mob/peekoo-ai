@@ -10,7 +10,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Task } from "@/types/task";
-import { PREDEFINED_LABELS } from "@/types/task";
+import { PREDEFINED_LABELS, KNOWN_AGENTS } from "@/types/task";
 import { TaskLabelPills } from "./TaskLabelPills";
 import { TaskActivitySection } from "./TaskActivitySection";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
@@ -188,20 +188,25 @@ export function TaskDetailView({
           {/* Assignee */}
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-text-muted w-16">Assignee</span>
-            <button
-              onClick={() =>
-                onUpdate({ assignee: task.assignee === "user" ? "agent" : "user" })
-              }
+            <Select
+              value={task.assignee}
+              onValueChange={(value) => onUpdate({ assignee: value })}
               disabled={isUpdating}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-medium transition-all disabled:opacity-50 ${
-                task.assignee === "agent"
-                  ? "bg-purple-500/20 text-purple-400 border border-purple-500/40"
-                  : "bg-space-deep text-text-muted border border-glass-border"
-              }`}
             >
-              {task.assignee === "agent" ? <Bot size={12} /> : <User size={12} />}
-              {task.assignee === "agent" ? "Agent" : "Me"}
-            </button>
+              <SelectTrigger className="h-7 w-32 bg-space-deep border-glass-border text-[10px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {KNOWN_AGENTS.map((agent) => (
+                  <SelectItem key={agent.id} value={agent.id}>
+                    <div className="flex items-center gap-1.5">
+                      {agent.id === "user" ? <User size={12} /> : <Bot size={12} />}
+                      {agent.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Labels */}

@@ -1,3 +1,4 @@
+pub mod agent_scheduler;
 pub mod application;
 pub mod conversation;
 pub mod plugin;

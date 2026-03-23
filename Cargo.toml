@@ -4,6 +4,7 @@ members = [
   "crates/persistence-sqlite",
   "crates/security",
   "crates/peekoo-agent",
+  "crates/peekoo-agent-acp",
   "crates/peekoo-agent-auth",
   "crates/peekoo-agent-app",
   "crates/peekoo-app-settings",
