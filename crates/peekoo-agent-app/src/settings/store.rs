@@ -448,12 +448,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "agent_provider_configs",
         MIGRATION_0003_PROVIDER_COMPAT,
     )?;
-    apply_migration_if_needed(
-        conn,
-        "0005_plugins",
-        "plugins",
-        MIGRATION_0005_PLUGINS,
-    )?;
+    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
 
     conn.execute(
         &format!(

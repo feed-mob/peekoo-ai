@@ -359,7 +359,7 @@ fn save_event_reminders(reminders: &[EventReminder]) {
 }
 
 fn handle_custom_event(event_name: &str) {
-    let mut reminders = load_event_reminders();
+    let reminders = load_event_reminders();
     let original_count = reminders.len();
     
     // Find matching reminders
