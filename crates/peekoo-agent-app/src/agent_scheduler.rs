@@ -219,7 +219,7 @@ async fn execute_task_acp(
     let mut child = match Command::new(&command_path)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::inherit())
         .spawn()
     {
         Ok(child) => {
@@ -234,7 +234,6 @@ async fn execute_task_acp(
 
     let stdin = child.stdin.take().expect("stdin should be available");
     let stdout = child.stdout.take().expect("stdout should be available");
-    let _stderr = child.stderr.take().expect("stderr should be available");
 
     tracing::info!("AgentScheduler: Setting up ACP LocalSet for task {}", task.id);
     let local_set = LocalSet::new();
