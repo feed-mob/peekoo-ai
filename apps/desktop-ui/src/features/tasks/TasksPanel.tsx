@@ -1,62 +1,89 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2 } from "lucide-react";
-import type { TaskStatus } from "@/types/task";
-import { useTasks } from "./use-tasks";
-import { TaskItem } from "./TaskItem";
-import { TaskInput } from "./TaskInput";
-import { ActivityView } from "./ActivityView";
+import { CheckCircle2, Calendar, ListTodo, CheckCheck, CalendarDays } from "lucide-react";
+import type { TaskTab } from "@/types/task";
+import { useTasks } from "./hooks/use-tasks";
+import { TaskList } from "./components/TaskList";
+import { TaskQuickInput } from "./components/TaskQuickInput";
+import { ActivityFeed } from "./components/ActivityFeed";
+import { TaskDetailView } from "./components/TaskDetailView";
+import { ErrorToast } from "./components/ErrorToast";
+import { LoadingSpinner } from "./components/LoadingSpinner";
 
-type Tab = "tasks" | "activity";
-type StatusFilter = "all" | TaskStatus;
-
-const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "todo", label: "Todo" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "done", label: "Done" },
+const TAB_CONFIG: { value: TaskTab; label: string; icon: React.ReactNode; emoji: string }[] = [
+  { value: "today", label: "Today", icon: <CalendarDays size={13} />, emoji: "📅" },
+  { value: "week", label: "This Week", icon: <Calendar size={13} />, emoji: "📆" },
+  { value: "all", label: "All", icon: <ListTodo size={13} />, emoji: "📋" },
+  { value: "done", label: "Done", icon: <CheckCheck size={13} />, emoji: "✅" },
 ];
 
-function EmptyState() {
+function EmptyState({ tab }: { tab: TaskTab }) {
+  const messages: Record<TaskTab, { title: string; subtitle: string }> = {
+    today: { title: "No tasks for today", subtitle: "Schedule a task or add a new one" },
+    week: { title: "Nothing this week", subtitle: "Schedule tasks for the upcoming week" },
+    all: { title: "No tasks", subtitle: "Create a task to get started" },
+    done: { title: "No completed tasks yet", subtitle: "Finish some tasks to see them here" },
+  };
+  const msg = messages[tab];
+
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <CheckCircle2 size={48} className="text-text-muted/40 mb-3" />
-      <p className="text-sm font-medium text-text-primary mb-1">No tasks yet</p>
-      <p className="text-xs text-text-muted">Add your first task to get started</p>
+      <p className="text-sm font-medium text-text-primary mb-1">{msg.title}</p>
+      <p className="text-xs text-text-muted">{msg.subtitle}</p>
     </div>
   );
 }
+
+type MainTab = "tasks" | "activity";
 
 export function TasksPanel() {
   const {
     tasks,
     activityEvents,
-    loading,
+    stats,
+    isLoading,
+    isCreating,
+    isToggling,
+    isUpdating,
+    isDeleting,
+    toasts,
+    removeToast,
+    activeTab,
+    setActiveTab,
+    setSelectedTaskId,
+    selectedTask,
     addTask,
     toggleTask,
+    updateTask,
     updateTaskStatus,
     deleteTask,
   } = useTasks();
 
-  const [tab, setTab] = useState<Tab>("tasks");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [mainTab, setMainTab] = useState<MainTab>("tasks");
 
-  const filteredTasks = useMemo(() => {
-    if (statusFilter === "all") return tasks;
-    return tasks.filter((t) => t.status === statusFilter);
-  }, [tasks, statusFilter]);
-
-  const stats = useMemo(() => {
-    const total = tasks.length;
-    const completed = tasks.filter((t) => t.status === "done").length;
-    return { total, completed };
-  }, [tasks]);
-
-  if (loading) {
+  // Show loading state
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <p className="text-sm text-text-muted">Loading tasks...</p>
+        <LoadingSpinner />
+        <span className="ml-2 text-sm text-text-muted">Loading tasks...</span>
       </div>
+    );
+  }
+
+  // Detail view
+  if (selectedTask) {
+    return (
+      <TaskDetailView
+        task={selectedTask}
+        onBack={() => setSelectedTaskId(null)}
+        onUpdate={(fields) => updateTask(selectedTask.id, fields)}
+        onToggle={() => toggleTask(selectedTask.id)}
+        onDelete={() => deleteTask(selectedTask.id)}
+        isUpdating={isUpdating === selectedTask.id}
+        isDeleting={isDeleting === selectedTask.id}
+      />
     );
   }
 
@@ -66,16 +93,16 @@ export function TasksPanel() {
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
         <span className="text-xs text-text-muted font-medium">
-          {stats.completed} / {stats.total} completed
+          {stats.completed} / {stats.total} done
         </span>
       </div>
 
-      {/* Tabs */}
+      {/* Main Tabs */}
       <div className="flex gap-1 bg-space-deep rounded-lg p-1">
         <button
-          onClick={() => setTab("tasks")}
+          onClick={() => setMainTab("tasks")}
           className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            tab === "tasks"
+            mainTab === "tasks"
               ? "bg-space-surface text-text-primary shadow-sm"
               : "text-text-muted hover:text-text-primary"
           }`}
@@ -83,9 +110,9 @@ export function TasksPanel() {
           Tasks
         </button>
         <button
-          onClick={() => setTab("activity")}
+          onClick={() => setMainTab("activity")}
           className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            tab === "activity"
+            mainTab === "activity"
               ? "bg-space-surface text-text-primary shadow-sm"
               : "text-text-muted hover:text-text-primary"
           }`}
@@ -94,54 +121,57 @@ export function TasksPanel() {
         </button>
       </div>
 
-      {tab === "tasks" ? (
+      {mainTab === "tasks" ? (
         <>
-          {/* Input */}
-          <TaskInput onAdd={addTask} />
+          {/* Quick Input */}
+          <TaskQuickInput onAdd={addTask} isCreating={isCreating} />
 
-          {/* Status filters */}
+          {/* Time-based tabs */}
           <div className="flex gap-1">
-            {STATUS_FILTERS.map((f) => (
+            {TAB_CONFIG.map((t) => (
               <button
-                key={f.value}
-                onClick={() => setStatusFilter(f.value)}
-                className={`px-2.5 py-1 text-[10px] font-medium rounded-full transition-colors ${
-                  statusFilter === f.value
+                key={t.value}
+                onClick={() => setActiveTab(t.value)}
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium rounded-md transition-colors ${
+                  activeTab === t.value
                     ? "bg-[var(--glow-green)]/20 text-[var(--glow-green)] border border-[var(--glow-green)]/40"
                     : "bg-space-deep text-text-muted border border-glass-border hover:text-text-primary"
                 }`}
               >
-                {f.label}
+                {t.icon}
+                <span className="hidden sm:inline">{t.label}</span>
+                <span className="sm:hidden">{t.emoji}</span>
               </button>
             ))}
           </div>
 
           {/* Task list */}
           <ScrollArea className="flex-1 -mx-1 px-1">
-            {filteredTasks.length === 0 ? (
-              <EmptyState />
+            {tasks.length === 0 ? (
+              <EmptyState tab={activeTab} />
             ) : (
-              <div className="space-y-2 pr-2">
-                {filteredTasks.map((task) => (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onToggle={() => toggleTask(task.id)}
-                    onDelete={() => deleteTask(task.id)}
-                    onStatusChange={(status) => updateTaskStatus(task.id, status)}
-                  />
-                ))}
-              </div>
+              <TaskList
+                tasks={tasks}
+                onToggle={toggleTask}
+                onDelete={deleteTask}
+                onStatusChange={updateTaskStatus}
+                onSelect={setSelectedTaskId}
+                isToggling={isToggling}
+                isDeleting={isDeleting}
+              />
             )}
           </ScrollArea>
         </>
       ) : (
         <ScrollArea className="flex-1 -mx-1 px-1">
           <div className="pr-2">
-            <ActivityView events={activityEvents} />
+            <ActivityFeed events={activityEvents} />
           </div>
         </ScrollArea>
       )}
+
+      {/* Toast notifications */}
+      <ErrorToast toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

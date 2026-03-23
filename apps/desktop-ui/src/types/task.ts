@@ -1,10 +1,19 @@
 export interface Task {
   id: string;
   title: string;
+  description: string | null;
   status: "todo" | "in_progress" | "done";
   priority: "low" | "medium" | "high";
   assignee: "user" | "agent";
   labels: string[];
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
+  estimated_duration_min: number | null;
+  recurrence_rule: string | null;
+  recurrence_time_of_day: string | null;
+  parent_task_id: string | null;
+  order_index: number;
+  created_at: string;
 }
 
 export interface TaskEvent {
@@ -26,3 +35,5 @@ export const PREDEFINED_LABELS = [
 
 export type TaskStatus = Task["status"];
 export type TaskPriority = Task["priority"];
+
+export type TaskTab = "today" | "week" | "all" | "done";
