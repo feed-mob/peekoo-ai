@@ -1,6 +1,13 @@
 use std::sync::Arc;
 
+use agent_client_protocol::{
+    Client, ClientSideConnection, ContentBlock, InitializeRequest, NewSessionRequest,
+    ProtocolVersion, PromptRequest, TextContent,
+};
 use peekoo_scheduler::Scheduler;
+use tokio::process::Command;
+use tokio::task::LocalSet;
+use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::productivity::ProductivityService;
 
@@ -32,14 +39,27 @@ impl AgentScheduler {
                 let task_service = Arc::clone(&task_service);
                 let shutdown = shutdown.clone();
 
-                tokio::spawn(async move {
-                    if shutdown.is_cancelled() {
-                        return;
-                    }
+                std::thread::spawn(move || {
+                    let rt = match tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                    {
+                        Ok(rt) => rt,
+                        Err(e) => {
+                            tracing::error!("Failed to create tokio runtime: {}", e);
+                            return;
+                        }
+                    };
 
-                    if let Err(e) = check_and_execute_tasks(&task_service).await {
-                        tracing::error!("Agent scheduler error: {}", e);
-                    }
+                    rt.block_on(async {
+                        if shutdown.is_cancelled() {
+                            return;
+                        }
+
+                        if let Err(e) = check_and_execute_tasks(&task_service).await {
+                            tracing::error!("Agent scheduler error: {}", e);
+                        }
+                    });
                 });
             }
         });
@@ -59,9 +79,11 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
     for task in tasks {
         tracing::info!("Found agent task: {} - {}", task.id, task.title);
 
+
         let claimed = task_service
             .claim_task_for_agent(&task.id)
             .map_err(|e| e.to_string())?;
+
 
         if !claimed {
             tracing::debug!("Task {} already claimed by another scheduler", task.id);
@@ -70,22 +92,12 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
 
         tracing::info!("Claimed task {} for agent execution", task.id);
 
+
         let _ = task_service
             .update_agent_work_status(&task.id, "executing", None)
             .map_err(|e| e.to_string());
 
-        // TODO: Implement full ACP integration
-        // This requires spawning the peekoo-agent-acp subprocess and communicating
-        // via the ACP protocol over stdio. The current stub adds a comment to the task.
-        //
-        // Full implementation would:
-        // 1. Spawn `peekoo-agent-acp` subprocess
-        // 2. Create ClientSideConnection with stdin/stdout pipes
-        // 3. Send ACP initialize/new_session/prompt messages
-        // 4. Process agent responses and tool calls
-        // 5. Update task status based on agent actions
-
-        if let Err(e) = execute_task_stub(task_service, &task).await {
+        if let Err(e) = execute_task_acp(task_service, &task).await {
             tracing::error!("Failed to execute task {}: {}", task.id, e);
             let _ = task_service
                 .update_agent_work_status(&task.id, "failed", None)
@@ -99,36 +111,146 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
     Ok(())
 }
 
-async fn execute_task_stub(
+async fn execute_task_acp(
     task_service: &ProductivityService,
     task: &peekoo_productivity_domain::task::TaskDto,
 ) -> Result<(), String> {
+    use agent_client_protocol::Agent as _;
+
     let comments = task_service
         .get_task_activity(&task.id, 100)
         .map_err(|e| e.to_string())?;
 
-    let task_summary = format!(
-        "**Task:** {}\n**Description:** {}\n**Priority:** {}\n**Comments:** {}",
-        task.title,
-        task.description.as_deref().unwrap_or("None"),
-        task.priority,
-        comments.len()
-    );
+    let task_context = serde_json::json!({
+        "task_id": task.id,
+        "title": task.title,
+        "description": task.description,
+        "status": task.status,
+        "priority": task.priority,
+        "labels": task.labels,
+        "scheduled_start_at": task.scheduled_start_at,
+        "scheduled_end_at": task.scheduled_end_at,
+        "estimated_duration_min": task.estimated_duration_min,
+        "comments": comments.iter().map(|c| {
+            serde_json::json!({
+                "id": c.id,
+                "author": c.payload.get("author").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                "text": c.payload.get("text").and_then(|v| v.as_str()).unwrap_or(""),
+                "created_at": c.created_at
+            })
+        }).collect::<Vec<_>>()
+    });
 
-    tracing::info!("Would execute task {}:\n{}", task.id, task_summary);
+    tracing::info!("Spawning peekoo-agent-acp for task {}", task.id);
 
-    let comment_text = format!(
-        "Agent would process this task.\n\n{}",
-        task_summary
+    let mut child = Command::new("peekoo-agent-acp")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn peekoo-agent-acp: {}. Is the binary in PATH?", e))?;
+
+    let stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+
+    let local_set = LocalSet::new();
+
+    let stop_reason = local_set
+        .run_until(async move {
+            let (conn, handle_io) = ClientSideConnection::new(
+                TaskClient,
+                stdin.compat_write(),
+                stdout.compat(),
+                |fut| {
+                    tokio::task::spawn_local(fut);
+                },
+            );
+
+            tokio::task::spawn_local(async move {
+                if let Err(e) = handle_io.await {
+                    tracing::error!("ACP I/O error: {}", e);
+                }
+            });
+
+            tracing::debug!("Sending initialize request");
+            let _init_result = conn
+                .initialize(InitializeRequest::new(ProtocolVersion::V1))
+                .await
+                .map_err(|e| format!("ACP initialize error: {}", e))?;
+
+
+            tracing::debug!("Creating new session");
+            let session = conn
+                .new_session(NewSessionRequest::new(
+                    std::env::current_dir().unwrap_or_default(),
+                ))
+                .await
+                .map_err(|e| format!("ACP new_session error: {}", e))?;
+
+            let prompt_json = serde_json::to_string(&task_context)
+                .map_err(|e| format!("Failed to serialize task context: {}", e))?;
+
+            tracing::debug!("Sending prompt to agent");
+            let prompt_response = conn
+                .prompt(PromptRequest::new(
+                    session.session_id,
+                    vec![ContentBlock::Text(TextContent::new(prompt_json))],
+                ))
+                .await
+                .map_err(|e| format!("ACP prompt error: {}", e))?;
+
+            tracing::debug!(
+                "Prompt completed with stop_reason: {:?}",
+                prompt_response.stop_reason
+            );
+
+            Ok::<_, String>(prompt_response.stop_reason)
+        })
+        .await
+        .map_err(|e| format!("ACP execution error: {}", e))?;
+
+    drop(local_set);
+    let _ = child.kill().await;
+
+    let response_text = format!(
+        "Agent completed task analysis.\n\n**Title:** {}\n**Status:** Processed with reason {:?}",
+        task.title, stop_reason
     );
 
     task_service
-        .add_task_comment(&task.id, &comment_text, "agent")
+        .add_task_comment(&task.id, &response_text, "agent")
         .map_err(|e| e.to_string())?;
-
     task_service
         .update_agent_work_status(&task.id, "completed", None)
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[derive(Clone)]
+struct TaskClient;
+
+#[async_trait::async_trait(?Send)]
+impl Client for TaskClient {
+    async fn request_permission(
+        &self,
+        _args: agent_client_protocol::RequestPermissionRequest,
+    ) -> Result<agent_client_protocol::RequestPermissionResponse, agent_client_protocol::Error>
+    {
+        Ok(agent_client_protocol::RequestPermissionResponse::new(
+            agent_client_protocol::RequestPermissionOutcome::Cancelled,
+        ))
+    }
+
+    async fn session_notification(
+        &self,
+        args: agent_client_protocol::SessionNotification,
+    ) -> Result<(), agent_client_protocol::Error> {
+        if let agent_client_protocol::SessionUpdate::AgentMessageChunk(chunk) = &args.update
+            && let agent_client_protocol::ContentBlock::Text(text) = &chunk.content
+        {
+            tracing::info!("Agent message: {}", text.text);
+        }
+        Ok(())
+    }
 }
