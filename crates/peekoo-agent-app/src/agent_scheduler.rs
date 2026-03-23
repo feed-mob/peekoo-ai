@@ -23,7 +23,8 @@ impl AgentScheduler {
         let task_service = Arc::clone(&self.task_service);
         let shutdown = self.shutdown_token.clone();
 
-        let _ = self.scheduler
+        let _ = self
+            .scheduler
             .set("agent-scheduler", "check-tasks", 30, true, Some(5));
 
         self.scheduler.start(move |owner, key| {
@@ -73,7 +74,18 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
             .update_agent_work_status(&task.id, "executing", None)
             .map_err(|e| e.to_string());
 
-        if let Err(e) = execute_task(task_service, &task).await {
+        // TODO: Implement full ACP integration
+        // This requires spawning the peekoo-agent-acp subprocess and communicating
+        // via the ACP protocol over stdio. The current stub adds a comment to the task.
+        //
+        // Full implementation would:
+        // 1. Spawn `peekoo-agent-acp` subprocess
+        // 2. Create ClientSideConnection with stdin/stdout pipes
+        // 3. Send ACP initialize/new_session/prompt messages
+        // 4. Process agent responses and tool calls
+        // 5. Update task status based on agent actions
+
+        if let Err(e) = execute_task_stub(task_service, &task).await {
             tracing::error!("Failed to execute task {}: {}", task.id, e);
             let _ = task_service
                 .update_agent_work_status(&task.id, "failed", None)
@@ -87,43 +99,31 @@ async fn check_and_execute_tasks(task_service: &ProductivityService) -> Result<(
     Ok(())
 }
 
-async fn execute_task(task_service: &ProductivityService, task: &peekoo_productivity_domain::task::TaskDto) -> Result<(), String> {
+async fn execute_task_stub(
+    task_service: &ProductivityService,
+    task: &peekoo_productivity_domain::task::TaskDto,
+) -> Result<(), String> {
     let comments = task_service
         .get_task_activity(&task.id, 100)
         .map_err(|e| e.to_string())?;
 
-    let task_context = serde_json::json!({
-        "task_id": task.id,
-        "title": task.title,
-        "description": task.description,
-        "status": task.status,
-        "priority": task.priority,
-        "labels": task.labels,
-        "scheduled_start_at": task.scheduled_start_at,
-        "scheduled_end_at": task.scheduled_end_at,
-        "estimated_duration_min": task.estimated_duration_min,
-        "comments": comments.iter().map(|c| {
-            serde_json::json!({
-                "id": c.id,
-                "author": c.payload.get("author").and_then(|v| v.as_str()).unwrap_or("unknown"),
-                "text": c.payload.get("text").and_then(|v| v.as_str()).unwrap_or(""),
-                "created_at": c.created_at
-            })
-        }).collect::<Vec<_>>()
-    });
-
-    let prompt_text = format!(
-        "# Task Assignment\n\nYou have been assigned the following task:\n\n**Title:** {}\n**Description:** {}\n**Priority:** {}\n**Status:** {}\n\nPlease analyze this task and take appropriate action.",
+    let task_summary = format!(
+        "**Task:** {}\n**Description:** {}\n**Priority:** {}\n**Comments:** {}",
         task.title,
-        task_context["description"].as_str().unwrap_or("None"),
+        task.description.as_deref().unwrap_or("None"),
         task.priority,
-        task.status
+        comments.len()
     );
 
-    tracing::info!("Would execute task {} with prompt: {}", task.id, prompt_text);
+    tracing::info!("Would execute task {}:\n{}", task.id, task_summary);
+
+    let comment_text = format!(
+        "Agent would process this task.\n\n{}",
+        task_summary
+    );
 
     task_service
-        .add_task_comment(&task.id, &prompt_text, "agent")
+        .add_task_comment(&task.id, &comment_text, "agent")
         .map_err(|e| e.to_string())?;
 
     task_service

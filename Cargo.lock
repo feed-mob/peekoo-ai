@@ -5738,6 +5738,7 @@ dependencies = [
 name = "peekoo-agent-app"
 version = "0.1.0"
 dependencies = [
+ "agent-client-protocol",
  "asupersync",
  "async-trait",
  "chrono",
@@ -9168,6 +9169,7 @@ dependencies = [
  "libc",
  "mio",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2",
  "tokio-macros",
  "windows-sys 0.61.2",
