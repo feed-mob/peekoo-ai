@@ -302,14 +302,14 @@ pub fn build_host_functions(
             UserData::new(ctx.clone()),
             host_set_mood,
         ),
-    Function::new(
-        "peekoo_system_local_date",
-        [ValType::I64],
-        [ValType::I64],
-        UserData::new(ctx),
-        host_system_local_date,
-    ),
-  ]
+        Function::new(
+            "peekoo_system_local_date",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_system_local_date,
+        ),
+    ]
 }
 
 fn host_state_get(
