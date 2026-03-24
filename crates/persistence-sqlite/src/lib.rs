@@ -5,6 +5,7 @@ pub const MIGRATION_0003_PROVIDER_COMPAT: &str =
     include_str!("../migrations/0003_provider_compat.sql");
 pub const MIGRATION_0004_GLOBAL_SETTINGS: &str =
     include_str!("../migrations/0004_global_settings.sql");
+pub const MIGRATION_0005_PLUGINS: &str = include_str!("../migrations/0005_plugins.sql");
 pub const MIGRATION_0005_TASK_EXTENSIONS: &str =
     include_str!("../migrations/0005_task_extensions.sql");
 pub const MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE: &str =

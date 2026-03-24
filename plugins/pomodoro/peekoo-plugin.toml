@@ -1,0 +1,52 @@
+[plugin]
+key = "pomodoro"
+name = "Pomodoro Timer"
+version = "0.1.0"
+author = "Peekoo Team"
+description = "Focus and break timer."
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-wasip1/release/pomodoro.wasm"
+
+[permissions]
+required = ["scheduler", "notifications", "state:read", "state:write", "pet:mood"]
+optional = ["agent:register-tool"]
+
+[[tools.definitions]]
+name = "pomodoro_get_status"
+description = "Get current pomodoro timer status"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "pomodoro_start"
+description = "Start a work or break session"
+parameters = '{"type":"object","properties":{"mode":{"type":"string","enum":["work","break"]},"minutes":{"type":"integer"}},"required":["mode","minutes"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "pomodoro_pause"
+description = "Pause current running timer"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "pomodoro_resume"
+description = "Resume a paused timer"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "pomodoro_finish"
+description = "Manually finish or cancel the timer"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "pomodoro_set_settings"
+description = "Update default work and break durations (persisted)"
+parameters = '{"type":"object","properties":{"work_minutes":{"type":"integer"},"break_minutes":{"type":"integer"}},"required":["work_minutes","break_minutes"]}'
+return_type = "object"
+
+[events]
+subscribe = ["schedule:fired", "system:wake"]
+emit = ["pomodoro:started", "pomodoro:paused", "pomodoro:resumed", "pomodoro:finished", "pomodoro:completed"]
