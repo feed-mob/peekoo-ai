@@ -19,8 +19,9 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: MINI_CHAT_OPEN_WIDTH,
-      height: 350,
+      height: 346,
       extraLeft: 40,
+      positionCompensationTop: 0,
       extraTop: 0,
     });
   });
@@ -36,8 +37,9 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: SPRITE_WINDOW_SIZE.width,
-      height: SPRITE_WINDOW_SIZE.height,
+      height: 286,
       extraLeft: 0,
+      positionCompensationTop: 0,
       extraTop: 0,
     });
   });
@@ -55,9 +57,10 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: 320,
-      height: 580,
+      height: 570,
       extraLeft: 60,
-      extraTop: 200,
+      positionCompensationTop: 224,
+      extraTop: 224,
     });
   });
 
@@ -73,9 +76,10 @@ describe("getSpriteWindowSize", () => {
       }),
     ).toEqual({
       width: MINI_CHAT_OPEN_WIDTH,
-      height: 430,
+      height: 426,
       extraLeft: 40,
-      extraTop: 120,
+      positionCompensationTop: 80,
+      extraTop: 80,
     });
   });
 });
@@ -93,8 +97,8 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: false,
       }),
     ).toEqual({
-      paddingTop: 13,
-      paddingBottom: 87,
+      paddingTop: 36,
+      paddingBottom: 0,
       paddingLeft: 40,
       paddingRight: 40,
     });
@@ -112,8 +116,8 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: true,
       }),
     ).toEqual({
-      paddingTop: 234,
-      paddingBottom: 96,
+      paddingTop: 260,
+      paddingBottom: 0,
       paddingLeft: 60,
       paddingRight: 60,
     });
@@ -131,8 +135,8 @@ describe("getSpriteStagePadding", () => {
         miniChatBubbleExpanded: false,
       }),
     ).toEqual({
-      paddingTop: 87,
-      paddingBottom: 93,
+      paddingTop: 116,
+      paddingBottom: 0,
       paddingLeft: 40,
       paddingRight: 40,
     });
@@ -148,8 +152,8 @@ describe("getSpriteStagePadding", () => {
         miniChatOpen: false,
       }),
     ).toEqual({
-      paddingTop: 12,
-      paddingBottom: 12,
+      paddingTop: 36,
+      paddingBottom: 0,
       paddingLeft: 0,
       paddingRight: 0,
     });

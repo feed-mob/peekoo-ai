@@ -541,6 +541,8 @@ fn refresh_token_bundle(bundle: &TokenBundle) -> Result<TokenBundle, String> {
         headers: vec![
             ("Content-Type", "application/x-www-form-urlencoded"),
             ("Accept", "application/json"),
+            ("User-Agent", "Peekoo-Desktop/0.1.0"),
+            ("Origin", "http://localhost:1455"),
         ],
         body: Some(&body),
     })
@@ -584,15 +586,21 @@ fn fetch_events(access_token: &str) -> Result<Vec<CalendarEvent>, String> {
     let response = peekoo::http::request(peekoo::http::Request {
         method: "GET",
         url: &url,
-        headers: vec![("Authorization", &format!("Bearer {access_token}"))],
+        headers: vec![
+            ("Authorization", &format!("Bearer {access_token}")),
+            ("User-Agent", "Peekoo-Desktop/0.1.0"),
+            ("Origin", "http://localhost:1455"),
+        ],
         body: None,
     })
     .map_err(|e| e.to_string())?;
     if response.status >= 400 {
-        return Err(format!(
+        let err_msg = format!(
             "Google Calendar fetch failed ({}): {}",
             response.status, response.body
-        ));
+        );
+        peekoo::log::error(&err_msg);
+        return Err(err_msg);
     }
     let parsed: GoogleEventsResponse =
         serde_json::from_str(&response.body).map_err(|e| e.to_string())?;
@@ -603,7 +611,11 @@ fn fetch_account_profile(access_token: &str) -> Result<GoogleAccountProfile, Str
     let response = peekoo::http::request(peekoo::http::Request {
         method: "GET",
         url: "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers: vec![("Authorization", &format!("Bearer {access_token}"))],
+        headers: vec![
+            ("Authorization", &format!("Bearer {access_token}")),
+            ("User-Agent", "Peekoo-Desktop/0.1.0"),
+            ("Origin", "http://localhost:1455"),
+        ],
         body: None,
     })
     .map_err(|e| e.to_string())?;

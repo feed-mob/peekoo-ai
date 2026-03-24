@@ -2,6 +2,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2 } from "lucide-react";
 import type { Task } from "@/types/task";
 import { motion } from "framer-motion";
+import { isTaskCompleted } from "./utils/task-status";
 
 interface TaskItemProps {
   task: Task;
@@ -17,6 +18,7 @@ const PRIORITY_CONFIG = {
 
 export function TaskItem({ task, onToggle, onDelete }: TaskItemProps) {
   const { color } = PRIORITY_CONFIG[task.priority];
+  const isCompleted = isTaskCompleted(task);
 
   return (
     <motion.div
@@ -27,21 +29,21 @@ export function TaskItem({ task, onToggle, onDelete }: TaskItemProps) {
       whileTap={{ scale: 0.98 }}
       transition={{ type: "spring", stiffness: 400, damping: 25 }}
       className={`group flex items-stretch gap-3 bg-space-surface border border-glass-border rounded-sm shadow-sm hover:shadow-md hover:border-glow-green/40 overflow-hidden transition-all ${
-        task.completed ? "opacity-60" : ""
+        isCompleted ? "opacity-60" : ""
       }`}
     >
       <div className="w-1 shrink-0" style={{ backgroundColor: color }} />
 
       <div className="flex flex-1 items-center gap-3 py-4 pr-4 min-w-0">
         <Checkbox
-          checked={task.completed}
+          checked={isCompleted}
           onCheckedChange={onToggle}
           className="shrink-0 w-5 h-5 data-[state=checked]:bg-[var(--priority-color)] data-[state=checked]:border-[var(--priority-color)]"
           style={{ "--priority-color": color } as React.CSSProperties}
         />
         <span
           className={`flex-1 text-sm font-medium leading-relaxed truncate ${
-            task.completed ? "line-through text-text-muted" : "text-text-primary"
+            isCompleted ? "line-through text-text-muted" : "text-text-primary"
           }`}
         >
           {task.title}
