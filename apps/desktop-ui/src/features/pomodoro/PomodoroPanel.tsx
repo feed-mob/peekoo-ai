@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
+import { deriveCountdownSnapshot } from "./countdown";
 import { Brain, Coffee, History, Settings2, Notebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +23,8 @@ const HISTORY_LIMIT = 6;
 export function PomodoroPanel() {
   const [status, setStatus] = useState<PomodoroStatus | null>(null);
   const [history, setHistory] = useState<PomodoroHistoryEntry[]>([]);
+  const [statusSyncedAtMs, setStatusSyncedAtMs] = useState(() => Date.now());
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [workDuration, setWorkDuration] = useState<number | "">(25);
   const [breakDuration, setBreakDuration] = useState<number | "">(5);
   const [enableMemo, setEnableMemo] = useState(false);
@@ -38,6 +41,7 @@ export function PomodoroPanel() {
     if (nextStatus && nextStatus.state !== undefined) {
       setStatus(nextStatus);
       setHistory(nextHistory);
+      setStatusSyncedAtMs(Date.now());
 
       if (!isInitialized || forceSync) {
         setWorkDuration(nextStatus.default_work_minutes || 25);
@@ -55,6 +59,11 @@ export function PomodoroPanel() {
     const interval = window.setInterval(fetchStatus, 3000);
     return () => window.clearInterval(interval);
   }, [fetchStatus]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const handleApplySettings = async () => {
     setIsApplying(true);
@@ -121,7 +130,8 @@ export function PomodoroPanel() {
   if (!status) return <div className="p-4 text-center text-text-muted">Loading System...</div>;
 
   const isActive = status.state === "Running";
-  const progress = ((status.minutes * 60 - status.time_remaining_secs) / (status.minutes * 60)) * 100;
+  const countdown = deriveCountdownSnapshot(status, statusSyncedAtMs, nowMs);
+  const progress = countdown.progress;
   const focusCount = status.completed_focus || 0;
   const breakCount = status.completed_breaks || 0;
   const totalCount = focusCount + breakCount;
@@ -151,7 +161,7 @@ export function PomodoroPanel() {
       {!showSettings ? (
         <>
           <TimerDisplay
-            time={formatTime(status.time_remaining_secs)}
+            time={formatTime(countdown.timeRemainingSecs)}
             status={status.state === "Running" ? (status.mode === "work" ? "Focusing" : "Resting") : (status.mode === "work" ? "Ready" : "Break")}
             progress={progress}
             isWorkMode={status.mode === "work"}
