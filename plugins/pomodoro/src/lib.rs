@@ -2,7 +2,6 @@
 
 use peekoo_plugin_sdk::prelude::*;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 const POMODORO_TIMER_KEY: &str = "pomodoro_timer";
 
@@ -15,13 +14,6 @@ pub enum PomodoroState {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct DayStats {
-    pub completed_focus: u32,
-    pub completed_breaks: u32,
-    pub memos: Vec<Value>,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
 struct PomodoroSession {
     mode: String,
     state: PomodoroState,
@@ -29,22 +21,9 @@ struct PomodoroSession {
     time_remaining_secs: u64,
     started_at_epoch: u64,
     expected_fire_at_epoch: u64,
-    #[serde(default)]
-    completed_focus: u32,
-    #[serde(default)]
-    completed_breaks: u32,
-    #[serde(default)]
-    enable_memo: bool,
-    #[serde(default)]
-    memos: Vec<Value>,
-    #[serde(default)]
-    last_date: String,
-    #[serde(default)]
-    pub history: HashMap<String, DayStats>,
+    completed_sessions: u32,
     // Configuration
-    #[serde(default)]
     default_work_minutes: u32,
-    #[serde(default)]
     default_break_minutes: u32,
 }
 
@@ -57,12 +36,7 @@ impl PomodoroSession {
             time_remaining_secs: 25 * 60,
             started_at_epoch: 0,
             expected_fire_at_epoch: 0,
-            completed_focus: 0,
-            completed_breaks: 0,
-            enable_memo: false,
-            memos: Vec::new(),
-            last_date: String::new(),
-            history: HashMap::new(),
+            completed_sessions: 0,
             default_work_minutes: 25,
             default_break_minutes: 5,
         }
@@ -71,7 +45,7 @@ impl PomodoroSession {
 
 #[plugin_fn]
 pub fn plugin_init(_input: String) -> FnResult<String> {
-    log_info("Pomodoro plugin initialized (v2-history)");
+    log_info("Pomodoro plugin initialized");
     if get_session().is_none() {
         save_session(&PomodoroSession::unwrap_or_default_session());
     }
@@ -105,19 +79,7 @@ pub fn on_event(input: String) -> FnResult<String> {
 #[plugin_fn]
 pub fn tool_pomodoro_get_status(_input: String) -> FnResult<String> {
     let mut session = get_session().unwrap_or(PomodoroSession::unwrap_or_default_session());
-    
-    // Auto-complete if time up during a status check
-    if session.state == PomodoroState::Running {
-        refresh_time_remaining(&mut session);
-        if session.time_remaining_secs == 0 {
-            handle_timer_completed();
-            session = get_session().unwrap_or(PomodoroSession::unwrap_or_default_session());
-        }
-    } else {
-        refresh_time_remaining(&mut session);
-    }
-    
-    // Explicitly return serialized JSON
+    refresh_time_remaining(&mut session);
     Ok(serde_json::to_string(&session)?)
 }
 
@@ -208,7 +170,6 @@ pub fn tool_pomodoro_finish(_input: String) -> FnResult<String> {
 struct SettingsInput {
     work_minutes: u32,
     break_minutes: u32,
-    enable_memo: Option<bool>,
 }
 
 #[plugin_fn]
@@ -218,13 +179,8 @@ pub fn tool_pomodoro_set_settings(input: String) -> FnResult<String> {
     
     session.default_work_minutes = params.work_minutes;
     session.default_break_minutes = params.break_minutes;
-    if let Some(enable) = params.enable_memo {
-        log_info(&format!("Setting enable_memo to: {}", enable));
-        session.enable_memo = enable;
-    }
     
-    log_info(&format!("Final session enable_memo: {}", session.enable_memo));
-    
+    // If we're idle, apply these to the CURRENT duration too.
     if session.state == PomodoroState::Idle {
         session.minutes = if session.mode == "work" {
             session.default_work_minutes
@@ -239,63 +195,12 @@ pub fn tool_pomodoro_set_settings(input: String) -> FnResult<String> {
     Ok(serde_json::to_string(&session)?)
 }
 
-#[plugin_fn]
-pub fn tool_pomodoro_add_memo(input: String) -> FnResult<String> {
-    let memo_content: String = serde_json::from_str(&input)?;
-    let mut session = get_session().unwrap_or(PomodoroSession::unwrap_or_default_session());
-    
-    session.memos.push(json!({
-        "timestamp": current_epoch_secs(),
-        "content": memo_content,
-        "mode": session.mode
-    }));
-    
-    log_info("New memo added to session.");
-    save_session(&session);
-    Ok(json!({ "ok": true }).to_string())
-}
-
 // ---------------------------------------------------------
 // Helper functions
 // ---------------------------------------------------------
 
 fn get_session() -> Option<PomodoroSession> {
-    let session = peekoo::state::get::<PomodoroSession>("pomodoro_session").ok().flatten();
-    if let Some(mut session) = session {
-        if check_daily_reset(&mut session) {
-            save_session(&session);
-        }
-        Some(session)
-    } else {
-        None
-    }
-}
-
-fn check_daily_reset(session: &mut PomodoroSession) -> bool {
-    let today = peekoo::system::local_date().unwrap_or_else(|_| "unknown".to_string());
-    log_info(&format!("Checking reset: last_date='{}', today='{}'", session.last_date, today));
-
-    if today != "unknown" && session.last_date != today {
-        log_info(&format!("New day detected ({}). Handling daily reset.", today));
-        
-        // Archive previous day's stats if they exist
-        if !session.last_date.is_empty() {
-            let stats = DayStats {
-                completed_focus: session.completed_focus,
-                completed_breaks: session.completed_breaks,
-                memos: session.memos.clone(),
-            };
-            session.history.insert(session.last_date.clone(), stats);
-        }
-
-        // Reset for the new day
-        session.completed_focus = 0;
-        session.completed_breaks = 0;
-        session.memos = Vec::new();
-        session.last_date = today;
-        return true;
-    }
-    false
+    peekoo::state::get::<PomodoroSession>("pomodoro_session").ok().flatten()
 }
 
 fn save_session(session: &PomodoroSession) {
@@ -332,10 +237,9 @@ fn handle_timer_completed() {
     };
     
     let body = if session.mode == "work" {
-        session.completed_focus += 1;
+        session.completed_sessions += 1;
         "Great job! Time to take a short break."
     } else {
-        session.completed_breaks += 1;
         "Ready to start focusing again?"
     };
 
@@ -344,7 +248,7 @@ fn handle_timer_completed() {
     
     let _ = peekoo::mood::set("pomodoro-completed", false);
     let _ = peekoo::notify::send(title, body);
-    emit_event("pomodoro:completed", json!({ "mode": session.mode, "completed_focus": session.completed_focus, "completed_breaks": session.completed_breaks }));
+    emit_event("pomodoro:completed", json!({ "mode": session.mode, "completed_sessions": session.completed_sessions }));
     push_peek_badges();
 }
 
@@ -376,8 +280,8 @@ fn push_peek_badges() {
             if session.mode == "work" { "Focus".to_string() } else { "Break".to_string() }
         };
 
-        let target_epoch = if session.state == PomodoroState::Running {
-            Some(session.expected_fire_at_epoch)
+        let countdown = if session.state == PomodoroState::Running {
+            Some(session.time_remaining_secs)
         } else {
             None
         };
@@ -386,7 +290,7 @@ fn push_peek_badges() {
             label,
             value: format_countdown(session.time_remaining_secs),
             icon: Some(icon.to_string()),
-            target_epoch_secs: target_epoch,
+            countdown_secs: countdown,
         };
         let _ = peekoo::badge::set(&[badge]);
     } else {

@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 
 use peekoo_persistence_sqlite::{
     MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-    MIGRATION_0005_PLUGINS,
+    MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
+    MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
+    MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -448,12 +450,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "agent_provider_configs",
         MIGRATION_0003_PROVIDER_COMPAT,
     )?;
-    apply_migration_if_needed(
-        conn,
-        "0005_plugins",
-        "plugins",
-        MIGRATION_0005_PLUGINS,
-    )?;
+    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
 
     conn.execute(
         &format!(
@@ -463,6 +460,145 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         params![DEFAULT_PROVIDER, DEFAULT_MODEL],
     )
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
+
+    // ALTER TABLE migration — sentinel table already exists, so check the
+    // migration record directly instead of the sentinel table.
+    let already_applied: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0005_task_extensions'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0005 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied {
+        conn.execute_batch(MIGRATION_0005_TASK_EXTENSIONS)
+            .map_err(|e| format!("Apply migration 0005_task_extensions error: {e}"))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0005_task_extensions')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0005 state error: {e}"))?;
+    }
+
+    // Migration 0006 — add scheduling and recurrence columns to tasks.
+    let already_applied_0006: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0006_task_scheduling_and_recurrence'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0006 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0006 {
+        conn.execute_batch(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE)
+            .map_err(|e| {
+                format!("Apply migration 0006_task_scheduling_and_recurrence error: {e}")
+            })?;
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0006_task_scheduling_and_recurrence')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0006 state error: {e}"))?;
+    }
+
+    // Migration 0007 — add recurrence_time_of_day to tasks.
+    let already_applied_0007: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0007_recurrence_time_of_day'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0007 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0007 {
+        conn.execute_batch(MIGRATION_0007_RECURRENCE_TIME_OF_DAY)
+            .map_err(|e| format!("Apply migration 0007_recurrence_time_of_day error: {e}"))?;
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0007_recurrence_time_of_day')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0007 state error: {e}"))?;
+    }
+
+    // Migration 0008: Add created_at column to tasks
+    let already_applied_0008: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0008_task_order_index'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0008 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0008 {
+        // Migration 0008: Add created_at column
+        // Execute statements individually to handle "duplicate column" errors gracefully
+        let migration_sql = MIGRATION_0008_TASK_ORDER_INDEX;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            // Ignore "duplicate column name" errors - column already exists
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0008_task_order_index error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0008_task_order_index')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0008 state error: {e}"))?;
+    }
+
+    // Migration 0009: Agent task assignment
+    let already_applied_0009: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0009_agent_task_assignment'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0009 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0009 {
+        let migration_sql = MIGRATION_0009_AGENT_TASK_ASSIGNMENT;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name")
+                    && !e_str.contains("table agent_registry already exists")
+                    && !e_str.contains("UNIQUE constraint failed: agent_registry.id")
+                    && !e_str.contains("index.*already exists")
+                {
+                    return Err(format!(
+                        "Apply migration 0009_agent_task_assignment error: {e}"
+                    ));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0009_agent_task_assignment')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0009 state error: {e}"))?;
+    }
 
     Ok(())
 }
@@ -542,6 +678,9 @@ mod tests {
         let path = temp_db_path();
         let first = SettingsStore::from_path(&path);
         assert!(first.is_ok());
+
+        // Drop the first connection before creating the second to avoid lock contention
+        drop(first);
 
         let second = SettingsStore::from_path(&path);
         assert!(second.is_ok());

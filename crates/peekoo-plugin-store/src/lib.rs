@@ -585,11 +585,92 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
+    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::*;
     use peekoo_plugin_host::manifest::parse_manifest;
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
+            Err("noop".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn make_store() -> PluginStoreService {
         PluginStoreService::new()
@@ -636,6 +717,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         ))
     }
 
@@ -885,6 +967,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());
@@ -946,6 +1029,7 @@ wasm = "plugin.wasm"
                 Arc::new(notifications),
                 Arc::new(PeekBadgeService::new()),
                 Arc::new(MoodReactionService::new()),
+                Arc::new(NoopTaskService),
             )),
         );
         assert!(result.is_err());

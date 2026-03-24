@@ -1,6 +1,15 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AgentWorkStatus {
+    Pending,
+    Claimed,
+    Executing,
+    Completed,
+    Failed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TaskPriority {
     Low,
     Medium,
@@ -12,14 +21,24 @@ pub enum TaskStatus {
     Todo,
     InProgress,
     Done,
+    Cancelled,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Task {
     pub id: String,
     pub title: String,
+    pub description: Option<String>,
     pub status: TaskStatus,
     pub priority: TaskPriority,
+    pub assignee: String,
+    pub labels: Vec<String>,
+    pub scheduled_start_at: Option<String>,
+    pub scheduled_end_at: Option<String>,
+    pub estimated_duration_min: Option<u32>,
+    pub recurrence_rule: Option<String>,
+    pub recurrence_time_of_day: Option<String>,
+    pub created_at: String,
 }
 
 impl Task {
@@ -27,9 +46,37 @@ impl Task {
         Self {
             id: id.into(),
             title: title.into(),
+            description: None,
             status: TaskStatus::Todo,
             priority,
+            assignee: "user".to_string(),
+            labels: Vec::new(),
+            scheduled_start_at: None,
+            scheduled_end_at: None,
+            estimated_duration_min: None,
+            recurrence_rule: None,
+            recurrence_time_of_day: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
         }
+    }
+
+    pub fn set_status(&mut self, status: TaskStatus) {
+        self.status = status;
+    }
+
+    pub fn set_assignee(&mut self, assignee: impl Into<String>) {
+        self.assignee = assignee.into();
+    }
+
+    pub fn add_label(&mut self, label: impl Into<String>) {
+        let label = label.into();
+        if !self.labels.contains(&label) {
+            self.labels.push(label);
+        }
+    }
+
+    pub fn remove_label(&mut self, label: &str) {
+        self.labels.retain(|l| l != label);
     }
 
     pub fn start(&mut self) {
@@ -39,6 +86,220 @@ impl Task {
     pub fn complete(&mut self) {
         self.status = TaskStatus::Done;
     }
+}
+
+// ── Task Event Types ─────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TaskEventType {
+    Created,
+    StatusChanged,
+    Assigned,
+    Labeled,
+    Unlabeled,
+    Deleted,
+    Comment,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskEvent {
+    pub id: String,
+    pub task_id: String,
+    pub event_type: TaskEventType,
+    pub payload: serde_json::Value,
+    pub created_at: String,
+}
+
+// ── TaskService trait (for plugin host functions) ─────────────────────
+
+pub trait TaskService: Send + Sync {
+    #[allow(clippy::too_many_arguments)]
+    fn create_task(
+        &self,
+        title: &str,
+        priority: &str,
+        assignee: &str,
+        labels: &[String],
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<u32>,
+        recurrence_rule: Option<&str>,
+        recurrence_time_of_day: Option<&str>,
+    ) -> Result<TaskDto, String>;
+    fn list_tasks(&self) -> Result<Vec<TaskDto>, String>;
+    #[allow(clippy::too_many_arguments)]
+    fn update_task(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        priority: Option<&str>,
+        status: Option<&str>,
+        assignee: Option<&str>,
+        labels: Option<&[String]>,
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<Option<u32>>,
+        recurrence_rule: Option<Option<&str>>,
+        recurrence_time_of_day: Option<Option<&str>>,
+    ) -> Result<TaskDto, String>;
+    fn delete_task(&self, id: &str) -> Result<(), String>;
+    fn toggle_task(&self, id: &str) -> Result<TaskDto, String>;
+    fn get_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskEventDto>, String>;
+    fn add_task_comment(
+        &self,
+        task_id: &str,
+        text: &str,
+        author: &str,
+    ) -> Result<TaskEventDto, String>;
+    fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String>;
+    fn update_agent_work_status(
+        &self,
+        task_id: &str,
+        status: &str,
+        session_id: Option<&str>,
+    ) -> Result<(), String>;
+    fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String>;
+    fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String>;
+    fn add_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String>;
+    fn remove_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String>;
+    fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<TaskDto, String>;
+    fn load_task(&self, task_id: &str) -> Result<TaskDto, String>;
+}
+
+/// A no-op implementation of TaskService for testing and standalone MCP server.
+#[derive(Debug, Clone, Default)]
+pub struct NoopTaskService;
+
+impl TaskService for NoopTaskService {
+    fn create_task(
+        &self,
+        _title: &str,
+        _priority: &str,
+        _assignee: &str,
+        _labels: &[String],
+        _description: Option<&str>,
+        _scheduled_start_at: Option<&str>,
+        _scheduled_end_at: Option<&str>,
+        _estimated_duration_min: Option<u32>,
+        _recurrence_rule: Option<&str>,
+        _recurrence_time_of_day: Option<&str>,
+    ) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+        Ok(vec![])
+    }
+
+    fn update_task(
+        &self,
+        _id: &str,
+        _title: Option<&str>,
+        _priority: Option<&str>,
+        _status: Option<&str>,
+        _assignee: Option<&str>,
+        _labels: Option<&[String]>,
+        _description: Option<&str>,
+        _scheduled_start_at: Option<&str>,
+        _scheduled_end_at: Option<&str>,
+        _estimated_duration_min: Option<Option<u32>>,
+        _recurrence_rule: Option<Option<&str>>,
+        _recurrence_time_of_day: Option<Option<&str>>,
+    ) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn delete_task(&self, _id: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    fn toggle_task(&self, _id: &str) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn get_task_activity(&self, _task_id: &str, _limit: u32) -> Result<Vec<TaskEventDto>, String> {
+        Ok(vec![])
+    }
+
+    fn add_task_comment(
+        &self,
+        _task_id: &str,
+        _text: &str,
+        _author: &str,
+    ) -> Result<TaskEventDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn claim_task_for_agent(&self, _task_id: &str) -> Result<bool, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn update_agent_work_status(
+        &self,
+        _task_id: &str,
+        _status: &str,
+        _session_id: Option<&str>,
+    ) -> Result<(), String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn increment_attempt_count(&self, _task_id: &str) -> Result<u32, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+        Ok(vec![])
+    }
+
+    fn add_task_label(&self, _task_id: &str, _label: &str) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn remove_task_label(&self, _task_id: &str, _label: &str) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn update_task_status(&self, _task_id: &str, _status: TaskStatus) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+
+    fn load_task(&self, _task_id: &str) -> Result<TaskDto, String> {
+        Err("NoopTaskService: not implemented".into())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskDto {
+    pub id: String,
+    pub title: String,
+    pub description: Option<String>,
+    pub status: String,
+    pub priority: String,
+    pub assignee: String,
+    pub labels: Vec<String>,
+    pub scheduled_start_at: Option<String>,
+    pub scheduled_end_at: Option<String>,
+    pub estimated_duration_min: Option<u32>,
+    pub recurrence_rule: Option<String>,
+    pub recurrence_time_of_day: Option<String>,
+    pub parent_task_id: Option<String>,
+    pub created_at: String,
+    pub agent_work_status: Option<String>,
+    pub agent_work_session_id: Option<String>,
+    pub agent_work_attempt_count: Option<u32>,
+    pub agent_work_started_at: Option<String>,
+    pub agent_work_completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskEventDto {
+    pub id: String,
+    pub task_id: String,
+    pub event_type: String,
+    pub payload: serde_json::Value,
+    pub created_at: String,
 }
 
 #[cfg(test)]
@@ -52,11 +313,49 @@ mod tests {
     }
 
     #[test]
+    fn new_task_defaults_to_user_assignee() {
+        let task = Task::new("task-1", "Write PRD", TaskPriority::High);
+        assert_eq!(task.assignee, "user");
+        assert!(task.labels.is_empty());
+    }
+
+    #[test]
     fn task_can_transition_to_in_progress_and_done() {
         let mut task = Task::new("task-1", "Write PRD", TaskPriority::High);
         task.start();
         assert_eq!(task.status, TaskStatus::InProgress);
         task.complete();
         assert_eq!(task.status, TaskStatus::Done);
+    }
+
+    #[test]
+    fn task_set_status() {
+        let mut task = Task::new("task-1", "Write PRD", TaskPriority::High);
+        task.set_status(TaskStatus::InProgress);
+        assert_eq!(task.status, TaskStatus::InProgress);
+    }
+
+    #[test]
+    fn task_set_assignee() {
+        let mut task = Task::new("task-1", "Write PRD", TaskPriority::High);
+        task.set_assignee("agent");
+        assert_eq!(task.assignee, "agent");
+    }
+
+    #[test]
+    fn task_add_label_no_duplicates() {
+        let mut task = Task::new("task-1", "Write PRD", TaskPriority::High);
+        task.add_label("bug");
+        task.add_label("bug");
+        assert_eq!(task.labels, vec!["bug"]);
+    }
+
+    #[test]
+    fn task_remove_label() {
+        let mut task = Task::new("task-1", "Write PRD", TaskPriority::High);
+        task.add_label("bug");
+        task.add_label("urgent");
+        task.remove_label("bug");
+        assert_eq!(task.labels, vec!["urgent"]);
     }
 }

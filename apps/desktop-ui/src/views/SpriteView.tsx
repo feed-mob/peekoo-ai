@@ -278,7 +278,7 @@ export default function SpriteView() {
   // This ensures the sprite returns to its "Working" or "Sleepy" state even after
   // transient reactions (like thinking or reminders) finish.
   const activePomodoro = badgeItems.find(
-    (item) => (item.icon === "brain" || item.icon === "coffee") && item.target_epoch_secs != null,
+    (item) => (item.icon === "brain" || item.icon === "coffee") && item.countdown_secs != null,
   );
   const pomodoroMood = activePomodoro
     ? activePomodoro.icon === "brain"
@@ -315,7 +315,6 @@ export default function SpriteView() {
       setDragAnimation(null);
     }
   }, []);
-
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       setDragAnimation(null);

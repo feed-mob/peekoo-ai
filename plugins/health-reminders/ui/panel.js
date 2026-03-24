@@ -47,7 +47,6 @@ function nextDueText(seconds) {
 }
 
 function summaryContent(status) {
-  if (!status || !status.reminders) return { dotClass: "status-dot quiet", title: "Error", subtitle: "Could not load health status" };
   const nextReminder = status.reminders
     .filter((item) => item.active)
     .sort((left, right) => left.time_remaining_secs - right.time_remaining_secs)[0];
@@ -77,10 +76,6 @@ function labelFor(reminderType) {
 }
 
 function renderStatus(status) {
-  if (!status || !status.reminders) {
-    console.warn("renderStatus: missing status or reminders", status);
-    return;
-  }
   summaryRoot.innerHTML = "";
   statusRoot.innerHTML = "";
 
@@ -104,19 +99,9 @@ function renderStatus(status) {
   badge.append(dot, textContainer);
   summaryRoot.appendChild(badge);
 
-  // Define each reminder type so we can iterate stably (or use status.reminders)
-  const types = ["water", "eye_rest", "standup"];
-  
-  types.forEach(type => {
-    const item = status.reminders.find(r => r.reminder_type === type);
-    if (!item) return;
-
-    const isEnabled = status.config[`${type}_enabled`];
-    const intervalValue = status.config[`${type}_interval_min`];
-
+  status.reminders.forEach((item) => {
     const card = document.createElement("article");
     card.className = "reminder-card";
-    if (!isEnabled) card.style.opacity = "0.7";
 
     const header = document.createElement("div");
     header.className = "card-header";
@@ -132,81 +117,36 @@ function renderStatus(status) {
     badge.textContent = item.active ? "Active" : "Paused";
 
     titleContainer.append(title, badge);
-
-    // Toggle Switch (the "sliding button")
-    const toggleLabel = document.createElement("label");
-    toggleLabel.className = "switch";
-    const toggleInput = document.createElement("input");
-    toggleInput.type = "checkbox";
-    toggleInput.checked = isEnabled;
-    toggleInput.addEventListener("change", (e) => {
-      const payload = {};
-      payload[`${type}_enabled`] = e.target.checked;
-      void callTool("health_configure", payload).then(refresh);
-    });
-    const slider = document.createElement("span");
-    slider.className = "slider";
-    toggleLabel.append(toggleInput, slider);
-
-    header.append(titleContainer, toggleLabel);
+    header.appendChild(titleContainer);
 
     const body = document.createElement("div");
     body.className = "card-body";
 
-    // Duration controls
-    const controls = document.createElement("div");
-    controls.className = "card-controls";
-
-    const durationLabel = document.createElement("div");
-    durationLabel.className = "duration-control";
-    durationLabel.textContent = "Every";
-    
-    const input = document.createElement("input");
-    input.type = "number";
-    input.className = "input-number";
-    input.value = intervalValue;
-    input.min = type === "standup" ? 10 : 5;
-    input.max = 180;
-    
-    let debounceTimer;
-    input.addEventListener("input", (e) => {
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        const value = parseInt(e.target.value);
-        if (!isNaN(value)) {
-          const payload = {};
-          payload[`${type}_interval_min`] = value;
-          void callTool("health_configure", payload).then(refresh);
-        }
-      }, 800);
-    });
-
-    const minsText = document.createElement("span");
-    minsText.textContent = "min";
-    minsText.style.fontSize = "12px";
-    minsText.style.color = "var(--text-secondary)";
-
-    durationLabel.append(input, minsText);
-    controls.appendChild(durationLabel);
+    const interval = document.createElement("p");
+    interval.className = "card-interval";
+    interval.textContent = `Every ${item.interval_min} min`;
 
     const nextDue = document.createElement("p");
     nextDue.className = "card-next-due";
-    nextDue.style.fontSize = "12px";
     nextDue.textContent = item.active
       ? nextDueText(item.time_remaining_secs)
-      : "Next: --";
-    
-    controls.appendChild(nextDue);
-    body.append(controls);
+      : "Waiting for reminders to resume";
+
+    const meta = document.createElement("p");
+    meta.className = "card-meta";
+    meta.textContent = item.active
+      ? "Quiet reminder will appear automatically when due"
+      : "This reminder will stay quiet until scheduling resumes";
+
+    body.append(interval, nextDue, meta);
 
     const footer = document.createElement("div");
     footer.className = "card-footer";
 
     const restartBtn = document.createElement("button");
     restartBtn.className = "btn-restart";
-    restartBtn.textContent = "Restart Timer";
-    restartBtn.disabled = !isEnabled;
-    restartBtn.style.width = "100%";
+    restartBtn.textContent = "Restart timer";
+    restartBtn.disabled = !item.active;
     restartBtn.addEventListener("click", async () => {
       await callTool("health_dismiss", { reminder_type: item.reminder_type });
       await refresh();
@@ -217,44 +157,6 @@ function renderStatus(status) {
     card.append(header, body, footer);
     statusRoot.appendChild(card);
   });
-
-  // Linked Reminders (Automation)
-  if (status.event_reminders && status.event_reminders.length > 0) {
-    const title = document.createElement("h4");
-    title.className = "section-title";
-    title.textContent = "Linked Reminders";
-    statusRoot.appendChild(title);
-
-    status.event_reminders.forEach((item, index) => {
-      const card = document.createElement("article");
-      card.className = "reminder-card automation";
-      
-      const header = document.createElement("div");
-      header.className = "card-header";
-
-      const titleContainer = document.createElement("div");
-      titleContainer.className = "card-title";
-
-      const h3 = document.createElement("h3");
-      h3.textContent = item.message;
-
-      const badge = document.createElement("span");
-      badge.className = "card-badge linked";
-      badge.textContent = `When ${item.event_name.split(':')[0]} complete`;
-
-      titleContainer.append(h3, badge);
-      header.append(titleContainer);
-
-      const body = document.createElement("div");
-      body.className = "card-body";
-      body.style.fontSize = "12px";
-      body.style.color = "var(--text-secondary)";
-      body.textContent = `Created at ${new Date(item.created_at * 1000).toLocaleTimeString()}`;
-
-      card.append(header, body);
-      statusRoot.appendChild(card);
-    });
-  }
 }
 
 function countdownStatus(status, elapsedSeconds) {
@@ -294,41 +196,15 @@ async function refresh() {
     return refreshPromise;
   }
 
-  summaryRoot.innerHTML = '<div class="status-badge"><span class="status-dot quiet"></span><div class="status-text"><strong>Loading...</strong></div></div>';
-
   refreshPromise = callTool("health_get_status")
-    .then(async (status) => {
+    .then((status) => {
       if (status) {
         lastStatusSnapshot = status;
         lastStatusSnapshotAt = Date.now();
         renderLiveStatus();
         startPolling();
         startCountdown();
-      } else {
-        // If it failed, maybe the plugin is not enabled/loaded?
-        // Try to enable it once and retry.
-        console.log("health_get_status returned null, attempting to enable plugin...");
-        try {
-          await window.__TAURI__.core.invoke("plugin_enable", { pluginKey: "health-reminders" });
-          // Retry once
-          const secondTry = await callTool("health_get_status");
-          if (secondTry) {
-            lastStatusSnapshot = secondTry;
-            lastStatusSnapshotAt = Date.now();
-            renderLiveStatus();
-            startPolling();
-            startCountdown();
-            return;
-          }
-        } catch (e) {
-          console.error("Failed to force-enable plugin:", e);
-        }
-        
-        summaryRoot.innerHTML = '<div class="status-badge"><span class="status-dot active"></span><div class="status-text"><strong>Error</strong><span>Failed to load health status. Is the plugin active?</span></div></div>';
       }
-    })
-    .catch(err => {
-      summaryRoot.innerHTML = `<div class="status-badge"><span class="status-dot active"></span><div class="status-text"><strong>Error</strong><span>${err.message || 'Unknown error'}</span></div></div>`;
     })
     .finally(() => {
       refreshPromise = null;

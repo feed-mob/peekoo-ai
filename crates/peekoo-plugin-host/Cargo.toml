@@ -15,6 +15,7 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 hex = "0.4"
 peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-agent-auth = { path = "../peekoo-agent-auth" }
+peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
 peekoo-paths = { path = "../peekoo-paths" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
 peekoo-security = { path = "../security" }
@@ -31,4 +32,3 @@ tracing = "0.1"
 rusqlite = { version = "0.38" }
 tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 url = "2"
-chrono = "0.4"

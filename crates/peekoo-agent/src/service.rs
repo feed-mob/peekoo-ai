@@ -263,6 +263,17 @@ impl AgentService {
         }
     }
 
+    /// Register native (non-plugin) tools with the agent's tool registry.
+    ///
+    /// Use this to add app-level tools (e.g., task management) that the LLM
+    /// can call during the agent loop. Tool names must not collide with
+    /// built-in tools or plugin tools.
+    pub fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
+        if !tools.is_empty() {
+            self.handle.session_mut().agent.extend_tools(tools);
+        }
+    }
+
     /// Return the path to the persisted session file, if any.
     ///
     /// Uses `try_lock` on the async session mutex so this can be called

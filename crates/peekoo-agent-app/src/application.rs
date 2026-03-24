@@ -25,13 +25,16 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
-use crate::productivity::{PomodoroSessionDto, ProductivityService, TaskDto};
+use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
+
+use crate::productivity::{PomodoroSessionDto, ProductivityService};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
 };
+use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
 use crate::workspace_bootstrap::ensure_agent_workspace;
@@ -58,6 +61,8 @@ pub struct AgentApplication {
     resume_session_path: Mutex<Option<PathBuf>>,
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
     conversation_generation: AtomicU64,
+    /// Scheduler for agent task execution.
+    agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
 }
 
 impl AgentApplication {
@@ -70,13 +75,10 @@ impl AgentApplication {
         // uses mandatory file locks in the default DELETE journal mode.
         //
         // Legacy migration MUST run before Connection::open because open()
-        // creates the file as a side-effect, which would cause the migration
-        // to skip (it exits early when the target file already exists).
         let db_path = peekoo_paths::peekoo_settings_db_path()?;
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("Create db dir error: {e}"))?;
         }
-        SettingsService::migrate_legacy_db(&db_path)?;
         let conn =
             Connection::open(&db_path).map_err(|e| format!("Open settings db error: {e}"))?;
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
@@ -85,8 +87,11 @@ impl AgentApplication {
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
         let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
+        let productivity = ProductivityService::new(Arc::clone(&db_conn));
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(productivity.clone());
         let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
-            create_plugin_registry(db_conn)?;
+            create_plugin_registry(db_conn, task_service)?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -97,11 +102,15 @@ impl AgentApplication {
         }
         let workspace_dir = ensure_agent_workspace()?;
 
+        // Create agent scheduler for task execution
+        let agent_scheduler =
+            crate::agent_scheduler::AgentScheduler::new(Arc::new(productivity.clone()));
+
         Ok(Self {
             agent: Mutex::new(None),
             settings,
             app_settings,
-            productivity: ProductivityService::new(),
+            productivity,
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
@@ -115,11 +124,39 @@ impl AgentApplication {
             workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
+            agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
         })
     }
 
     pub fn start_plugin_runtime(&self) {
         self.plugin_registry.start_scheduler();
+
+        eprintln!("[peekoo][mcp] starting MCP server during app startup");
+
+        // Start MCP server on a dedicated thread (survives app lifetime)
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(self.task_runtime_service());
+        let mcp_shutdown = self.shutdown_token.clone();
+
+        match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
+            Ok(addr) => {
+                let url = peekoo_mcp_server::mcp_url_for(addr);
+                eprintln!("[peekoo][mcp] server ready at {}", url);
+                tracing::info!("✅ [MCP] Server ready at {}", url);
+            }
+            Err(e) => {
+                eprintln!("[peekoo][mcp] failed to start: {}", e);
+                tracing::error!("❌ [MCP] Failed to start server: {}", e);
+            }
+        }
+
+        // Start agent scheduler for task execution
+        if let Ok(guard) = self.agent_scheduler.lock()
+            && let Some(ref scheduler) = *guard
+        {
+            scheduler.set_agent_launch_env(self.agent_launch_env());
+            scheduler.start();
+        }
     }
 
     pub async fn prompt_streaming<F>(&self, message: &str, on_event: F) -> Result<String, String>
@@ -278,8 +315,128 @@ impl AgentApplication {
 
     // ── Productivity ────────────────────────────────────────────────────
 
-    pub fn create_task(&self, title: &str, priority: &str) -> Result<TaskDto, String> {
-        self.productivity.create_task(title, priority)
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_task(
+        &self,
+        title: &str,
+        priority: &str,
+        assignee: &str,
+        labels: &[String],
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<u32>,
+        recurrence_rule: Option<&str>,
+        recurrence_time_of_day: Option<&str>,
+    ) -> Result<TaskDto, String> {
+        self.productivity.create_task(
+            title,
+            priority,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
+    }
+
+    pub fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+        self.productivity.list_tasks()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_task(
+        &self,
+        id: &str,
+        title: Option<&str>,
+        priority: Option<&str>,
+        status: Option<&str>,
+        assignee: Option<&str>,
+        labels: Option<&[String]>,
+        description: Option<&str>,
+        scheduled_start_at: Option<&str>,
+        scheduled_end_at: Option<&str>,
+        estimated_duration_min: Option<Option<u32>>,
+        recurrence_rule: Option<Option<&str>>,
+        recurrence_time_of_day: Option<Option<&str>>,
+    ) -> Result<TaskDto, String> {
+        self.productivity.update_task(
+            id,
+            title,
+            priority,
+            status,
+            assignee,
+            labels,
+            description,
+            scheduled_start_at,
+            scheduled_end_at,
+            estimated_duration_min,
+            recurrence_rule,
+            recurrence_time_of_day,
+        )
+    }
+
+    pub fn delete_task(&self, id: &str) -> Result<(), String> {
+        self.productivity.delete_task(id)
+    }
+
+    pub fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
+        self.productivity.toggle_task(id)
+    }
+
+    /// Create a task from natural language text
+    /// Parses the text to extract title, priority, schedule, duration, etc.
+    /// Falls back to using the whole text as title if parsing fails.
+    pub fn create_task_from_text(&self, text: &str) -> Result<TaskDto, String> {
+        use crate::task_parser::parse_task_text;
+
+        let parsed = parse_task_text(text);
+
+        self.productivity.create_task(
+            &parsed.title,
+            parsed.priority.as_deref().unwrap_or("medium"),
+            parsed.assignee.as_deref().unwrap_or("user"),
+            &parsed.labels,
+            parsed.description.as_deref(),
+            parsed.scheduled_start_at.as_deref(),
+            parsed.scheduled_end_at.as_deref(),
+            parsed.estimated_duration_min,
+            parsed.recurrence_rule.as_deref(),
+            parsed.recurrence_time_of_day.as_deref(),
+        )
+    }
+
+    pub fn get_task_activity(
+        &self,
+        task_id: &str,
+        limit: u32,
+    ) -> Result<Vec<TaskEventDto>, String> {
+        self.productivity.get_task_activity(task_id, limit)
+    }
+
+    pub fn list_task_events(&self, limit: i64) -> Result<Vec<TaskEventDto>, String> {
+        self.productivity.list_task_events(limit)
+    }
+
+    pub fn add_task_comment(
+        &self,
+        task_id: &str,
+        text: &str,
+        author: &str,
+    ) -> Result<TaskEventDto, String> {
+        self.task_runtime_service()
+            .add_task_comment(task_id, text, author)
+    }
+
+    pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
+        self.productivity.delete_task_event(event_id)
+    }
+
+    pub fn task_activity_summary(&self) -> Result<String, String> {
+        self.productivity.task_activity_summary()
     }
 
     pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
@@ -663,6 +820,12 @@ impl AgentApplication {
         // result -> next turn).
         service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
 
+        // Register native task tools so the LLM can manage tasks.
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(self.productivity.clone());
+        let task_tools = crate::task_tools::create_task_tools(task_service);
+        service.register_native_tools(task_tools);
+
         Ok((service, settings_version))
     }
 
@@ -674,13 +837,63 @@ impl AgentApplication {
             Vec::new()
         };
 
+        // Inject task activity summary so the agent has context.
+        let system_prompt = self.productivity.task_activity_summary().ok();
+
         Ok(AgentServiceConfig {
             working_directory: self.workspace_dir.clone(),
             persona_dir: Some(self.workspace_dir.clone()),
             agent_skills,
+            system_prompt,
             auto_discover: false,
             ..Default::default()
         })
+    }
+
+    fn agent_launch_env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+
+        if let Ok(config) = self.resolved_config()
+            && let Ok((resolved, _)) = self.settings.to_agent_config(config)
+        {
+            if let Some(provider) = resolved.provider {
+                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), provider));
+            }
+            if let Some(model) = resolved.model {
+                env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
+            }
+            if let Some(api_key) = resolved.api_key {
+                env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
+            }
+        }
+
+        if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
+            let task_session_dir = data_dir.join("task-agent-sessions");
+            let _ = std::fs::create_dir_all(&task_session_dir);
+            env.push((
+                "PEEKOO_AGENT_TASK_SESSION_DIR".to_string(),
+                task_session_dir.to_string_lossy().into_owned(),
+            ));
+        }
+
+        env
+    }
+
+    fn task_runtime_service(&self) -> TaskRuntimeService {
+        let scheduler_ref = Arc::clone(&self.agent_scheduler);
+        let follow_up_trigger = Some(Arc::new(move |_task_id: String| {
+            if let Ok(guard) = scheduler_ref.lock()
+                && let Some(ref scheduler) = *guard
+            {
+                scheduler.trigger_now();
+            }
+        }) as Arc<dyn Fn(String) + Send + Sync>);
+
+        TaskRuntimeService::new(
+            self.productivity.clone(),
+            Arc::clone(&self.notifications),
+            follow_up_trigger,
+        )
     }
 }
 
@@ -691,6 +904,7 @@ fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bo
 #[allow(clippy::type_complexity)]
 fn create_plugin_registry(
     db_conn: Arc<Mutex<Connection>>,
+    task_service: Arc<dyn peekoo_productivity_domain::task::TaskService>,
 ) -> Result<
     (
         Arc<PluginRegistry>,
@@ -719,6 +933,7 @@ fn create_plugin_registry(
         Arc::clone(&notifications),
         Arc::clone(&peek_badges),
         Arc::clone(&mood_reactions),
+        task_service,
     ));
 
     Ok((
@@ -780,10 +995,101 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
+    use peekoo_productivity_domain::task::{TaskDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
     use super::{install_discovered_plugins, should_restore_agent};
+
+    struct NoopTaskService;
+
+    impl TaskService for NoopTaskService {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
+        ) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn get_task_activity(
+            &self,
+            _: &str,
+            _: u32,
+        ) -> Result<Vec<peekoo_productivity_domain::task::TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+        ) -> Result<peekoo_productivity_domain::task::TaskEventDto, String> {
+            Err("not implemented".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("not implemented".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("not implemented".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("not implemented".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+    }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -831,6 +1137,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         ))
     }
 

@@ -50,21 +50,3 @@ return_type = "object"
 [events]
 subscribe = ["schedule:fired", "system:wake"]
 emit = ["pomodoro:started", "pomodoro:paused", "pomodoro:resumed", "pomodoro:finished", "pomodoro:completed"]
-
-[[config.fields]]
-key = "default_work_minutes"
-label = "Default Focus Duration"
-description = "Starting duration (minutes) for focus sessions."
-type = "integer"
-default = 25
-min = 1
-max = 999
-
-[[config.fields]]
-key = "default_break_minutes"
-label = "Default Break Duration"
-description = "Starting duration (minutes) for short breaks."
-type = "integer"
-default = 5
-min = 1
-max = 999

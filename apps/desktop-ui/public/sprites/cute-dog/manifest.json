@@ -7,7 +7,7 @@
     "columns": 8,
     "rows": 7
   },
-  "scale": 0.38,
+  "scale": 0.40,
   "frameRate": 6,
   "chromaKey": {
     "targetColor": [255, 0, 255],

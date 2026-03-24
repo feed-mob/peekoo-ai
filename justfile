@@ -2,14 +2,17 @@
 
 # Run Tauri desktop app in development mode (trace logging by default)
 dev:
+    cargo build -p peekoo-agent-acp
     if [ "$(uname)" = "Darwin" ]; then RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev --config tauri.macos.conf.json; else RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev; fi
 
 # Build Tauri desktop app for production
 build:
+    cargo build --release -p peekoo-agent-acp
     if [ "$(uname)" = "Darwin" ]; then cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build --config tauri.macos.conf.json; else cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build; fi
 
 # Build AppImage with linuxdeploy strip workaround
 build-appimage:
+    cargo build --release -p peekoo-agent-acp
     cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build --bundles appimage
 
 # Install all dependencies (frontend + Rust tools)
@@ -91,6 +94,7 @@ plugin name: (plugin-build name) (plugin-install name)
 plugin-build-all:
     just plugin-build health-reminders
     just plugin-build peekoo-opencode-companion
+    just plugin-build pomodoro
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
 plugin-build-opencode-companion:

@@ -8,9 +8,9 @@ interface TaskInputProps {
 }
 
 const PRIORITY_OPTIONS: { value: Task["priority"]; label: string; color: string }[] = [
-  { value: "high",   label: "High",   color: "#E9762B" },
-  { value: "medium", label: "Medium", color: "#F5C842" },
-  { value: "low",    label: "Low",    color: "#7B9AC7" },
+  { value: "high", label: "High", color: "#E9762B" },
+  { value: "medium", label: "Medium", color: "#8DD9CF" },
+  { value: "low", label: "Low", color: "#7B9AC7" },
 ];
 
 export function TaskInput({ onAdd }: TaskInputProps) {
@@ -21,7 +21,6 @@ export function TaskInput({ onAdd }: TaskInputProps) {
 
   const selected = PRIORITY_OPTIONS.find((o) => o.value === priority)!;
 
-  // Close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -42,7 +41,6 @@ export function TaskInput({ onAdd }: TaskInputProps) {
 
   return (
     <form onSubmit={handleSubmit} className="flex gap-3">
-      {/* Task title input */}
       <div className="relative flex-1">
         <Plus className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
         <Input
@@ -55,7 +53,6 @@ export function TaskInput({ onAdd }: TaskInputProps) {
         />
       </div>
 
-      {/* Priority selector */}
       <div ref={dropdownRef} className="relative">
         <button
           type="button"
@@ -67,12 +64,10 @@ export function TaskInput({ onAdd }: TaskInputProps) {
           aria-label="Task priority"
           aria-expanded={open}
         >
-          {/* Color dot */}
           <span
             className="w-2.5 h-2.5 rounded-full shrink-0"
             style={{ backgroundColor: selected.color }}
           />
-          {/* Label colored */}
           <span className="flex-1 text-left" style={{ color: selected.color }}>
             {selected.label}
           </span>
@@ -82,19 +77,20 @@ export function TaskInput({ onAdd }: TaskInputProps) {
           />
         </button>
 
-        {/* Dropdown */}
         {open && (
           <div className="absolute top-full left-0 mt-1 w-32 bg-space-deep rounded-xl border border-glass-border shadow-lg z-50 overflow-hidden py-1">
             {PRIORITY_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => { setPriority(opt.value); setOpen(false); }}
+                onClick={() => {
+                  setPriority(opt.value);
+                  setOpen(false);
+                }}
                 className={`flex items-center gap-2 w-full px-3 py-2.5 text-sm font-medium transition-colors hover:bg-space-surface ${
                   priority === opt.value ? "bg-space-surface/60" : ""
                 }`}
               >
-                {/* Left accent bar matching priority color */}
                 <span
                   className="w-1 h-4 shrink-0 rounded-sm"
                   style={{ backgroundColor: opt.color }}
@@ -106,7 +102,6 @@ export function TaskInput({ onAdd }: TaskInputProps) {
         )}
       </div>
 
-      {/* Submit */}
       <button
         type="submit"
         className="h-11 w-11 rounded-full shrink-0 flex items-center justify-center text-white bg-[var(--glow-green)] shadow-md hover:brightness-110 active:scale-95 transition-all duration-150"

@@ -1,0 +1,24 @@
+[package]
+name = "peekoo-agent-acp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+agent-client-protocol = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+peekoo-agent = { path = "../peekoo-agent" }
+peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["client", "macros", "transport-streamable-http-client-reqwest", "transport-child-process"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "io-std", "net", "process"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+async-trait = "0.1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+asupersync = "0.2.5"
+pi = { version = "0.1.7", package = "pi_agent_rust", default-features = false, features = ["image-resize", "clipboard", "sqlite-sessions"] }
+rustls = { version = "0.23", features = ["ring"] }
+
+[dev-dependencies]
+tempfile = "3"

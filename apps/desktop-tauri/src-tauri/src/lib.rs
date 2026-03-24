@@ -6,7 +6,7 @@ use peekoo_agent_app::{
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
     PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
+    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
 };
 use serde::Serialize;
 use std::env;
@@ -14,8 +14,6 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use std::time::Duration;
-#[cfg(target_os = "macos")]
-use tauri::utils::config::Color;
 use tauri::{
     AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, State, Window,
     WindowSizeConstraints,
@@ -33,8 +31,6 @@ use tauri_plugin_shell::ShellExt;
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
-const TRAY_SETTINGS_MENU_ID: &str = "settings";
-const TRAY_ABOUT_MENU_ID: &str = "about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 
@@ -101,12 +97,6 @@ fn toggle_main_window_visibility(app: &AppHandle) {
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
     match menu_id {
         TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
-        TRAY_SETTINGS_MENU_ID => {
-            let _ = app.emit("open-settings", ());
-        }
-        TRAY_ABOUT_MENU_ID => {
-            let _ = app.emit("open-about", ());
-        }
         TRAY_QUIT_MENU_ID => app.exit(0),
         _ => {}
     }
@@ -122,22 +112,6 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
         toggle_main_window_visibility(app);
     }
 }
-
-#[cfg(target_os = "macos")]
-fn apply_macos_transparent_background(app: &tauri::App) {
-    // macOS transparency workaround details and distribution tradeoffs are documented in:
-    // apps/desktop-tauri/src-tauri/MACOS_PRIVATE_API.md
-    if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
-            tracing::warn!(
-                "Failed to set macOS main window background color to transparent: {err}"
-            );
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn apply_macos_transparent_background(_: &tauri::App) {}
 
 // ============================================================================
 // Tauri Commands
@@ -331,7 +305,6 @@ async fn app_settings_list_sprites(
 ) -> Result<Vec<SpriteInfo>, String> {
     Ok(state.app.list_sprites())
 }
-
 #[tauri::command]
 async fn agent_set_model(
     provider: String,
@@ -361,12 +334,129 @@ async fn chat_new_session(state: State<'_, AgentState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn create_task(
     title: String,
     priority: String,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<u32>,
+    recurrence_rule: Option<String>,
+    recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
 ) -> Result<TaskDto, String> {
-    state.app.create_task(&title, &priority)
+    let assignee = assignee.as_deref().unwrap_or("user");
+    let labels = labels.as_deref().unwrap_or(&[]);
+    state.app.create_task(
+        &title,
+        &priority,
+        assignee,
+        labels,
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_deref(),
+        recurrence_time_of_day.as_deref(),
+    )
+}
+
+#[tauri::command]
+async fn create_task_from_text(
+    text: String,
+    state: State<'_, AgentState>,
+) -> Result<TaskDto, String> {
+    state.app.create_task_from_text(&text)
+}
+
+#[tauri::command]
+async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String> {
+    state.app.list_tasks()
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+#[allow(clippy::too_many_arguments)]
+async fn update_task(
+    id: String,
+    title: Option<String>,
+    priority: Option<String>,
+    status: Option<String>,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<Option<u32>>,
+    recurrenceRule: Option<Option<String>>,
+    recurrenceTimeOfDay: Option<Option<String>>,
+    state: State<'_, AgentState>,
+) -> Result<TaskDto, String> {
+    println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
+    let recurrence_rule = recurrenceRule;
+    let recurrence_time_of_day = recurrenceTimeOfDay;
+    state.app.update_task(
+        &id,
+        title.as_deref(),
+        priority.as_deref(),
+        status.as_deref(),
+        assignee.as_deref(),
+        labels.as_deref(),
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_ref().map(|o| o.as_deref()),
+        recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
+    )
+}
+
+#[tauri::command]
+async fn delete_task(id: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_task(&id)
+}
+
+#[tauri::command]
+async fn toggle_task(id: String, state: State<'_, AgentState>) -> Result<TaskDto, String> {
+    state.app.toggle_task(&id)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn get_task_activity(
+    taskId: String,
+    limit: Option<u32>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.get_task_activity(&taskId, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+async fn task_list_events(
+    limit: Option<i64>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.list_task_events(limit.unwrap_or(50))
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn add_task_comment(
+    taskId: String,
+    text: String,
+    author: String,
+    state: State<'_, AgentState>,
+) -> Result<TaskEventDto, String> {
+    state.app.add_task_comment(&taskId, &text, &author)
+}
+
+#[tauri::command]
+#[allow(non_snake_case)]
+async fn delete_task_event(eventId: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_task_event(&eventId)
 }
 
 #[tauri::command]
@@ -596,8 +686,8 @@ async fn plugin_store_uninstall(
 // ============================================================================
 
 /// Try each candidate directory in order, returning the first one that can be
-/// created successfully. The `try_create` callback is responsible for creating
-/// the directory (or simulating creation in tests).
+/// created and written to successfully. The `try_create` callback is responsible
+/// for creating the directory (or simulating creation in tests).
 #[cfg(any(target_os = "windows", test))]
 fn resolve_webview2_data_dir<F>(
     candidates: &[(&str, PathBuf)],
@@ -609,11 +699,24 @@ where
     for (label, path) in candidates {
         match try_create(path) {
             Ok(()) => {
-                eprintln!(
-                    "info: WebView2 data folder set to ({label}): {}",
-                    path.display()
-                );
-                return Some(path.clone());
+                // Also verify we can actually write to the directory
+                let test_file = path.join(".peekoo-write-test");
+                match std::fs::write(&test_file, b"test") {
+                    Ok(_) => {
+                        let _ = std::fs::remove_file(&test_file);
+                        eprintln!(
+                            "info: WebView2 data folder set to ({label}): {}",
+                            path.display()
+                        );
+                        return Some(path.clone());
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "info: {label} WebView2 path not writable ({:?}): {e}",
+                            path.display()
+                        );
+                    }
+                }
             }
             Err(e) => {
                 eprintln!(
@@ -630,16 +733,16 @@ where
 #[cfg(target_os = "windows")]
 fn webview2_candidate_dirs() -> Vec<(&'static str, PathBuf)> {
     let mut v = Vec::new();
-    // Primary: %LOCALAPPDATA%\com.peekoo.desktop\WebView2
+    // Primary: %LOCALAPPDATA%\Peekoo\WebView2
     if let Some(mut p) = dirs::data_local_dir() {
-        p.push("com.peekoo.desktop");
+        p.push("Peekoo");
         p.push("WebView2");
         v.push(("primary", p));
     }
-    // Fallback: %USERPROFILE%\.peekoo-desktop\WebView2
+    // Fallback: %USERPROFILE%\.peekoo\webview2
     if let Some(mut p) = dirs::home_dir() {
-        p.push(".peekoo-desktop");
-        p.push("WebView2");
+        p.push(".peekoo");
+        p.push("webview2");
         v.push(("home", p));
     }
     // Last resort: %TEMP%\peekoo-webview-data
@@ -670,7 +773,13 @@ pub fn run() {
     let default_level = env::var("RUST_LOG")
         .ok()
         .and_then(|v| v.parse::<log::LevelFilter>().ok())
-        .unwrap_or(log::LevelFilter::Error);
+        .unwrap_or({
+            if cfg!(debug_assertions) {
+                log::LevelFilter::Info
+            } else {
+                log::LevelFilter::Error
+            }
+        });
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")
@@ -693,8 +802,6 @@ pub fn run() {
         .setup(|app| {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
-                .text(TRAY_SETTINGS_MENU_ID, "Settings")
-                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
                 .separator()
                 .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
                 .build()?;
@@ -735,8 +842,6 @@ pub fn run() {
             }
 
             let _ = tray_builder.build(app)?;
-
-            apply_macos_transparent_background(app);
 
             let state = app.state::<AgentState>();
             state.app.start_plugin_runtime();
@@ -822,6 +927,15 @@ pub fn run() {
             app_settings_set,
             app_settings_list_sprites,
             create_task,
+            create_task_from_text,
+            list_tasks,
+            update_task,
+            delete_task,
+            toggle_task,
+            get_task_activity,
+            task_list_events,
+            add_task_comment,
+            delete_task_event,
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
@@ -843,7 +957,7 @@ pub fn run() {
             plugin_store_catalog,
             plugin_store_install,
             plugin_store_update,
-            plugin_store_uninstall
+            plugin_store_uninstall,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

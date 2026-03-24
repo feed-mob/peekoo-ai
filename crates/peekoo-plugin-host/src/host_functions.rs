@@ -14,6 +14,7 @@ use peekoo_agent_auth::{
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
+use peekoo_productivity_domain::task::TaskService;
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
@@ -47,6 +48,7 @@ struct HostContext {
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 }
 
@@ -71,6 +73,7 @@ pub fn build_host_functions(
     notifications: &Arc<NotificationService>,
     peek_badges: &Arc<PeekBadgeService>,
     mood_reactions: &Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 ) -> Vec<Function> {
     let secret_root = peekoo_paths::peekoo_global_data_dir()
@@ -95,6 +98,7 @@ pub fn build_host_functions(
         notifications: Arc::clone(notifications),
         peek_badges: Arc::clone(peek_badges),
         mood_reactions: Arc::clone(mood_reactions),
+        task_service,
         config_fields,
     };
 
@@ -302,14 +306,49 @@ pub fn build_host_functions(
             UserData::new(ctx.clone()),
             host_set_mood,
         ),
-    Function::new(
-        "peekoo_system_local_date",
-        [ValType::I64],
-        [ValType::I64],
-        UserData::new(ctx),
-        host_system_local_date,
-    ),
-  ]
+        Function::new(
+            "peekoo_task_create",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_create,
+        ),
+        Function::new(
+            "peekoo_task_list",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_list,
+        ),
+        Function::new(
+            "peekoo_task_update",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_update,
+        ),
+        Function::new(
+            "peekoo_task_delete",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_delete,
+        ),
+        Function::new(
+            "peekoo_task_toggle",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_toggle,
+        ),
+        Function::new(
+            "peekoo_task_assign",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_task_assign,
+        ),
+    ]
 }
 
 fn host_state_get(
@@ -844,6 +883,234 @@ fn host_set_mood(
     Ok(())
 }
 
+// ── Task host functions ──────────────────────────────────────────────
+
+fn host_task_create(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let title = req["title"].as_str().unwrap_or("");
+    let priority = req["priority"].as_str().unwrap_or("medium");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    let labels: Vec<String> = req["labels"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min = req["estimated_duration_min"].as_u64().map(|v| v as u32);
+    let recurrence_rule = req["recurrence_rule"].as_str();
+    let recurrence_time_of_day = req["recurrence_time_of_day"].as_str();
+
+    match ctx.task_service.create_task(
+        title,
+        priority,
+        assignee,
+        &labels,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task create error: {e}"))),
+    }
+}
+
+fn host_task_list(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    match ctx.task_service.list_tasks() {
+        Ok(tasks) => {
+            let filtered: Vec<_> = match req["status_filter"].as_str() {
+                Some(status) => tasks.into_iter().filter(|t| t.status == status).collect(),
+                None => tasks,
+            };
+            write_output(
+                plugin,
+                outputs,
+                &serde_json::to_string(&filtered).unwrap_or_default(),
+            )
+        }
+        Err(e) => Err(Error::msg(format!("Task list error: {e}"))),
+    }
+}
+
+fn host_task_update(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let title = req["title"].as_str();
+    let priority = req["priority"].as_str();
+    let status = req["status"].as_str();
+    let assignee = req["assignee"].as_str();
+    let labels: Option<Vec<String>> = req["labels"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    });
+    let labels_ref = labels.as_deref();
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min: Option<Option<u32>> = if req.get("estimated_duration_min").is_some()
+    {
+        Some(req["estimated_duration_min"].as_u64().map(|v| v as u32))
+    } else {
+        None
+    };
+    let recurrence_rule: Option<Option<&str>> = if req.get("recurrence_rule").is_some() {
+        Some(req["recurrence_rule"].as_str())
+    } else {
+        None
+    };
+    let recurrence_time_of_day: Option<Option<&str>> =
+        if req.get("recurrence_time_of_day").is_some() {
+            Some(req["recurrence_time_of_day"].as_str())
+        } else {
+            None
+        };
+
+    match ctx.task_service.update_task(
+        id,
+        title,
+        priority,
+        status,
+        assignee,
+        labels_ref,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task update error: {e}"))),
+    }
+}
+
+fn host_task_delete(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.delete_task(id) {
+        Ok(()) => write_output(plugin, outputs, r#"{"ok":true}"#),
+        Err(e) => Err(Error::msg(format!("Task delete error: {e}"))),
+    }
+}
+
+fn host_task_toggle(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.toggle_task(id) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task toggle error: {e}"))),
+    }
+}
+
+fn host_task_assign(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    match ctx.task_service.update_task(
+        id,
+        None,
+        None,
+        None,
+        Some(assignee),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task assign error: {e}"))),
+    }
+}
+
 fn host_websocket_connect(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -1025,21 +1292,6 @@ fn host_system_time_millis(
         plugin,
         outputs,
         &serde_json::json!({ "timeMillis": time_millis }).to_string(),
-    )
-}
-
-fn host_system_local_date(
-    plugin: &mut CurrentPlugin,
-    _inputs: &[Val],
-    outputs: &mut [Val],
-    _user_data: UserData<HostContext>,
-) -> Result<(), Error> {
-    use chrono::Local;
-    let local_date = Local::now().format("%Y-%m-%d").to_string();
-    write_output(
-        plugin,
-        outputs,
-        &serde_json::json!({ "date": local_date }).to_string(),
     )
 }
 
@@ -1501,6 +1753,7 @@ mod tests {
 
     use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use peekoo_security::InMemorySecretStore;
     use rusqlite::Connection;
@@ -1514,6 +1767,86 @@ mod tests {
         is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
         read_file_content, sanitize_key_component,
     };
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
+            Err("noop".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let dir =
@@ -1696,6 +2029,7 @@ mod tests {
             notifications: Arc::new(notifications),
             peek_badges: Arc::new(PeekBadgeService::new()),
             mood_reactions: Arc::new(MoodReactionService::new()),
+            task_service: Arc::new(NoopTaskService),
             config_fields: vec![],
         }
     }

@@ -3,6 +3,27 @@
 ## Tauri Version (Current Focus)
 
 ### Completed
+- [x] Agent Task Execution via ACP
+  - Full ACP subprocess communication for agent task execution
+  - AgentScheduler with 30-second polling for task execution
+  - Agent registry table and task work tracking columns
+  - Frontend agent selector for task assignment
+  - See changelog: `ai/memories/changelogs/202603232317-feat-agent-task-execution.md`
+  - PR #125: https://github.com/feed-mob/peekoo-ai/pull/125
+
+- [x] ACP-native task MCP execution and follow-up mentions
+  - Shared task MCP server passed through ACP `session/new` `mcpServers`
+  - `peekoo-agent-acp` now runs the real `peekoo-agent` with bridged MCP task tools
+  - Scheduler no longer writes fake task history; agent updates tasks through MCP tools
+  - User `@peekoo-agent` comments re-queue agent-assigned tasks for follow-up work
+  - Follow-up comments now trigger the scheduler immediately and recover stale `executing` tasks
+  - Task follow-up context now uses comment-only history in chronological order with latest-comment emphasis
+  - Per-task agent session reuse preserves context between follow-up runs and now falls back cleanly when no saved session exists yet
+  - Desktop notifications fire for agent comments and agent status changes only
+  - See changelog: `ai/memories/changelogs/202603240845-feat-agent-follow-up-mentions.md`
+  - See changelog: `ai/memories/changelogs/202603240930-fix-agent-follow-up-trigger.md`
+  - See changelog: `ai/memories/changelogs/202603240945-fix-task-session-fallback.md`
+
 - [x] Project structure setup (agent-first workspace)
 - [x] Core Rust business logic crates (`peekoo-agent`, `peekoo-agent-app`, `peekoo-agent-auth`, `peekoo-productivity-domain`, `persistence-sqlite`, `security`, `peekoo-paths`)
 - [x] Tauri app scaffolding with 19 Rust commands (`greet`, `get_sprite_state`, `agent_prompt`, `agent_set_model`, `agent_get_model`, `agent_settings_get`, `agent_settings_update`, `agent_settings_catalog`, `agent_provider_auth_set_api_key`, `agent_provider_auth_clear`, `agent_provider_config_set`, `agent_oauth_start`, `agent_oauth_status`, `agent_oauth_cancel`, `create_task`, `pomodoro_start`, `pomodoro_pause`, `pomodoro_resume`, `pomodoro_finish`)
@@ -19,11 +40,24 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
-- [ ] Implement Tasks component with full CRUD
-  - Connect to create_task Tauri command
-  - Display task list with filters
-  - Implement task completion animations
-  - Connect to backend-driven refresh/update flow
+- [ ] Evolve ACP/MCP into the primary agent runtime
+  - [ ] Support OpenCode as another ACP provider
+  - [ ] Ensure `peekoo-agent-acp` loads all available tools
+  - [ ] Support loading a selected subset of tools from MCP
+  - [ ] Convert remaining built-in tools into MCP tools
+  - [ ] Make ACP the first-class agent runtime so ACP + MCP tools replace the current `peekoo-agent` path
+
+- [x] Implement Tasks component with full CRUD
+  - Connected to real SQLite-backed CRUD via Tauri commands
+  - List with status filter tabs (All/Todo/In Progress/Done)
+  - Status badge click-to-cycle on TaskItem
+  - Hybrid labels (predefined + custom) with colored pills
+  - User/agent assignment with icon display
+  - Activity tab with grouped-by-day event feed
+  - Agent tools (task_create/list/update/delete/toggle/assign) for LLM
+  - Plugin host functions (peekoo_task_*) gated by "tasks" capability
+  - Task activity summary injected into agent system prompt
+  - See changelog: `ai/memories/changelogs/202603201200-feat-tasks-panel-full-crud.md`
 
 - [ ] Implement Pomodoro timer UI
   - Actual countdown timer logic in frontend
@@ -42,11 +76,16 @@
   - Test on macOS/Linux only
 
 ### Polish
-- [ ] Add system tray icon
+- [x] Add system tray icon
 - [ ] Global keyboard shortcuts
 - [ ] Sound effects for events
-- [ ] Desktop notifications
+- [x] Desktop notifications
 - [ ] Dark mode theme
+- [x] Sprite window auto-resize for mini chat and reply bubble states
+  - Main sprite window now auto-expands/shrinks for mini chat open/close
+  - Expanded reading mode uses wider/taller constrained window sizing
+  - Rust-managed resize constraints improve behavior on Linux/Wayland
+  - See changelog: `ai/memories/changelogs/202603200347-fix-sprite-window-constrained-resize.md`
 
 ### Testing
 - [ ] End-to-end integration tests
@@ -57,5 +96,16 @@
 
 ---
 
-**Last updated**: 2026-03-12
-**Status**: Tauri MVP implementation in progress
+**Last updated**: 2026-03-24
+**Status**: Agent task execution now supports immediate `@peekoo-agent` follow-up triggering, comment-only follow-up context, session reuse, and agent comment/status notifications
+
+### Recent Major Refactor (2026-03-21)
+- [x] Complete Tasks UI refactoring
+  - Optimistic updates with rollback on error
+  - Drag-and-drop task reordering with persistence
+  - Activity section in task detail view
+  - Delete confirmation dialogs
+  - Toast notifications for user feedback
+  - Proper Date handling utilities
+  - Fixed formatTimeRange bug (missing recurrence parameters)
+  - See changelog: `ai/memories/changelogs/202603210345-feat-tasks-ui-refactor.md`

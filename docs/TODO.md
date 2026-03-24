@@ -19,6 +19,13 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
+- [ ] Evolve ACP/MCP into the primary agent runtime
+  - [ ] Support OpenCode as another ACP provider
+  - [ ] Ensure `peekoo-agent-acp` loads all available tools
+  - [ ] Support loading a selected subset of tools from MCP
+  - [ ] Convert remaining built-in tools into MCP tools
+  - [ ] Make ACP the first-class agent runtime so ACP + MCP tools replace the current `peekoo-agent` path
+
 - [ ] Plugin system foundation
   - `peekoo-plugin-host` crate with manifest parsing, runtime wrapper, registry, permissions, and state store
   - Tauri commands for plugin listing, tool calls, panel discovery, and panel HTML loading

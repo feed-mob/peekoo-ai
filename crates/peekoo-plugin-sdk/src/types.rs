@@ -29,9 +29,9 @@ pub struct BadgeItem {
     /// Optional Lucide icon name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
-    /// Optional absolute epoch timestamp in seconds of when this badge expires.
+    /// Optional countdown in seconds (UI will tick it down live).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub target_epoch_secs: Option<u64>,
+    pub countdown_secs: Option<u64>,
 }
 
 /// A filesystem entry returned by [`crate::peekoo::fs::read_dir`].
