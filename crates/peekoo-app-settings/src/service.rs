@@ -7,7 +7,9 @@ use crate::dto::SpriteInfo;
 use crate::store::AppSettingsStore;
 
 const SETTING_ACTIVE_SPRITE_ID: &str = "active_sprite_id";
+const SETTING_THEME_MODE: &str = "theme_mode";
 const DEFAULT_SPRITE_ID: &str = "dark-cat";
+const DEFAULT_THEME_MODE: &str = "system";
 
 /// Internal static representation of built-in sprites.
 ///
@@ -66,6 +68,22 @@ impl AppSettingsService {
         self.store.set(SETTING_ACTIVE_SPRITE_ID, sprite_id)
     }
 
+    /// Return the currently selected theme mode, falling back to "system".
+    pub fn get_theme_mode(&self) -> Result<String, String> {
+        Ok(self
+            .store
+            .get(SETTING_THEME_MODE)?
+            .unwrap_or_else(|| DEFAULT_THEME_MODE.to_string()))
+    }
+
+    /// Set the theme mode. Valid values: "light", "dark", "system".
+    pub fn set_theme_mode(&self, mode: &str) -> Result<(), String> {
+        match mode {
+            "light" | "dark" | "system" => self.store.set(SETTING_THEME_MODE, mode),
+            _ => Err(format!("Invalid theme mode: {mode}")),
+        }
+    }
+
     /// List all available sprites.
     pub fn list_sprites(&self) -> Vec<SpriteInfo> {
         BUILTIN_SPRITES
@@ -88,6 +106,9 @@ impl AppSettingsService {
         if key == SETTING_ACTIVE_SPRITE_ID {
             return self.set_active_sprite_id(value);
         }
+        if key == SETTING_THEME_MODE {
+            return self.set_theme_mode(value);
+        }
         self.store.set(key, value)
     }
 }
@@ -108,10 +129,27 @@ mod tests {
     }
 
     #[test]
+    fn default_theme_is_system() {
+        let svc = test_service();
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
     fn set_valid_sprite_succeeds() {
         let svc = test_service();
         svc.set_active_sprite_id("cute-dog").unwrap();
         assert_eq!(svc.get_active_sprite_id().unwrap(), "cute-dog");
+    }
+
+    #[test]
+    fn set_valid_theme_succeeds() {
+        let svc = test_service();
+        svc.set_theme_mode("dark").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "dark");
+        svc.set_theme_mode("light").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "light");
+        svc.set_theme_mode("system").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
     }
 
     #[test]
@@ -120,6 +158,14 @@ mod tests {
         let result = svc.set_active_sprite_id("unknown-sprite");
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown sprite"));
+    }
+
+    #[test]
+    fn set_invalid_theme_returns_error() {
+        let svc = test_service();
+        let result = svc.set_theme_mode("cobalt");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid theme mode"));
     }
 
     #[test]
@@ -134,6 +180,17 @@ mod tests {
     }
 
     #[test]
+    fn generic_set_validates_theme_mode() {
+        let svc = test_service();
+
+        let result = svc.set(SETTING_THEME_MODE, "invalid");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid theme mode"));
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
     fn list_sprites_returns_builtins() {
         let svc = test_service();
         let sprites = svc.list_sprites();
@@ -142,3 +199,4 @@ mod tests {
         assert_eq!(sprites[1].id, "cute-dog");
     }
 }
+

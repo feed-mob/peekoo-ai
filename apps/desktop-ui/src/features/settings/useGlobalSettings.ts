@@ -5,6 +5,7 @@ import type { SpriteInfo } from "@/types/global-settings";
 
 interface GlobalSettingsState {
   activeSpriteId: string | null;
+  themeMode: string | null;
   sprites: SpriteInfo[];
   loading: boolean;
   error: string | null;
@@ -13,6 +14,7 @@ interface GlobalSettingsState {
 export function useGlobalSettings() {
   const [state, setState] = useState<GlobalSettingsState>({
     activeSpriteId: null,
+    themeMode: null,
     sprites: [],
     loading: true,
     error: null,
@@ -26,6 +28,7 @@ export function useGlobalSettings() {
       ]);
       setState({
         activeSpriteId: settings.active_sprite_id ?? "dark-cat",
+        themeMode: settings.theme_mode ?? "system",
         sprites,
         loading: false,
         error: null,
@@ -59,11 +62,30 @@ export function useGlobalSettings() {
     [],
   );
 
+  const setThemeMode = useCallback(
+    async (mode: string) => {
+      try {
+        await invoke("app_settings_set", {
+          key: "theme_mode",
+          value: mode,
+        });
+        setState((prev) => ({ ...prev, themeMode: mode }));
+        await emit("theme:changed", { mode });
+      } catch (err) {
+        setState((prev) => ({ ...prev, error: String(err) }));
+      }
+    },
+    [],
+  );
+
   return {
     activeSpriteId: state.activeSpriteId,
+    themeMode: state.themeMode,
     sprites: state.sprites,
     loading: state.loading,
     error: state.error,
     setActiveSpriteId,
+    setThemeMode,
   };
 }
+

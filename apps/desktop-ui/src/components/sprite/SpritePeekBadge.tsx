@@ -4,9 +4,10 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   PEEK_BADGE_EXPANDED_VERTICAL_PADDING,
   PEEK_BADGE_HEIGHT,
-  PEEK_BADGE_PADDING,
   PEEK_BADGE_ROW_HEIGHT,
 } from "@/lib/sprite-bubble-layout";
+import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
+import { cn } from "@/lib/utils";
 import type { PeekBadgeItem } from "@/types/peek-badge";
 
 const BADGE_WIDTH = 188;
@@ -81,6 +82,7 @@ interface StyledBadgeProps {
 }
 
 function StyledBadge({ item }: StyledBadgeProps) {
+  const isDark = useIsDarkMode();
   const isPomodoro = item.icon === "brain" || item.icon === "coffee";
   const isPaused = item.label.includes("(Paused)");
   
@@ -121,22 +123,23 @@ function StyledBadge({ item }: StyledBadgeProps) {
     "person-standing": "#eab308", // Yellow
     eye: "#22c55e", // Green
   };
-  const iconColor = (item.icon && healthColors[item.icon]) || (document.documentElement.classList.contains('dark') ? darkWhite : lightGray);
+  const iconColor = (item.icon && healthColors[item.icon]) || (isDark ? darkWhite : lightGray);
   const isReminder = !isPomodoro;
 
   const healthBgs: Record<string, string> = {
-    droplet: "bg-blue-500/10 dark:bg-blue-400/10 border-blue-500/20 dark:border-blue-400/20",
-    "person-standing": "bg-yellow-500/10 dark:bg-yellow-400/10 border-yellow-500/20 dark:border-yellow-400/20",
-    eye: "bg-green-500/10 dark:bg-green-400/10 border-green-500/20 dark:border-green-400/20",
+    droplet: isDark ? "bg-blue-400/10 border-blue-400/20" : "bg-blue-500/10 border-blue-500/20",
+    "person-standing": isDark ? "bg-yellow-400/10 border-yellow-400/20" : "bg-yellow-500/10 border-yellow-500/20",
+    eye: isDark ? "bg-green-400/10 border-green-400/20" : "bg-green-500/10 border-green-500/20",
   };
   
   const containerStyle = isPomodoro 
-    ? "bg-white/60 dark:bg-black/60 border-white/10 dark:border-white/5" 
-    : (item.icon && healthBgs[item.icon]) ? healthBgs[item.icon] : "bg-white/10 dark:bg-black/20 border-white/20 dark:border-white/10";
+    ? (isDark ? "bg-black/60 border-white/5" : "bg-white/60 border-white/10")
+    : (item.icon && healthBgs[item.icon]) ? healthBgs[item.icon] : (isDark ? "bg-black/20 border-white/10" : "bg-white/10 border-white/20");
 
   return (
     <motion.div 
       className={`flex items-center justify-between w-full h-full pl-3.5 pr-2.5 rounded-full backdrop-blur-3xl shadow-panel/10 border transition-all duration-300 ${containerStyle}`}
+
       animate={isReminder ? {
         scale: [1, 1.02, 1],
         boxShadow: [
@@ -159,12 +162,15 @@ function StyledBadge({ item }: StyledBadgeProps) {
              fontFamily: '-apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif',
            }}
          >
-           <span className="block dark:hidden" style={{ WebkitTextStroke: `0.7px ${lightGray}` }}>
-              {item.value}
-           </span>
-           <span className="hidden dark:block" style={{ WebkitTextStroke: `0.7px ${darkWhite}` }}>
-              {item.value}
-           </span>
+           {!isDark ? (
+             <span className="block" style={{ WebkitTextStroke: `0.7px ${lightGray}` }}>
+                {item.value}
+             </span>
+           ) : (
+             <span className="block" style={{ WebkitTextStroke: `0.7px ${darkWhite}` }}>
+                {item.value}
+             </span>
+           )}
          </span>
       </div>
 
@@ -173,7 +179,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
             onClick={handleControl}
             className={`w-[22px] h-[22px] flex-shrink-0 flex items-center justify-center rounded-[4px] backdrop-blur-3xl hover:bg-current/10 active:scale-95 transition-all group overflow-hidden relative border-[0.6px] ${isPomodoro ? 'border-dashed border-black/20 dark:border-white/20' : 'border-none'}`}
             style={{ 
-                background: 'rgba(255, 255, 255, 0.05)',
+                background: isDark ? 'rgba(0, 0, 0, 0.2)' : 'rgba(255, 255, 255, 0.2)',
             }}
           >
             <div className={`w-full h-full flex items-center justify-center transition-opacity`}>
@@ -185,7 +191,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
                           stroke: 'currentColor',
                           strokeWidth: '1.5px',
                           fill: 'none',
-                          color: window.matchMedia("(prefers-color-scheme: dark)").matches ? darkWhite : lightGray
+                          color: isDark ? darkWhite : lightGray
                       }} 
                     />
                 ) : (
@@ -193,7 +199,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
                       className="w-[11px] h-[11px]" 
                       style={{ 
                           color: 'transparent',
-                          stroke: document.documentElement.classList.contains('dark') ? darkWhite : lightGray,
+                          stroke: isDark ? darkWhite : lightGray,
                           strokeWidth: '1.2px',
                           fill: 'none',
                       }} 
@@ -217,9 +223,9 @@ function StyledBadge({ item }: StyledBadgeProps) {
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                  {isPomodoro ? (
                     isPaused ? (
-                       <Play className={`w-[12px] h-[12px] mb-[-0.5px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                       <Play className={`w-[12px] h-[12px] mb-[-0.5px] ${isDark ? 'text-white/90' : 'text-[#757879]'} fill-none stroke-[1.2px] stroke-current`} />
                     ) : (
-                       <Pause className={`w-[11px] h-[11px] text-[#75787B] dark:text-white/90 fill-none stroke-[1.2px] stroke-current`} />
+                       <Pause className={`w-[11px] h-[11px] ${isDark ? 'text-white/90' : 'text-[#757879]'} fill-none stroke-[1.2px] stroke-current`} />
                     )
                  ) : (
                     Icon && (
@@ -243,6 +249,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
   );
 }
 
+
 interface SpritePeekBadgeProps {
   items: PeekBadgeItem[];
   currentItem: PeekBadgeItem | null;
@@ -258,6 +265,7 @@ export function SpritePeekBadge({
   visible,
   onToggle,
 }: SpritePeekBadgeProps) {
+  const isDark = useIsDarkMode();
   if (!visible || items.length === 0 || !currentItem) return null;
 
   const isStyledBadge = ["brain", "coffee", "droplet", "eye", "person-standing"].includes(currentItem.icon || "");
@@ -272,9 +280,11 @@ export function SpritePeekBadge({
           initial={{ opacity: 0, scale: 0.97 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.97 }}
-          className="pointer-events-auto absolute z-10 cursor-pointer rounded-2xl border border-white/5 bg-black/20 px-3 py-2 backdrop-blur-3xl shadow-2xl"
+          className={`pointer-events-auto absolute z-10 cursor-pointer rounded-2xl border backdrop-blur-3xl shadow-2xl px-3 py-2 ${
+            isDark ? "border-white/5 bg-black/40" : "border-white/5 bg-black/20"
+          }`}
           style={{
-            top: PEEK_BADGE_PADDING,
+            bottom: "calc(100% - 24px)",
             left: "50%",
             marginLeft: -(BADGE_WIDTH / 2),
             width: BADGE_WIDTH,
@@ -295,10 +305,13 @@ export function SpritePeekBadge({
           className={`pointer-events-auto absolute z-10 cursor-pointer overflow-visible ${
             isStyledBadge 
             ? "bg-transparent h-12" 
-            : "rounded-xl border border-glass-border/60 bg-glass/80 px-3 py-1 h-12 backdrop-blur-md shadow-panel/40"
+            : cn(
+                "rounded-xl border h-12 backdrop-blur-md shadow-panel/40 px-3 py-1",
+                isDark ? "border-white/10 bg-black/40" : "border-glass-border/60 bg-glass/80"
+              )
           }`}
           style={{
-            top: PEEK_BADGE_PADDING,
+            bottom: "calc(100% - 24px)",
             left: "50%",
             marginLeft: -(effectiveWidth / 2),
             width: effectiveWidth,
@@ -316,3 +329,4 @@ export function SpritePeekBadge({
     </AnimatePresence>
   );
 }
+

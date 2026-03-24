@@ -24,6 +24,7 @@ import {
   getMiniChatVisibleMessage,
   useChatSession,
 } from "@/features/chat/chat-session";
+import { usePomodoroWatcher } from "@/hooks/use-pomodoro-watcher";
 import {
   SPRITE_BUBBLE_DURATION_MS,
   SPRITE_BUBBLE_EVENT,
@@ -35,6 +36,8 @@ import type { AnimationType, SpriteState } from "@/types/sprite";
 // Duration (ms) a reaction-triggered mood override stays active before reverting
 const MOOD_OVERRIDE_DURATION_MS = 3000;
 const DRAG_THRESHOLD_PX = 8;
+/** Maximum gap (ms) between two clicks to be treated as a double-click. */
+const DOUBLE_CLICK_THRESHOLD_MS = 300;
 
 export async function openSettingsPanelFromTray(
   openPanel: (label: PanelLabel) => Promise<void>,
@@ -49,6 +52,7 @@ export async function openAboutPanelFromTray(
 }
 
 export default function SpriteView() {
+  usePomodoroWatcher();
   const spriteState = useSpriteState();
   const {
     payload: bubblePayload,
@@ -83,6 +87,7 @@ export default function SpriteView() {
   );
   const moodResetTimerRef = useRef<number | null>(null);
   const interactionRootRef = useRef<HTMLDivElement | null>(null);
+  const lastClickTimeRef = useRef<number>(0);
   const dragStateRef = useRef<{
     startX: number;
     startY: number;
@@ -182,9 +187,12 @@ export default function SpriteView() {
   // with the current target size for reliable constrained resizing across platforms.
   useEffect(() => {
     const nextSize = getSpriteWindowSize(spriteWindowState);
-    const deltaTop = nextSize.extraTop - prevExtraTopRef.current;
+    // Use positionCompensationTop (not extraTop) so that badge hiding when the
+    // menu or mini-chat opens does not generate a spurious position delta and
+    // cause the sprite to jump unexpectedly.
+    const deltaTop = nextSize.positionCompensationTop - prevExtraTopRef.current;
     const deltaLeft = nextSize.extraLeft - prevExtraLeftRef.current;
-    prevExtraTopRef.current = nextSize.extraTop;
+    prevExtraTopRef.current = nextSize.positionCompensationTop;
     prevExtraLeftRef.current = nextSize.extraLeft;
     void invoke("resize_sprite_window", {
       width: nextSize.width,
@@ -359,12 +367,19 @@ export default function SpriteView() {
         window.removeEventListener("mouseup", handleMouseUp);
 
         if (!dragState?.dragging) {
-          collapseBadge();
-          setMenuOpen(false);
-          setMiniChatOpen((prev) => !prev);
-          if (miniChatOpenRef.current) {
-            setMiniChatActiveReplyId(null);
-            setMiniChatAwaitingReply(false);
+          const now = Date.now();
+          const timeSinceLastClick = now - lastClickTimeRef.current;
+          const isDoubleClick = timeSinceLastClick <= DOUBLE_CLICK_THRESHOLD_MS;
+          lastClickTimeRef.current = isDoubleClick ? 0 : now;
+
+          if (isDoubleClick) {
+            collapseBadge();
+            setMenuOpen(false);
+            setMiniChatOpen((prev) => !prev);
+            if (miniChatOpenRef.current) {
+              setMiniChatActiveReplyId(null);
+              setMiniChatAwaitingReply(false);
+            }
           }
         }
       };
@@ -444,64 +459,68 @@ export default function SpriteView() {
 
   return (
     <div className="w-full h-full bg-transparent">
-      <div ref={interactionRootRef} className="relative w-full h-full">
-        <div
-          style={{
-            paddingTop: `${stagePadding.paddingTop}px`,
-            paddingBottom: `${stagePadding.paddingBottom}px`,
-            paddingLeft: `${stagePadding.paddingLeft}px`,
-            paddingRight: `${stagePadding.paddingRight}px`,
+      <div ref={interactionRootRef} className="relative w-full h-full flex justify-center">
+        
+        {/* Core Anchor System - Absolutely rigid coordinate space */}
+        <div 
+          className="relative pointer-events-none"
+          style={{ 
+            width: 200, 
+            height: 250, 
+            marginTop: stagePadding.paddingTop,
+            // When chat opens, extraLeft offsets the window bounds, but we want the anchor centered properly
+            marginLeft: stagePadding.paddingLeft - stagePadding.paddingRight,
           }}
-          className="flex h-full w-full items-center justify-center"
         >
+          {/* Sprite 本体作为点击判定层 */}
           <div
             onMouseDown={handleMouseDown}
             onContextMenu={handleContextMenu}
-            className="cursor-pointer"
+            className="absolute inset-0 flex items-center justify-center cursor-pointer pointer-events-auto"
           >
             <Sprite
               state={effectiveSpriteState}
               animationOverride={dragAnimation}
             />
           </div>
-        </div>
 
-        <SpriteActionMenu
-          panels={panels}
-          onTogglePanel={handleTogglePanel}
-          isOpen={menuOpen}
-          pluginPanels={pluginPanels}
-          installedPlugins={installedPlugins}
-        />
-        <SpritePeekBadge
-          items={badgeItems}
-          currentItem={badgeCurrentItem}
-          expanded={badgeExpanded}
-          visible={
-            !miniChatOpen &&
-            !menuOpen &&
-            !(bubblePayload !== null && bubbleVisible) &&
-            badgeItems.length > 0
-          }
-          onToggle={toggleBadgeExpanded}
-        />
-        <SpriteMiniChatBubble
-          message={latestMiniChatMessage}
-          visible={miniChatBubbleVisible}
-          thinking={chatIsTyping}
-          displayMode={chatIsTyping ? "compact" : miniChatReplyDisplayMode}
-        />
-        <SpriteBubble
-          payload={bubblePayload}
-          visible={bubbleVisible && !miniChatOpen}
-        />
-        <SpriteMiniChat
-          open={miniChatOpen}
-          isTyping={chatIsTyping}
-          onClose={handleCloseMiniChat}
-          onOpenFullChat={handleOpenFullChat}
-          onSubmit={handleMiniChatSubmit}
-        />
+          <SpriteActionMenu
+            panels={panels}
+            onTogglePanel={handleTogglePanel}
+            isOpen={menuOpen}
+            pluginPanels={pluginPanels}
+            installedPlugins={installedPlugins}
+          />
+          <SpritePeekBadge
+            items={badgeItems}
+            currentItem={badgeCurrentItem}
+            expanded={badgeExpanded}
+            visible={
+              !miniChatOpen &&
+              !menuOpen &&
+              !(bubblePayload !== null && bubbleVisible) &&
+              badgeItems.length > 0
+            }
+            onToggle={toggleBadgeExpanded}
+          />
+          <SpriteMiniChatBubble
+            message={latestMiniChatMessage}
+            visible={miniChatBubbleVisible}
+            thinking={chatIsTyping}
+            displayMode={chatIsTyping ? "compact" : miniChatReplyDisplayMode}
+          />
+          <SpriteBubble
+            payload={bubblePayload}
+            visible={bubbleVisible && !miniChatOpen}
+          />
+          <SpriteMiniChat
+            open={miniChatOpen}
+            isTyping={chatIsTyping}
+            onClose={handleCloseMiniChat}
+            onOpenFullChat={handleOpenFullChat}
+            onSubmit={handleMiniChatSubmit}
+          />
+        </div>
       </div>
     </div>
   );

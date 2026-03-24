@@ -1,8 +1,11 @@
+
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Expand, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 
 interface SpriteMiniChatProps {
   open: boolean;
@@ -19,6 +22,7 @@ export function SpriteMiniChat({
   onOpenFullChat,
   onSubmit,
 }: SpriteMiniChatProps) {
+  const isDark = useIsDarkMode();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -68,13 +72,16 @@ export function SpriteMiniChat({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.98 }}
           transition={{ duration: 0.18, ease: "easeOut" }}
-          className="absolute bottom-2 left-1/2 z-30 w-[calc(100%-16px)] -translate-x-1/2 pointer-events-auto"
+          className="absolute top-[calc(100%-12px)] left-1/2 z-30 w-[260px] -translate-x-1/2 pointer-events-auto"
           onMouseDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
         >
           <form
             onSubmit={(event) => void handleSubmit(event)}
-            className="rounded-[20px] border border-glass-border bg-glass/95 p-1.5 shadow-panel backdrop-blur-xl"
+            className={cn(
+              "rounded-[20px] border p-1.5 shadow-xl backdrop-blur-2xl transition-all duration-300",
+              isDark ? "bg-black/80 border-white/10 focus-within:border-white/30" : "bg-white/80 border-black/5 focus-within:border-black/20"
+            )}
           >
             <div className="flex items-center gap-1.5">
               <Input
@@ -84,7 +91,11 @@ export function SpriteMiniChat({
                 onChange={(event) => setInput(event.target.value)}
                 placeholder={isTyping ? "Thinking..." : "Ask Peekoo..."}
                 disabled={isTyping}
-                className="h-7 rounded-full border-glass-border bg-space-deep/80 px-2.5 text-[11px] text-text-primary placeholder:text-text-muted"
+                className={cn(
+                  "h-7 rounded-full px-2.5 text-[11px] text-text-primary placeholder:text-text-muted",
+                  "border border-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0",
+                  isDark ? "bg-white/5 focus-visible:bg-white/10 focus-visible:border-white/10" : "bg-black/5 focus-visible:bg-black/10 focus-visible:border-black/10"
+                )}
               />
               <Button
                 type="submit"
@@ -100,7 +111,10 @@ export function SpriteMiniChat({
                 onClick={() => void onOpenFullChat()}
                 aria-label="Open full chat"
                 title="Open full chat"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-glass-border/70 bg-space-deep/50 text-text-secondary transition-colors hover:border-glow-cyan/40 hover:text-glow-cyan"
+                className={cn(
+                  "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:text-glow-cyan flex-shrink-0",
+                  isDark ? "text-white/40 hover:bg-white/5" : "text-black/40 hover:bg-black/5"
+                )}
               >
                 <Expand size={11} />
               </button>

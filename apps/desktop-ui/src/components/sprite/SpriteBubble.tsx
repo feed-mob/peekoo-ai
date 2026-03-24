@@ -2,6 +2,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Droplet, Eye, PersonStanding, Brain, Coffee, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
+import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
+import { cn } from "@/lib/utils";
 import type { SpriteBubblePayload } from "@/types/sprite-bubble";
 
 interface SpriteBubbleProps {
@@ -27,6 +29,7 @@ const COLOR_MAP: Record<string, string> = {
 
 
 export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
+  const isDark = useIsDarkMode();
   const bodyLower = payload?.body.toLowerCase() || "";
   const titleLower = payload?.title.toLowerCase() || "";
   
@@ -77,13 +80,17 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
             stiffness: 150
           }}
           onClick={handleDismiss}
-          className={`absolute z-20 cursor-pointer ${
-             isStyled 
-             ? "rounded-xl transition-all duration-300 hover:shadow-lg pointer-events-auto bg-white/80 dark:bg-black/80 border border-white/20 dark:border-white/10 shadow-xl backdrop-blur-3xl px-3.5 py-2" 
+          className={cn(
+            "absolute z-20 cursor-pointer",
+            isStyled 
+             ? cn(
+                "rounded-xl transition-all duration-300 hover:shadow-lg pointer-events-auto border shadow-xl backdrop-blur-3xl px-3.5 py-2",
+                isDark ? "bg-black/80 border-white/10" : "bg-white/80 border-white/20"
+               )
              : "pointer-events-none rounded-2xl border border-glass-border bg-glass/95 px-4 py-3 shadow-panel backdrop-blur-xl"
-          }`}
+          )}
           style={{
-            top: 40,
+            bottom: "calc(100% - 15px)",
             left: "50%",
             marginLeft: -(BUBBLE_WIDTH / 2),
             width: BUBBLE_WIDTH,
@@ -92,11 +99,14 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
         >
           {/* Non-overlapping Tail pointing down (left-aligned) */}
           <div 
-            className="absolute bottom-[-5px] left-8 w-[10px] h-[5px] bg-white/80 dark:bg-black/80 backdrop-blur-3xl" 
+            className={cn(
+              "absolute bottom-[-5px] left-8 w-[10px] h-[5px] backdrop-blur-3xl",
+              isDark ? "bg-black/80" : "bg-white/80"
+            )}
             style={{ 
               clipPath: 'polygon(0% 0%, 100% 0%, 50% 100%)',
               // Add borders to the triangle sides using filter shadow to match bubble border
-              filter: `drop-shadow(0px 1px 0px ${document.documentElement.classList.contains('dark') ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'})`
+              filter: `drop-shadow(0px 1px 0px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'})`
             }}
           />
 

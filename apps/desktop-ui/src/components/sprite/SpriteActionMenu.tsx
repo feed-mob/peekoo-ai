@@ -20,12 +20,7 @@ interface MenuItemConfig {
 const PLUGINS_POPUP_TAIL_SIZE = 12;
 const PLUGINS_POPUP_TAIL_PADDING = 16;
 
-/**
- * Vertical offset (px) from the container center to the popup's bottom edge.
- * The action-menu buttons sit at ROW_Y = 72 and are 38px tall, so their top
- * is at roughly y = 53.  We add a small gap.
- */
-const POPUP_BOTTOM_OFFSET = 46;
+
 
 function iconForPluginPanel(panel: PluginPanel): LucideIcon {
   if (panel.pluginKey === "health-reminders") {
@@ -113,7 +108,7 @@ export function SpriteActionMenu({
               exit={{ opacity: 0 }}
               transition={{ duration: 0.15 }}
               className="absolute inset-x-0 flex justify-center z-50 pointer-events-none"
-              style={{ bottom: `calc(50% + ${POPUP_BOTTOM_OFFSET}px)` }}
+              style={{ bottom: 'calc(50% + 46px)' }}
             >
               <div
                 className="relative min-w-[180px] pointer-events-auto"
@@ -135,54 +130,56 @@ export function SpriteActionMenu({
                 />
 
                 {/* Popup body */}
-                <div className="relative z-10 rounded-lg border border-glass-border bg-glass backdrop-blur-xl shadow-panel p-2">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPluginsPopupOpen(false);
-                      onTogglePanel("panel-plugins");
-                    }}
-                    className={cn(
-                      "flex w-full items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors",
-                      panels["panel-plugins"]?.isOpen
-                        ? "bg-space-overlay text-text-primary"
-                        : "text-text-secondary hover:bg-space-overlay hover:text-text-primary",
-                    )}
-                  >
-                    <Blocks size={16} className="shrink-0" />
-                    <span className="text-xs font-medium whitespace-nowrap">Plugins</span>
-                  </button>
+                <div className="relative z-10 rounded-lg border border-glass-border bg-glass backdrop-blur-xl shadow-panel p-1 flex flex-col max-h-[160px]">
+                  <div className="flex-1 overflow-y-auto space-y-1 p-1 [&::-webkit-scrollbar]:w-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-black/10 hover:[&::-webkit-scrollbar-thumb]:bg-black/20 dark:[&::-webkit-scrollbar-thumb]:bg-white/10 dark:hover:[&::-webkit-scrollbar-thumb]:bg-white/20">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPluginsPopupOpen(false);
+                        onTogglePanel("panel-plugins");
+                      }}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors shrink-0",
+                        panels["panel-plugins"]?.isOpen
+                          ? "bg-space-overlay text-text-primary"
+                          : "text-text-secondary hover:bg-space-overlay hover:text-text-primary",
+                      )}
+                    >
+                      <Blocks size={16} className="shrink-0" />
+                      <span className="text-xs font-medium whitespace-nowrap">Plugins</span>
+                    </button>
 
-                  {enabledPlugins.map((plugin) => {
-                    const uiPanel = pluginPanels.find(
-                      (p) => p.pluginKey === plugin.pluginKey,
-                    );
-                    const panelLabel = uiPanel?.label ?? "panel-plugins";
-                    const PanelIcon = uiPanel
-                      ? iconForPluginPanel(uiPanel)
-                      : Puzzle;
-                    const isPanelOpen = panels[panelLabel]?.isOpen;
+                    {enabledPlugins.map((plugin) => {
+                      const uiPanel = pluginPanels.find(
+                        (p) => p.pluginKey === plugin.pluginKey,
+                      );
+                      const panelLabel = uiPanel?.label ?? "panel-plugins";
+                      const PanelIcon = uiPanel
+                        ? iconForPluginPanel(uiPanel)
+                        : Puzzle;
+                      const isPanelOpen = panels[panelLabel]?.isOpen;
 
-                    return (
-                      <button
-                        key={plugin.pluginKey}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPluginsPopupOpen(false);
-                          onTogglePanel(panelLabel);
-                        }}
-                        className={cn(
-                          "flex w-full items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors",
-                          isPanelOpen
-                            ? "bg-space-overlay text-text-primary"
-                            : "text-text-secondary hover:bg-space-overlay hover:text-text-primary",
-                        )}
-                      >
-                        <PanelIcon size={16} className="shrink-0" />
-                        <span className="text-xs font-medium whitespace-nowrap">{plugin.name}</span>
-                      </button>
-                    );
-                  })}
+                      return (
+                        <button
+                          key={plugin.pluginKey}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPluginsPopupOpen(false);
+                            onTogglePanel(panelLabel);
+                          }}
+                          className={cn(
+                            "flex w-full items-center gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors shrink-0",
+                            isPanelOpen
+                              ? "bg-space-overlay text-text-primary"
+                              : "text-text-secondary hover:bg-space-overlay hover:text-text-primary",
+                          )}
+                        >
+                          <PanelIcon size={16} className="shrink-0" />
+                          <span className="text-xs font-medium whitespace-nowrap">{plugin.name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </motion.div>

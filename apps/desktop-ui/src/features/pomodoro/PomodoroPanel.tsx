@@ -1,13 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { emitPetReaction } from "@/lib/pet-events";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
 import { Brain, Coffee, Settings2, Notebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { PANEL_WINDOW_CONFIGS } from "@/types/window";
 
 type PomodoroState = "Idle" | "Running" | "Paused" | "Completed";
 
@@ -45,8 +43,6 @@ export function PomodoroPanel() {
   const [showSettings, setShowSettings] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [appliedRecently, setAppliedRecently] = useState(false);
-  
-  const lastCompletedRef = useRef<number | null>(null);
 
   const fetchStatus = useCallback(async (forceSync = false) => {
     const s: PomodoroStatus = await callTool("pomodoro_get_status");
@@ -59,39 +55,11 @@ export function PomodoroPanel() {
         setEnableMemo(s.enable_memo || false);
         // Initialize the completion tracker from the current backend value
         // to prevent immediate pop-up if the session was already completed
-        lastCompletedRef.current = s.completed_focus;
         if (!isInitialized) setIsInitialized(true);
       } else if (!showSettings) {
         setEnableMemo(s.enable_memo || false);
       }
 
-      // Memo Window Trigger (Only on new completions while panel is open)
-      if (s.state === "Completed" && s.mode === "work" && s.enable_memo && isInitialized) {
-        if (lastCompletedRef.current !== null && lastCompletedRef.current !== s.completed_focus) {
-          lastCompletedRef.current = s.completed_focus;
-          const config = PANEL_WINDOW_CONFIGS["panel-pomodoro-memo"];
-          if (config) {
-            void WebviewWindow.getByLabel(config.label).then(async (existing) => {
-              if (existing) {
-                await existing.setFocus();
-              } else {
-                new WebviewWindow(config.label, {
-                  url: "/",
-                  title: config.title,
-                  width: config.width,
-                  height: config.height,
-                  decorations: false,
-                  transparent: true,
-                  alwaysOnTop: true,
-                  center: true,
-                  resizable: false,
-                  shadow: true,
-                });
-              }
-            });
-          }
-        }
-      }
     }
   }, [isInitialized, showSettings]);
 

@@ -35,7 +35,7 @@ export const MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP = 200;
 export const MINI_CHAT_EXPANDED_BUBBLE_WIDTH = 320;
 
 /** Height of the mini chat input tray including vertical gap for absolute positioning. */
-export const MINI_CHAT_TRAY_TOTAL_HEIGHT = 86;
+export const MINI_CHAT_TRAY_TOTAL_HEIGHT = 60;
 
 export const SPRITE_BUBBLE_WINDOW_SIZE = {
   width: SPRITE_WIDTH,
@@ -87,6 +87,17 @@ interface SpriteStagePadding {
   paddingRight: number;
 }
 
+function getBubbleHeight(state: SpriteWindowState): number {
+  if (state.miniChatOpen && state.miniChatBubbleOpen) {
+    return state.miniChatBubbleExpanded ? 224 : 80;
+  } else if (state.bubbleOpen) {
+    return BUBBLE_EXTRA_HEIGHT;
+  } else if (state.menuOpen) {
+    return 60; // Upward compensation to fit the tall plugins menu popup
+  }
+  return 0;
+}
+
 function getMiniChatWidth(state: SpriteWindowState): number {
   if (
     state.miniChatOpen &&
@@ -101,78 +112,50 @@ function getMiniChatWidth(state: SpriteWindowState): number {
   return SPRITE_WIDTH;
 }
 
+export const BASE_PADDING_TOP = 36;
+
 export function getSpriteWindowSize(state: SpriteWindowState) {
-  const badgeExtra =
-    state.bubbleOpen || state.menuOpen || state.miniChatOpen
-      ? 0
-      : peekBadgeExtraHeight(state.peekBadgeItemCount, state.peekBadgeExpanded);
-  const miniChatExtra = state.miniChatOpen ? MINI_CHAT_EXTRA_HEIGHT : 0;
-  const miniChatBubbleHeight =
-    state.miniChatOpen && state.miniChatBubbleOpen
-      ? state.miniChatBubbleExpanded
-        ? MINI_CHAT_EXPANDED_BUBBLE_HEIGHT
-        : MINI_CHAT_WITH_BUBBLE_HEIGHT
-      : SPRITE_WINDOW_SIZE.height;
   const width = getMiniChatWidth(state);
+  const bubbleH = getBubbleHeight(state);
+  const paddingTop = bubbleH + BASE_PADDING_TOP;
+
+  // Window height exactly bounds the Sprite box (paddingTop + 250) + bottom tray
+  let height = paddingTop + SPRITE_HEIGHT;
+
+  if (state.menuOpen) {
+    height += 0; // The menu fits entirely within the sprite body + popup upward compensation
+  } else if (state.miniChatOpen) {
+    height += MINI_CHAT_TRAY_TOTAL_HEIGHT; // +60px allocated for the chat form
+  } else {
+    // Adding badge extra height (if expanded) so that it doesn't get cut off vertically
+    height += peekBadgeExtraHeight(state.peekBadgeItemCount, state.peekBadgeExpanded);
+  }
+
+  // Exact compensation needed to negate upper padding growth from base BASE_PADDING_TOP
+  const bubbleCompensationTop = bubbleH;
 
   return {
     width,
-    height: Math.max(
-      SPRITE_WINDOW_SIZE.height,
-      state.menuOpen
-        ? SPRITE_MENU_WINDOW_SIZE.height
-        : SPRITE_WINDOW_SIZE.height,
-      state.bubbleOpen
-        ? SPRITE_BUBBLE_WINDOW_SIZE.height
-        : SPRITE_WINDOW_SIZE.height,
-      SPRITE_WINDOW_SIZE.height + badgeExtra,
-      SPRITE_WINDOW_SIZE.height + miniChatExtra,
-      miniChatBubbleHeight,
-    ),
+    height,
     /** How much the window grows leftward to keep the sprite centered. */
     extraLeft: Math.max(0, (width - SPRITE_WIDTH) / 2),
-    /** How much the window grows upward (positive = window top moves up). */
-    extraTop:
-      state.miniChatBubbleOpen && state.miniChatBubbleExpanded
-        ? MINI_CHAT_EXPANDED_BUBBLE_EXTRA_TOP
-        : state.bubbleOpen || state.miniChatBubbleOpen
-          ? BUBBLE_EXTRA_HEIGHT
-          : badgeExtra,
+    positionCompensationTop: bubbleCompensationTop,
+    extraTop: bubbleCompensationTop,
   };
 }
 
 export function getSpriteStagePadding(
   state: SpriteWindowState,
 ): SpriteStagePadding {
-  const { width, height } = getSpriteWindowSize(state);
+  const { width } = getSpriteWindowSize(state);
   const extraLeft = state.miniChatOpen ? (width - SPRITE_WIDTH) / 2 : 0;
 
-  // Bottom section: Mini chat input tray height is ~54px (p-1.5 + h-7 + mt-2 + h-7).
-  // MINI_CHAT_TRAY_TOTAL_HEIGHT adds extra gap and accounts for absolute positioning.
-  const trayHeight = state.miniChatOpen ? MINI_CHAT_TRAY_TOTAL_HEIGHT : 12;
-
-  // Top section: Reply bubble height.
-  // Compact is ~80px (header + 2 short lines), Expanded is ~224px (header + 156px scrollable).
-  let bubbleHeight = 12;
-  if (state.miniChatOpen && state.miniChatBubbleOpen) {
-    bubbleHeight = state.miniChatBubbleExpanded ? 224 : 80;
-  } else if (state.bubbleOpen) {
-    bubbleHeight = BUBBLE_EXTRA_HEIGHT;
-  }
-
-  // Calculate available space for sprite (SPRITE_HEIGHT = 250)
-  // We want to center the sprite in the gap between bubbleHeight and trayHeight.
-  const totalContentHeight = bubbleHeight + SPRITE_HEIGHT + trayHeight;
-  const verticalGap = Math.max(0, height - totalContentHeight);
-
-  // Distribute half of the gap to top and half to bottom,
-  // added to their respective base heights.
-  const paddingTop = bubbleHeight + verticalGap / 2;
-  const paddingBottom = trayHeight + verticalGap / 2;
+  const bubbleH = getBubbleHeight(state);
+  const paddingTop = bubbleH + BASE_PADDING_TOP;
 
   return {
     paddingTop,
-    paddingBottom,
+    paddingBottom: 0,
     paddingLeft: extraLeft,
     paddingRight: extraLeft,
   };
