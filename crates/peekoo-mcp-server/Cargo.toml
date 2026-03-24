@@ -4,15 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server", "macros", "transport-async-rw", "client"] }
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["server", "macros", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
+axum = "0.8"
 tokio = { version = "1", features = ["full", "net"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-schemars = "0.8"
+schemars = "1.2"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
+rustls = { version = "0.23", features = ["ring"] }
 
 [lib]
 name = "peekoo_mcp_server"

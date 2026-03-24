@@ -139,8 +139,9 @@ impl AgentApplication {
 
         match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
             Ok(addr) => {
-                eprintln!("[peekoo][mcp] server ready at tcp://{}", addr);
-                tracing::info!("✅ [MCP] Server ready at tcp://{}", addr);
+                let url = peekoo_mcp_server::mcp_url_for(addr);
+                eprintln!("[peekoo][mcp] server ready at {}", url);
+                tracing::info!("✅ [MCP] Server ready at {}", url);
             }
             Err(e) => {
                 eprintln!("[peekoo][mcp] failed to start: {}", e);

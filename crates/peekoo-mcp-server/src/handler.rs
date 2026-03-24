@@ -5,8 +5,34 @@ use rmcp::{
     ErrorData as McpError,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    schemars::JsonSchema,
     tool, tool_handler, tool_router,
 };
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct TaskCommentParams {
+    task_id: String,
+    text: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct UpdateTaskLabelsParams {
+    task_id: String,
+    #[serde(default)]
+    add_labels: Vec<String>,
+    #[serde(default)]
+    remove_labels: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct UpdateTaskStatusParams {
+    task_id: String,
+    status: String,
+}
 
 #[derive(Clone)]
 pub struct TaskMcpHandler {
@@ -31,18 +57,12 @@ impl TaskMcpHandler {
     )]
     async fn task_comment(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<TaskCommentParams>,
     ) -> Result<CallToolResult, McpError> {
-        let task_id = params
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("Missing task_id", None))?;
-        let text = params
-            .get("text")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("Missing text", None))?;
-
-        match self.task_service.add_task_comment(task_id, text, "agent") {
+        match self
+            .task_service
+            .add_task_comment(&params.task_id, &params.text, "agent")
+        {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text(
                 "Comment added successfully",
             )])),
@@ -56,32 +76,19 @@ impl TaskMcpHandler {
     )]
     async fn update_task_labels(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<UpdateTaskLabelsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let task_id = params
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("Missing task_id", None))?;
-
         let mut errors = Vec::new();
 
-        if let Some(labels) = params.get("add_labels").and_then(|v| v.as_array()) {
-            for label in labels {
-                if let Some(label_str) = label.as_str() {
-                    if let Err(e) = self.task_service.add_task_label(task_id, label_str) {
-                        errors.push(format!("Failed to add label '{}': {}", label_str, e));
-                    }
-                }
+        for label in &params.add_labels {
+            if let Err(e) = self.task_service.add_task_label(&params.task_id, label) {
+                errors.push(format!("Failed to add label '{}': {}", label, e));
             }
         }
 
-        if let Some(labels) = params.get("remove_labels").and_then(|v| v.as_array()) {
-            for label in labels {
-                if let Some(label_str) = label.as_str() {
-                    if let Err(e) = self.task_service.remove_task_label(task_id, label_str) {
-                        errors.push(format!("Failed to remove label '{}': {}", label_str, e));
-                    }
-                }
+        for label in &params.remove_labels {
+            if let Err(e) = self.task_service.remove_task_label(&params.task_id, label) {
+                errors.push(format!("Failed to remove label '{}': {}", label, e));
             }
         }
 
@@ -102,18 +109,9 @@ impl TaskMcpHandler {
     )]
     async fn update_task_status(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<UpdateTaskStatusParams>,
     ) -> Result<CallToolResult, McpError> {
-        let task_id = params
-            .get("task_id")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("Missing task_id", None))?;
-        let status = params
-            .get("status")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| McpError::invalid_request("Missing status", None))?;
-
-        let task_status = match status {
+        let task_status = match params.status.as_str() {
             "pending" => TaskStatus::Todo,
             "in_progress" => TaskStatus::InProgress,
             "done" => TaskStatus::Done,
@@ -121,12 +119,15 @@ impl TaskMcpHandler {
             _ => {
                 return Ok(CallToolResult::error(vec![Content::text(format!(
                     "Invalid status '{}'. Must be one of: pending, in_progress, done, cancelled",
-                    status
+                    params.status
                 ))]));
             }
         };
 
-        match self.task_service.update_task_status(task_id, task_status) {
+        match self
+            .task_service
+            .update_task_status(&params.task_id, task_status)
+        {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text(
                 "Status updated",
             )])),

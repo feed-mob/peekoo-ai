@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
-use peekoo_mcp_server::start_tcp_server;
+use peekoo_mcp_server::{mcp_url_for, start_tcp_server};
 use peekoo_productivity_domain::task::TaskService;
 
 /// Port range for MCP server
@@ -41,8 +41,8 @@ pub fn start_sync(
 ) -> Result<SocketAddr, String> {
     // Check if already started
     if let Some(addr) = get_mcp_address() {
-        eprintln!("[peekoo][mcp] already running at tcp://{}", addr);
-        tracing::debug!("🔗 [MCP] Server already running at tcp://{}", addr);
+        eprintln!("[peekoo][mcp] already running at {}", mcp_url_for(addr));
+        tracing::debug!("🔗 [MCP] Server already running at {}", mcp_url_for(addr));
         return Ok(addr);
     }
 
@@ -70,7 +70,7 @@ pub fn start_sync(
             match McpServerManager::start(task_service, token_for_thread.clone()).await {
                 Ok(manager) => {
                     let addr = manager.address();
-                    tracing::info!("✅ [MCP] Server running at tcp://{}", addr);
+                    tracing::info!("✅ [MCP] Server running at {}", mcp_url_for(addr));
                     let _ = addr_tx.send(Ok(addr));
                     // Keep the runtime alive until shutdown
                     token_for_thread.cancelled().await;
@@ -86,8 +86,8 @@ pub fn start_sync(
     // Wait for the server to bind and report its address
     match addr_rx.recv() {
         Ok(Ok(addr)) => {
-            eprintln!("[peekoo][mcp] confirmed ready at tcp://{}", addr);
-            tracing::info!("✅ [MCP] Server confirmed ready at tcp://{}", addr);
+            eprintln!("[peekoo][mcp] confirmed ready at {}", mcp_url_for(addr));
+            tracing::info!("✅ [MCP] Server confirmed ready at {}", mcp_url_for(addr));
 
             // Store in global state
             if let Ok(mut guard) = MCP_SERVER_STATE.lock() {
@@ -105,7 +105,7 @@ pub fn start_sync(
 pub fn shutdown() {
     if let Ok(guard) = MCP_SERVER_STATE.lock() {
         if let Some((addr, ref token)) = *guard {
-            tracing::info!("🛑 [MCP] Shutting down server at tcp://{}", addr);
+            tracing::info!("🛑 [MCP] Shutting down server at {}", mcp_url_for(addr));
             token.cancel();
         }
     }
@@ -131,14 +131,14 @@ impl McpServerManager {
             .local_addr()
             .map_err(|e| format!("Failed to get local address: {}", e))?;
 
-        tracing::info!("🚀 [MCP] Binding server on tcp://{}", actual_address);
+        tracing::info!("🚀 [MCP] Binding server on {}", mcp_url_for(actual_address));
 
         // Start the MCP server (takes ownership of listener)
         let server_address = start_tcp_server(task_service, listener)
             .await
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
-        tracing::info!("✅ [MCP] Server listening at tcp://{}", server_address);
+        tracing::info!("✅ [MCP] Server listening at {}", mcp_url_for(server_address));
         tracing::info!(
             "📋 [MCP] Available tools: task_comment, update_task_labels, update_task_status"
         );
@@ -147,7 +147,7 @@ impl McpServerManager {
         let address = server_address;
         tokio::spawn(async move {
             shutdown_token.cancelled().await;
-            tracing::info!("🛑 [MCP] Server shutting down (tcp://{})", address);
+            tracing::info!("🛑 [MCP] Server shutting down ({})", mcp_url_for(address));
         });
 
         Ok(Self {

@@ -1,4 +1,5 @@
 use std::cell::Cell;
+use std::sync::OnceLock;
 
 use agent_client_protocol as acp;
 use agent_client_protocol::{Client, ContentChunk, SessionNotification, SessionUpdate, StopReason};
@@ -218,16 +219,16 @@ impl acp::Agent for PeekooAgent {
 }
 
 async fn connect_mcp_and_get_tools(host: &str, port: u16) -> anyhow::Result<Vec<String>> {
-    use rmcp::service::ServiceExt;
+    use rmcp::{ServiceExt, transport::StreamableHttpClientTransport};
 
-    let mcp_url = format!("tcp://{}:{}", host, port);
+    ensure_rustls_provider();
+
+    let mcp_url = format!("http://{}:{}/mcp", host, port);
     tracing::info!("🔗 [MCP] Connecting to server at {}", mcp_url);
 
-    let stream = tokio::net::TcpStream::connect((host, port)).await?;
-    tracing::info!("✅ [MCP] TCP connection established");
-
+    let transport = StreamableHttpClientTransport::from_uri(mcp_url.clone());
     let client: rmcp::service::RunningService<rmcp::service::RoleClient, ()> =
-        ().serve(stream).await?;
+        ().serve(transport).await?;
     tracing::info!("✅ [MCP] Protocol handshake completed");
 
     let tools_result = client.list_tools(Default::default()).await?;
@@ -240,6 +241,14 @@ async fn connect_mcp_and_get_tools(host: &str, port: u16) -> anyhow::Result<Vec<
     tracing::info!("📋 [MCP] Available tools: {:?}", tool_names);
 
     Ok(tool_names)
+}
+
+fn ensure_rustls_provider() {
+    static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
+
+    RUSTLS_PROVIDER.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
 }
 
 pub async fn run_agent() -> acp::Result<()> {
@@ -256,7 +265,7 @@ pub async fn run_agent() -> acp::Result<()> {
         std::env::var("PEEKOO_MCP_PORT"),
         std::env::var("PEEKOO_MCP_HOST"),
     ) {
-        tracing::info!("🔗 [MCP] Server configured at tcp://{}:{}", host, port);
+        tracing::info!("🔗 [MCP] Server configured at http://{}:{}/mcp", host, port);
     } else {
         tracing::info!("⚙️ [MCP] No MCP server configured (running without tools)");
     }

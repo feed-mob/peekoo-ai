@@ -277,7 +277,7 @@ async fn execute_task_acp(
         let host = addr.ip().to_string();
         let port = addr.port();
         tracing::info!(
-            "🔗 [MCP] Using shared server at tcp://{}:{} for task {}",
+            "🔗 [MCP] Using shared server at http://{}:{}/mcp for task {}",
             host,
             port,
             task.id
