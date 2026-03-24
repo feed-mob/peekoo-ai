@@ -199,4 +199,3 @@ mod tests {
         assert_eq!(sprites[1].id, "cute-dog");
     }
 }
-

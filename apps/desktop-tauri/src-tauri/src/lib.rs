@@ -724,6 +724,7 @@ fn can_write_to_dir(path: &std::path::Path) -> std::io::Result<()> {
     Ok(())
 }
 
+#[cfg(any(target_os = "windows", test))]
 fn resolve_webview2_data_dir_with_write_check<F, W>(
     candidates: &[(&str, PathBuf)],
     mut try_create: F,
@@ -735,23 +736,21 @@ where
 {
     for (label, path) in candidates {
         match try_create(path) {
-            Ok(()) => {
-                match can_write(path) {
-                    Ok(_) => {
-                        eprintln!(
-                            "info: WebView2 data folder set to ({label}): {}",
-                            path.display()
-                        );
-                        return Some(path.clone());
-                    }
-                    Err(e) => {
-                        eprintln!(
-                            "info: {label} WebView2 path not writable ({:?}): {e}",
-                            path.display()
-                        );
-                    }
+            Ok(()) => match can_write(path) {
+                Ok(_) => {
+                    eprintln!(
+                        "info: WebView2 data folder set to ({label}): {}",
+                        path.display()
+                    );
+                    return Some(path.clone());
                 }
-            }
+                Err(e) => {
+                    eprintln!(
+                        "info: {label} WebView2 path not writable ({:?}): {e}",
+                        path.display()
+                    );
+                }
+            },
             Err(e) => {
                 eprintln!(
                     "info: failed to use {label} WebView2 path ({:?}): {e}",
@@ -763,10 +762,8 @@ where
     None
 }
 
-fn resolve_webview2_data_dir<F>(
-    candidates: &[(&str, PathBuf)],
-    try_create: F,
-) -> Option<PathBuf>
+#[cfg(any(target_os = "windows", test))]
+fn resolve_webview2_data_dir<F>(candidates: &[(&str, PathBuf)], try_create: F) -> Option<PathBuf>
 where
     F: FnMut(&std::path::Path) -> std::io::Result<()>,
 {
@@ -1092,11 +1089,11 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use super::{
         MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
         tray_menu_action,
     };
+    use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use std::io;
     use std::path::PathBuf;
 
@@ -1147,7 +1144,8 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir_with_write_check(&candidates, |_| Ok(()), |_| Ok(()));
+        let result =
+            resolve_webview2_data_dir_with_write_check(&candidates, |_| Ok(()), |_| Ok(()));
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
     }
@@ -1244,10 +1242,14 @@ mod tests {
         ];
 
         let mut attempts = Vec::new();
-        let result = resolve_webview2_data_dir_with_write_check(&candidates, |p| {
-            attempts.push(p.to_path_buf());
-            Ok(())
-        }, |_| Ok(()));
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                attempts.push(p.to_path_buf());
+                Ok(())
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
         assert_eq!(attempts, vec![PathBuf::from("/fake/primary")]);
