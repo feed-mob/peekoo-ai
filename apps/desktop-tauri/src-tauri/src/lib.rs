@@ -717,21 +717,27 @@ async fn plugin_store_uninstall(
 /// created and written to successfully. The `try_create` callback is responsible
 /// for creating the directory (or simulating creation in tests).
 #[cfg(any(target_os = "windows", test))]
-fn resolve_webview2_data_dir<F>(
+fn can_write_to_dir(path: &std::path::Path) -> std::io::Result<()> {
+    let test_file = path.join(".peekoo-write-test");
+    std::fs::write(&test_file, b"test")?;
+    let _ = std::fs::remove_file(&test_file);
+    Ok(())
+}
+
+fn resolve_webview2_data_dir_with_write_check<F, W>(
     candidates: &[(&str, PathBuf)],
     mut try_create: F,
+    mut can_write: W,
 ) -> Option<PathBuf>
 where
     F: FnMut(&std::path::Path) -> std::io::Result<()>,
+    W: FnMut(&std::path::Path) -> std::io::Result<()>,
 {
     for (label, path) in candidates {
         match try_create(path) {
             Ok(()) => {
-                // Also verify we can actually write to the directory
-                let test_file = path.join(".peekoo-write-test");
-                match std::fs::write(&test_file, b"test") {
+                match can_write(path) {
                     Ok(_) => {
-                        let _ = std::fs::remove_file(&test_file);
                         eprintln!(
                             "info: WebView2 data folder set to ({label}): {}",
                             path.display()
@@ -755,6 +761,16 @@ where
         }
     }
     None
+}
+
+fn resolve_webview2_data_dir<F>(
+    candidates: &[(&str, PathBuf)],
+    try_create: F,
+) -> Option<PathBuf>
+where
+    F: FnMut(&std::path::Path) -> std::io::Result<()>,
+{
+    resolve_webview2_data_dir_with_write_check(candidates, try_create, can_write_to_dir)
 }
 
 /// Build the ordered list of candidate directories for WebView2 user data.
@@ -1076,7 +1092,7 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_webview2_data_dir;
+    use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use super::{
         MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
         tray_menu_action,
@@ -1131,7 +1147,7 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |_| Ok(()));
+        let result = resolve_webview2_data_dir_with_write_check(&candidates, |_| Ok(()), |_| Ok(()));
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
     }
@@ -1144,16 +1160,20 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |p| {
-            if p == std::path::Path::new("/fake/primary") {
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Access Denied",
-                ))
-            } else {
-                Ok(())
-            }
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                if p == std::path::Path::new("/fake/primary") {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/home")));
     }
@@ -1166,16 +1186,20 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |p| {
-            if p == std::path::Path::new("/fake/temp") {
-                Ok(())
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Access Denied",
-                ))
-            }
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                if p == std::path::Path::new("/fake/temp") {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                }
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/temp")));
     }
@@ -1188,12 +1212,16 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |_| {
-            Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Access Denied",
-            ))
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |_| {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Access Denied",
+                ))
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, None);
     }
@@ -1216,12 +1244,37 @@ mod tests {
         ];
 
         let mut attempts = Vec::new();
-        let result = resolve_webview2_data_dir(&candidates, |p| {
+        let result = resolve_webview2_data_dir_with_write_check(&candidates, |p| {
             attempts.push(p.to_path_buf());
             Ok(())
-        });
+        }, |_| Ok(()));
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
         assert_eq!(attempts, vec![PathBuf::from("/fake/primary")]);
+    }
+
+    #[test]
+    fn webview2_skips_candidates_that_fail_write_check() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+        ];
+
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |_| Ok(()),
+            |p| {
+                if p == std::path::Path::new("/fake/primary") {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+
+        assert_eq!(result, Some(PathBuf::from("/fake/home")));
     }
 }
