@@ -6,7 +6,7 @@ use peekoo_notifications::{
 };
 use peekoo_pomodoro_domain::{PomodoroMode, PomodoroSettings, PomodoroState, PomodoroStatus};
 use peekoo_scheduler::Scheduler;
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use serde::Serialize;
 use uuid::Uuid;
 

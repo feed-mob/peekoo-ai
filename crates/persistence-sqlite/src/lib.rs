@@ -81,8 +81,10 @@ mod tests {
         assert!(
             MIGRATION_0010_POMODORO_RUNTIME.contains("CREATE TABLE IF NOT EXISTS pomodoro_state")
         );
-        assert!(MIGRATION_0010_POMODORO_RUNTIME
-            .contains("CREATE TABLE IF NOT EXISTS pomodoro_cycle_history"));
+        assert!(
+            MIGRATION_0010_POMODORO_RUNTIME
+                .contains("CREATE TABLE IF NOT EXISTS pomodoro_cycle_history")
+        );
         assert!(MIGRATION_0010_POMODORO_RUNTIME.contains("INSERT OR IGNORE INTO pomodoro_state"));
     }
 }

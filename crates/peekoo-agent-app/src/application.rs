@@ -15,11 +15,11 @@ use peekoo_notifications::{
     MoodReaction, MoodReactionService, Notification, NotificationService, PeekBadgeItem,
     PeekBadgeService,
 };
+use peekoo_paths::ensure_windows_pi_agent_env;
+use peekoo_plugin_host::PluginRegistry;
 use peekoo_pomodoro_app::{
     PomodoroAppService, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
 };
-use peekoo_paths::ensure_windows_pi_agent_env;
-use peekoo_plugin_host::PluginRegistry;
 use peekoo_scheduler::Scheduler;
 
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
