@@ -31,8 +31,28 @@ use tauri_plugin_shell::ShellExt;
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
+const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
+const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayMenuAction {
+    ToggleVisible,
+    OpenSettings,
+    OpenAbout,
+    Quit,
+}
+
+fn tray_menu_action(menu_id: &str) -> Option<TrayMenuAction> {
+    match menu_id {
+        TRAY_TOGGLE_MENU_ID => Some(TrayMenuAction::ToggleVisible),
+        TRAY_SETTINGS_MENU_ID => Some(TrayMenuAction::OpenSettings),
+        TRAY_ABOUT_MENU_ID => Some(TrayMenuAction::OpenAbout),
+        TRAY_QUIT_MENU_ID => Some(TrayMenuAction::Quit),
+        _ => None,
+    }
+}
 
 struct AgentState {
     app: AgentApplication,
@@ -95,10 +115,18 @@ fn toggle_main_window_visibility(app: &AppHandle) {
 }
 
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
-    match menu_id {
-        TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
-        TRAY_QUIT_MENU_ID => app.exit(0),
-        _ => {}
+    match tray_menu_action(menu_id) {
+        Some(TrayMenuAction::ToggleVisible) => toggle_main_window_visibility(app),
+        Some(TrayMenuAction::OpenSettings) => {
+            apply_main_window_visibility_action(app, MainWindowVisibilityAction::ShowAndFocus);
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "open-settings", ());
+        }
+        Some(TrayMenuAction::OpenAbout) => {
+            apply_main_window_visibility_action(app, MainWindowVisibilityAction::ShowAndFocus);
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "open-about", ());
+        }
+        Some(TrayMenuAction::Quit) => app.exit(0),
+        None => {}
     }
 }
 
@@ -802,6 +830,8 @@ pub fn run() {
         .setup(|app| {
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
+                .text(TRAY_SETTINGS_MENU_ID, "Settings")
+                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
                 .separator()
                 .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
                 .build()?;
@@ -1047,7 +1077,10 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 #[cfg(test)]
 mod tests {
     use super::resolve_webview2_data_dir;
-    use super::{MainWindowVisibilityAction, next_main_window_visibility_action};
+    use super::{
+        MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
+        tray_menu_action,
+    };
     use std::io;
     use std::path::PathBuf;
 
@@ -1065,6 +1098,27 @@ mod tests {
             next_main_window_visibility_action(false),
             MainWindowVisibilityAction::ShowAndFocus
         );
+    }
+
+    #[test]
+    fn tray_menu_maps_settings_action() {
+        assert_eq!(
+            tray_menu_action("open_settings"),
+            Some(TrayMenuAction::OpenSettings)
+        );
+    }
+
+    #[test]
+    fn tray_menu_maps_about_action() {
+        assert_eq!(
+            tray_menu_action("open_about"),
+            Some(TrayMenuAction::OpenAbout)
+        );
+    }
+
+    #[test]
+    fn tray_menu_rejects_unknown_ids() {
+        assert_eq!(tray_menu_action("unknown"), None);
     }
 
     // -- WebView2 data directory fallback tests --
