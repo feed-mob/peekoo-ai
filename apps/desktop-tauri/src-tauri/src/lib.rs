@@ -787,7 +787,13 @@ pub fn run() {
     let default_level = env::var("RUST_LOG")
         .ok()
         .and_then(|v| v.parse::<log::LevelFilter>().ok())
-        .unwrap_or(log::LevelFilter::Error);
+        .unwrap_or_else(|| {
+            if cfg!(debug_assertions) {
+                log::LevelFilter::Info
+            } else {
+                log::LevelFilter::Error
+            }
+        });
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")

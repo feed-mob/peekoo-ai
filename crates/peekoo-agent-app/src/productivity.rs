@@ -886,6 +886,100 @@ impl ProductivityService {
 
         Ok(tasks)
     }
+
+    pub fn add_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
+        let conn = self.conn()?;
+        let mut task = self.load_task(&conn, task_id)?;
+
+        if !task.labels.contains(&label.to_string()) {
+            task.labels.push(label.to_string());
+            let labels_json = serde_json::to_string(&task.labels).map_err(|e| e.to_string())?;
+            let now = Utc::now().to_rfc3339();
+
+            conn.execute(
+                "UPDATE tasks SET labels_json = ?1, updated_at = ?2 WHERE id = ?3",
+                params![labels_json, now, task_id],
+            )
+            .map_err(|e| format!("Update labels error: {e}"))?;
+
+            self.write_event_inner(
+                &conn,
+                task_id,
+                TaskEventType::Labeled,
+                &serde_json::json!({"label": label}),
+            )?;
+
+            drop(conn);
+            self.checkpoint();
+        }
+
+        Ok(task)
+    }
+
+    pub fn remove_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
+        let conn = self.conn()?;
+        let mut task = self.load_task(&conn, task_id)?;
+
+        task.labels.retain(|l| l != label);
+        let labels_json = serde_json::to_string(&task.labels).map_err(|e| e.to_string())?;
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "UPDATE tasks SET labels_json = ?1, updated_at = ?2 WHERE id = ?3",
+            params![labels_json, now, task_id],
+        )
+        .map_err(|e| format!("Update labels error: {e}"))?;
+
+        self.write_event_inner(
+            &conn,
+            task_id,
+            TaskEventType::Unlabeled,
+            &serde_json::json!({"label": label}),
+        )?;
+
+        drop(conn);
+        self.checkpoint();
+
+        Ok(task)
+    }
+
+    pub fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<TaskDto, String> {
+        let conn = self.conn()?;
+        let current = self.load_task(&conn, task_id)?;
+
+        let status_str = match status {
+            TaskStatus::Todo => "todo",
+            TaskStatus::InProgress => "in_progress",
+            TaskStatus::Done => "done",
+            TaskStatus::Cancelled => "cancelled",
+        };
+        let now = Utc::now().to_rfc3339();
+
+        conn.execute(
+            "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status_str, now, task_id],
+        )
+        .map_err(|e| format!("Update status error: {e}"))?;
+
+        self.write_event_inner(
+            &conn,
+            task_id,
+            TaskEventType::StatusChanged,
+            &serde_json::json!({"from": current.status, "to": status_str}),
+        )?;
+
+        drop(conn);
+        self.checkpoint();
+
+        // Reload to get updated task
+        let conn = self.conn()?;
+        self.load_task(&conn, task_id)
+    }
+
+    pub fn load_task_by_id(&self, task_id: &str) -> Result<TaskDto, String> {
+        let conn = self.conn()?;
+        self.load_task(&conn, task_id)
+    }
 }
 
 impl TaskService for ProductivityService {
@@ -994,6 +1088,22 @@ impl TaskService for ProductivityService {
     fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
         self.list_tasks_for_agent_execution()
     }
+
+    fn add_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
+        self.add_task_label(task_id, label)
+    }
+
+    fn remove_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
+        self.remove_task_label(task_id, label)
+    }
+
+    fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<TaskDto, String> {
+        self.update_task_status(task_id, status)
+    }
+
+    fn load_task(&self, task_id: &str) -> Result<TaskDto, String> {
+        self.load_task_by_id(task_id)
+    }
 }
 
 // ── Utility functions ────────────────────────────────────────────────
@@ -1031,6 +1141,7 @@ fn task_status_to_str(status: TaskStatus) -> &'static str {
         TaskStatus::Todo => "todo",
         TaskStatus::InProgress => "in_progress",
         TaskStatus::Done => "done",
+        TaskStatus::Cancelled => "cancelled",
     }
 }
 

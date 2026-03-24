@@ -43,6 +43,12 @@ export const PREDEFINED_LABELS = [
   { name: "design", color: "#7B61FF" },
   { name: "docs", color: "#7B9AC7" },
   { name: "refactor", color: "#F5C842" },
+  // Agent-specific labels
+  { name: "agent_working", color: "#3B82F6" },
+  { name: "needs_clarification", color: "#F59E0B" },
+  { name: "agent_done", color: "#10B981" },
+  { name: "needs_review", color: "#8B5CF6" },
+  { name: "agent_failed", color: "#EF4444" },
 ] as const;
 
 export type TaskStatus = Task["status"];

@@ -61,7 +61,7 @@ pub struct AgentApplication {
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
     conversation_generation: AtomicU64,
     /// Scheduler for agent task execution.
-    agent_scheduler: Mutex<Option<crate::agent_scheduler::AgentScheduler>>,
+    agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
 }
 
 impl AgentApplication {
@@ -123,12 +123,30 @@ impl AgentApplication {
             workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
-            agent_scheduler: Mutex::new(Some(agent_scheduler)),
+            agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
         })
     }
 
     pub fn start_plugin_runtime(&self) {
         self.plugin_registry.start_scheduler();
+
+        eprintln!("[peekoo][mcp] starting MCP server during app startup");
+
+        // Start MCP server on a dedicated thread (survives app lifetime)
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(self.productivity.clone());
+        let mcp_shutdown = self.shutdown_token.clone();
+
+        match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
+            Ok(addr) => {
+                eprintln!("[peekoo][mcp] server ready at tcp://{}", addr);
+                tracing::info!("✅ [MCP] Server ready at tcp://{}", addr);
+            }
+            Err(e) => {
+                eprintln!("[peekoo][mcp] failed to start: {}", e);
+                tracing::error!("❌ [MCP] Failed to start server: {}", e);
+            }
+        }
 
         // Start agent scheduler for task execution
         if let Ok(guard) = self.agent_scheduler.lock()
@@ -927,7 +945,7 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
-    use peekoo_productivity_domain::task::{TaskDto, TaskService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -995,7 +1013,12 @@ mod tests {
         fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
             Err("not implemented".into())
         }
-        fn update_agent_work_status(&self, _: &str, _: &str, _: Option<&str>) -> Result<(), String> {
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
             Err("not implemented".into())
         }
         fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
@@ -1003,6 +1026,18 @@ mod tests {
         }
         fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
             Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
         }
     }
 

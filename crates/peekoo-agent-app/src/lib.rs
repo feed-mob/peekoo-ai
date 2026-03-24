@@ -1,6 +1,7 @@
 pub mod agent_scheduler;
 pub mod application;
 pub mod conversation;
+pub mod mcp_server;
 pub mod plugin;
 pub mod plugin_tool_impl;
 pub mod productivity;
