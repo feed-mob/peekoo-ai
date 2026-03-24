@@ -163,7 +163,9 @@ impl acp::Agent for PeekooAgent {
         rx.await
             .map_err(|_| anyhow::anyhow!("session update failed"))?;
 
-        let mut agent = build_agent_service(session_context.as_ref()).await.map_err(|error| {
+        let mut agent = build_agent_service(&task_context.task_id, session_context.as_ref())
+            .await
+            .map_err(|error| {
             tracing::error!("Failed to create task agent: {}", error);
             acp::Error::internal_error()
         })?;
@@ -273,15 +275,59 @@ pub(crate) fn ensure_rustls_provider() {
     });
 }
 
-async fn build_agent_service(session_context: Option<&SessionContext>) -> anyhow::Result<AgentService> {
+#[derive(Debug, PartialEq, Eq)]
+struct TaskSessionStorage {
+    session_dir: Option<PathBuf>,
+    session_path: Option<PathBuf>,
+    no_session: bool,
+}
+
+fn build_task_session_storage(
+    task_session_root: Option<&PathBuf>,
+    task_id: &str,
+) -> TaskSessionStorage {
+    let Some(root) = task_session_root else {
+        return TaskSessionStorage {
+            session_dir: None,
+            session_path: None,
+            no_session: true,
+        };
+    };
+
+    let legacy_session_path = root.join(format!("{task_id}.jsonl"));
+    if legacy_session_path.exists() {
+        return TaskSessionStorage {
+            session_dir: None,
+            session_path: Some(legacy_session_path),
+            no_session: false,
+        };
+    }
+
+    TaskSessionStorage {
+        session_dir: Some(root.join(task_id)),
+        session_path: None,
+        no_session: false,
+    }
+}
+
+async fn build_agent_service(
+    task_id: &str,
+    session_context: Option<&SessionContext>,
+) -> anyhow::Result<AgentService> {
     let cwd = session_context
         .map(|session| session.cwd.clone())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let task_session_dir = std::env::var("PEEKOO_AGENT_TASK_SESSION_DIR")
+        .ok()
+        .map(PathBuf::from);
+    let session_storage = build_task_session_storage(task_session_dir.as_ref(), task_id);
 
     let mut config = AgentServiceConfig {
         working_directory: cwd,
         auto_discover: true,
-        no_session: true,
+        no_session: session_storage.no_session,
+        session_dir: session_storage.session_dir,
+        session_path: session_storage.session_path,
         ..Default::default()
     };
 
@@ -296,6 +342,60 @@ async fn build_agent_service(session_context: Option<&SessionContext>) -> anyhow
     }
 
     AgentService::new(config).await.map_err(Into::into)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::PathBuf;
+
+    use super::{TaskSessionStorage, build_task_session_storage};
+
+    #[test]
+    fn reuses_legacy_session_file_when_it_exists() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path().to_path_buf();
+        let legacy = root.join("task-123.jsonl");
+        fs::write(&legacy, "{}").expect("write legacy session");
+
+        let storage = build_task_session_storage(Some(&root), "task-123");
+
+        assert_eq!(
+            storage,
+            TaskSessionStorage {
+                session_dir: None,
+                session_path: Some(legacy),
+                no_session: false,
+            }
+        );
+    }
+
+    #[test]
+    fn creates_task_scoped_session_dir_when_no_legacy_file_exists() {
+        let root = PathBuf::from("/tmp/peekoo-task-sessions");
+        let storage = build_task_session_storage(Some(&root), "task-123");
+
+        assert_eq!(
+            storage,
+            TaskSessionStorage {
+                session_dir: Some(root.join("task-123")),
+                session_path: None,
+                no_session: false,
+            }
+        );
+    }
+
+    #[test]
+    fn disables_persistence_when_no_task_session_root_is_configured() {
+        assert_eq!(
+            build_task_session_storage(None, "task-123"),
+            TaskSessionStorage {
+                session_dir: None,
+                session_path: None,
+                no_session: true,
+            }
+        );
+    }
 }
 
 pub async fn run_agent() -> acp::Result<()> {

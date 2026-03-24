@@ -62,6 +62,14 @@ impl TaskContext {
                     comment.author, comment.created_at, comment.text
                 ));
             }
+
+            if let Some(latest_comment) = self.comments.last() {
+                prompt.push_str("\n## Latest follow-up request\n\n");
+                prompt.push_str(&format!(
+                    "Most recent comment from {} at {}: {}\n\nTreat this as the latest instruction to respond to before older context.\n",
+                    latest_comment.author, latest_comment.created_at, latest_comment.text
+                ));
+            }
         }
 
         prompt.push_str("\n## Instructions\n\n");
@@ -81,5 +89,44 @@ impl TaskContext {
         prompt.push_str("Example completion sequence: first call `task_comment` with the result, then call `update_task_status` with `done`.\n\n");
 
         prompt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Comment, TaskContext};
+
+    #[test]
+    fn prompt_highlights_latest_comment_as_follow_up_request() {
+        let context = TaskContext {
+            task_id: "task-123".into(),
+            title: "Tell me a joke".into(),
+            description: None,
+            status: "todo".into(),
+            priority: "medium".into(),
+            labels: vec![],
+            scheduled_start_at: None,
+            scheduled_end_at: None,
+            estimated_duration_min: None,
+            comments: vec![
+                Comment {
+                    id: "1".into(),
+                    author: "agent".into(),
+                    text: "Here is a joke".into(),
+                    created_at: "2026-03-24T08:00:00Z".into(),
+                },
+                Comment {
+                    id: "2".into(),
+                    author: "user".into(),
+                    text: "@peekoo-agent introduce yourself, then tell me what you can do".into(),
+                    created_at: "2026-03-24T08:10:00Z".into(),
+                },
+            ],
+        };
+
+        let prompt = context.to_prompt();
+
+        assert!(prompt.contains("Latest follow-up request"));
+        assert!(prompt.contains("introduce yourself, then tell me what you can do"));
     }
 }

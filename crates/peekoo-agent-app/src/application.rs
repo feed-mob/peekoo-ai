@@ -25,7 +25,7 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
-use peekoo_productivity_domain::task::{TaskDto, TaskEventDto};
+use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
 
 use crate::productivity::{PomodoroSessionDto, ProductivityService};
 use crate::settings::{
@@ -34,6 +34,7 @@ use crate::settings::{
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
 };
+use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
 use crate::workspace_bootstrap::ensure_agent_workspace;
@@ -134,7 +135,7 @@ impl AgentApplication {
 
         // Start MCP server on a dedicated thread (survives app lifetime)
         let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
-            Arc::new(self.productivity.clone());
+            Arc::new(self.task_runtime_service());
         let mcp_shutdown = self.shutdown_token.clone();
 
         match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
@@ -426,7 +427,7 @@ impl AgentApplication {
         text: &str,
         author: &str,
     ) -> Result<TaskEventDto, String> {
-        self.productivity.add_task_comment(task_id, text, author)
+        self.task_runtime_service().add_task_comment(task_id, text, author)
     }
 
     pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
@@ -865,7 +866,33 @@ impl AgentApplication {
             }
         }
 
+        if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
+            let task_session_dir = data_dir.join("task-agent-sessions");
+            let _ = std::fs::create_dir_all(&task_session_dir);
+            env.push((
+                "PEEKOO_AGENT_TASK_SESSION_DIR".to_string(),
+                task_session_dir.to_string_lossy().into_owned(),
+            ));
+        }
+
         env
+    }
+
+    fn task_runtime_service(&self) -> TaskRuntimeService {
+        let scheduler_ref = Arc::clone(&self.agent_scheduler);
+        let follow_up_trigger = Some(Arc::new(move |_task_id: String| {
+            if let Ok(guard) = scheduler_ref.lock()
+                && let Some(ref scheduler) = *guard
+            {
+                scheduler.trigger_now();
+            }
+        }) as Arc<dyn Fn(String) + Send + Sync>);
+
+        TaskRuntimeService::new(
+            self.productivity.clone(),
+            Arc::clone(&self.notifications),
+            follow_up_trigger,
+        )
     }
 }
 

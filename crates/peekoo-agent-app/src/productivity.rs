@@ -813,6 +813,31 @@ impl ProductivityService {
         Ok(())
     }
 
+    pub fn requeue_agent_task(&self, task_id: &str) -> Result<(), String> {
+        let conn = self.conn()?;
+        let task = self.load_task(&conn, task_id)?;
+
+        if task.assignee != "peekoo-agent" {
+            return Ok(());
+        }
+
+        conn.execute(
+            "UPDATE tasks
+             SET agent_work_status = 'pending',
+                 agent_work_session_id = NULL,
+                 agent_work_attempt_count = 0,
+                 agent_work_started_at = NULL,
+                 agent_work_completed_at = NULL
+             WHERE id = ?1",
+            params![task_id],
+        )
+        .map_err(|e| format!("Requeue agent task error: {e}"))?;
+
+        drop(conn);
+        self.checkpoint();
+        Ok(())
+    }
+
     pub fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String> {
         let conn = self.conn()?;
 

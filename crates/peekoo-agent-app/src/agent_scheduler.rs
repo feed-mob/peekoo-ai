@@ -14,6 +14,7 @@ use crate::productivity::ProductivityService;
 
 /// Maximum number of agent execution attempts before a task is permanently marked as failed.
 const MAX_AGENT_ATTEMPTS: u32 = 3;
+const TASK_CONTEXT_ACTIVITY_LIMIT: u32 = u32::MAX;
 
 pub struct AgentScheduler {
     scheduler: Scheduler,
@@ -58,54 +59,20 @@ impl AgentScheduler {
                 let shutdown = shutdown.clone();
                 let launch_env = Arc::clone(&launch_env);
 
-                std::thread::spawn(move || {
-                    tracing::info!("AgentScheduler: Spawning worker thread for task execution");
-
-                    let rt = match tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                    {
-                        Ok(rt) => {
-                            tracing::info!("AgentScheduler: Tokio runtime created successfully");
-                            rt
-                        }
-                        Err(e) => {
-                            tracing::error!(
-                                "AgentScheduler: Failed to create tokio runtime: {}",
-                                e
-                            );
-                            return;
-                        }
-                    };
-
-                    rt.block_on(async {
-                        if shutdown.is_cancelled() {
-                            tracing::info!(
-                                "AgentScheduler: Shutdown requested, skipping task check"
-                            );
-                            return;
-                        }
-
-                        // Get MCP address from global state (started in start_plugin_runtime)
-                        let mcp_address = crate::mcp_server::get_mcp_address();
-                        if mcp_address.is_none() {
-                            tracing::warn!("AgentScheduler: MCP server not running, agents will run without tools");
-                        }
-
-                        let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
-                        if let Err(e) = check_and_execute_tasks(&task_service, mcp_address, &launch_env).await {
-                            tracing::error!("AgentScheduler: Error during task execution: {}", e);
-                        } else {
-                            tracing::info!("AgentScheduler: Task check completed successfully");
-                        }
-                    });
-
-                    tracing::info!("AgentScheduler: Worker thread finished");
-                });
+                Self::spawn_worker(task_service, shutdown, launch_env);
             }
         });
 
         tracing::info!("AgentScheduler started successfully");
+    }
+
+    pub fn trigger_now(&self) {
+        tracing::info!("AgentScheduler: Triggering immediate task check");
+        Self::spawn_worker(
+            Arc::clone(&self.task_service),
+            self.shutdown_token.clone(),
+            Arc::clone(&self.launch_env),
+        );
     }
 
     pub fn shutdown(&self) {
@@ -113,6 +80,51 @@ impl AgentScheduler {
         self.shutdown_token.cancel();
         self.scheduler.cancel_all("agent-scheduler");
         tracing::info!("AgentScheduler shutdown complete");
+    }
+
+    fn spawn_worker(
+        task_service: Arc<ProductivityService>,
+        shutdown: tokio_util::sync::CancellationToken,
+        launch_env: Arc<Mutex<Vec<(String, String)>>>,
+    ) {
+        std::thread::spawn(move || {
+            tracing::info!("AgentScheduler: Spawning worker thread for task execution");
+
+            let rt = match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(rt) => {
+                    tracing::info!("AgentScheduler: Tokio runtime created successfully");
+                    rt
+                }
+                Err(e) => {
+                    tracing::error!("AgentScheduler: Failed to create tokio runtime: {}", e);
+                    return;
+                }
+            };
+
+            rt.block_on(async {
+                if shutdown.is_cancelled() {
+                    tracing::info!("AgentScheduler: Shutdown requested, skipping task check");
+                    return;
+                }
+
+                let mcp_address = crate::mcp_server::get_mcp_address();
+                if mcp_address.is_none() {
+                    tracing::warn!("AgentScheduler: MCP server not running, agents will run without tools");
+                }
+
+                let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
+                if let Err(e) = check_and_execute_tasks(&task_service, mcp_address, &launch_env).await {
+                    tracing::error!("AgentScheduler: Error during task execution: {}", e);
+                } else {
+                    tracing::info!("AgentScheduler: Task check completed successfully");
+                }
+            });
+
+            tracing::info!("AgentScheduler: Worker thread finished");
+        });
     }
 }
 
@@ -265,7 +277,9 @@ async fn execute_task_acp(
         ("127.0.0.1".to_string(), 0)
     };
 
-    let comments = task_service.get_task_activity(&task.id, 100).map_err(|e| {
+    let comments = task_service
+        .get_task_activity(&task.id, TASK_CONTEXT_ACTIVITY_LIMIT)
+        .map_err(|e| {
         tracing::error!(
             "AgentScheduler: Failed to get task activity for {}: {}",
             task.id,
@@ -291,14 +305,7 @@ async fn execute_task_acp(
         "scheduled_start_at": task.scheduled_start_at,
         "scheduled_end_at": task.scheduled_end_at,
         "estimated_duration_min": task.estimated_duration_min,
-        "comments": comments.iter().map(|c| {
-            serde_json::json!({
-                "id": c.id,
-                "author": c.payload.get("author").and_then(|v| v.as_str()).unwrap_or("unknown"),
-                "text": c.payload.get("text").and_then(|v| v.as_str()).unwrap_or(""),
-                "created_at": c.created_at
-            })
-        }).collect::<Vec<_>>()
+        "comments": build_task_comment_context(&comments)
     });
 
     tracing::info!(
@@ -554,9 +561,35 @@ fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<M
         .unwrap_or_default()
 }
 
+fn build_task_comment_context(
+    events: &[peekoo_productivity_domain::task::TaskEventDto],
+) -> Vec<serde_json::Value> {
+    let mut comments = events
+        .iter()
+        .filter(|event| event.event_type == "comment")
+        .filter_map(|event| {
+            let text = event.payload.get("text")?.as_str()?.trim();
+            if text.is_empty() {
+                return None;
+            }
+
+            Some(serde_json::json!({
+                "id": event.id,
+                "author": event.payload.get("author").and_then(|v| v.as_str()).unwrap_or("unknown"),
+                "text": text,
+                "created_at": event.created_at
+            }))
+        })
+        .collect::<Vec<_>>();
+
+    comments.reverse();
+    comments
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_session_mcp_servers;
+    use super::{build_session_mcp_servers, build_task_comment_context};
+    use peekoo_productivity_domain::task::TaskEventDto;
 
     #[test]
     fn builds_http_mcp_server_for_session() {
@@ -565,6 +598,40 @@ mod tests {
         assert_eq!(serialized[0]["type"], "http");
         assert_eq!(serialized[0]["name"], "peekoo-task-tools");
         assert_eq!(serialized[0]["url"], "http://127.0.0.1:49152/mcp");
+    }
+
+    #[test]
+    fn builds_comment_context_from_comment_events_only_in_chronological_order() {
+        let events = vec![
+            TaskEventDto {
+                id: "status-1".into(),
+                task_id: "task-1".into(),
+                event_type: "status_changed".into(),
+                payload: serde_json::json!({"from": "todo", "to": "done"}),
+                created_at: "2026-03-24T08:10:00Z".into(),
+            },
+            TaskEventDto {
+                id: "comment-2".into(),
+                task_id: "task-1".into(),
+                event_type: "comment".into(),
+                payload: serde_json::json!({"author": "user", "text": "@peekoo-agent follow up"}),
+                created_at: "2026-03-24T08:20:00Z".into(),
+            },
+            TaskEventDto {
+                id: "comment-1".into(),
+                task_id: "task-1".into(),
+                event_type: "comment".into(),
+                payload: serde_json::json!({"author": "agent", "text": "First reply"}),
+                created_at: "2026-03-24T08:00:00Z".into(),
+            },
+        ];
+
+        let comments = build_task_comment_context(&events);
+
+        assert_eq!(comments.len(), 2);
+        assert_eq!(comments[0]["id"], "comment-1");
+        assert_eq!(comments[1]["id"], "comment-2");
+        assert_eq!(comments[1]["text"], "@peekoo-agent follow up");
     }
 }
 
