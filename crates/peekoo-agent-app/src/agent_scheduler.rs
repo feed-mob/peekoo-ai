@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use agent_client_protocol::{
-    Client, ClientSideConnection, ContentBlock, InitializeRequest, NewSessionRequest,
-    PromptRequest, ProtocolVersion, TextContent,
+    Client, ClientSideConnection, ContentBlock, InitializeRequest, McpServer, McpServerHttp,
+    NewSessionRequest, PromptRequest, ProtocolVersion, TextContent,
 };
 use peekoo_scheduler::Scheduler;
 use tokio::process::Command;
@@ -18,6 +19,7 @@ pub struct AgentScheduler {
     scheduler: Scheduler,
     task_service: Arc<ProductivityService>,
     shutdown_token: tokio_util::sync::CancellationToken,
+    launch_env: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl AgentScheduler {
@@ -27,6 +29,13 @@ impl AgentScheduler {
             scheduler: Scheduler::new(),
             task_service,
             shutdown_token: tokio_util::sync::CancellationToken::new(),
+            launch_env: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    pub fn set_agent_launch_env(&self, launch_env: Vec<(String, String)>) {
+        if let Ok(mut guard) = self.launch_env.lock() {
+            *guard = launch_env;
         }
     }
 
@@ -35,6 +44,7 @@ impl AgentScheduler {
 
         let task_service = Arc::clone(&self.task_service);
         let shutdown = self.shutdown_token.clone();
+        let launch_env = Arc::clone(&self.launch_env);
 
         let _ = self
             .scheduler
@@ -46,6 +56,7 @@ impl AgentScheduler {
 
                 let task_service = Arc::clone(&task_service);
                 let shutdown = shutdown.clone();
+                let launch_env = Arc::clone(&launch_env);
 
                 std::thread::spawn(move || {
                     tracing::info!("AgentScheduler: Spawning worker thread for task execution");
@@ -81,7 +92,8 @@ impl AgentScheduler {
                             tracing::warn!("AgentScheduler: MCP server not running, agents will run without tools");
                         }
 
-                        if let Err(e) = check_and_execute_tasks(&task_service, mcp_address).await {
+                        let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
+                        if let Err(e) = check_and_execute_tasks(&task_service, mcp_address, &launch_env).await {
                             tracing::error!("AgentScheduler: Error during task execution: {}", e);
                         } else {
                             tracing::info!("AgentScheduler: Task check completed successfully");
@@ -107,6 +119,7 @@ impl AgentScheduler {
 async fn check_and_execute_tasks(
     task_service: &ProductivityService,
     mcp_address: Option<std::net::SocketAddr>,
+    launch_env: &[(String, String)],
 ) -> Result<(), String> {
     tracing::info!("AgentScheduler: Querying database for agent tasks");
 
@@ -168,51 +181,11 @@ async fn check_and_execute_tasks(
             );
         }
 
-        // Set initial agent working state: status=in_progress, label=agent_working, initial comment
-        if let Err(e) = task_service.update_task_status(
-            &task.id,
-            peekoo_productivity_domain::task::TaskStatus::InProgress,
-        ) {
-            tracing::error!(
-                "AgentScheduler: Failed to update task {} status to in_progress: {}",
-                task.id,
-                e
-            );
-        } else {
-            tracing::info!(
-                "AgentScheduler: Updated task {} status to in_progress",
-                task.id
-            );
-        }
-
-        if let Err(e) = task_service.add_task_label(&task.id, "agent_working") {
-            tracing::error!(
-                "AgentScheduler: Failed to add agent_working label to task {}: {}",
-                task.id,
-                e
-            );
-        } else {
-            tracing::info!(
-                "AgentScheduler: Added agent_working label to task {}",
-                task.id
-            );
-        }
-
-        if let Err(e) = task_service.add_task_comment(
-            &task.id,
-            "I'm starting work on this task. I'll analyze the requirements and let you know if I have any questions.",
-            "agent"
-        ) {
-            tracing::error!("AgentScheduler: Failed to add initial comment to task {}: {}", task.id, e);
-        } else {
-            tracing::info!("AgentScheduler: Added initial comment to task {}", task.id);
-        }
-
         tracing::info!(
             "AgentScheduler: Starting ACP execution for task {}",
             task.id
         );
-        if let Err(e) = execute_task_acp(task_service, task, mcp_address).await {
+        if let Err(e) = execute_task_acp(task_service, task, mcp_address, launch_env).await {
             tracing::error!(
                 "AgentScheduler: Failed to execute task {} via ACP: {}",
                 task.id,
@@ -263,6 +236,7 @@ async fn execute_task_acp(
     task_service: &ProductivityService,
     task: &peekoo_productivity_domain::task::TaskDto,
     mcp_address: Option<std::net::SocketAddr>,
+    launch_env: &[(String, String)],
 ) -> Result<(), String> {
     use agent_client_protocol::Agent as _;
 
@@ -305,6 +279,7 @@ async fn execute_task_acp(
         comments.len(),
         task.id
     );
+    let initial_activity_count = comments.len();
 
     let task_context = serde_json::json!({
         "task_id": task.id,
@@ -349,6 +324,9 @@ async fn execute_task_acp(
         cmd.env("PEEKOO_MCP_PORT", mcp_port.to_string())
             .env("PEEKOO_MCP_HOST", &mcp_host);
     }
+    for (key, value) in launch_env {
+        cmd.env(key, value);
+    }
 
     let mut child = match cmd
         .stdin(std::process::Stdio::piped())
@@ -382,7 +360,7 @@ async fn execute_task_acp(
     let task_id_for_spawn = task.id.clone();
     let task_id_for_logs = task.id.clone();
 
-    let stop_reason = match local_set
+    let _stop_reason = match local_set
         .run_until(async move {
             let task_id = task_id_for_logs.clone();
             tracing::info!(
@@ -435,10 +413,12 @@ async fn execute_task_acp(
             );
 
             tracing::info!("AgentScheduler: Creating ACP session for task {}", task_id);
+            let mcp_servers = build_session_mcp_servers(mcp_address);
             let session = conn
-                .new_session(NewSessionRequest::new(
-                    std::env::current_dir().unwrap_or_default(),
-                ))
+                .new_session(
+                    NewSessionRequest::new(std::env::current_dir().unwrap_or_default())
+                        .mcp_servers(mcp_servers),
+                )
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -513,7 +493,6 @@ async fn execute_task_acp(
     };
 
     let task_id_final = task.id.clone();
-    let task_title = task.title.clone();
 
     tracing::info!(
         "AgentScheduler: Cleaning up ACP subprocess for task {}",
@@ -533,52 +512,21 @@ async fn execute_task_acp(
         ),
     }
 
-    // Finalize task: remove agent_working, add agent_done and needs_review labels
-    if let Err(e) = task_service.remove_task_label(&task_id_final, "agent_working") {
-        tracing::error!(
-            "AgentScheduler: Failed to remove agent_working label from task {}: {}",
-            task_id_final,
-            e
-        );
-    }
-
-    if let Err(e) = task_service.add_task_label(&task_id_final, "agent_done") {
-        tracing::error!(
-            "AgentScheduler: Failed to add agent_done label to task {}: {}",
-            task_id_final,
-            e
-        );
-    }
-
-    if let Err(e) = task_service.add_task_label(&task_id_final, "needs_review") {
-        tracing::error!(
-            "AgentScheduler: Failed to add needs_review label to task {}: {}",
-            task_id_final,
-            e
-        );
-    }
-
-    let response_text = format!(
-        "Task completed by agent.\n\n**Title:** {}\n**Stop Reason:** {:?}",
-        task_title, stop_reason
-    );
-
-    tracing::info!(
-        "AgentScheduler: Adding completion comment to task {}",
-        task_id_final
-    );
-    if let Err(e) = task_service.add_task_comment(&task_id_final, &response_text, "agent") {
-        tracing::error!(
-            "AgentScheduler: Failed to add comment to task {}: {}",
-            task_id_final,
-            e
-        );
-    }
-
     tracing::info!(
         "AgentScheduler: Updating task {} agent_work_status to completed",
         task_id_final
     );
+
+    let final_activity_count = task_service
+        .get_task_activity(&task_id_final, 100)
+        .map(|events| events.len())
+        .unwrap_or(initial_activity_count);
+    if final_activity_count <= initial_activity_count {
+        return Err(
+            "Agent completed without recording any task update through MCP tools".to_string(),
+        );
+    }
+
     if let Err(e) = task_service.update_agent_work_status(&task_id_final, "completed", None) {
         tracing::error!(
             "AgentScheduler: Failed to update task {} agent_work_status to completed: {}",
@@ -595,6 +543,31 @@ async fn execute_task_acp(
     Ok(())
 }
 
+fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<McpServer> {
+    mcp_address
+        .map(|addr| {
+            vec![McpServer::Http(McpServerHttp::new(
+                "peekoo-task-tools",
+                peekoo_mcp_server::mcp_url_for(addr),
+            ))]
+        })
+        .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_session_mcp_servers;
+
+    #[test]
+    fn builds_http_mcp_server_for_session() {
+        let servers = build_session_mcp_servers(Some(([127, 0, 0, 1], 49152).into()));
+        let serialized = serde_json::to_value(&servers).expect("serialize mcp servers");
+        assert_eq!(serialized[0]["type"], "http");
+        assert_eq!(serialized[0]["name"], "peekoo-task-tools");
+        assert_eq!(serialized[0]["url"], "http://127.0.0.1:49152/mcp");
+    }
+}
+
 #[derive(Clone)]
 struct TaskClient {
     task_id: String,
@@ -604,16 +577,30 @@ struct TaskClient {
 impl Client for TaskClient {
     async fn request_permission(
         &self,
-        _args: agent_client_protocol::RequestPermissionRequest,
+        args: agent_client_protocol::RequestPermissionRequest,
     ) -> Result<agent_client_protocol::RequestPermissionResponse, agent_client_protocol::Error>
     {
         tracing::debug!(
-            "AgentScheduler: Agent requested permission for task {} - auto-granting",
+            "AgentScheduler: Agent requested permission for task {} - selecting first allow option if available",
             self.task_id
         );
-        Ok(agent_client_protocol::RequestPermissionResponse::new(
-            agent_client_protocol::RequestPermissionOutcome::Cancelled,
-        ))
+        if let Some(option) = args.options.iter().find(|option| {
+            matches!(
+                option.kind,
+                agent_client_protocol::PermissionOptionKind::AllowOnce
+                    | agent_client_protocol::PermissionOptionKind::AllowAlways
+            )
+        }) {
+            Ok(agent_client_protocol::RequestPermissionResponse::new(
+                agent_client_protocol::RequestPermissionOutcome::Selected(
+                    agent_client_protocol::SelectedPermissionOutcome::new(option.option_id.clone()),
+                ),
+            ))
+        } else {
+            Ok(agent_client_protocol::RequestPermissionResponse::new(
+                agent_client_protocol::RequestPermissionOutcome::Cancelled,
+            ))
+        }
     }
 
     async fn session_notification(

@@ -153,6 +153,7 @@ impl AgentApplication {
         if let Ok(guard) = self.agent_scheduler.lock()
             && let Some(ref scheduler) = *guard
         {
+            scheduler.set_agent_launch_env(self.agent_launch_env());
             scheduler.start();
         }
     }
@@ -845,6 +846,26 @@ impl AgentApplication {
             auto_discover: false,
             ..Default::default()
         })
+    }
+
+    fn agent_launch_env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+
+        if let Ok(config) = self.resolved_config()
+            && let Ok((resolved, _)) = self.settings.to_agent_config(config)
+        {
+            if let Some(provider) = resolved.provider {
+                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), provider));
+            }
+            if let Some(model) = resolved.model {
+                env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
+            }
+            if let Some(api_key) = resolved.api_key {
+                env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
+            }
+        }
+
+        env
     }
 }
 

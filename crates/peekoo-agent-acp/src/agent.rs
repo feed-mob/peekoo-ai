@@ -1,18 +1,33 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use agent_client_protocol as acp;
-use agent_client_protocol::{Client, ContentChunk, SessionNotification, SessionUpdate, StopReason};
+use agent_client_protocol::{
+    AgentCapabilities, Client, ContentChunk, McpCapabilities, SessionNotification, SessionUpdate,
+    StopReason,
+};
 use anyhow::Result;
 use async_trait::async_trait;
+use peekoo_agent::service::AgentService;
+use peekoo_agent::{AgentEvent, config::AgentServiceConfig};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::context::TaskContext;
+use crate::mcp_tools::{connect_task_mcp_tools, summarize_agent_event};
+
+#[derive(Clone)]
+struct SessionContext {
+    cwd: PathBuf,
+    mcp_servers: Vec<acp::McpServer>,
+}
 
 pub struct PeekooAgent {
     session_update_tx: mpsc::UnboundedSender<(SessionNotification, oneshot::Sender<()>)>,
     next_session_id: Cell<u64>,
+    sessions: RefCell<HashMap<String, SessionContext>>,
 }
 
 impl PeekooAgent {
@@ -22,6 +37,7 @@ impl PeekooAgent {
         Self {
             session_update_tx,
             next_session_id: Cell::new(0),
+            sessions: RefCell::new(HashMap::new()),
         }
     }
 }
@@ -37,6 +53,9 @@ impl acp::Agent for PeekooAgent {
             acp::InitializeResponse::new(acp::ProtocolVersion::V1).agent_info(
                 acp::Implementation::new("peekoo-agent-acp", "0.1.0")
                     .title(Some("Peekoo Agent".to_string())),
+            )
+            .agent_capabilities(
+                AgentCapabilities::new().mcp_capabilities(McpCapabilities::new().http(true)),
             ),
         )
     }
@@ -56,7 +75,15 @@ impl acp::Agent for PeekooAgent {
         tracing::info!("Received new session request {arguments:?}");
         let session_id = self.next_session_id.get();
         self.next_session_id.set(session_id + 1);
-        Ok(acp::NewSessionResponse::new(session_id.to_string()))
+        let session_id_string = session_id.to_string();
+        self.sessions.borrow_mut().insert(
+            session_id_string.clone(),
+            SessionContext {
+                cwd: arguments.cwd,
+                mcp_servers: arguments.mcp_servers,
+            },
+        );
+        Ok(acp::NewSessionResponse::new(session_id_string))
     }
 
     async fn load_session(
@@ -64,6 +91,13 @@ impl acp::Agent for PeekooAgent {
         arguments: acp::LoadSessionRequest,
     ) -> Result<acp::LoadSessionResponse, acp::Error> {
         tracing::info!("Received load session request {arguments:?}");
+        self.sessions.borrow_mut().insert(
+            arguments.session_id.to_string(),
+            SessionContext {
+                cwd: arguments.cwd,
+                mcp_servers: arguments.mcp_servers,
+            },
+        );
         Ok(acp::LoadSessionResponse::default())
     }
 
@@ -102,32 +136,13 @@ impl acp::Agent for PeekooAgent {
                 }
             });
 
-        // Connect to MCP server if configured via environment variables
-        let mcp_tools = if let (Ok(port), Ok(host)) = (
-            std::env::var("PEEKOO_MCP_PORT"),
-            std::env::var("PEEKOO_MCP_HOST"),
-        ) {
-            if let Ok(port) = port.parse::<u16>() {
-                match connect_mcp_and_get_tools(&host, port).await {
-                    Ok(tools) => {
-                        tracing::info!("Connected to MCP server and got {} tools", tools.len());
-                        Some(tools)
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to connect to MCP server: {}", e);
-                        None
-                    }
-                }
-            } else {
-                tracing::warn!("Invalid MCP port: {}", port);
-                None
-            }
-        } else {
-            tracing::info!("No MCP server configured, running without tools");
-            None
-        };
+        let session_context = self
+            .sessions
+            .borrow()
+            .get(&arguments.session_id.to_string())
+            .cloned();
 
-        let _ = task_context.to_prompt();
+        let task_prompt = task_context.to_prompt();
 
         let (tx, rx) = oneshot::channel();
         self.session_update_tx
@@ -136,7 +151,7 @@ impl acp::Agent for PeekooAgent {
                     arguments.session_id.clone(),
                     SessionUpdate::AgentMessageChunk(ContentChunk::new(
                         format!(
-                            "Processing task: {}\n\nConnecting to LLM...\n\n",
+                            "Processing task: {}\n\nPreparing agent session...\n\n",
                             task_context.title
                         )
                         .into(),
@@ -148,32 +163,30 @@ impl acp::Agent for PeekooAgent {
         rx.await
             .map_err(|_| anyhow::anyhow!("session update failed"))?;
 
-        // For now, echo the context back without tools since AgentService requires complex setup
-        // TODO: Properly integrate with AgentService when time permits
-        let mcp_info = if let (Ok(port), Ok(host)) = (
-            std::env::var("PEEKOO_MCP_PORT"),
-            std::env::var("PEEKOO_MCP_HOST"),
-        ) {
-            format!("{}:{}", host, port)
+        let mut agent = build_agent_service(session_context.as_ref()).await.map_err(|error| {
+            tracing::error!("Failed to create task agent: {}", error);
+            acp::Error::internal_error()
+        })?;
+
+        let mut _mcp_handles = Vec::new();
+        let tools_count = if let Some(session) = &session_context {
+            let (tools, handles) = connect_task_mcp_tools(&task_context.task_id, &session.mcp_servers)
+                .await
+                .map_err(|error| {
+                    tracing::error!("Failed to connect session MCP servers: {}", error);
+                    acp::Error::internal_error()
+                })?;
+            let count = tools.len();
+            agent.register_native_tools(tools);
+            _mcp_handles = handles;
+            count
         } else {
-            "N/A".to_string()
+            0
         };
 
-        let tools_count = mcp_tools
-            .as_ref()
-            .map(|t| t.len().to_string())
-            .unwrap_or_else(|| "0".to_string());
-
-        let response_text = format!(
-            "Task received: {}\n\nTitle: {}\nDescription: {}\n\nMCP Server: {}\nTools available: {}\n\nProcessing...",
-            task_context.task_id,
-            task_context.title,
-            task_context
-                .description
-                .as_deref()
-                .unwrap_or("No description"),
-            mcp_info,
-            tools_count
+        let startup_text = format!(
+            "Task received: {}\n\nMCP tools available: {}\n\nRunning agent...",
+            task_context.task_id, tools_count
         );
 
         let (tx, rx) = oneshot::channel();
@@ -181,7 +194,41 @@ impl acp::Agent for PeekooAgent {
             .send((
                 SessionNotification::new(
                     arguments.session_id.clone(),
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(response_text.into())),
+                    SessionUpdate::AgentMessageChunk(ContentChunk::new(startup_text.into())),
+                ),
+                tx,
+            ))
+            .map_err(|_| anyhow::anyhow!("failed to send session update"))?;
+        rx.await
+            .map_err(|_| anyhow::anyhow!("session update failed"))?;
+
+        let session_id = arguments.session_id.clone();
+        let session_tx = self.session_update_tx.clone();
+        let final_text = agent
+            .prompt(&task_prompt, move |event: AgentEvent| {
+                if let Some(summary) = summarize_agent_event(&event) {
+                    let (tx, _rx) = oneshot::channel();
+                    let _ = session_tx.send((
+                        SessionNotification::new(
+                            session_id.clone(),
+                            SessionUpdate::AgentMessageChunk(ContentChunk::new(summary.into())),
+                        ),
+                        tx,
+                    ));
+                }
+            })
+            .await
+            .map_err(|error| {
+                tracing::error!("Task agent prompt failed: {}", error);
+                acp::Error::internal_error()
+            })?;
+
+        let (tx, rx) = oneshot::channel();
+        self.session_update_tx
+            .send((
+                SessionNotification::new(
+                    arguments.session_id.clone(),
+                    SessionUpdate::AgentMessageChunk(ContentChunk::new(final_text.into())),
                 ),
                 tx,
             ))
@@ -218,37 +265,37 @@ impl acp::Agent for PeekooAgent {
     }
 }
 
-async fn connect_mcp_and_get_tools(host: &str, port: u16) -> anyhow::Result<Vec<String>> {
-    use rmcp::{ServiceExt, transport::StreamableHttpClientTransport};
-
-    ensure_rustls_provider();
-
-    let mcp_url = format!("http://{}:{}/mcp", host, port);
-    tracing::info!("🔗 [MCP] Connecting to server at {}", mcp_url);
-
-    let transport = StreamableHttpClientTransport::from_uri(mcp_url.clone());
-    let client: rmcp::service::RunningService<rmcp::service::RoleClient, ()> =
-        ().serve(transport).await?;
-    tracing::info!("✅ [MCP] Protocol handshake completed");
-
-    let tools_result = client.list_tools(Default::default()).await?;
-    let tool_names: Vec<String> = tools_result
-        .tools
-        .iter()
-        .map(|t| t.name.to_string())
-        .collect();
-
-    tracing::info!("📋 [MCP] Available tools: {:?}", tool_names);
-
-    Ok(tool_names)
-}
-
-fn ensure_rustls_provider() {
+pub(crate) fn ensure_rustls_provider() {
     static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
 
     RUSTLS_PROVIDER.get_or_init(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+async fn build_agent_service(session_context: Option<&SessionContext>) -> anyhow::Result<AgentService> {
+    let cwd = session_context
+        .map(|session| session.cwd.clone())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    let mut config = AgentServiceConfig {
+        working_directory: cwd,
+        auto_discover: true,
+        no_session: true,
+        ..Default::default()
+    };
+
+    if let Ok(provider) = std::env::var("PEEKOO_AGENT_PROVIDER") {
+        config.provider = Some(provider);
+    }
+    if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {
+        config.model = Some(model);
+    }
+    if let Ok(api_key) = std::env::var("PEEKOO_AGENT_API_KEY") {
+        config.api_key = Some(api_key);
+    }
+
+    AgentService::new(config).await.map_err(Into::into)
 }
 
 pub async fn run_agent() -> acp::Result<()> {

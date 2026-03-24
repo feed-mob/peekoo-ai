@@ -9,8 +9,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 peekoo-agent = { path = "../peekoo-agent" }
 peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
-rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["client", "macros", "transport-streamable-http-client-reqwest"] }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "io-std", "net"] }
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["client", "macros", "transport-streamable-http-client-reqwest", "transport-child-process"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "io-std", "net", "process"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 async-trait = "0.1"
 anyhow = "1"

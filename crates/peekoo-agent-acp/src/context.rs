@@ -28,6 +28,7 @@ impl TaskContext {
 
         prompt.push_str("# Task Assignment\n\n");
         prompt.push_str("You have been assigned the following task:\n\n");
+        prompt.push_str(&format!("**Task ID:** `{}`\n", self.task_id));
         prompt.push_str(&format!("**Title:** {}\n", self.title));
 
         if let Some(desc) = &self.description {
@@ -64,19 +65,20 @@ impl TaskContext {
         }
 
         prompt.push_str("\n## Instructions\n\n");
-        prompt.push_str("Analyze this task and determine the appropriate action:\n\n");
-        prompt.push_str("1. **If the task is clear and you can complete it automatically:**\n");
-        prompt.push_str("   - Execute the task using available tools\n");
-        prompt.push_str("   - Add a comment summarizing what you did\n");
-        prompt.push_str("   - Mark the task as done\n\n");
-        prompt.push_str("2. **If the task is unclear or needs more information:**\n");
-        prompt.push_str("   - Add a comment with specific questions\n");
-        prompt.push_str("   - Do not change the task status\n\n");
-        prompt.push_str("3. **If the task is complex and needs a plan:**\n");
-        prompt.push_str("   - Add a comment with your proposed approach\n");
-        prompt.push_str("   - Break it down into steps if needed\n");
-        prompt.push_str("   - Mark status as \"in_progress\"\n");
-        prompt.push_str("   - Wait for user feedback before proceeding\n\n");
+        prompt.push_str("Analyze this task and determine the appropriate action.\n\n");
+        prompt.push_str("You must use the available task tools for any user-visible task updates. Do not only describe intended actions in plain text.\n\n");
+        prompt.push_str("Available task tools (already scoped to this task):\n");
+        prompt.push_str("- `task_comment(text)` to post comments or questions\n");
+        prompt.push_str("- `update_task_status(status)` to change the task status\n");
+        prompt.push_str("- `update_task_labels(add_labels?, remove_labels?)` to manage labels\n\n");
+        prompt.push_str("Execution rules:\n");
+        prompt.push_str("1. If the task is clear and can be completed now, do the work and then use task tools to leave a useful comment and update status/labels appropriately.\n");
+        prompt.push_str("2. If the task is unclear, use `task_comment` to ask a specific clarifying question. Do not mark it done.\n");
+        prompt.push_str("3. If the task needs a plan or partial progress, use `task_comment` to explain the plan and update status to `in_progress` if appropriate.\n");
+        prompt.push_str("4. Never claim success without using the task tools to record the outcome on the task itself.\n");
+        prompt.push_str("5. Keep comments concise, concrete, and helpful to the user reviewing task history.\n\n");
+        prompt.push_str("Valid status values for `update_task_status` are: `pending`, `in_progress`, `done`, `cancelled`.\n");
+        prompt.push_str("Example completion sequence: first call `task_comment` with the result, then call `update_task_status` with `done`.\n\n");
 
         prompt
     }

@@ -6585,6 +6585,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "9.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e842efad9119158434d193c6682e2ebee4b44d6ad801d7b349623b3f57cdf55"
+dependencies = [
+ "futures",
+ "indexmap 2.13.0",
+ "nix",
+ "tokio",
+ "tracing",
+ "windows 0.62.2",
+]
+
+[[package]]
 name = "prodash"
 version = "30.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7345,6 +7359,7 @@ dependencies = [
  "http-body-util",
  "pastey 0.2.1",
  "pin-project-lite",
+ "process-wrap",
  "rand 0.10.0",
  "reqwest 0.13.2",
  "rmcp-macros",
