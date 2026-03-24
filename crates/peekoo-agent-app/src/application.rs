@@ -25,7 +25,7 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
-use peekoo_productivity_domain::task::{TaskDto, TaskEventDto};
+use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
 
 use crate::productivity::{PomodoroSessionDto, ProductivityService};
 use crate::settings::{
@@ -34,6 +34,7 @@ use crate::settings::{
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
 };
+use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 
 use crate::workspace_bootstrap::ensure_agent_workspace;
@@ -60,6 +61,8 @@ pub struct AgentApplication {
     resume_session_path: Mutex<Option<PathBuf>>,
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
     conversation_generation: AtomicU64,
+    /// Scheduler for agent task execution.
+    agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
 }
 
 impl AgentApplication {
@@ -99,6 +102,10 @@ impl AgentApplication {
         }
         let workspace_dir = ensure_agent_workspace()?;
 
+        // Create agent scheduler for task execution
+        let agent_scheduler =
+            crate::agent_scheduler::AgentScheduler::new(Arc::new(productivity.clone()));
+
         Ok(Self {
             agent: Mutex::new(None),
             settings,
@@ -117,11 +124,39 @@ impl AgentApplication {
             workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
+            agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
         })
     }
 
     pub fn start_plugin_runtime(&self) {
         self.plugin_registry.start_scheduler();
+
+        eprintln!("[peekoo][mcp] starting MCP server during app startup");
+
+        // Start MCP server on a dedicated thread (survives app lifetime)
+        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+            Arc::new(self.task_runtime_service());
+        let mcp_shutdown = self.shutdown_token.clone();
+
+        match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
+            Ok(addr) => {
+                let url = peekoo_mcp_server::mcp_url_for(addr);
+                eprintln!("[peekoo][mcp] server ready at {}", url);
+                tracing::info!("✅ [MCP] Server ready at {}", url);
+            }
+            Err(e) => {
+                eprintln!("[peekoo][mcp] failed to start: {}", e);
+                tracing::error!("❌ [MCP] Failed to start server: {}", e);
+            }
+        }
+
+        // Start agent scheduler for task execution
+        if let Ok(guard) = self.agent_scheduler.lock()
+            && let Some(ref scheduler) = *guard
+        {
+            scheduler.set_agent_launch_env(self.agent_launch_env());
+            scheduler.start();
+        }
     }
 
     pub async fn prompt_streaming<F>(&self, message: &str, on_event: F) -> Result<String, String>
@@ -392,7 +427,8 @@ impl AgentApplication {
         text: &str,
         author: &str,
     ) -> Result<TaskEventDto, String> {
-        self.productivity.add_task_comment(task_id, text, author)
+        self.task_runtime_service()
+            .add_task_comment(task_id, text, author)
     }
 
     pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
@@ -813,6 +849,52 @@ impl AgentApplication {
             ..Default::default()
         })
     }
+
+    fn agent_launch_env(&self) -> Vec<(String, String)> {
+        let mut env = Vec::new();
+
+        if let Ok(config) = self.resolved_config()
+            && let Ok((resolved, _)) = self.settings.to_agent_config(config)
+        {
+            if let Some(provider) = resolved.provider {
+                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), provider));
+            }
+            if let Some(model) = resolved.model {
+                env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
+            }
+            if let Some(api_key) = resolved.api_key {
+                env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
+            }
+        }
+
+        if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
+            let task_session_dir = data_dir.join("task-agent-sessions");
+            let _ = std::fs::create_dir_all(&task_session_dir);
+            env.push((
+                "PEEKOO_AGENT_TASK_SESSION_DIR".to_string(),
+                task_session_dir.to_string_lossy().into_owned(),
+            ));
+        }
+
+        env
+    }
+
+    fn task_runtime_service(&self) -> TaskRuntimeService {
+        let scheduler_ref = Arc::clone(&self.agent_scheduler);
+        let follow_up_trigger = Some(Arc::new(move |_task_id: String| {
+            if let Ok(guard) = scheduler_ref.lock()
+                && let Some(ref scheduler) = *guard
+            {
+                scheduler.trigger_now();
+            }
+        }) as Arc<dyn Fn(String) + Send + Sync>);
+
+        TaskRuntimeService::new(
+            self.productivity.clone(),
+            Arc::clone(&self.notifications),
+            follow_up_trigger,
+        )
+    }
 }
 
 fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {
@@ -913,7 +995,7 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
-    use peekoo_productivity_domain::task::{TaskDto, TaskService};
+    use peekoo_productivity_domain::task::{TaskDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use rusqlite::Connection;
 
@@ -976,6 +1058,35 @@ mod tests {
             _: &str,
             _: &str,
         ) -> Result<peekoo_productivity_domain::task::TaskEventDto, String> {
+            Err("not implemented".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("not implemented".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("not implemented".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("not implemented".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("not implemented".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
     }

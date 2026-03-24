@@ -13,6 +13,8 @@ pub const MIGRATION_0007_RECURRENCE_TIME_OF_DAY: &str =
     include_str!("../migrations/0007_recurrence_time_of_day.sql");
 pub const MIGRATION_0008_TASK_ORDER_INDEX: &str =
     include_str!("../migrations/0008_task_order_index.sql");
+pub const MIGRATION_0009_AGENT_TASK_ASSIGNMENT: &str =
+    include_str!("../migrations/0009_agent_task_assignment.sql");
 
 #[cfg(test)]
 mod tests {
@@ -61,5 +63,13 @@ mod tests {
     #[test]
     fn migration_contains_task_created_at() {
         assert!(MIGRATION_0008_TASK_ORDER_INDEX.contains("created_at"));
+    }
+
+    #[test]
+    fn migration_contains_agent_task_assignment() {
+        assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("agent_work_status"));
+        assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("agent_registry"));
+        assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("peekoo-agent"));
+        assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("task_planning"));
     }
 }

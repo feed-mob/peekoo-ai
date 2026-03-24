@@ -111,10 +111,10 @@ export function TaskListItem({
             )}
 
             {/* Assignee icon */}
-            {task.assignee === "agent" ? (
-              <Bot size={14} className="shrink-0 text-purple-400" />
-            ) : (
+            {task.assignee === "user" ? (
               <User size={14} className="shrink-0 text-text-muted" />
+            ) : (
+              <Bot size={14} className="shrink-0 text-purple-400" />
             )}
           </div>
 
