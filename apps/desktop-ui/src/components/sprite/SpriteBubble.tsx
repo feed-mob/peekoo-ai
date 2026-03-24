@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Droplet, Eye, PersonStanding, Brain, Coffee, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { finishPomodoro } from "@/features/pomodoro/tool-client";
 import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 import { cn } from "@/lib/utils";
@@ -55,11 +56,7 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
           argsJson: JSON.stringify({ reminder_type: type === "stand" ? "standup" : type === "eye" ? "eye_rest" : "water" })
         });
       } else {
-        // Pomodoro dismiss
-        await invoke("plugin_call_tool", {
-            toolName: "pomodoro_finish",
-            argsJson: JSON.stringify({})
-        });
+        await finishPomodoro();
       }
     } catch (err) {
       console.error("Failed to dismiss reminder from bubble:", err);

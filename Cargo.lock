@@ -5920,6 +5920,7 @@ dependencies = [
  "peekoo-persistence-sqlite",
  "peekoo-plugin-host",
  "peekoo-plugin-store",
+ "peekoo-pomodoro-app",
  "peekoo-productivity-domain",
  "peekoo-scheduler",
  "peekoo-security",
@@ -6064,6 +6065,30 @@ dependencies = [
  "serde_json",
  "tracing",
  "ureq 2.12.1",
+]
+
+[[package]]
+name = "peekoo-pomodoro-app"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "peekoo-notifications",
+ "peekoo-persistence-sqlite",
+ "peekoo-pomodoro-domain",
+ "peekoo-scheduler",
+ "rusqlite",
+ "serde",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "peekoo-pomodoro-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "thiserror 1.0.69",
 ]
 
 [[package]]

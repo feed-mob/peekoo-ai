@@ -16,6 +16,8 @@ pub const MIGRATION_0008_TASK_ORDER_INDEX: &str =
     include_str!("../migrations/0008_task_order_index.sql");
 pub const MIGRATION_0009_AGENT_TASK_ASSIGNMENT: &str =
     include_str!("../migrations/0009_agent_task_assignment.sql");
+pub const MIGRATION_0010_POMODORO_RUNTIME: &str =
+    include_str!("../migrations/0010_pomodoro_runtime.sql");
 
 #[cfg(test)]
 mod tests {
@@ -72,5 +74,15 @@ mod tests {
         assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("agent_registry"));
         assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("peekoo-agent"));
         assert!(MIGRATION_0009_AGENT_TASK_ASSIGNMENT.contains("task_planning"));
+    }
+
+    #[test]
+    fn migration_contains_pomodoro_runtime_tables() {
+        assert!(
+            MIGRATION_0010_POMODORO_RUNTIME.contains("CREATE TABLE IF NOT EXISTS pomodoro_state")
+        );
+        assert!(MIGRATION_0010_POMODORO_RUNTIME
+            .contains("CREATE TABLE IF NOT EXISTS pomodoro_cycle_history"));
+        assert!(MIGRATION_0010_POMODORO_RUNTIME.contains("INSERT OR IGNORE INTO pomodoro_state"));
     }
 }

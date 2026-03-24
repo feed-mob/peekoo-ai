@@ -1,0 +1,18 @@
+[package]
+name = "peekoo-pomodoro-app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+peekoo-notifications = { path = "../peekoo-notifications" }
+peekoo-pomodoro-domain = { path = "../peekoo-pomodoro-domain" }
+peekoo-scheduler = { path = "../peekoo-scheduler" }
+rusqlite = { version = "0.38" }
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+peekoo-persistence-sqlite = { path = "../persistence-sqlite" }

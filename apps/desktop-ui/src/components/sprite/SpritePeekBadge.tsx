@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Droplet, Eye, PersonStanding, Activity, Brain, Coffee, Play, Pause, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { pausePomodoro, resumePomodoro } from "@/features/pomodoro/tool-client";
 import {
   PEEK_BADGE_EXPANDED_VERTICAL_PADDING,
   PEEK_BADGE_HEIGHT,
@@ -93,12 +94,9 @@ function StyledBadge({ item }: StyledBadgeProps) {
     e.stopPropagation();
     
     if (isPomodoro) {
-        const toolName = isPaused ? "pomodoro_resume" : "pomodoro_pause";
         try {
-            await invoke("plugin_call_tool", {
-              toolName,
-              argsJson: JSON.stringify({})
-            });
+            if (isPaused) await resumePomodoro();
+            else await pausePomodoro();
         } catch (err) {
             console.error("Failed to toggle pomodoro from badge:", err);
         }
@@ -329,4 +327,3 @@ export function SpritePeekBadge({
     </AnimatePresence>
   );
 }
-

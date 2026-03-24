@@ -1,50 +1,67 @@
-type InvokeFn = (
+import { invoke } from "@tauri-apps/api/core";
+
+export type PomodoroState = "Idle" | "Running" | "Paused" | "Completed";
+
+export interface PomodoroStatus {
+  mode: "work" | "break";
+  state: PomodoroState;
+  minutes: number;
+  time_remaining_secs: number;
+  completed_focus: number;
+  completed_breaks: number;
+  enable_memo: boolean;
+  default_work_minutes: number;
+  default_break_minutes: number;
+}
+
+type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
+
+async function callPomodoro<T>(
   command: string,
-  args: Record<string, unknown>,
-) => Promise<unknown>;
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return String(error);
-}
-
-async function invokeTool(
-  invoke: InvokeFn,
-  toolName: string,
-  args: Record<string, unknown>,
-) {
-  return invoke("plugin_call_tool", {
-    toolName,
-    argsJson: JSON.stringify(args),
-  });
-}
-
-export async function callPomodoroTool<T>(
-  invoke: InvokeFn,
-  toolName: string,
   args: Record<string, unknown> = {},
-): Promise<T | null> {
-  try {
-    const result = await invokeTool(invoke, toolName, args);
-    return JSON.parse(result as string) as T;
-  } catch (error) {
-    const message = errorMessage(error);
+  invokeFn: InvokeFn = invoke,
+): Promise<T> {
+  return invokeFn<T>(command, args);
+}
 
-    if (message.includes(`Tool not found: ${toolName}`)) {
-      try {
-        await invoke("plugin_enable", { pluginKey: "pomodoro" });
-        const result = await invokeTool(invoke, toolName, args);
-        return JSON.parse(result as string) as T;
-      } catch (retryError) {
-        console.error(`Error calling ${toolName}:`, retryError);
-        return null;
-      }
-    }
+export function getPomodoroStatus(invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_get_status", {}, invokeFn);
+}
 
-    console.error(`Error calling ${toolName}:`, error);
-    return null;
-  }
+export function setPomodoroSettings(
+  settings: { work_minutes: number; break_minutes: number; enable_memo: boolean },
+  invokeFn?: InvokeFn,
+) {
+  return callPomodoro<PomodoroStatus>(
+    "pomodoro_set_settings",
+    {
+      workMinutes: settings.work_minutes,
+      breakMinutes: settings.break_minutes,
+      enableMemo: settings.enable_memo,
+    },
+    invokeFn,
+  );
+}
+
+export function startPomodoro(
+  input: { mode: "work" | "break"; minutes: number },
+  invokeFn?: InvokeFn,
+) {
+  return callPomodoro<PomodoroStatus>("pomodoro_start", input, invokeFn);
+}
+
+export function pausePomodoro(invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_pause", {}, invokeFn);
+}
+
+export function resumePomodoro(invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_resume", {}, invokeFn);
+}
+
+export function finishPomodoro(invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_finish", {}, invokeFn);
+}
+
+export function switchPomodoroMode(mode: "work" | "break", invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_switch_mode", { mode }, invokeFn);
 }
