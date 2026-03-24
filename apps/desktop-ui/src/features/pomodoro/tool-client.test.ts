@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   finishPomodoro,
+  getPomodoroHistory,
   getPomodoroStatus,
   setPomodoroSettings,
   switchPomodoroMode,
@@ -57,5 +58,19 @@ describe("pomodoro tool client", () => {
       { command: "pomodoro_finish", args: {} },
       { command: "pomodoro_switch_mode", args: { mode: "break" } },
     ]);
+  });
+
+  test("loads recent pomodoro history with a limit", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return [{ id: "cycle-1", mode: "work" }] as T;
+    };
+
+    const result = await getPomodoroHistory(5, invoke);
+
+    expect(result).toEqual([{ id: "cycle-1", mode: "work" }]);
+    expect(calls).toEqual([{ command: "pomodoro_history", args: { limit: 5 } }]);
   });
 });

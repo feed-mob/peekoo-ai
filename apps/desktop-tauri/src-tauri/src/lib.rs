@@ -5,9 +5,9 @@ use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroSettingsInput, PomodoroStatusDto, ProviderAuthDto,
-    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto, TaskEventDto,
+    PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+    ProviderAuthDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
+    SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
 };
 use serde::Serialize;
 use std::env;
@@ -569,6 +569,17 @@ async fn pomodoro_switch_mode(
 }
 
 #[tauri::command]
+async fn pomodoro_history(
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state.app.pomodoro_history(limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
+}
+
+#[tauri::command]
 async fn plugins_list(state: State<'_, AgentState>) -> Result<Vec<PluginSummaryDto>, String> {
     state.app.list_plugins()
 }
@@ -1019,6 +1030,7 @@ pub fn run() {
             pomodoro_resume,
             pomodoro_finish,
             pomodoro_switch_mode,
+            pomodoro_history,
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,

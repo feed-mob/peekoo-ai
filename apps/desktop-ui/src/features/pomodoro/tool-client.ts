@@ -14,6 +14,17 @@ export interface PomodoroStatus {
   default_break_minutes: number;
 }
 
+export interface PomodoroHistoryEntry {
+  id: string;
+  mode: "work" | "break";
+  planned_minutes: number;
+  actual_elapsed_secs: number;
+  outcome: "completed" | "cancelled";
+  started_at: string;
+  ended_at: string;
+  memo_requested: boolean;
+}
+
 type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 
 async function callPomodoro<T>(
@@ -26,6 +37,10 @@ async function callPomodoro<T>(
 
 export function getPomodoroStatus(invokeFn?: InvokeFn) {
   return callPomodoro<PomodoroStatus>("pomodoro_get_status", {}, invokeFn);
+}
+
+export function getPomodoroHistory(limit: number, invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroHistoryEntry[]>("pomodoro_history", { limit }, invokeFn);
 }
 
 export function setPomodoroSettings(

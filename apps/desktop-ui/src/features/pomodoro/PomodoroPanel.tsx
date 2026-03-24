@@ -1,22 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
-import { Brain, Coffee, Settings2, Notebook } from "lucide-react";
+import { Brain, Coffee, History, Settings2, Notebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   finishPomodoro,
+  getPomodoroHistory,
   getPomodoroStatus,
   pausePomodoro,
   resumePomodoro,
   setPomodoroSettings,
   startPomodoro,
   switchPomodoroMode,
+  type PomodoroHistoryEntry,
   type PomodoroStatus,
 } from "./tool-client";
 
+const HISTORY_LIMIT = 6;
+
 export function PomodoroPanel() {
   const [status, setStatus] = useState<PomodoroStatus | null>(null);
+  const [history, setHistory] = useState<PomodoroHistoryEntry[]>([]);
   const [workDuration, setWorkDuration] = useState<number | "">(25);
   const [breakDuration, setBreakDuration] = useState<number | "">(5);
   const [enableMemo, setEnableMemo] = useState(false);
@@ -26,9 +31,13 @@ export function PomodoroPanel() {
   const [appliedRecently, setAppliedRecently] = useState(false);
 
   const fetchStatus = useCallback(async (forceSync = false) => {
-    const nextStatus = await getPomodoroStatus();
+    const [nextStatus, nextHistory] = await Promise.all([
+      getPomodoroStatus(),
+      getPomodoroHistory(HISTORY_LIMIT),
+    ]);
     if (nextStatus && nextStatus.state !== undefined) {
       setStatus(nextStatus);
+      setHistory(nextHistory);
 
       if (!isInitialized || forceSync) {
         setWorkDuration(nextStatus.default_work_minutes || 25);
@@ -89,6 +98,24 @@ export function PomodoroPanel() {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const formatHistoryTime = (entry: PomodoroHistoryEntry) => {
+    const actualMinutes = Math.floor(entry.actual_elapsed_secs / 60);
+    const actualSeconds = entry.actual_elapsed_secs % 60;
+    return `${actualMinutes}m ${actualSeconds.toString().padStart(2, "0")}s / ${entry.planned_minutes}m`;
+  };
+
+  const formatHistoryTimestamp = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? value
+      : date.toLocaleString([], {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        });
   };
 
   if (!status) return <div className="p-4 text-center text-text-muted">Loading System...</div>;
@@ -155,6 +182,56 @@ export function PomodoroPanel() {
             onSwitchMode={switchMode}
             mode={status.mode}
           />
+
+          <div className="mt-5 w-full rounded-3xl border border-white/6 bg-white/[0.03] p-4 shadow-none">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-text-muted">
+              <History className="h-3.5 w-3.5" /> Recent Sessions
+            </div>
+
+            {history.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.02] px-3 py-4 text-center text-[11px] text-text-muted">
+                No sessions yet. Your recent focus and break cycles will appear here.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {history.map((entry) => {
+                  const isWork = entry.mode === "work";
+                  const isCompleted = entry.outcome === "completed";
+                  return (
+                    <div
+                      key={entry.id}
+                      className="flex items-start justify-between gap-3 rounded-2xl border border-white/6 bg-space-deep/40 px-3 py-2.5"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <div className={`flex h-6 w-6 items-center justify-center rounded-lg ${isWork ? "bg-pomodoro-focus/10 text-pomodoro-focus" : "bg-pomodoro-rest/10 text-pomodoro-rest"}`}>
+                            {isWork ? <Brain className="h-3.5 w-3.5" /> : <Coffee className="h-3.5 w-3.5" />}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-[12px] font-bold text-text-primary">
+                              {isWork ? "Focus" : "Break"}
+                            </div>
+                            <div className="text-[10px] text-text-muted">
+                              {formatHistoryTimestamp(entry.ended_at)}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className={`text-[10px] font-extrabold uppercase tracking-[0.16em] ${isCompleted ? "text-success" : "text-text-muted"}`}>
+                          {entry.outcome}
+                        </div>
+                        <div className="mt-1 text-[11px] font-mono text-text-secondary">
+                          {formatHistoryTime(entry)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </>
       ) : (
         <div className="w-full mt-10 bg-space-deep/60 backdrop-blur-3xl rounded-3xl border border-glass-border p-5 space-y-5 animate-none shadow-sm">
