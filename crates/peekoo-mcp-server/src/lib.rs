@@ -10,10 +10,7 @@ use axum::Router;
 use peekoo_productivity_domain::task::TaskService;
 use rmcp::transport::{
     StreamableHttpServerConfig,
-    streamable_http_server::{
-        session::local::LocalSessionManager,
-        tower::StreamableHttpService,
-    },
+    streamable_http_server::{session::local::LocalSessionManager, tower::StreamableHttpService},
 };
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -43,7 +40,10 @@ pub async fn start_tcp_server(
 ) -> Result<std::net::SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
     let local_addr = listener.local_addr()?;
 
-    tracing::info!("MCP streamable HTTP server starting on {}", mcp_url_for(local_addr));
+    tracing::info!(
+        "MCP streamable HTTP server starting on {}",
+        mcp_url_for(local_addr)
+    );
 
     let mcp_service: StreamableHttpService<TaskMcpHandler, LocalSessionManager> =
         StreamableHttpService::new(
@@ -75,7 +75,9 @@ mod tests {
     async fn http_server_keeps_connection_alive_for_list_tools() {
         super::ensure_rustls_provider();
 
-        let listener = TcpListener::bind(("127.0.0.1", 0)).await.expect("bind listener");
+        let listener = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("bind listener");
         let addr = start_tcp_server(Arc::new(NoopTaskService), listener)
             .await
             .expect("start server");

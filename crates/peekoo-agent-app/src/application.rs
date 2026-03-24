@@ -427,7 +427,8 @@ impl AgentApplication {
         text: &str,
         author: &str,
     ) -> Result<TaskEventDto, String> {
-        self.task_runtime_service().add_task_comment(task_id, text, author)
+        self.task_runtime_service()
+            .add_task_comment(task_id, text, author)
     }
 
     pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {

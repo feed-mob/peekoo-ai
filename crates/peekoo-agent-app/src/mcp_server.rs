@@ -4,8 +4,8 @@
 //! All agent ACP processes connect to this shared server.
 
 use std::net::SocketAddr;
-use std::sync::LazyLock;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
@@ -19,9 +19,8 @@ const MCP_PORT_RANGE_END: u16 = 65535;
 /// Global MCP server state.
 /// Stores (address, shutdown_token) once initialized.
 /// The MCP server runs on its own dedicated thread with its own tokio runtime.
-pub static MCP_SERVER_STATE: LazyLock<
-    std::sync::Mutex<Option<(SocketAddr, CancellationToken)>>,
-> = LazyLock::new(|| std::sync::Mutex::new(None));
+pub static MCP_SERVER_STATE: LazyLock<std::sync::Mutex<Option<(SocketAddr, CancellationToken)>>> =
+    LazyLock::new(|| std::sync::Mutex::new(None));
 
 /// Get the MCP server address if already started.
 pub fn get_mcp_address() -> Option<SocketAddr> {
@@ -103,11 +102,11 @@ pub fn start_sync(
 
 /// Shutdown the MCP server if running.
 pub fn shutdown() {
-    if let Ok(guard) = MCP_SERVER_STATE.lock() {
-        if let Some((addr, ref token)) = *guard {
-            tracing::info!("🛑 [MCP] Shutting down server at {}", mcp_url_for(addr));
-            token.cancel();
-        }
+    if let Ok(guard) = MCP_SERVER_STATE.lock()
+        && let Some((addr, ref token)) = *guard
+    {
+        tracing::info!("🛑 [MCP] Shutting down server at {}", mcp_url_for(addr));
+        token.cancel();
     }
 }
 
@@ -138,7 +137,10 @@ impl McpServerManager {
             .await
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
-        tracing::info!("✅ [MCP] Server listening at {}", mcp_url_for(server_address));
+        tracing::info!(
+            "✅ [MCP] Server listening at {}",
+            mcp_url_for(server_address)
+        );
         tracing::info!(
             "📋 [MCP] Available tools: task_comment, update_task_labels, update_task_status"
         );

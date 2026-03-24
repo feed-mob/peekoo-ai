@@ -49,15 +49,14 @@ impl acp::Agent for PeekooAgent {
         arguments: acp::InitializeRequest,
     ) -> Result<acp::InitializeResponse, acp::Error> {
         tracing::info!("Received initialize request {arguments:?}");
-        Ok(
-            acp::InitializeResponse::new(acp::ProtocolVersion::V1).agent_info(
+        Ok(acp::InitializeResponse::new(acp::ProtocolVersion::V1)
+            .agent_info(
                 acp::Implementation::new("peekoo-agent-acp", "0.1.0")
                     .title(Some("Peekoo Agent".to_string())),
             )
             .agent_capabilities(
                 AgentCapabilities::new().mcp_capabilities(McpCapabilities::new().http(true)),
-            ),
-        )
+            ))
     }
 
     async fn authenticate(
@@ -166,18 +165,19 @@ impl acp::Agent for PeekooAgent {
         let mut agent = build_agent_service(&task_context.task_id, session_context.as_ref())
             .await
             .map_err(|error| {
-            tracing::error!("Failed to create task agent: {}", error);
-            acp::Error::internal_error()
-        })?;
+                tracing::error!("Failed to create task agent: {}", error);
+                acp::Error::internal_error()
+            })?;
 
         let mut _mcp_handles = Vec::new();
         let tools_count = if let Some(session) = &session_context {
-            let (tools, handles) = connect_task_mcp_tools(&task_context.task_id, &session.mcp_servers)
-                .await
-                .map_err(|error| {
-                    tracing::error!("Failed to connect session MCP servers: {}", error);
-                    acp::Error::internal_error()
-                })?;
+            let (tools, handles) =
+                connect_task_mcp_tools(&task_context.task_id, &session.mcp_servers)
+                    .await
+                    .map_err(|error| {
+                        tracing::error!("Failed to connect session MCP servers: {}", error);
+                        acp::Error::internal_error()
+                    })?;
             let count = tools.len();
             agent.register_native_tools(tools);
             _mcp_handles = handles;
@@ -344,6 +344,54 @@ async fn build_agent_service(
     AgentService::new(config).await.map_err(Into::into)
 }
 
+pub async fn run_agent() -> acp::Result<()> {
+    tracing_subscriber::fmt()
+        .with_writer(std::io::stderr)
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::from_default_env()
+                .add_directive(tracing::Level::INFO.into()),
+        )
+        .init();
+
+    // Log MCP server connection info
+    if let (Ok(port), Ok(host)) = (
+        std::env::var("PEEKOO_MCP_PORT"),
+        std::env::var("PEEKOO_MCP_HOST"),
+    ) {
+        tracing::info!("🔗 [MCP] Server configured at http://{}:{}/mcp", host, port);
+    } else {
+        tracing::info!("⚙️ [MCP] No MCP server configured (running without tools)");
+    }
+
+    let outgoing = TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout());
+    let incoming = TokioAsyncReadCompatExt::compat(tokio::io::stdin());
+
+    let local_set = tokio::task::LocalSet::new();
+    local_set
+        .run_until(async move {
+            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+            let (conn, handle_io) =
+                acp::AgentSideConnection::new(PeekooAgent::new(tx), outgoing, incoming, |fut| {
+                    tokio::task::spawn_local(fut);
+                });
+
+            tokio::task::spawn_local(async move {
+                while let Some((session_notification, tx)) = rx.recv().await {
+                    let result = conn.session_notification(session_notification).await;
+                    if let Err(e) = result {
+                        tracing::error!("Failed to send session notification: {}", e);
+                        break;
+                    }
+                    tx.send(()).ok();
+                }
+            });
+
+            handle_io.await
+        })
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -396,52 +444,4 @@ mod tests {
             }
         );
     }
-}
-
-pub async fn run_agent() -> acp::Result<()> {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::from_default_env()
-                .add_directive(tracing::Level::INFO.into()),
-        )
-        .init();
-
-    // Log MCP server connection info
-    if let (Ok(port), Ok(host)) = (
-        std::env::var("PEEKOO_MCP_PORT"),
-        std::env::var("PEEKOO_MCP_HOST"),
-    ) {
-        tracing::info!("🔗 [MCP] Server configured at http://{}:{}/mcp", host, port);
-    } else {
-        tracing::info!("⚙️ [MCP] No MCP server configured (running without tools)");
-    }
-
-    let outgoing = TokioAsyncWriteCompatExt::compat_write(tokio::io::stdout());
-    let incoming = TokioAsyncReadCompatExt::compat(tokio::io::stdin());
-
-    let local_set = tokio::task::LocalSet::new();
-    local_set
-        .run_until(async move {
-            let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-
-            let (conn, handle_io) =
-                acp::AgentSideConnection::new(PeekooAgent::new(tx), outgoing, incoming, |fut| {
-                    tokio::task::spawn_local(fut);
-                });
-
-            tokio::task::spawn_local(async move {
-                while let Some((session_notification, tx)) = rx.recv().await {
-                    let result = conn.session_notification(session_notification).await;
-                    if let Err(e) = result {
-                        tracing::error!("Failed to send session notification: {}", e);
-                        break;
-                    }
-                    tx.send(()).ok();
-                }
-            });
-
-            handle_io.await
-        })
-        .await
 }

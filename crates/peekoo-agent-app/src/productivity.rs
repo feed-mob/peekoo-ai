@@ -759,8 +759,8 @@ impl ProductivityService {
             .map_err(|e| format!("Query task error: {e}"))?;
 
         match row_result {
-            None => return Err("Task not found".to_string()),
-            Some(None) => return Ok(false), // NULL status — not an agent task
+            None => Err("Task not found".to_string()),
+            Some(None) => Ok(false), // NULL status — not an agent task
             Some(Some(ref status)) if status == "pending" || status == "failed" => {
                 let rows = conn.execute(
                     "UPDATE tasks SET agent_work_status = 'claimed' WHERE id = ?1 AND agent_work_status IN ('pending', 'failed')",
@@ -769,9 +769,9 @@ impl ProductivityService {
                 .map_err(|e| format!("Claim task error: {e}"))?;
                 drop(conn);
                 self.checkpoint();
-                return Ok(rows > 0);
+                Ok(rows > 0)
             }
-            _ => return Ok(false), // Already claimed, executing, completed, etc.
+            _ => Ok(false), // Already claimed, executing, completed, etc.
         }
     }
 

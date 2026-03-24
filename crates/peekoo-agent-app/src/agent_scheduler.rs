@@ -112,11 +112,15 @@ impl AgentScheduler {
 
                 let mcp_address = crate::mcp_server::get_mcp_address();
                 if mcp_address.is_none() {
-                    tracing::warn!("AgentScheduler: MCP server not running, agents will run without tools");
+                    tracing::warn!(
+                        "AgentScheduler: MCP server not running, agents will run without tools"
+                    );
                 }
 
                 let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
-                if let Err(e) = check_and_execute_tasks(&task_service, mcp_address, &launch_env).await {
+                if let Err(e) =
+                    check_and_execute_tasks(&task_service, mcp_address, &launch_env).await
+                {
                     tracing::error!("AgentScheduler: Error during task execution: {}", e);
                 } else {
                     tracing::info!("AgentScheduler: Task check completed successfully");
@@ -280,13 +284,13 @@ async fn execute_task_acp(
     let comments = task_service
         .get_task_activity(&task.id, TASK_CONTEXT_ACTIVITY_LIMIT)
         .map_err(|e| {
-        tracing::error!(
-            "AgentScheduler: Failed to get task activity for {}: {}",
-            task.id,
-            e
-        );
-        e.to_string()
-    })?;
+            tracing::error!(
+                "AgentScheduler: Failed to get task activity for {}: {}",
+                task.id,
+                e
+            );
+            e.to_string()
+        })?;
 
     tracing::info!(
         "AgentScheduler: Retrieved {} comments for task {}",

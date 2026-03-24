@@ -34,10 +34,11 @@ pub async fn connect_task_mcp_tools(
                 );
 
                 for tool in tools {
-                    all_tools.push(
-                        Box::new(McpToolAdapter::new(task_id.to_string(), peer.clone(), tool))
-                            as Box<dyn Tool>,
-                    );
+                    all_tools.push(Box::new(McpToolAdapter::new(
+                        task_id.to_string(),
+                        peer.clone(),
+                        tool,
+                    )) as Box<dyn Tool>);
                 }
 
                 handles.push(handle);
@@ -55,7 +56,10 @@ pub fn summarize_agent_event(event: &AgentEvent) -> Option<String> {
     match event {
         AgentEvent::ToolExecutionStart {
             tool_name, args, ..
-        } => Some(format!("Running tool `{tool_name}` with args `{}`...", args)),
+        } => Some(format!(
+            "Running tool `{tool_name}` with args `{}`...",
+            args
+        )),
         AgentEvent::ToolExecutionEnd {
             tool_name,
             result,
@@ -274,10 +278,14 @@ impl Tool for McpToolAdapter {
 
         let request = CallToolRequestParams::new(self.tool.name.clone()).with_arguments(arguments);
 
-        let result = self.peer.call_tool(request).await.map_err(|error| pi::error::Error::Tool {
-            tool: self.tool.name.to_string(),
-            message: error.to_string(),
-        })?;
+        let result =
+            self.peer
+                .call_tool(request)
+                .await
+                .map_err(|error| pi::error::Error::Tool {
+                    tool: self.tool.name.to_string(),
+                    message: error.to_string(),
+                })?;
 
         let mut chunks = Vec::new();
         for item in &result.content {

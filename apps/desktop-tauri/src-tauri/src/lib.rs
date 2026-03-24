@@ -787,7 +787,7 @@ pub fn run() {
     let default_level = env::var("RUST_LOG")
         .ok()
         .and_then(|v| v.parse::<log::LevelFilter>().ok())
-        .unwrap_or_else(|| {
+        .unwrap_or({
             if cfg!(debug_assertions) {
                 log::LevelFilter::Info
             } else {
