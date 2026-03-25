@@ -1,6 +1,14 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, CheckSquare, Timer, HeartPulse, Puzzle, Blocks } from "lucide-react";
+import {
+  MessageSquare,
+  CheckSquare,
+  Timer,
+  HeartPulse,
+  Puzzle,
+  Blocks,
+  House,
+} from "lucide-react";
 import type { PanelLabel } from "@/types/window";
 import type { PanelWindowStates } from "@/hooks/use-panel-windows";
 import type { LucideIcon } from "lucide-react";
@@ -31,6 +39,9 @@ function iconForPluginPanel(panel: PluginPanel): LucideIcon {
   if (panel.pluginKey === "health-reminders") {
     return HeartPulse;
   }
+  if (panel.pluginKey === "mijia-smart-home") {
+    return House;
+  }
   return Puzzle;
 }
 
@@ -50,13 +61,11 @@ export function SpriteActionMenu({
   installedPlugins = [],
 }: SpriteActionMenuProps) {
   const [pluginsPopupOpen, setPluginsPopupOpen] = useState(false);
-  const enabledPlugins = installedPlugins.filter((plugin) => {
-    if (!plugin.enabled) {
-      return false;
-    }
-
-    return pluginPanels.some((panel) => panel.pluginKey === plugin.pluginKey);
-  });
+  const enabledPluginPanels = pluginPanels.filter((panel) =>
+    installedPlugins.some(
+      (plugin) => plugin.enabled && plugin.pluginKey === panel.pluginKey,
+    ),
+  );
 
   const items: MenuItemConfig[] = getSpriteActionMenuItems().map((item) => {
     return {
@@ -153,19 +162,14 @@ export function SpriteActionMenu({
                     <span className="text-xs font-medium whitespace-nowrap">Plugins</span>
                   </button>
 
-                  {enabledPlugins.map((plugin) => {
-                    const uiPanel = pluginPanels.find(
-                      (p) => p.pluginKey === plugin.pluginKey,
-                    );
-                    const panelLabel = uiPanel?.label ?? "panel-plugins";
-                    const PanelIcon = uiPanel
-                      ? iconForPluginPanel(uiPanel)
-                      : Puzzle;
+                  {enabledPluginPanels.map((panel) => {
+                    const panelLabel = panel.label;
+                    const PanelIcon = iconForPluginPanel(panel);
                     const isPanelOpen = panels[panelLabel]?.isOpen;
 
                     return (
                       <button
-                        key={plugin.pluginKey}
+                        key={panel.label}
                         onClick={(e) => {
                           e.stopPropagation();
                           setPluginsPopupOpen(false);
@@ -179,7 +183,9 @@ export function SpriteActionMenu({
                         )}
                       >
                         <PanelIcon size={16} className="shrink-0" />
-                        <span className="text-xs font-medium whitespace-nowrap">{plugin.name}</span>
+                        <span className="text-xs font-medium whitespace-nowrap">
+                          {panel.title}
+                        </span>
                       </button>
                     );
                   })}

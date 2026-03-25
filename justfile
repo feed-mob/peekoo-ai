@@ -91,6 +91,7 @@ plugin name: (plugin-build name) (plugin-install name)
 plugin-build-all:
     just plugin-build health-reminders
     just plugin-build peekoo-opencode-companion
+    just plugin-build mijia-smart-home
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
 plugin-build-opencode-companion:
@@ -104,6 +105,9 @@ plugin-opencode-companion: plugin-build-opencode-companion (plugin-install "peek
 
 # Build and install the Claude Code Companion plugin
 plugin-claude-code-companion: (plugin-build-as "peekoo-claude-code-companion") (plugin-install-as "peekoo-claude-code-companion")
+
+# Build and install the Mijia Smart Home plugin
+plugin-mijia-smart-home: (plugin-build "mijia-smart-home") (plugin-install "mijia-smart-home")
 
 # List all available commands
 list:

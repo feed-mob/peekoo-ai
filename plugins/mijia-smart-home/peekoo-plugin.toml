@@ -1,0 +1,18 @@
+[plugin]
+key = "mijia-smart-home"
+name = "Mijia Smart Home Manager"
+version = "0.1.0"
+author = "Peekoo Developer"
+description = "Mijia device QR login, device list, quick toggles, and detailed controls"
+min_peekoo_version = "0.1.0"
+wasm = "target/wasm32-wasip1/release/mijia_smart_home.wasm"
+
+[permissions]
+required = []
+
+[[ui.panels]]
+label = "panel-mijia-smart-home"
+title = "Mijia Smart Home Manager"
+width = 980
+height = 700
+entry = "ui/panel-v2.html"
