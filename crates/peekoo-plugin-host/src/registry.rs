@@ -93,9 +93,11 @@ impl PluginRegistry {
     }
 
     fn discovered_plugin_dir(&self, plugin_key: &str) -> Option<PathBuf> {
-        self.discover().into_iter().find_map(|(plugin_dir, manifest)| {
-            (manifest.plugin.key == plugin_key).then_some(plugin_dir)
-        })
+        self.discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
     }
 
     pub fn discover_tool_owner(&self, tool_name: &str) -> Option<String> {
