@@ -5,8 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-use peekoo_productivity_domain::task::TaskService;
 use peekoo_scheduler::Scheduler;
+use peekoo_task_app::TaskService;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::config::{resolved_config_map, set_config_field};
@@ -776,8 +776,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
+    use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use crate::PluginError;

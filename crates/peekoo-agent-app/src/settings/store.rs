@@ -6,6 +6,7 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
     MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
     MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
+    MIGRATION_0010_POMODORO_RUNTIME,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -599,6 +600,13 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         )
         .map_err(|e| format!("Record migration 0009 state error: {e}"))?;
     }
+
+    apply_migration_if_needed(
+        conn,
+        "0010_pomodoro_runtime",
+        "pomodoro_state",
+        MIGRATION_0010_POMODORO_RUNTIME,
+    )?;
 
     Ok(())
 }

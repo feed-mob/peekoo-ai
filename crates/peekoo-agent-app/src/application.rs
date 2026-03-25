@@ -17,6 +17,9 @@ use peekoo_notifications::{
 };
 use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::PluginRegistry;
+use peekoo_pomodoro_app::{
+    PomodoroAppService, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+};
 use peekoo_scheduler::Scheduler;
 
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
@@ -25,9 +28,8 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
-use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
+use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
 
-use crate::productivity::{PomodoroSessionDto, ProductivityService};
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -36,6 +38,7 @@ use crate::settings::{
 };
 use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
+use peekoo_task_app::SqliteTaskService;
 
 use crate::workspace_bootstrap::ensure_agent_workspace;
 
@@ -43,7 +46,8 @@ pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
     app_settings: AppSettingsService,
-    productivity: ProductivityService,
+    task_service: SqliteTaskService,
+    pomodoro: PomodoroAppService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
@@ -87,11 +91,26 @@ impl AgentApplication {
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
         let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
-        let productivity = ProductivityService::new(Arc::clone(&db_conn));
-        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
-            Arc::new(productivity.clone());
-        let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
-            create_plugin_registry(db_conn, task_service)?;
+        let sqlite_task_service = SqliteTaskService::new(Arc::clone(&db_conn));
+        let task_service: Arc<dyn peekoo_task_app::TaskService> =
+            Arc::new(sqlite_task_service.clone());
+        let (notifications, notification_receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let peek_badges = Arc::new(PeekBadgeService::new());
+        let mood_reactions = Arc::new(MoodReactionService::new());
+        let pomodoro = PomodoroAppService::new(
+            Arc::clone(&db_conn),
+            Arc::clone(&notifications),
+            Arc::clone(&peek_badges),
+            Arc::clone(&mood_reactions),
+        )?;
+        let plugin_registry = create_plugin_registry(
+            db_conn,
+            task_service,
+            Arc::clone(&notifications),
+            Arc::clone(&peek_badges),
+            Arc::clone(&mood_reactions),
+        )?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -104,13 +123,14 @@ impl AgentApplication {
 
         // Create agent scheduler for task execution
         let agent_scheduler =
-            crate::agent_scheduler::AgentScheduler::new(Arc::new(productivity.clone()));
+            crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
 
         Ok(Self {
             agent: Mutex::new(None),
             settings,
             app_settings,
-            productivity,
+            task_service: sqlite_task_service,
+            pomodoro,
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
@@ -134,7 +154,7 @@ impl AgentApplication {
         eprintln!("[peekoo][mcp] starting MCP server during app startup");
 
         // Start MCP server on a dedicated thread (survives app lifetime)
-        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
+        let task_service: Arc<dyn peekoo_task_app::TaskService> =
             Arc::new(self.task_runtime_service());
         let mcp_shutdown = self.shutdown_token.clone();
 
@@ -313,7 +333,7 @@ impl AgentApplication {
         self.app_settings.set(key, value)
     }
 
-    // ── Productivity ────────────────────────────────────────────────────
+    // ── Tasks ───────────────────────────────────────────────────────────
 
     #[allow(clippy::too_many_arguments)]
     pub fn create_task(
@@ -329,7 +349,7 @@ impl AgentApplication {
         recurrence_rule: Option<&str>,
         recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.productivity.create_task(
+        self.task_service.create_task(
             title,
             priority,
             assignee,
@@ -344,7 +364,7 @@ impl AgentApplication {
     }
 
     pub fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
-        self.productivity.list_tasks()
+        self.task_service.list_tasks()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -363,7 +383,7 @@ impl AgentApplication {
         recurrence_rule: Option<Option<&str>>,
         recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.productivity.update_task(
+        self.task_service.update_task(
             id,
             title,
             priority,
@@ -380,11 +400,11 @@ impl AgentApplication {
     }
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
-        self.productivity.delete_task(id)
+        self.task_service.delete_task(id)
     }
 
     pub fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
-        self.productivity.toggle_task(id)
+        self.task_service.toggle_task(id)
     }
 
     /// Create a task from natural language text
@@ -395,7 +415,7 @@ impl AgentApplication {
 
         let parsed = parse_task_text(text);
 
-        self.productivity.create_task(
+        self.task_service.create_task(
             &parsed.title,
             parsed.priority.as_deref().unwrap_or("medium"),
             parsed.assignee.as_deref().unwrap_or("user"),
@@ -414,11 +434,11 @@ impl AgentApplication {
         task_id: &str,
         limit: u32,
     ) -> Result<Vec<TaskEventDto>, String> {
-        self.productivity.get_task_activity(task_id, limit)
+        self.task_service.get_task_activity(task_id, limit)
     }
 
     pub fn list_task_events(&self, limit: i64) -> Result<Vec<TaskEventDto>, String> {
-        self.productivity.list_task_events(limit)
+        self.task_service.list_task_events(limit)
     }
 
     pub fn add_task_comment(
@@ -432,27 +452,46 @@ impl AgentApplication {
     }
 
     pub fn delete_task_event(&self, event_id: &str) -> Result<(), String> {
-        self.productivity.delete_task_event(event_id)
+        self.task_service.delete_task_event(event_id)
     }
 
     pub fn task_activity_summary(&self) -> Result<String, String> {
-        self.productivity.task_activity_summary()
+        self.task_service.task_activity_summary()
     }
 
-    pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
-        self.productivity.start_pomodoro(minutes)
+    pub fn pomodoro_status(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.get_status()
     }
 
-    pub fn pause_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.pause_pomodoro(session_id)
+    pub fn pomodoro_set_settings(
+        &self,
+        input: PomodoroSettingsInput,
+    ) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.set_settings(input)
     }
 
-    pub fn resume_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.resume_pomodoro(session_id)
+    pub fn start_pomodoro(&self, mode: &str, minutes: u32) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.start(mode, minutes)
     }
 
-    pub fn finish_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.finish_pomodoro(session_id)
+    pub fn pause_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.pause()
+    }
+
+    pub fn resume_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.resume()
+    }
+
+    pub fn finish_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.finish()
+    }
+
+    pub fn switch_pomodoro_mode(&self, mode: &str) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.switch_mode(mode)
+    }
+
+    pub fn pomodoro_history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
+        self.pomodoro.history(limit)
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
@@ -821,8 +860,8 @@ impl AgentApplication {
         service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
 
         // Register native task tools so the LLM can manage tasks.
-        let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
-            Arc::new(self.productivity.clone());
+        let task_service: Arc<dyn peekoo_task_app::TaskService> =
+            Arc::new(self.task_service.clone());
         let task_tools = crate::task_tools::create_task_tools(task_service);
         service.register_native_tools(task_tools);
 
@@ -838,7 +877,7 @@ impl AgentApplication {
         };
 
         // Inject task activity summary so the agent has context.
-        let system_prompt = self.productivity.task_activity_summary().ok();
+        let system_prompt = self.task_service.task_activity_summary().ok();
 
         Ok(AgentServiceConfig {
             working_directory: self.workspace_dir.clone(),
@@ -890,7 +929,7 @@ impl AgentApplication {
         }) as Arc<dyn Fn(String) + Send + Sync>);
 
         TaskRuntimeService::new(
-            self.productivity.clone(),
+            self.task_service.clone(),
             Arc::clone(&self.notifications),
             follow_up_trigger,
         )
@@ -901,20 +940,13 @@ fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bo
     captured_generation == current_generation
 }
 
-#[allow(clippy::type_complexity)]
 fn create_plugin_registry(
     db_conn: Arc<Mutex<Connection>>,
-    task_service: Arc<dyn peekoo_productivity_domain::task::TaskService>,
-) -> Result<
-    (
-        Arc<PluginRegistry>,
-        Arc<NotificationService>,
-        UnboundedReceiver<Notification>,
-        Arc<PeekBadgeService>,
-        Arc<MoodReactionService>,
-    ),
-    String,
-> {
+    task_service: Arc<dyn peekoo_task_app::TaskService>,
+    notifications: Arc<NotificationService>,
+    peek_badges: Arc<PeekBadgeService>,
+    mood_reactions: Arc<MoodReactionService>,
+) -> Result<Arc<PluginRegistry>, String> {
     let global_plugins_dir = peekoo_paths::peekoo_global_data_dir()?.join("plugins");
     if !global_plugins_dir.exists() {
         std::fs::create_dir_all(&global_plugins_dir)
@@ -922,10 +954,6 @@ fn create_plugin_registry(
     }
 
     let scheduler = Arc::new(Scheduler::new());
-    let (notifications, receiver) = NotificationService::new();
-    let notifications = Arc::new(notifications);
-    let peek_badges = Arc::new(PeekBadgeService::new());
-    let mood_reactions = Arc::new(MoodReactionService::new());
     let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
         db_conn,
@@ -936,13 +964,7 @@ fn create_plugin_registry(
         task_service,
     ));
 
-    Ok((
-        registry,
-        notifications,
-        receiver,
-        peek_badges,
-        mood_reactions,
-    ))
+    Ok(registry)
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
@@ -995,8 +1017,9 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
-    use peekoo_productivity_domain::task::{TaskDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
+    use peekoo_task_app::{TaskDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use super::{install_discovered_plugins, should_restore_agent};
@@ -1049,7 +1072,7 @@ mod tests {
             &self,
             _: &str,
             _: u32,
-        ) -> Result<Vec<peekoo_productivity_domain::task::TaskEventDto>, String> {
+        ) -> Result<Vec<peekoo_task_app::TaskEventDto>, String> {
             Ok(vec![])
         }
         fn add_task_comment(
@@ -1057,7 +1080,7 @@ mod tests {
             _: &str,
             _: &str,
             _: &str,
-        ) -> Result<peekoo_productivity_domain::task::TaskEventDto, String> {
+        ) -> Result<peekoo_task_app::TaskEventDto, String> {
             Err("not implemented".into())
         }
         fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {

@@ -1,6 +1,7 @@
 //! MCP Server handler implementation for task tools
 
-use peekoo_productivity_domain::task::{TaskService, TaskStatus};
+use peekoo_task_app::TaskService;
+use peekoo_task_domain::TaskStatus;
 use rmcp::{
     ErrorData as McpError,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},

@@ -585,8 +585,9 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::{PluginRegistry, resolve_companion_target};
-    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
+    use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use super::*;

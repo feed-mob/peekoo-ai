@@ -1,6 +1,9 @@
 [workspace]
 members = [
-  "crates/peekoo-productivity-domain",
+  "crates/peekoo-task-domain",
+  "crates/peekoo-task-app",
+  "crates/peekoo-pomodoro-domain",
+  "crates/peekoo-pomodoro-app",
   "crates/persistence-sqlite",
   "crates/security",
   "crates/peekoo-agent",
@@ -28,7 +31,6 @@ lto = true
 codegen-units = 1
 opt-level = "s"
 strip = true
-
 
 
 

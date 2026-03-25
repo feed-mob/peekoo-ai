@@ -5889,7 +5889,7 @@ dependencies = [
  "asupersync",
  "async-trait",
  "peekoo-agent",
- "peekoo-productivity-domain",
+ "peekoo-task-app",
  "pi_agent_rust",
  "rmcp",
  "rustls",
@@ -5920,9 +5920,11 @@ dependencies = [
  "peekoo-persistence-sqlite",
  "peekoo-plugin-host",
  "peekoo-plugin-store",
- "peekoo-productivity-domain",
+ "peekoo-pomodoro-app",
  "peekoo-scheduler",
  "peekoo-security",
+ "peekoo-task-app",
+ "peekoo-task-domain",
  "pi_agent_rust",
  "regex",
  "reqwest 0.12.28",
@@ -5988,7 +5990,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
- "peekoo-productivity-domain",
+ "peekoo-task-app",
+ "peekoo-task-domain",
  "rmcp",
  "rustls",
  "schemars 1.2.1",
@@ -6031,9 +6034,10 @@ dependencies = [
  "peekoo-agent-auth",
  "peekoo-notifications",
  "peekoo-paths",
- "peekoo-productivity-domain",
  "peekoo-scheduler",
  "peekoo-security",
+ "peekoo-task-app",
+ "peekoo-task-domain",
  "rand 0.8.5",
  "reqwest 0.12.28",
  "rusqlite",
@@ -6056,8 +6060,9 @@ dependencies = [
  "peekoo-notifications",
  "peekoo-paths",
  "peekoo-plugin-host",
- "peekoo-productivity-domain",
  "peekoo-scheduler",
+ "peekoo-task-app",
+ "peekoo-task-domain",
  "rusqlite",
  "semver",
  "serde",
@@ -6067,12 +6072,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "peekoo-productivity-domain"
+name = "peekoo-pomodoro-app"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "peekoo-notifications",
+ "peekoo-persistence-sqlite",
+ "peekoo-pomodoro-domain",
+ "peekoo-scheduler",
+ "rusqlite",
  "serde",
- "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "peekoo-pomodoro-domain"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "thiserror 1.0.69",
 ]
 
@@ -6092,6 +6111,30 @@ name = "peekoo-security"
 version = "0.1.0"
 dependencies = [
  "keyring",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "peekoo-task-app"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "peekoo-task-domain",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "peekoo-task-domain"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

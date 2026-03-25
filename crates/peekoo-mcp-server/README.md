@@ -135,6 +135,6 @@ The following labels are used by agents:
 ## Dependencies
 
 - `rmcp` - Official Rust MCP SDK from [modelcontextprotocol/rust-sdk](https://github.com/modelcontextprotocol/rust-sdk)
-- `peekoo-productivity-domain` - Task service trait and types
+- `peekoo-task-domain` / `peekoo-task-app` - Task domain types, DTOs, and service interfaces
 - `tokio` - Async runtime
 - `schemars` - JSON Schema generation

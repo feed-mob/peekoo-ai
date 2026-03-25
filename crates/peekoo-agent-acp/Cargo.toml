@@ -8,7 +8,7 @@ agent-client-protocol = "0.10"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 peekoo-agent = { path = "../peekoo-agent" }
-peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
+peekoo-task-app = { path = "../peekoo-task-app" }
 rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["client", "macros", "transport-streamable-http-client-reqwest", "transport-child-process"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "sync", "macros", "io-std", "net", "process"] }
 tokio-util = { version = "0.7", features = ["compat"] }

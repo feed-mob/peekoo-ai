@@ -14,11 +14,11 @@ use peekoo_agent_auth::{
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
-use peekoo_productivity_domain::task::TaskService;
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
 };
+use peekoo_task_app::TaskService;
 use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
@@ -1770,9 +1770,10 @@ mod tests {
 
     use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
     use peekoo_scheduler::Scheduler;
     use peekoo_security::InMemorySecretStore;
+    use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use crate::events::EventBus;
