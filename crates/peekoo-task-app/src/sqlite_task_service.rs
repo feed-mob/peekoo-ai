@@ -1,17 +1,17 @@
 use std::sync::{Arc, Mutex};
 
 use chrono::{Timelike, Utc};
-use peekoo_productivity_domain::task::{
-    TaskDto, TaskEventDto, TaskEventType, TaskPriority, TaskService, TaskStatus,
-};
+use peekoo_task_domain::{TaskEventType, TaskPriority, TaskStatus};
+
+use crate::{TaskDto, TaskEventDto, TaskService};
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
-pub struct ProductivityService {
+pub struct SqliteTaskService {
     pub(crate) db_conn: Arc<Mutex<Connection>>,
 }
 
-impl Clone for ProductivityService {
+impl Clone for SqliteTaskService {
     fn clone(&self) -> Self {
         Self {
             db_conn: Arc::clone(&self.db_conn),
@@ -19,7 +19,7 @@ impl Clone for ProductivityService {
     }
 }
 
-impl ProductivityService {
+impl SqliteTaskService {
     pub fn new(db_conn: Arc<Mutex<Connection>>) -> Self {
         Self { db_conn }
     }
@@ -944,7 +944,7 @@ impl ProductivityService {
     }
 }
 
-impl TaskService for ProductivityService {
+impl TaskService for SqliteTaskService {
     #[allow(clippy::too_many_arguments)]
     fn create_task(
         &self,

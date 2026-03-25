@@ -13,7 +13,8 @@ schemars = "1.2"
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
+peekoo-task-domain = { path = "../peekoo-task-domain" }
+peekoo-task-app = { path = "../peekoo-task-app" }
 rustls = { version = "0.23", features = ["ring"] }
 
 [lib]

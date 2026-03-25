@@ -1,25 +1,26 @@
 use std::sync::Arc;
 
 use peekoo_notifications::{Notification, NotificationService};
-use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService, TaskStatus};
+use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+use peekoo_task_domain::TaskStatus;
 
-use crate::productivity::ProductivityService;
+use peekoo_task_app::SqliteTaskService;
 
 #[derive(Clone)]
 pub(crate) struct TaskRuntimeService {
-    productivity: ProductivityService,
+    task_service: SqliteTaskService,
     notifications: Arc<NotificationService>,
     follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
 }
 
 impl TaskRuntimeService {
     pub(crate) fn new(
-        productivity: ProductivityService,
+        task_service: SqliteTaskService,
         notifications: Arc<NotificationService>,
         follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
     ) -> Self {
         Self {
-            productivity,
+            task_service,
             notifications,
             follow_up_trigger,
         }
@@ -34,7 +35,7 @@ impl TaskRuntimeService {
             return;
         }
 
-        if let Err(error) = self.productivity.requeue_agent_task(&task.id) {
+        if let Err(error) = self.task_service.requeue_agent_task(&task.id) {
             tracing::error!(
                 "Failed to requeue mentioned agent task {}: {}",
                 task.id,
@@ -95,7 +96,7 @@ impl TaskService for TaskRuntimeService {
         recurrence_rule: Option<&str>,
         recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.productivity.create_task(
+        self.task_service.create_task(
             title,
             priority,
             assignee,
@@ -110,7 +111,7 @@ impl TaskService for TaskRuntimeService {
     }
 
     fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
-        self.productivity.list_tasks()
+        self.task_service.list_tasks()
     }
 
     fn update_task(
@@ -128,7 +129,7 @@ impl TaskService for TaskRuntimeService {
         recurrence_rule: Option<Option<&str>>,
         recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.productivity.update_task(
+        self.task_service.update_task(
             id,
             title,
             priority,
@@ -145,15 +146,15 @@ impl TaskService for TaskRuntimeService {
     }
 
     fn delete_task(&self, id: &str) -> Result<(), String> {
-        self.productivity.delete_task(id)
+        self.task_service.delete_task(id)
     }
 
     fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
-        self.productivity.toggle_task(id)
+        self.task_service.toggle_task(id)
     }
 
     fn get_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskEventDto>, String> {
-        self.productivity.get_task_activity(task_id, limit)
+        self.task_service.get_task_activity(task_id, limit)
     }
 
     fn add_task_comment(
@@ -162,8 +163,8 @@ impl TaskService for TaskRuntimeService {
         text: &str,
         author: &str,
     ) -> Result<TaskEventDto, String> {
-        let task = self.productivity.load_task(task_id)?;
-        let event = self.productivity.add_task_comment(task_id, text, author)?;
+        let task = self.task_service.load_task(task_id)?;
+        let event = self.task_service.add_task_comment(task_id, text, author)?;
 
         self.maybe_requeue_agent_on_mention(&task, text, author);
         self.maybe_notify_agent_comment(&task, text, author);
@@ -172,7 +173,7 @@ impl TaskService for TaskRuntimeService {
     }
 
     fn claim_task_for_agent(&self, task_id: &str) -> Result<bool, String> {
-        self.productivity.claim_task_for_agent(task_id)
+        self.task_service.claim_task_for_agent(task_id)
     }
 
     fn update_agent_work_status(
@@ -181,29 +182,29 @@ impl TaskService for TaskRuntimeService {
         status: &str,
         session_id: Option<&str>,
     ) -> Result<(), String> {
-        self.productivity
+        self.task_service
             .update_agent_work_status(task_id, status, session_id)
     }
 
     fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String> {
-        self.productivity.increment_attempt_count(task_id)
+        self.task_service.increment_attempt_count(task_id)
     }
 
     fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
-        self.productivity.list_tasks_for_agent_execution()
+        self.task_service.list_tasks_for_agent_execution()
     }
 
     fn add_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
-        self.productivity.add_task_label(task_id, label)
+        self.task_service.add_task_label(task_id, label)
     }
 
     fn remove_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
-        self.productivity.remove_task_label(task_id, label)
+        self.task_service.remove_task_label(task_id, label)
     }
 
     fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<TaskDto, String> {
-        let task = self.productivity.load_task(task_id)?;
-        let updated = self.productivity.update_task_status(task_id, status)?;
+        let task = self.task_service.load_task(task_id)?;
+        let updated = self.task_service.update_task_status(task_id, status)?;
         if task.assignee == "peekoo-agent" {
             self.notify_agent_status_change(&task, status);
         }
@@ -211,7 +212,7 @@ impl TaskService for TaskRuntimeService {
     }
 
     fn load_task(&self, task_id: &str) -> Result<TaskDto, String> {
-        self.productivity.load_task(task_id)
+        self.task_service.load_task(task_id)
     }
 }
 
@@ -251,10 +252,11 @@ mod tests {
     use rusqlite::Connection;
 
     use super::TaskRuntimeService;
-    use crate::productivity::ProductivityService;
-    use peekoo_productivity_domain::task::{TaskService, TaskStatus};
+    use peekoo_task_app::SqliteTaskService;
+    use peekoo_task_app::TaskService;
+    use peekoo_task_domain::TaskStatus;
 
-    fn test_productivity() -> ProductivityService {
+    fn test_task_service() -> SqliteTaskService {
         let conn = Connection::open_in_memory().expect("in-memory db");
         conn.execute_batch(
             r#"
@@ -299,7 +301,7 @@ mod tests {
             "#,
         )
         .expect("schema");
-        ProductivityService::new(Arc::new(Mutex::new(conn)))
+        SqliteTaskService::new(Arc::new(Mutex::new(conn)))
     }
 
     fn create_task(service: &TaskRuntimeService, assignee: &str) -> String {
@@ -322,12 +324,12 @@ mod tests {
 
     #[test]
     fn mention_requeues_agent_task_without_notification() {
-        let productivity = test_productivity();
+        let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(productivity.clone(), Arc::new(notifications), None);
+        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
         let task_id = create_task(&service, "peekoo-agent");
 
-        productivity
+        task_service
             .update_agent_work_status(&task_id, "completed", None)
             .expect("mark completed");
 
@@ -335,19 +337,19 @@ mod tests {
             .add_task_comment(&task_id, "@peekoo-agent can you also add tests?", "user")
             .expect("add comment");
 
-        let task = productivity.load_task(&task_id).expect("load task");
+        let task = task_service.load_task(&task_id).expect("load task");
         assert_eq!(task.agent_work_status.as_deref(), Some("pending"));
         assert!(receiver.try_recv().is_err());
     }
 
     #[test]
     fn mention_requeues_even_if_task_was_marked_executing() {
-        let productivity = test_productivity();
+        let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(productivity.clone(), Arc::new(notifications), None);
+        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
         let task_id = create_task(&service, "peekoo-agent");
 
-        productivity
+        task_service
             .update_agent_work_status(&task_id, "executing", Some("session-1"))
             .expect("mark executing");
 
@@ -359,19 +361,19 @@ mod tests {
             )
             .expect("add comment");
 
-        let task = productivity.load_task(&task_id).expect("load task");
+        let task = task_service.load_task(&task_id).expect("load task");
         assert_eq!(task.agent_work_status.as_deref(), Some("pending"));
         assert_eq!(task.agent_work_session_id, None);
     }
 
     #[test]
     fn mention_invokes_follow_up_trigger() {
-        let productivity = test_productivity();
+        let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
         let triggered = Arc::new(Mutex::new(Vec::<String>::new()));
         let triggered_clone = Arc::clone(&triggered);
         let service = TaskRuntimeService::new(
-            productivity.clone(),
+            task_service.clone(),
             Arc::new(notifications),
             Some(Arc::new(move |task_id| {
                 triggered_clone.lock().expect("trigger lock").push(task_id);
@@ -389,9 +391,9 @@ mod tests {
 
     #[test]
     fn agent_comment_sends_notification() {
-        let productivity = test_productivity();
+        let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(productivity.clone(), Arc::new(notifications), None);
+        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -405,9 +407,9 @@ mod tests {
 
     #[test]
     fn agent_status_change_sends_notification() {
-        let productivity = test_productivity();
+        let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(productivity.clone(), Arc::new(notifications), None);
+        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service
