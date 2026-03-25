@@ -67,7 +67,7 @@ let modalEvent = null;
 let modalSelectedTaskId = "";
 let modalMode = "link";
 let successBannerTimer = null;
-let accountOpen = null;
+let accountOpen = false;
 let settingsOpen = false;
 let calendarSelections = [];
 
@@ -579,14 +579,6 @@ function renderList(root, events, emptyTitle) {
 function renderAccountSection(status) {
   if (!accountDetailsPanel) {
     return;
-  }
-
-  if (accountOpen === null) {
-    accountOpen = !status.connected;
-  }
-
-  if (!status.connected) {
-    accountOpen = true;
   }
 
   accountDetailsPanel.classList.toggle("hidden", !accountOpen);

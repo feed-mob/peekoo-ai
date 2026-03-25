@@ -526,6 +526,10 @@ input {
   gap: 12px;
 }
 
+.settings-panel.hidden {
+  display: none;
+}
+
 .settings-list {
   display: flex;
   flex-direction: column;
