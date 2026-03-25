@@ -21,4 +21,11 @@ describe("google calendar panel", () => {
     expect(html).toContain('id="taskLinkStatus"');
     expect(html).toContain('id="taskModalUnlink"');
   });
+
+  test("includes collapsible calendar settings controls", () => {
+    expect(html).toContain('id="settingsToggleButton"');
+    expect(html).toContain('id="calendarSettingsPanel"');
+    expect(html).toContain('id="calendarSettingsList"');
+    expect(html).toContain('id="saveCalendarSettingsButton"');
+  });
 });

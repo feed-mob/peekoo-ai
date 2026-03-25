@@ -107,6 +107,11 @@ async function loadPanelScript() {
       "tabDaily",
       "tabWeekly",
       "taskLinkStatus",
+      "settingsToggleButton",
+      "calendarSettingsPanel",
+      "calendarSettingsList",
+      "calendarSettingsStatus",
+      "saveCalendarSettingsButton",
     ].map((id) => [id, createElement(id.startsWith("tab") || id.endsWith("Button") ? "button" : "div")]),
   );
 
@@ -149,6 +154,22 @@ async function loadPanelScript() {
                   htmlLink: "https://calendar.google.com/event?eid=abc",
                   meetingUrl: "https://meet.google.com/abc-defg-hij",
                   location: null,
+                },
+              ],
+              calendars: [
+                {
+                  id: "primary",
+                  name: "Primary",
+                  primary: true,
+                  enabled: true,
+                  accessRole: "owner",
+                },
+                {
+                  id: "team@example.com",
+                  name: "Team",
+                  primary: false,
+                  enabled: false,
+                  accessRole: "reader",
                 },
               ],
               eventLinkStatuses: [
@@ -195,5 +216,14 @@ describe("google calendar panel runtime", () => {
     expect(agendaList.children[0].innerHTML).toContain("Linked");
     expect(agendaList.children[0].innerHTML).not.toContain("Add to tasks");
     expect(agendaList.children[0].innerHTML).toContain("View linked task");
+  });
+
+  test("renders stored calendars in settings", async () => {
+    const elements = await loadPanelScript();
+
+    const settingsList = elements.get("calendarSettingsList");
+    expect(settingsList.innerHTML).toContain("Primary");
+    expect(settingsList.innerHTML).toContain("Team");
+    expect(settingsList.innerHTML).toContain("Primary calendar");
   });
 });

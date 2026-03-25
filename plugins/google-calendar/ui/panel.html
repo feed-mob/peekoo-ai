@@ -44,6 +44,23 @@
         </div>
       </section>
 
+      <section class="control-card">
+        <div class="header-row">
+          <div>
+            <p class="section-label">Settings</p>
+            <p class="status-copy">Choose which calendars Peekoo syncs.</p>
+          </div>
+          <button id="settingsToggleButton" class="btn btn-secondary" type="button" aria-expanded="false">Calendar settings</button>
+        </div>
+        <div id="calendarSettingsPanel" class="settings-panel hidden">
+          <p id="calendarSettingsStatus" class="status-copy">Connect and refresh to load available calendars.</p>
+          <div id="calendarSettingsList" class="settings-list"></div>
+          <div class="action-row">
+            <button id="saveCalendarSettingsButton" class="btn btn-primary" type="button">Save calendars</button>
+          </div>
+        </div>
+      </section>
+
       <section class="agenda-card">
         <div class="tabs" role="tablist" aria-label="Agenda views">
           <button id="tabUpcoming" class="tab-button active" type="button" role="tab" aria-selected="true">Upcoming</button>

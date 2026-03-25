@@ -16,6 +16,11 @@ const tabUpcoming = document.getElementById("tabUpcoming");
 const tabDaily = document.getElementById("tabDaily");
 const tabWeekly = document.getElementById("tabWeekly");
 const taskLinkStatus = document.getElementById("taskLinkStatus");
+const settingsToggleButton = document.getElementById("settingsToggleButton");
+const calendarSettingsPanel = document.getElementById("calendarSettingsPanel");
+const calendarSettingsList = document.getElementById("calendarSettingsList");
+const calendarSettingsStatus = document.getElementById("calendarSettingsStatus");
+const saveCalendarSettingsButton = document.getElementById("saveCalendarSettingsButton");
 const taskModal = document.getElementById("taskModal");
 const taskModalEyebrow = document.getElementById("taskModalEyebrow");
 const taskModalTitle = document.getElementById("taskModalTitle");
@@ -60,6 +65,8 @@ let modalEvent = null;
 let modalSelectedTaskId = "";
 let modalMode = "link";
 let successBannerTimer = null;
+let settingsOpen = false;
+let calendarSelections = [];
 
 function setTaskLinkStatus(message) {
   if (taskLinkStatus) {
@@ -566,6 +573,58 @@ function renderList(root, events, emptyTitle) {
   });
 }
 
+function renderCalendarSettings() {
+  if (!calendarSettingsPanel || !calendarSettingsList || !calendarSettingsStatus) {
+    return;
+  }
+
+  calendarSettingsPanel.classList.toggle("hidden", !settingsOpen);
+  settingsToggleButton?.setAttribute("aria-expanded", settingsOpen ? "true" : "false");
+
+  if (!calendarSelections.length) {
+    calendarSettingsStatus.textContent = "Connect and refresh to load available calendars.";
+    calendarSettingsList.innerHTML = '<p class="settings-empty">No calendar choices available yet.</p>';
+    if (saveCalendarSettingsButton) {
+      saveCalendarSettingsButton.disabled = true;
+    }
+    return;
+  }
+
+  calendarSettingsStatus.textContent = "Enabled calendars will be included in future syncs.";
+  calendarSettingsList.innerHTML = calendarSelections
+    .map(
+      (calendar) => `
+        <label class="settings-item">
+          <div class="settings-item__copy">
+            <div class="settings-item__title-row">
+              <p class="settings-item__title">${escapeHtml(calendar.name)}</p>
+              ${calendar.primary ? '<span class="settings-badge">Primary calendar</span>' : ""}
+            </div>
+            <p class="settings-item__meta">${escapeHtml(calendar.accessRole ?? "reader")}</p>
+          </div>
+          <input class="settings-checkbox" type="checkbox" data-calendar-id="${escapeHtml(calendar.id)}" ${calendar.enabled ? "checked" : ""} />
+        </label>
+      `,
+    )
+    .join("");
+
+  if (typeof calendarSettingsList.querySelectorAll === "function") {
+    calendarSettingsList.querySelectorAll("[data-calendar-id]").forEach((input) => {
+      input.addEventListener("change", (event) => {
+        const calendarId = event.target?.getAttribute?.("data-calendar-id");
+        const enabled = Boolean(event.target?.checked);
+        calendarSelections = calendarSelections.map((calendar) =>
+          calendar.id === calendarId ? { ...calendar, enabled } : calendar,
+        );
+      });
+    });
+  }
+
+  if (saveCalendarSettingsButton) {
+    saveCalendarSettingsButton.disabled = false;
+  }
+}
+
 function renderAgenda(snapshot) {
   const tab = TAB_CONFIG[activeTab];
   const events = snapshot[tab.key] || [];
@@ -601,6 +660,7 @@ function applySnapshot(snapshot) {
   }
   const { status } = snapshot;
   const connectedAccount = status.connectedAccount;
+  calendarSelections = Array.isArray(snapshot.calendars) ? snapshot.calendars.map((calendar) => ({ ...calendar })) : [];
 
   if (!status.clientConfigured) {
     statusLine.textContent = "Upload your Google OAuth client.json file before connecting.";
@@ -628,8 +688,12 @@ function applySnapshot(snapshot) {
 
   disconnectButton.disabled = !status.connected;
   connectButton.disabled = !status.clientConfigured;
+  if (saveCalendarSettingsButton) {
+    saveCalendarSettingsButton.disabled = !status.connected || !calendarSelections.length;
+  }
 
   showError(status.lastError ?? null);
+  renderCalendarSettings();
   renderAgenda(snapshot);
 }
 
@@ -706,6 +770,29 @@ tabDaily.addEventListener("click", () => setActiveTab("daily"));
 tabWeekly.addEventListener("click", () => setActiveTab("weekly"));
 taskSearchInput?.addEventListener("input", () => {
   renderTaskModalList();
+});
+settingsToggleButton?.addEventListener("click", () => {
+  settingsOpen = !settingsOpen;
+  renderCalendarSettings();
+});
+saveCalendarSettingsButton?.addEventListener("click", async () => {
+  showError(null);
+  try {
+    const raw = await invoke("plugin_call_panel_tool", {
+      pluginKey: "google-calendar",
+      toolName: "google_calendar_update_calendar_selection",
+      argsJson: JSON.stringify({
+        calendars: calendarSelections.map((calendar) => ({
+          id: calendar.id,
+          enabled: Boolean(calendar.enabled),
+        })),
+      }),
+    });
+    applySnapshot(JSON.parse(raw));
+    showSuccess("Saved calendar selection.");
+  } catch (error) {
+    showError(String(error));
+  }
 });
 taskModalCancel?.addEventListener("click", () => {
   closeTaskModal();

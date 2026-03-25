@@ -83,6 +83,12 @@ description = "Unlink a Google Calendar event from a task"
 parameters = '{"type":"object","properties":{"taskId":{"type":"string"},"eventId":{"type":"string"}},"required":["taskId","eventId"]}'
 return_type = "object"
 
+[[tools.definitions]]
+name = "google_calendar_update_calendar_selection"
+description = "Update which Google calendars are enabled for sync"
+parameters = '{"type":"object","properties":{"calendars":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"enabled":{"type":"boolean"}},"required":["id","enabled"]}}},"required":["calendars"]}'
+return_type = "object"
+
 [events]
 subscribe = ["schedule:fired"]
 
