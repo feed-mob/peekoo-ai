@@ -16,6 +16,8 @@ const tabUpcoming = document.getElementById("tabUpcoming");
 const tabDaily = document.getElementById("tabDaily");
 const tabWeekly = document.getElementById("tabWeekly");
 const taskLinkStatus = document.getElementById("taskLinkStatus");
+const accountToggleButton = document.getElementById("accountToggleButton");
+const accountDetailsPanel = document.getElementById("accountDetailsPanel");
 const settingsToggleButton = document.getElementById("settingsToggleButton");
 const calendarSettingsPanel = document.getElementById("calendarSettingsPanel");
 const calendarSettingsList = document.getElementById("calendarSettingsList");
@@ -65,6 +67,7 @@ let modalEvent = null;
 let modalSelectedTaskId = "";
 let modalMode = "link";
 let successBannerTimer = null;
+let accountOpen = null;
 let settingsOpen = false;
 let calendarSelections = [];
 
@@ -573,6 +576,23 @@ function renderList(root, events, emptyTitle) {
   });
 }
 
+function renderAccountSection(status) {
+  if (!accountDetailsPanel) {
+    return;
+  }
+
+  if (accountOpen === null) {
+    accountOpen = !status.connected;
+  }
+
+  if (!status.connected) {
+    accountOpen = true;
+  }
+
+  accountDetailsPanel.classList.toggle("hidden", !accountOpen);
+  accountToggleButton?.setAttribute("aria-expanded", accountOpen ? "true" : "false");
+}
+
 function renderCalendarSettings() {
   if (!calendarSettingsPanel || !calendarSettingsList || !calendarSettingsStatus) {
     return;
@@ -692,6 +712,7 @@ function applySnapshot(snapshot) {
     saveCalendarSettingsButton.disabled = !status.connected || !calendarSelections.length;
   }
 
+  renderAccountSection(status);
   showError(status.lastError ?? null);
   renderCalendarSettings();
   renderAgenda(snapshot);
@@ -770,6 +791,13 @@ tabDaily.addEventListener("click", () => setActiveTab("daily"));
 tabWeekly.addEventListener("click", () => setActiveTab("weekly"));
 taskSearchInput?.addEventListener("input", () => {
   renderTaskModalList();
+});
+accountToggleButton?.addEventListener("click", () => {
+  accountOpen = !accountOpen;
+  if (accountDetailsPanel) {
+    accountDetailsPanel.classList.toggle("hidden", !accountOpen);
+  }
+  accountToggleButton?.setAttribute("aria-expanded", accountOpen ? "true" : "false");
 });
 settingsToggleButton?.addEventListener("click", () => {
   settingsOpen = !settingsOpen;

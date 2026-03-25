@@ -140,6 +140,12 @@ input {
   color: var(--glow-olive, #8dd9cf);
 }
 
+.account-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .file-field {
   display: flex;
   flex-direction: column;

@@ -28,4 +28,9 @@ describe("google calendar panel", () => {
     expect(html).toContain('id="calendarSettingsList"');
     expect(html).toContain('id="saveCalendarSettingsButton"');
   });
+
+  test("includes collapsible connected account controls", () => {
+    expect(html).toContain('id="accountToggleButton"');
+    expect(html).toContain('id="accountDetailsPanel"');
+  });
 });

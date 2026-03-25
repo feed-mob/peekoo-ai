@@ -107,6 +107,8 @@ async function loadPanelScript() {
       "tabDaily",
       "tabWeekly",
       "taskLinkStatus",
+      "accountToggleButton",
+      "accountDetailsPanel",
       "settingsToggleButton",
       "calendarSettingsPanel",
       "calendarSettingsList",
@@ -225,5 +227,26 @@ describe("google calendar panel runtime", () => {
     expect(settingsList.innerHTML).toContain("Primary");
     expect(settingsList.innerHTML).toContain("Team");
     expect(settingsList.innerHTML).toContain("Primary calendar");
+  });
+
+  test("keeps account and settings collapsed by default when connected", async () => {
+    const elements = await loadPanelScript();
+
+    expect(elements.get("accountDetailsPanel").classList.contains("hidden")).toBe(true);
+    expect(elements.get("calendarSettingsPanel").classList.contains("hidden")).toBe(true);
+    expect(elements.get("accountToggleButton").attributes.get("aria-expanded")).toBe("false");
+    expect(elements.get("settingsToggleButton").attributes.get("aria-expanded")).toBe("false");
+  });
+
+  test("expands account and settings sections when toggled", async () => {
+    const elements = await loadPanelScript();
+
+    elements.get("accountToggleButton").click();
+    elements.get("settingsToggleButton").click();
+
+    expect(elements.get("accountDetailsPanel").classList.contains("hidden")).toBe(false);
+    expect(elements.get("calendarSettingsPanel").classList.contains("hidden")).toBe(false);
+    expect(elements.get("accountToggleButton").attributes.get("aria-expanded")).toBe("true");
+    expect(elements.get("settingsToggleButton").attributes.get("aria-expanded")).toBe("true");
   });
 });

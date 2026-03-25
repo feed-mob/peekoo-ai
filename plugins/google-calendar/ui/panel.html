@@ -23,24 +23,32 @@
       <section id="successBanner" class="message message-success hidden"></section>
 
       <section class="control-card">
+        <div class="header-row">
+          <div>
+            <p class="section-label">Connected account</p>
+            <p class="status-copy">Manage your Google Calendar connection.</p>
+          </div>
+          <button id="accountToggleButton" class="btn btn-secondary" type="button" aria-expanded="false">Account details</button>
+        </div>
         <div class="account-row">
           <div class="account-copy">
-            <p class="section-label">Connected account</p>
             <p id="accountName" class="account-name">Not connected</p>
             <p id="accountEmail" class="account-email">Upload your client.json and connect Google Calendar.</p>
           </div>
           <div id="accountBadge" class="account-badge">Offline</div>
         </div>
 
-        <label class="file-field">
-          <span class="section-label">Google OAuth client.json</span>
-          <input id="clientJsonInput" type="file" accept="application/json,.json" />
-        </label>
+        <div id="accountDetailsPanel" class="account-details hidden">
+          <label class="file-field">
+            <span class="section-label">Google OAuth client.json</span>
+            <input id="clientJsonInput" type="file" accept="application/json,.json" />
+          </label>
 
-        <div class="action-row">
-          <button id="saveClientJsonButton" class="btn btn-secondary" type="button">Upload</button>
-          <button id="connectButton" class="btn btn-primary" type="button">Connect</button>
-          <button id="disconnectButton" class="btn btn-secondary" type="button">Disconnect</button>
+          <div class="action-row">
+            <button id="saveClientJsonButton" class="btn btn-secondary" type="button">Upload</button>
+            <button id="connectButton" class="btn btn-primary" type="button">Connect</button>
+            <button id="disconnectButton" class="btn btn-secondary" type="button">Disconnect</button>
+          </div>
         </div>
       </section>
 
