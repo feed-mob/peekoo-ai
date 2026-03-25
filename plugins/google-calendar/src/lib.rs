@@ -159,6 +159,7 @@ struct CalendarEvent {
     all_day: bool,
     location: Option<String>,
     description: Option<String>,
+    #[serde(default)]
     calendar_id: String,
     calendar_name: String,
     html_link: Option<String>,
@@ -1825,6 +1826,39 @@ mod tests {
 
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].id, "evt-primary");
+    }
+
+    #[test]
+    fn stored_calendar_state_deserializes_legacy_events_without_calendar_id() {
+        let state: StoredCalendarState = serde_json::from_str(
+            r#"{
+                "lastSyncAt": null,
+                "lastError": null,
+                "cachedEvents": [
+                    {
+                        "id": "evt-1",
+                        "title": "Legacy event",
+                        "startAt": "2026-03-20T09:30:00Z",
+                        "endAt": "2026-03-20T10:00:00Z",
+                        "allDay": false,
+                        "location": null,
+                        "description": null,
+                        "calendarName": "Primary",
+                        "htmlLink": null,
+                        "meetingUrl": null,
+                        "status": "confirmed"
+                    }
+                ],
+                "notifiedEventIds": [],
+                "taskLinks": [],
+                "calendars": [],
+                "oauthFlowId": null
+            }"#,
+        )
+        .expect("legacy state deserializes");
+
+        assert_eq!(state.cached_events.len(), 1);
+        assert_eq!(state.cached_events[0].calendar_id, "");
     }
 
     #[test]
