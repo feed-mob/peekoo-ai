@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use peekoo_productivity_domain::task::TaskService;
+use peekoo_task_app::TaskService;
 use pi::error::Result;
 use pi::model::{ContentBlock, TextContent};
 use pi::tools::{Tool, ToolOutput, ToolUpdate};

@@ -7,7 +7,7 @@ pub mod handler;
 pub use handler::TaskMcpHandler;
 
 use axum::Router;
-use peekoo_productivity_domain::task::TaskService;
+use peekoo_task_app::TaskService;
 use rmcp::transport::{
     StreamableHttpServerConfig,
     streamable_http_server::{session::local::LocalSessionManager, tower::StreamableHttpService},
@@ -66,7 +66,7 @@ pub async fn start_tcp_server(
 #[cfg(test)]
 mod tests {
     use super::{mcp_url_for, start_tcp_server};
-    use peekoo_productivity_domain::task::NoopTaskService;
+    use peekoo_task_app::NoopTaskService;
     use rmcp::{ServiceExt, transport::StreamableHttpClientTransport};
     use std::sync::Arc;
     use tokio::net::TcpListener;

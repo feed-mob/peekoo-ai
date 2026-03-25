@@ -10,7 +10,7 @@ use tokio::process::Command;
 use tokio::task::LocalSet;
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::productivity::ProductivityService;
+use peekoo_task_app::SqliteTaskService;
 
 /// Maximum number of agent execution attempts before a task is permanently marked as failed.
 const MAX_AGENT_ATTEMPTS: u32 = 3;
@@ -18,13 +18,13 @@ const TASK_CONTEXT_ACTIVITY_LIMIT: u32 = u32::MAX;
 
 pub struct AgentScheduler {
     scheduler: Scheduler,
-    task_service: Arc<ProductivityService>,
+    task_service: Arc<SqliteTaskService>,
     shutdown_token: tokio_util::sync::CancellationToken,
     launch_env: Arc<Mutex<Vec<(String, String)>>>,
 }
 
 impl AgentScheduler {
-    pub fn new(task_service: Arc<ProductivityService>) -> Self {
+    pub fn new(task_service: Arc<SqliteTaskService>) -> Self {
         tracing::info!("AgentScheduler initialized");
         Self {
             scheduler: Scheduler::new(),
@@ -83,7 +83,7 @@ impl AgentScheduler {
     }
 
     fn spawn_worker(
-        task_service: Arc<ProductivityService>,
+        task_service: Arc<SqliteTaskService>,
         shutdown: tokio_util::sync::CancellationToken,
         launch_env: Arc<Mutex<Vec<(String, String)>>>,
     ) {
@@ -133,7 +133,7 @@ impl AgentScheduler {
 }
 
 async fn check_and_execute_tasks(
-    task_service: &ProductivityService,
+    task_service: &SqliteTaskService,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
 ) -> Result<(), String> {
@@ -249,8 +249,8 @@ async fn check_and_execute_tasks(
 }
 
 async fn execute_task_acp(
-    task_service: &ProductivityService,
-    task: &peekoo_productivity_domain::task::TaskDto,
+    task_service: &SqliteTaskService,
+    task: &peekoo_task_app::TaskDto,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
 ) -> Result<(), String> {
@@ -565,9 +565,7 @@ fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<M
         .unwrap_or_default()
 }
 
-fn build_task_comment_context(
-    events: &[peekoo_productivity_domain::task::TaskEventDto],
-) -> Vec<serde_json::Value> {
+fn build_task_comment_context(events: &[peekoo_task_app::TaskEventDto]) -> Vec<serde_json::Value> {
     let mut comments = events
         .iter()
         .filter(|event| event.event_type == "comment")
@@ -593,7 +591,7 @@ fn build_task_comment_context(
 #[cfg(test)]
 mod tests {
     use super::{build_session_mcp_servers, build_task_comment_context};
-    use peekoo_productivity_domain::task::TaskEventDto;
+    use peekoo_task_app::TaskEventDto;
 
     #[test]
     fn builds_http_mcp_server_for_session() {

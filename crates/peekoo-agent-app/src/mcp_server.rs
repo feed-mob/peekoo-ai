@@ -10,7 +10,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_mcp_server::{mcp_url_for, start_tcp_server};
-use peekoo_productivity_domain::task::TaskService;
+use peekoo_task_app::TaskService;
 
 /// Port range for MCP server
 const MCP_PORT_RANGE_START: u16 = 49152;

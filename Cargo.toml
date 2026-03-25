@@ -1,6 +1,7 @@
 [workspace]
 members = [
-  "crates/peekoo-productivity-domain",
+  "crates/peekoo-task-domain",
+  "crates/peekoo-task-app",
   "crates/peekoo-pomodoro-domain",
   "crates/peekoo-pomodoro-app",
   "crates/persistence-sqlite",

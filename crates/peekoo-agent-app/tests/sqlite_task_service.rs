@@ -2,13 +2,13 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::Connection;
 
-use peekoo_agent_app::productivity::ProductivityService;
+use peekoo_agent_app::SqliteTaskService;
 
-fn create_test_service() -> ProductivityService {
+fn create_test_service() -> SqliteTaskService {
     let conn = Arc::new(Mutex::new(
         Connection::open_in_memory().expect("Failed to create in-memory database"),
     ));
-    ProductivityService::new(conn)
+    SqliteTaskService::new(conn)
 }
 
 #[test]
