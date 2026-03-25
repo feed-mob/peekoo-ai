@@ -1139,7 +1139,12 @@ fn task_status_to_str(status: TaskStatus) -> &'static str {
     }
 }
 
-fn next_finished_at(current_status: &str, next_status: &str, now: &str, current_finished_at: Option<&str>) -> Option<String> {
+fn next_finished_at(
+    current_status: &str,
+    next_status: &str,
+    now: &str,
+    current_finished_at: Option<&str>,
+) -> Option<String> {
     if next_status == "done" {
         if current_status == "done" {
             return current_finished_at.map(str::to_string);

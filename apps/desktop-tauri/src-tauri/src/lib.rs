@@ -978,11 +978,12 @@ pub fn run() {
 
             let state = app.state::<AgentState>();
             let task_change_app = app.handle().clone();
-            if let Err(err) = state
-                .app
-                .set_task_change_callback(std::sync::Arc::new(move |task_id| {
-                    emit_tasks_changed(&task_change_app, task_id.as_deref());
-                }))
+            if let Err(err) =
+                state
+                    .app
+                    .set_task_change_callback(std::sync::Arc::new(move |task_id| {
+                        emit_tasks_changed(&task_change_app, task_id.as_deref());
+                    }))
             {
                 return Err(std::io::Error::other(err).into());
             }
