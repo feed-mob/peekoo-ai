@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ProviderAuth, ProviderCatalog } from "@/types/agent-settings";
+import { useTranslation } from "react-i18next";
 
 interface AuthSectionProps {
   provider: ProviderCatalog;
@@ -30,12 +31,13 @@ export function AuthSection({
   onStartOauth,
   onCheckOauth,
 }: AuthSectionProps) {
+  const { t } = useTranslation();
   const supportsApiKey = provider.authModes.includes("api_key");
   const supportsOauth = provider.authModes.includes("oauth");
   const isApiKeyConfigured = auth?.authMode === "api_key" && auth.configured;
   const isOauthConnected = auth?.authMode === "oauth" && auth.configured;
-  const oauthPrimaryLabel = isOauthConnected ? "Reconnect OAuth" : "Connect OAuth";
-  const oauthStatusLabel = isOauthConnected ? "Connected" : "Not connected";
+  const oauthPrimaryLabel = isOauthConnected ? t("chatSettings.auth.reconnectOauth") : t("chatSettings.auth.connectOauth");
+  const oauthStatusLabel = isOauthConnected ? t("chatSettings.auth.connected") : t("chatSettings.auth.notConnected");
 
   const [isEditingKey, setIsEditingKey] = useState(false);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
@@ -59,11 +61,11 @@ export function AuthSection({
   return (
     <div className="space-y-2 rounded-md border border-glass-border p-3">
       <p className="text-xs text-text-muted">
-        Auth mode: <span className="text-text-secondary">{auth?.authMode ?? "none"}</span>
+        {t("chatSettings.auth.mode")}: <span className="text-text-secondary">{auth?.authMode ?? t("chatSettings.auth.none")}</span>
       </p>
       {supportsOauth && (
         <p className="text-xs text-text-muted">
-          OAuth status: <span className="text-text-secondary">{oauthStatusLabel}</span>
+          {t("chatSettings.auth.oauthStatus")}: <span className="text-text-secondary">{oauthStatusLabel}</span>
         </p>
       )}
 
@@ -71,9 +73,9 @@ export function AuthSection({
         <div className="space-y-2">
           {isApiKeyConfigured && !isEditingKey ? (
             <>
-              <p className="text-xs text-emerald-300">API key saved</p>
+              <p className="text-xs text-emerald-300">{t("chatSettings.auth.apiKeySaved")}</p>
               <Button size="sm" variant="secondary" onClick={() => setIsEditingKey(true)}>
-                Update API Key
+                {t("chatSettings.auth.updateApiKey")}
               </Button>
             </>
           ) : (
@@ -85,16 +87,16 @@ export function AuthSection({
                   setApiKey(event.target.value);
                 }}
                 type="password"
-                placeholder="Enter API key"
+                placeholder={t("chatSettings.auth.enterApiKey")}
                 className="bg-space-deep border-glass-border"
               />
               <div className="flex gap-2">
                 <Button size="sm" onClick={() => void handleSaveApiKey()}>
-                  Save API Key
+                  {t("chatSettings.auth.saveApiKey")}
                 </Button>
                 {isEditingKey && (
                   <Button size="sm" variant="ghost" onClick={() => setIsEditingKey(false)}>
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                 )}
               </div>
@@ -111,38 +113,37 @@ export function AuthSection({
           </Button>
           {oauthFlowRunning && (
             <Button size="sm" variant="secondary" onClick={() => void onCheckOauth()}>
-              I Finished Login
+              {t("chatSettings.auth.finishedLogin")}
             </Button>
           )}
           {oauthFlowRunning ? (
             <p className="w-full text-xs text-text-muted">
-              Browser login is open. Finish OAuth in the browser, then click "I Finished Login".
+              {t("chatSettings.auth.browserLoginHelp")}
             </p>
           ) : isOauthConnected ? (
             <p className="w-full text-xs text-text-muted">
-              OAuth is connected for this provider. Use Reconnect OAuth if you want to refresh
-              credentials.
+              {t("chatSettings.auth.connectedHelp")}
             </p>
           ) : (
             <p className="w-full text-xs text-text-muted">
-              Click Connect OAuth to sign in with your provider account.
+              {t("chatSettings.auth.connectHelp")}
             </p>
           )}
           {oauthStatus === "failed" && oauthError ? (
-            <p className="w-full text-xs text-danger">OAuth failed: {oauthError}</p>
+            <p className="w-full text-xs text-danger">{t("chatSettings.auth.oauthFailed", { error: oauthError })}</p>
           ) : null}
           {oauthStatus === "expired" ? (
-            <p className="w-full text-xs text-text-muted">OAuth session expired. Start again.</p>
+            <p className="w-full text-xs text-text-muted">{t("chatSettings.auth.oauthExpired")}</p>
           ) : null}
           {oauthStatus === "completed" && isOauthConnected ? (
-            <p className="w-full text-xs text-emerald-300">OAuth connected successfully.</p>
+            <p className="w-full text-xs text-emerald-300">{t("chatSettings.auth.oauthConnected")}</p>
           ) : null}
         </div>
       )}
 
       {auth?.configured && (
         <Button size="sm" variant="destructive" onClick={() => void onClearAuth()}>
-          Clear Auth
+          {t("chatSettings.auth.clearAuth")}
         </Button>
       )}
     </div>

@@ -2,6 +2,7 @@ import { useState, useRef, FormEvent, KeyboardEvent } from "react";
 import { Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { useTranslation } from "react-i18next";
 
 interface TaskQuickInputProps {
   onAdd: (text: string) => Promise<unknown>;
@@ -9,6 +10,7 @@ interface TaskQuickInputProps {
 }
 
 export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProps) {
+  const { t } = useTranslation();
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -44,10 +46,10 @@ export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProp
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Add a task... e.g., 'Meeting tomorrow at 3pm for 1 hour high priority'"
+          placeholder={t("tasks.quickInput.placeholder")}
           disabled={isCreating}
           className="pl-10 h-10 bg-space-deep border-glass-border text-text-primary placeholder:text-text-muted disabled:opacity-50"
-          aria-label="Task description"
+          aria-label={t("tasks.quickInput.ariaDescription")}
         />
       </div>
 
@@ -56,7 +58,7 @@ export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProp
         type="submit"
         disabled={isCreating || !text.trim()}
         className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center text-white bg-[var(--glow-green)] shadow-md hover:brightness-110 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-        aria-label="Add task"
+        aria-label={t("tasks.quickInput.ariaAdd")}
       >
         {isCreating ? (
           <LoadingSpinner size="sm" className="text-white" />

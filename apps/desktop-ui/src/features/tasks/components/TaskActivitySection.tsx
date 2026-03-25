@@ -4,12 +4,14 @@ import { useTaskActivity } from "../hooks/use-task-activity";
 import { ActivityFeedItem } from "./ActivityFeedItem";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { formatSyncStatus } from "../utils/task-sync";
+import { useTranslation } from "react-i18next";
 
 interface TaskActivitySectionProps {
   taskId: string;
 }
 
 export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
+  const { t } = useTranslation();
   const { events, isLoading, isRefreshing, lastSyncedAt, reload, addComment, deleteEvent } = useTaskActivity(taskId);
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,7 +48,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
       <div className="flex items-start justify-between mb-3 gap-3">
         <div>
           <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-            Activity
+            {t("tasks.mainTab.activity")}
           </h3>
           <div className="mt-1 flex items-center gap-1.5 text-[10px] text-text-muted">
             <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
@@ -58,7 +60,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
           disabled={isLoading || isRefreshing}
           className="text-[10px] text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
         >
-          Refresh
+          {t("common.refresh")}
         </button>
       </div>
 
@@ -68,7 +70,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
           <textarea
             value={commentText}
             onChange={(e) => setCommentText(e.target.value)}
-            placeholder="Add a comment..."
+            placeholder={t("tasks.activity.addCommentPlaceholder")}
             rows={2}
             disabled={isSubmitting}
             className="flex-1 px-3 py-2 text-xs bg-space-deep border border-glass-border rounded-lg resize-none focus:outline-none focus:border-glow-green/50 text-text-primary placeholder:text-text-muted disabled:opacity-50"
@@ -80,7 +82,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
             disabled={!commentText.trim() || isSubmitting}
             className="px-3 py-1.5 text-xs font-medium bg-glow-green/20 text-glow-green rounded-lg hover:bg-glow-green/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isSubmitting ? "Adding..." : "Add Comment"}
+            {isSubmitting ? t("tasks.activity.adding") : t("tasks.activity.addComment")}
           </button>
         </div>
       </form>
@@ -90,7 +92,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
           <LoadingSpinner size="sm" />
         </div>
       ) : events.length === 0 ? (
-        <p className="text-xs text-text-muted py-2">No activity yet</p>
+        <p className="text-xs text-text-muted py-2">{t("tasks.activity.noActivity")}</p>
       ) : (
         <div className="space-y-1">
           {events.map((event) => (

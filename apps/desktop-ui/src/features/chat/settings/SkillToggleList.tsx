@@ -1,5 +1,6 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import type { SkillSettings } from "@/types/agent-settings";
+import { useTranslation } from "react-i18next";
 
 interface SkillToggleListProps {
   skills: SkillSettings[];
@@ -7,8 +8,9 @@ interface SkillToggleListProps {
 }
 
 export function SkillToggleList({ skills, onToggle }: SkillToggleListProps) {
+  const { t } = useTranslation();
   if (skills.length === 0) {
-    return <p className="text-xs text-text-muted">No skills discovered yet.</p>;
+    return <p className="text-xs text-text-muted">{t("chatSettings.noSkills")}</p>;
   }
 
   return (

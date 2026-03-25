@@ -349,6 +349,14 @@ impl AgentApplication {
         self.app_settings.set(key, value)
     }
 
+    pub fn get_app_language(&self) -> Result<String, String> {
+        self.app_settings.get_app_language()
+    }
+
+    pub fn set_app_language(&self, language: &str) -> Result<(), String> {
+        self.app_settings.set_app_language(language)
+    }
+
     // ── Tasks ───────────────────────────────────────────────────────────
 
     #[allow(clippy::too_many_arguments)]

@@ -1,0 +1,283 @@
+{
+  "common": {
+    "retry": "Retry",
+    "close": "Close",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "delete": "Delete",
+    "dismiss": "Dismiss",
+    "back": "Back",
+    "refresh": "Refresh",
+    "saving": "Saving..."
+  },
+  "panel": {
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "settings": "Settings",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins",
+    "about": "About Peekoo"
+  },
+  "menu": {
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins"
+  },
+  "settings": {
+    "loading": "Loading settings...",
+    "failedLoad": "Failed to load settings: {{error}}",
+    "appearance": "Appearance",
+    "activePet": "Active Pet",
+    "language": "Language",
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文"
+    },
+    "sprite": {
+      "title": "Pet Sprite",
+      "loadingPreview": "Loading..."
+    }
+  },
+  "chat": {
+    "newChat": "New Chat",
+    "settings": "Settings",
+    "hideSettings": "Hide Settings",
+    "empty": "Start chatting with your Peekoo pet!",
+    "thinking": "Thinking...",
+    "inputPlaceholder": "Type a message..."
+  },
+  "chatSettings": {
+    "loading": "Loading settings...",
+    "failedLoad": "Failed to load settings.",
+    "title": "Agent Settings",
+    "provider": "Provider",
+    "model": "Model",
+    "modelPlaceholder": "e.g. gpt-4.1-mini",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Max Tool Iterations",
+    "providerAuthentication": "Provider Authentication",
+    "skills": "Skills",
+    "noSkills": "No skills discovered yet.",
+    "auth": {
+      "mode": "Auth mode",
+      "none": "none",
+      "oauthStatus": "OAuth status",
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "updateApiKey": "Update API Key",
+      "enterApiKey": "Enter API key",
+      "saveApiKey": "Save API Key",
+      "apiKeySaved": "API key saved",
+      "connectOauth": "Connect OAuth",
+      "reconnectOauth": "Reconnect OAuth",
+      "finishedLogin": "I Finished Login",
+      "browserLoginHelp": "Browser login is open. Finish OAuth in the browser, then click \"I Finished Login\".",
+      "connectedHelp": "OAuth is connected for this provider. Use Reconnect OAuth if you want to refresh credentials.",
+      "connectHelp": "Click Connect OAuth to sign in with your provider account.",
+      "oauthFailed": "OAuth failed: {{error}}",
+      "oauthExpired": "OAuth session expired. Start again.",
+      "oauthConnected": "OAuth connected successfully.",
+      "clearAuth": "Clear Auth"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "Ask Peekoo...",
+    "openFullChat": "Open full chat",
+    "needAttention": "Need attention",
+    "readingMode": "Reading mode",
+    "quickReply": "Quick reply"
+  },
+  "pomodoro": {
+    "loadingSystem": "Loading System...",
+    "status": {
+      "focusing": "Focusing",
+      "resting": "Resting",
+      "ready": "Ready",
+      "break": "Break"
+    },
+    "readyToStart": "Ready to Start?",
+    "recentSessions": "Recent Sessions",
+    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
+    "mode": {
+      "focus": "Focus",
+      "break": "Break"
+    },
+    "focusMemo": "Focus Memo",
+    "actions": {
+      "saving": "Saving...",
+      "applied": "Applied",
+      "saveChanges": "Save Changes",
+      "synced": "Synced"
+    },
+    "controls": {
+      "pause": "Pause",
+      "start": "Start",
+      "reset": "Reset",
+      "switchToBreak": "Switch to Break",
+      "switchToWork": "Switch to Work"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Focus",
+      "focusPaused": "Focus (Paused)",
+      "break": "Break",
+      "breakPaused": "Break (Paused)"
+    }
+  },
+  "about": {
+    "loading": "Loading about info...",
+    "failedLoad": "Failed to load app details",
+    "checking": "Checking...",
+    "tryAgain": "Try Again",
+    "tagline": "Desktop companion and pet",
+    "updateAvailable": "Update available",
+    "upToDate": "Up to date",
+    "current": "Current",
+    "latest": "Latest",
+    "published": "Published",
+    "devUpdateDisabled": "Update checks are disabled in development builds.",
+    "releaseNotes": "Release notes",
+    "checkForUpdates": "Check for Updates",
+    "installing": "Installing...",
+    "installAndRestart": "Install and Restart"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "Installed",
+      "store": "Store"
+    },
+    "panel": {
+      "defaultTitle": "Plugin",
+      "failedLoad": "Failed to load plugin panel: {{error}}"
+    },
+    "loadingInstalled": "Loading plugins...",
+    "loadingStore": "Loading plugin store...",
+    "loadingRuntimeSettings": "Loading plugin settings...",
+    "system": "Plugin System",
+    "installedTitle": "Installed Plugins",
+    "storeLabel": "Plugin Store",
+    "availableFromGithub": "Available from GitHub",
+    "emptyInstalled": "No plugins installed yet. Browse the Store tab to install plugins.",
+    "emptyStore": "No plugins available in the store.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "installed": "Installed",
+    "available": "Available",
+    "updateAvailable": "Update available",
+    "update": "Update",
+    "install": "Install",
+    "removePlugin": "Remove plugin",
+    "permissions": "Permissions",
+    "tools": "Tools",
+    "panels": "Panels",
+    "location": "Location",
+    "openPanels": "Open panels",
+    "enableHint": "Enable this plugin to open its panels and use its runtime capabilities.",
+    "runtimeSettings": "Runtime settings",
+    "runtimeSettingsHint": "Configure reminder timing and global quiet hours.",
+    "dndOn": "DND on",
+    "dndOff": "DND off",
+    "saveSettings": "Save settings"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "loading": "Loading tasks...",
+    "doneCounter": "{{completed}} / {{total}} done",
+    "tabs": {
+      "today": "Today",
+      "week": "This Week",
+      "all": "All",
+      "done": "Done"
+    },
+    "mainTab": {
+      "tasks": "Tasks",
+      "activity": "Activity"
+    },
+    "sections": {
+      "overdue": "Overdue",
+      "unscheduled": "Unscheduled",
+      "completedToday": "Completed today"
+    },
+    "empty": {
+      "todayTitle": "No tasks for today",
+      "todaySubtitle": "Schedule a task or add a new one",
+      "weekTitle": "Nothing this week",
+      "weekSubtitle": "Schedule tasks for the upcoming week",
+      "allTitle": "No tasks",
+      "allSubtitle": "Create a task to get started",
+      "doneTitle": "No completed tasks yet",
+      "doneSubtitle": "Finish some tasks to see them here"
+    },
+    "quickInput": {
+      "placeholder": "Add a task... e.g., 'Meeting tomorrow at 3pm for 1 hour high priority'",
+      "ariaDescription": "Task description",
+      "ariaAdd": "Add task"
+    },
+    "activity": {
+      "yesterday": "Yesterday",
+      "noActivity": "No activity yet",
+      "eventsAppearHere": "Task events will appear here",
+      "addCommentPlaceholder": "Add a comment...",
+      "addComment": "Add Comment",
+      "adding": "Adding..."
+    },
+    "deleteDialog": {
+      "title": "Delete Task?",
+      "message": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
+      "deleting": "Deleting..."
+    },
+    "priority": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "status": {
+      "todo": "Todo",
+      "in_progress": "In Progress",
+      "done": "Done"
+    },
+    "priorityTitle": "{{priority}} priority",
+    "agentWorking": "Agent is currently working on this task",
+    "live": "Live",
+    "agentWorkStatus": "Agent work status: {{status}}",
+    "clickToMoveTo": "Click to move to {{status}}",
+    "detail": {
+      "title": "Task Details",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "agent": "Agent",
+      "labels": "Labels",
+      "schedule": "Schedule",
+      "scheduled": "Scheduled",
+      "repeat": "Repeat",
+      "doesNotRepeat": "Does not repeat",
+      "time": "Time",
+      "start": "Start",
+      "end": "End",
+      "durationOptional": "Duration (optional)",
+      "durationPlaceholder": "e.g. 30",
+      "minutes": "minutes",
+      "description": "Description",
+      "descriptionPlaceholder": "Add notes, details, or a sub-task list..."
+    },
+    "recurrence": {
+      "daily": "Daily",
+      "weekdays": "Every weekday",
+      "monWedFri": "Mon / Wed / Fri",
+      "tueThu": "Tue / Thu",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    }
+  }
+}

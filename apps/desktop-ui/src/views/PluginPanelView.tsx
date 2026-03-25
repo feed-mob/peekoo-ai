@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { PanelShell } from "@/components/panels/PanelShell";
+import { useTranslation } from "react-i18next";
 import {
   BRIDGE_REQUEST_TYPE,
   BRIDGE_RESPONSE_TYPE,
@@ -40,8 +41,9 @@ function currentThemeVariables(): Record<string, string> {
 }
 
 export default function PluginPanelView() {
+  const { t } = useTranslation();
   const [html, setHtml] = useState<string>("");
-  const [title, setTitle] = useState<string>("Plugin");
+  const [title, setTitle] = useState<string>(t("plugins.panel.defaultTitle"));
   const [error, setError] = useState<string | null>(null);
   const label = getCurrentWebviewWindow().label;
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -117,7 +119,7 @@ export default function PluginPanelView() {
     return (
       <PanelShell title={title}>
         <div className="flex h-full items-center justify-center text-text-secondary">
-          Failed to load plugin panel: {error}
+          {t("plugins.panel.failedLoad", { error })}
         </div>
       </PanelShell>
     );

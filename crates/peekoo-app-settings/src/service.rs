@@ -8,8 +8,10 @@ use crate::store::AppSettingsStore;
 
 const SETTING_ACTIVE_SPRITE_ID: &str = "active_sprite_id";
 const SETTING_THEME_MODE: &str = "theme_mode";
+const SETTING_APP_LANGUAGE: &str = "app_language";
 const DEFAULT_SPRITE_ID: &str = "dark-cat";
 const DEFAULT_THEME_MODE: &str = "system";
+const DEFAULT_APP_LANGUAGE: &str = "en";
 
 /// Internal static representation of built-in sprites.
 ///
@@ -84,6 +86,22 @@ impl AppSettingsService {
         }
     }
 
+    /// Return the currently selected app language, falling back to "en".
+    pub fn get_app_language(&self) -> Result<String, String> {
+        Ok(self
+            .store
+            .get(SETTING_APP_LANGUAGE)?
+            .unwrap_or_else(|| DEFAULT_APP_LANGUAGE.to_string()))
+    }
+
+    /// Set app language. Valid values: "en", "zh-CN".
+    pub fn set_app_language(&self, language: &str) -> Result<(), String> {
+        match language {
+            "en" | "zh-CN" => self.store.set(SETTING_APP_LANGUAGE, language),
+            _ => Err(format!("Invalid app language: {language}")),
+        }
+    }
+
     /// List all available sprites.
     pub fn list_sprites(&self) -> Vec<SpriteInfo> {
         BUILTIN_SPRITES
@@ -109,6 +127,9 @@ impl AppSettingsService {
         if key == SETTING_THEME_MODE {
             return self.set_theme_mode(value);
         }
+        if key == SETTING_APP_LANGUAGE {
+            return self.set_app_language(value);
+        }
         self.store.set(key, value)
     }
 }
@@ -132,6 +153,12 @@ mod tests {
     fn default_theme_is_system() {
         let svc = test_service();
         assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
+    fn default_language_is_en() {
+        let svc = test_service();
+        assert_eq!(svc.get_app_language().unwrap(), "en");
     }
 
     #[test]
@@ -169,6 +196,21 @@ mod tests {
     }
 
     #[test]
+    fn set_valid_language_succeeds() {
+        let svc = test_service();
+        svc.set_app_language("zh-CN").unwrap();
+        assert_eq!(svc.get_app_language().unwrap(), "zh-CN");
+    }
+
+    #[test]
+    fn set_invalid_language_returns_error() {
+        let svc = test_service();
+        let result = svc.set_app_language("zh");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid app language"));
+    }
+
+    #[test]
     fn generic_set_validates_active_sprite_id() {
         let svc = test_service();
 
@@ -188,6 +230,17 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid theme mode"));
         assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
+    fn generic_set_validates_app_language() {
+        let svc = test_service();
+
+        let result = svc.set(SETTING_APP_LANGUAGE, "ja");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid app language"));
+        assert_eq!(svc.get_app_language().unwrap(), "en");
     }
 
     #[test]

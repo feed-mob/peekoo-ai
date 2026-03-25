@@ -5,10 +5,12 @@ import { usePluginStore } from "@/hooks/use-plugin-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { PluginList } from "./PluginList";
 import { PluginStoreCatalog } from "./PluginStoreCatalog";
+import { useTranslation } from "react-i18next";
 
 type TabKey = "installed" | "store";
 
 export function PluginManagerPanel() {
+  const { t } = useTranslation();
   const { plugins, panels, isLoading, error, refresh, setPluginEnabled, isToggling } = usePlugins();
   const {
     catalog,
@@ -54,7 +56,7 @@ export function PluginManagerPanel() {
               : "text-text-muted hover:text-text-secondary"
           }`}
         >
-          Installed
+          {t("plugins.tabs.installed")}
         </button>
         <button
           onClick={() => {
@@ -67,7 +69,7 @@ export function PluginManagerPanel() {
               : "text-text-muted hover:text-text-secondary"
           }`}
         >
-          Store
+          {t("plugins.tabs.store")}
         </button>
       </div>
 

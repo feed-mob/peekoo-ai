@@ -7,8 +7,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { useChatSession } from "./chat-session";
+import { useTranslation } from "react-i18next";
 
 export function ChatPanel() {
+  const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -53,7 +55,7 @@ export function ChatPanel() {
             onClick={() => void handleNewChat()}
           >
             <MessageSquarePlus size={14} />
-            New Chat
+            {t("chat.newChat")}
           </Button>
           <Button
             type="button"
@@ -62,7 +64,7 @@ export function ChatPanel() {
             onClick={() => setShowSettings((prev) => !prev)}
           >
             <Settings2 size={14} />
-            {showSettings ? "Hide Settings" : "Settings"}
+            {showSettings ? t("chat.hideSettings") : t("chat.settings")}
           </Button>
         </div>
 
@@ -74,7 +76,7 @@ export function ChatPanel() {
       <ScrollArea className="mb-4 min-h-0 flex-1">
         {messages.length === 0 ? (
           <div className="text-center text-text-muted py-8 italic">
-            Start chatting with your Peekoo pet!
+            {t("chat.empty")}
           </div>
         ) : (
           <div className="space-y-3 pr-4">
@@ -87,7 +89,7 @@ export function ChatPanel() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-start gap-2"
               >
-                <span className="text-text-muted text-sm">Thinking...</span>
+                <span className="text-text-muted text-sm">{t("chat.thinking")}</span>
               </motion.div>
             )}
           </div>
@@ -100,7 +102,7 @@ export function ChatPanel() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={t("chat.inputPlaceholder")}
           disabled={isTyping}
           className="flex-1 bg-space-deep border-glass-border text-text-primary placeholder:text-text-muted"
         />

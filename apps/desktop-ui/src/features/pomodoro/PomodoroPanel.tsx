@@ -5,6 +5,7 @@ import { deriveCountdownSnapshot } from "./countdown";
 import { Brain, Coffee, History, Settings2, Notebook } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useTranslation } from "react-i18next";
 import {
   finishPomodoro,
   getPomodoroHistory,
@@ -21,6 +22,7 @@ import {
 const HISTORY_LIMIT = 6;
 
 export function PomodoroPanel() {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<PomodoroStatus | null>(null);
   const [history, setHistory] = useState<PomodoroHistoryEntry[]>([]);
   const [statusSyncedAtMs, setStatusSyncedAtMs] = useState(() => Date.now());
@@ -127,7 +129,9 @@ export function PomodoroPanel() {
         });
   };
 
-  if (!status) return <div className="p-4 text-center text-text-muted">Loading System...</div>;
+  if (!status) {
+    return <div className="p-4 text-center text-text-muted">{t("pomodoro.loadingSystem")}</div>;
+  }
 
   const isActive = status.state === "Running";
   const countdown = deriveCountdownSnapshot(status, statusSyncedAtMs, nowMs);
@@ -162,7 +166,15 @@ export function PomodoroPanel() {
         <>
           <TimerDisplay
             time={formatTime(countdown.timeRemainingSecs)}
-            status={status.state === "Running" ? (status.mode === "work" ? "Focusing" : "Resting") : (status.mode === "work" ? "Ready" : "Break")}
+            status={
+              status.state === "Running"
+                ? status.mode === "work"
+                  ? t("pomodoro.status.focusing")
+                  : t("pomodoro.status.resting")
+                : status.mode === "work"
+                  ? t("pomodoro.status.ready")
+                  : t("pomodoro.status.break")
+            }
             progress={progress}
             isWorkMode={status.mode === "work"}
           />
@@ -180,7 +192,7 @@ export function PomodoroPanel() {
             ))}
             {focusCount === 0 && breakCount === 0 && (
               <span className={`text-[10px] font-extrabold uppercase tracking-[0.2em] opacity-80 ${status.mode === "work" ? "text-pomodoro-focus" : "text-pomodoro-rest"}`}>
-                Ready to Start?
+                {t("pomodoro.readyToStart")}
               </span>
             )}
           </div>
@@ -195,12 +207,12 @@ export function PomodoroPanel() {
 
           <div className="mt-5 w-full rounded-3xl border border-white/6 bg-white/[0.03] p-4 shadow-none">
             <div className="mb-3 flex items-center gap-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-text-muted">
-              <History className="h-3.5 w-3.5" /> Recent Sessions
+              <History className="h-3.5 w-3.5" /> {t("pomodoro.recentSessions")}
             </div>
 
             {history.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-white/8 bg-white/[0.02] px-3 py-4 text-center text-[11px] text-text-muted">
-                No sessions yet. Your recent focus and break cycles will appear here.
+                {t("pomodoro.noSessions")}
               </div>
             ) : (
               <div className="space-y-2">
@@ -219,7 +231,7 @@ export function PomodoroPanel() {
                           </div>
                           <div className="min-w-0">
                             <div className="text-[12px] font-bold text-text-primary">
-                              {isWork ? "Focus" : "Break"}
+                              {isWork ? t("pomodoro.mode.focus") : t("pomodoro.mode.break")}
                             </div>
                             <div className="text-[10px] text-text-muted">
                               {formatHistoryTimestamp(entry.ended_at)}
@@ -248,7 +260,7 @@ export function PomodoroPanel() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[9px] font-extrabold text-pomodoro-focus uppercase tracking-[0.25em]">
-                <Brain className="w-3 h-3" /> Focus
+                <Brain className="w-3 h-3" /> {t("pomodoro.mode.focus")}
               </div>
               <div className="flex items-center gap-2 bg-white/[0.03] rounded-2xl border border-white/5 p-1.5 focus-within:border-pomodoro-focus/30 transition-none">
                 <input
@@ -261,7 +273,7 @@ export function PomodoroPanel() {
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[9px] font-extrabold text-pomodoro-rest uppercase tracking-[0.25em]">
-                <Coffee className="w-3 h-3" /> Break
+                <Coffee className="w-3 h-3" /> {t("pomodoro.mode.break")}
               </div>
               <div className="flex items-center gap-2 bg-white/[0.03] rounded-2xl border border-white/5 p-1.5 focus-within:border-pomodoro-rest/30 transition-none">
                 <input
@@ -279,7 +291,7 @@ export function PomodoroPanel() {
               <div className="p-2 rounded-xl bg-white/5 text-accent-teal/80">
                 <Notebook className="w-3.5 h-3.5" />
               </div>
-              <div className="text-[11px] font-bold text-text-primary/90 tracking-tight">Focus Memo</div>
+              <div className="text-[11px] font-bold text-text-primary/90 tracking-tight">{t("pomodoro.focusMemo")}</div>
             </div>
             <Checkbox checked={enableMemo} onCheckedChange={(checked) => setEnableMemo(checked === true)} />
           </div>
@@ -297,7 +309,13 @@ export function PomodoroPanel() {
             }`}
             onClick={handleApplySettings}
           >
-            {isApplying ? "Saving..." : appliedRecently ? "Applied" : isDirty ? "Save Changes" : "Synced"}
+            {isApplying
+              ? t("pomodoro.actions.saving")
+              : appliedRecently
+                ? t("pomodoro.actions.applied")
+                : isDirty
+                  ? t("pomodoro.actions.saveChanges")
+                  : t("pomodoro.actions.synced")}
           </Button>
         </div>
       )}

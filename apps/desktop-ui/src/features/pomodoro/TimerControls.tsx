@@ -1,5 +1,6 @@
 import { Play, Pause, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 interface TimerControlsProps {
   isActive: boolean;
@@ -16,6 +17,7 @@ export function TimerControls({
   onSwitchMode,
   mode,
 }: TimerControlsProps) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col items-center gap-3 w-full">
       <div className="flex gap-2">
@@ -27,11 +29,11 @@ export function TimerControls({
         >
           {isActive ? (
             <>
-              <Pause size={16} className="mr-2" /> Pause
+              <Pause size={16} className="mr-2" /> {t("pomodoro.controls.pause")}
             </>
           ) : (
             <>
-              <Play size={16} className="mr-2" /> Start
+              <Play size={16} className="mr-2" /> {t("pomodoro.controls.start")}
             </>
           )}
         </Button>
@@ -41,7 +43,7 @@ export function TimerControls({
           size="sm"
           className="h-9 px-4"
         >
-          <RotateCcw size={16} className="mr-2" /> Reset
+          <RotateCcw size={16} className="mr-2" /> {t("pomodoro.controls.reset")}
         </Button>
       </div>
 
@@ -51,7 +53,9 @@ export function TimerControls({
         size="sm"
         className="h-8 text-[11px] px-3"
       >
-        Switch to {mode === "work" ? "Break" : "Work"}
+        {mode === "work"
+          ? t("pomodoro.controls.switchToBreak")
+          : t("pomodoro.controls.switchToWork")}
       </Button>
 
     </div>

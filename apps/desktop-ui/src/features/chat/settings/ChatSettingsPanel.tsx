@@ -6,12 +6,14 @@ import { ModelSelector } from "./ModelSelector";
 import { ProviderSelector } from "./ProviderSelector";
 import { SkillToggleList } from "./SkillToggleList";
 import { useChatSettings } from "./useChatSettings";
+import { useTranslation } from "react-i18next";
 
 interface ChatSettingsPanelProps {
   onClose: () => void;
 }
 
 export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
+  const { t } = useTranslation();
   const {
     settings,
     catalog,
@@ -83,16 +85,16 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   }, [activeProviderConfig?.baseUrl, settings?.activeModelId, settings?.activeProviderId]);
 
   if (isLoading && !settings) {
-    return <div className="text-sm text-text-muted">Loading settings...</div>;
+    return <div className="text-sm text-text-muted">{t("chatSettings.loading")}</div>;
   }
 
   if (!settings || !catalog || !selectedProvider) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-danger">Failed to load settings.</p>
+        <p className="text-sm text-danger">{t("chatSettings.failedLoad")}</p>
         {error ? <p className="text-xs text-text-muted">{error}</p> : null}
         <Button size="sm" onClick={() => void refresh()}>
-          Retry
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -101,9 +103,9 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   return (
     <div className="max-h-[56vh] space-y-4 overflow-y-auto rounded-lg border border-glass-border bg-glass/50 p-3 pr-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text-primary">Agent Settings</h3>
+        <h3 className="text-sm font-semibold text-text-primary">{t("chatSettings.title")}</h3>
         <Button size="sm" variant="ghost" onClick={onClose}>
-          Close
+          {t("common.close")}
         </Button>
       </div>
 
@@ -129,7 +131,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
           />
         ) : (
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            Model
+            {t("chatSettings.model")}
             <Input
               type="text"
               value={customModelInput}
@@ -139,7 +141,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
                 if (customModelInput.trim() === settings.activeModelId) return;
                 void updateSettings({ activeModelId: customModelInput.trim() });
               }}
-              placeholder="e.g. gpt-4.1-mini"
+              placeholder={t("chatSettings.modelPlaceholder")}
               className="bg-space-deep border-glass-border"
             />
           </label>
@@ -147,7 +149,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
 
         {isCompatibleProvider && (
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            Base URL
+            {t("chatSettings.baseUrl")}
             <Input
               type="text"
               value={compatBaseUrl}
@@ -156,14 +158,14 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
                 if (!compatBaseUrl.trim()) return;
                 void setProviderConfig(settings.activeProviderId, compatBaseUrl.trim());
               }}
-              placeholder="https://your-provider.example/v1"
+              placeholder={t("chatSettings.baseUrlPlaceholder")}
               className="bg-space-deep border-glass-border"
             />
           </label>
         )}
 
         <label className="flex flex-col gap-1 text-sm text-text-secondary">
-          Max Tool Iterations
+          {t("chatSettings.maxToolIterations")}
           <Input
             type="text"
             inputMode="numeric"
@@ -186,7 +188,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium text-text-primary">Provider Authentication</p>
+        <p className="text-sm font-medium text-text-primary">{t("chatSettings.providerAuthentication")}</p>
         <AuthSection
           provider={selectedProvider}
           auth={authState}
@@ -213,7 +215,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm font-medium text-text-primary">Skills</p>
+        <p className="text-sm font-medium text-text-primary">{t("chatSettings.skills")}</p>
         <SkillToggleList
           skills={effectiveSkills}
           onToggle={(skillId, enabled) => {

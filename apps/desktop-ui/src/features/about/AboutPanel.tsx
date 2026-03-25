@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAboutPanel } from "./useAboutPanel";
+import { useTranslation } from "react-i18next";
 
 function formatReleaseDate(value: string | null): string | null {
   if (!value) {
@@ -29,12 +30,13 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 export function AboutPanel() {
+  const { t } = useTranslation();
   const { snapshot, loading, checking, installing, error, refresh, installUpdate } = useAboutPanel();
 
   if (loading && !snapshot) {
     return (
       <div className="flex h-36 items-center justify-center text-sm text-text-muted">
-        Loading about info...
+        {t("about.loading")}
       </div>
     );
   }
@@ -43,10 +45,11 @@ export function AboutPanel() {
     return (
       <div className="space-y-4">
         <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
-          Failed to load app details{error ? `: ${error}` : "."}
+          {t("about.failedLoad")}
+          {error ? `: ${error}` : "."}
         </div>
         <Button variant="glass" onClick={() => void refresh()} disabled={checking}>
-          {checking ? "Checking..." : "Try Again"}
+          {checking ? t("about.checking") : t("about.tryAgain")}
         </Button>
       </div>
     );
@@ -60,32 +63,32 @@ export function AboutPanel() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-lg font-semibold text-text-primary">{snapshot.appName}</p>
-            <p className="text-sm text-text-muted">Desktop companion and pet</p>
+            <p className="text-sm text-text-muted">{t("about.tagline")}</p>
           </div>
           <Badge variant={snapshot.isUpdateAvailable ? "default" : "secondary"}>
-            {snapshot.isUpdateAvailable ? "Update available" : "Up to date"}
+            {snapshot.isUpdateAvailable ? t("about.updateAvailable") : t("about.upToDate")}
           </Badge>
         </div>
       </div>
 
       <div className="space-y-3">
-        <InfoRow label="Current" value={snapshot.currentVersion} />
+        <InfoRow label={t("about.current")} value={snapshot.currentVersion} />
         <InfoRow
-          label="Latest"
+          label={t("about.latest")}
           value={snapshot.availableVersion ?? snapshot.currentVersion}
         />
-        {publishedLabel ? <InfoRow label="Published" value={publishedLabel} /> : null}
+        {publishedLabel ? <InfoRow label={t("about.published")} value={publishedLabel} /> : null}
       </div>
 
       {!import.meta.env.PROD ? (
         <div className="rounded-xl border border-glass-border/70 bg-space-overlay/40 px-4 py-3 text-sm text-text-muted">
-          Update checks are disabled in development builds.
+          {t("about.devUpdateDisabled")}
         </div>
       ) : null}
 
       {snapshot.releaseNotes ? (
         <div className="space-y-2 rounded-xl border border-glass-border/70 bg-space-overlay/40 px-4 py-3">
-          <p className="text-xs uppercase tracking-[0.18em] text-text-muted">Release notes</p>
+          <p className="text-xs uppercase tracking-[0.18em] text-text-muted">{t("about.releaseNotes")}</p>
           <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{snapshot.releaseNotes}</p>
         </div>
       ) : null}
@@ -98,11 +101,11 @@ export function AboutPanel() {
 
       <div className="flex gap-3">
         <Button variant="glass" onClick={() => void refresh()} disabled={checking || installing}>
-          {checking ? "Checking..." : "Check for Updates"}
+          {checking ? t("about.checking") : t("about.checkForUpdates")}
         </Button>
         {snapshot.isUpdateAvailable ? (
           <Button variant="success" onClick={() => void installUpdate()} disabled={installing || checking}>
-            {installing ? "Installing..." : "Install and Restart"}
+            {installing ? t("about.installing") : t("about.installAndRestart")}
           </Button>
         ) : null}
       </div>

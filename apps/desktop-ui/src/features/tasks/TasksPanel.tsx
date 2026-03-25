@@ -10,20 +10,22 @@ import { TaskDetailView } from "./components/TaskDetailView";
 import { ErrorToast } from "./components/ErrorToast";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { formatSyncStatus } from "./utils/task-sync";
+import { useTranslation } from "react-i18next";
 
-const TAB_CONFIG: { value: TaskTab; label: string; icon: React.ReactNode; emoji: string }[] = [
-  { value: "today", label: "Today", icon: <CalendarDays size={13} />, emoji: "📅" },
-  { value: "week", label: "This Week", icon: <Calendar size={13} />, emoji: "📆" },
-  { value: "all", label: "All", icon: <ListTodo size={13} />, emoji: "📋" },
-  { value: "done", label: "Done", icon: <CheckCheck size={13} />, emoji: "✅" },
+const TAB_CONFIG: { value: TaskTab; labelKey: string; icon: React.ReactNode; emoji: string }[] = [
+  { value: "today", labelKey: "tasks.tabs.today", icon: <CalendarDays size={13} />, emoji: "📅" },
+  { value: "week", labelKey: "tasks.tabs.week", icon: <Calendar size={13} />, emoji: "📆" },
+  { value: "all", labelKey: "tasks.tabs.all", icon: <ListTodo size={13} />, emoji: "📋" },
+  { value: "done", labelKey: "tasks.tabs.done", icon: <CheckCheck size={13} />, emoji: "✅" },
 ];
 
 function EmptyState({ tab }: { tab: TaskTab }) {
+  const { t } = useTranslation();
   const messages: Record<TaskTab, { title: string; subtitle: string }> = {
-    today: { title: "No tasks for today", subtitle: "Schedule a task or add a new one" },
-    week: { title: "Nothing this week", subtitle: "Schedule tasks for the upcoming week" },
-    all: { title: "No tasks", subtitle: "Create a task to get started" },
-    done: { title: "No completed tasks yet", subtitle: "Finish some tasks to see them here" },
+    today: { title: t("tasks.empty.todayTitle"), subtitle: t("tasks.empty.todaySubtitle") },
+    week: { title: t("tasks.empty.weekTitle"), subtitle: t("tasks.empty.weekSubtitle") },
+    all: { title: t("tasks.empty.allTitle"), subtitle: t("tasks.empty.allSubtitle") },
+    done: { title: t("tasks.empty.doneTitle"), subtitle: t("tasks.empty.doneSubtitle") },
   };
   const msg = messages[tab];
 
@@ -39,6 +41,7 @@ function EmptyState({ tab }: { tab: TaskTab }) {
 type MainTab = "tasks" | "activity";
 
 export function TasksPanel() {
+  const { t } = useTranslation();
   const {
     tasks,
     activityEvents,
@@ -70,7 +73,7 @@ export function TasksPanel() {
     return (
       <div className="flex items-center justify-center h-full">
         <LoadingSpinner />
-        <span className="ml-2 text-sm text-text-muted">Loading tasks...</span>
+        <span className="ml-2 text-sm text-text-muted">{t("tasks.loading")}</span>
       </div>
     );
   }
@@ -95,14 +98,14 @@ export function TasksPanel() {
       {/* Header with stats */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
+          <h2 className="text-base font-semibold text-text-primary">{t("tasks.title")}</h2>
           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted">
             <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
             <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
           </div>
         </div>
         <span className="text-xs text-text-muted font-medium">
-          {stats.completed} / {stats.total} done
+          {t("tasks.doneCounter", { completed: stats.completed, total: stats.total })}
         </span>
       </div>
 
@@ -116,7 +119,7 @@ export function TasksPanel() {
               : "text-text-muted hover:text-text-primary"
           }`}
         >
-          Tasks
+          {t("tasks.mainTab.tasks")}
         </button>
         <button
           onClick={() => setMainTab("activity")}
@@ -126,7 +129,7 @@ export function TasksPanel() {
               : "text-text-muted hover:text-text-primary"
           }`}
         >
-          Activity
+          {t("tasks.mainTab.activity")}
         </button>
       </div>
 
@@ -137,19 +140,19 @@ export function TasksPanel() {
 
           {/* Time-based tabs */}
           <div className="flex gap-1">
-            {TAB_CONFIG.map((t) => (
+            {TAB_CONFIG.map((tabConfig) => (
               <button
-                key={t.value}
-                onClick={() => setActiveTab(t.value)}
+                key={tabConfig.value}
+                onClick={() => setActiveTab(tabConfig.value)}
                 className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-medium rounded-md transition-colors ${
-                  activeTab === t.value
+                  activeTab === tabConfig.value
                     ? "bg-[var(--glow-green)]/20 text-[var(--glow-green)] border border-[var(--glow-green)]/40"
                     : "bg-space-deep text-text-muted border border-glass-border hover:text-text-primary"
                 }`}
               >
-                {t.icon}
-                <span className="hidden sm:inline">{t.label}</span>
-                <span className="sm:hidden">{t.emoji}</span>
+                {tabConfig.icon}
+                <span className="hidden sm:inline">{t(tabConfig.labelKey)}</span>
+                <span className="sm:hidden">{tabConfig.emoji}</span>
               </button>
             ))}
           </div>

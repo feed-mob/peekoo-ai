@@ -350,6 +350,20 @@ async fn app_settings_list_sprites(
 ) -> Result<Vec<SpriteInfo>, String> {
     Ok(state.app.list_sprites())
 }
+
+#[tauri::command]
+async fn app_settings_get_language(state: State<'_, AgentState>) -> Result<String, String> {
+    state.app.get_app_language()
+}
+
+#[tauri::command]
+async fn app_settings_set_language(
+    language: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_app_language(&language)
+}
+
 #[tauri::command]
 async fn agent_set_model(
     provider: String,
@@ -1069,6 +1083,8 @@ pub fn run() {
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
+            app_settings_get_language,
+            app_settings_set_language,
             create_task,
             create_task_from_text,
             list_tasks,

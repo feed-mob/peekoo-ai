@@ -33,6 +33,7 @@ import {
   toTimeInputValue,
   fromDateTimeLocal,
 } from "../utils/date-helpers";
+import { useTranslation } from "react-i18next";
 
 interface TaskDetailViewProps {
   task: Task;
@@ -57,6 +58,7 @@ export function TaskDetailView({
   isUpdating = false,
   isDeleting = false,
 }: TaskDetailViewProps) {
+  const { t } = useTranslation();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(task.title);
   const [descDraft, setDescDraft] = useState(task.description || "");
@@ -109,16 +111,16 @@ export function TaskDetailView({
         <button
           onClick={onBack}
           className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-space-deep transition-colors"
-          aria-label="Go back"
+          aria-label={t("common.back")}
         >
           <ArrowLeft size={18} />
         </button>
-        <span className="text-xs text-text-muted flex-1">Task Details</span>
+        <span className="text-xs text-text-muted flex-1">{t("tasks.detail.title")}</span>
         <button
           onClick={() => setShowDeleteDialog(true)}
           disabled={isDeleting}
           className="p-1.5 rounded-lg text-text-muted hover:text-color-danger hover:bg-color-danger/10 transition-colors disabled:opacity-50"
-          aria-label="Delete task"
+          aria-label={t("common.delete")}
         >
           {isDeleting ? <LoadingSpinner size="sm" /> : <Trash2 size={16} />}
         </button>
@@ -170,17 +172,17 @@ export function TaskDetailView({
             {showExecutingIndicator && (
               <span
                 className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-300"
-                title="Agent is currently working on this task"
+                title={t("tasks.agentWorking")}
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-                Live
+                {t("tasks.live")}
               </span>
             )}
           </div>
 
           {/* Status selector */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-text-muted w-16">Status</span>
+            <span className="text-[10px] text-text-muted w-16">{t("tasks.detail.status")}</span>
             <Select
               value={task.status}
               onValueChange={(value) => onUpdate({ status: value as Task["status"] })}
@@ -199,7 +201,7 @@ export function TaskDetailView({
                           className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: config.color }}
                         />
-                        {option.label}
+                        {t(`tasks.status.${option.value}`)}
                       </div>
                     </SelectItem>
                   );
@@ -210,7 +212,7 @@ export function TaskDetailView({
 
           {/* Priority selector */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-text-muted w-16">Priority</span>
+            <span className="text-[10px] text-text-muted w-16">{t("tasks.detail.priority")}</span>
             <Select
               value={task.priority}
               onValueChange={(v) => onUpdate({ priority: v as Task["priority"] })}
@@ -227,7 +229,7 @@ export function TaskDetailView({
                         className="w-2 h-2 rounded-full"
                         style={{ backgroundColor: config.color }}
                       />
-                      {config.label}
+                      {t(`tasks.priority.${value}`)}
                     </div>
                   </SelectItem>
                 ))}
@@ -237,7 +239,7 @@ export function TaskDetailView({
 
           {/* Assignee */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-text-muted w-16">Assignee</span>
+            <span className="text-[10px] text-text-muted w-16">{t("tasks.detail.assignee")}</span>
             <Select
               value={task.assignee}
               onValueChange={(value) => onUpdate({ assignee: value })}
@@ -261,7 +263,7 @@ export function TaskDetailView({
 
           {agentWorkBadge && (
             <div className="flex items-center gap-2">
-              <span className="text-[10px] text-text-muted w-16">Agent</span>
+              <span className="text-[10px] text-text-muted w-16">{t("tasks.detail.agent")}</span>
               <div className="flex items-center gap-2 flex-wrap">
                 <span
                   className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold"
@@ -288,7 +290,7 @@ export function TaskDetailView({
 
           {/* Labels */}
           <div className="flex items-start gap-2">
-            <span className="text-[10px] text-text-muted w-16 mt-1">Labels</span>
+            <span className="text-[10px] text-text-muted w-16 mt-1">{t("tasks.detail.labels")}</span>
             <div className="flex flex-wrap gap-1">
               {PREDEFINED_LABELS.map((label) => {
                 const active = task.labels.includes(label.name);
@@ -332,15 +334,15 @@ export function TaskDetailView({
               <Calendar size={14} className="text-text-muted shrink-0" />
               <span className="text-[10px] text-text-muted font-medium flex-1">
                 {scheduleOpen
-                  ? "Schedule"
+                  ? t("tasks.detail.schedule")
                   : recurring
                   ? formatRecurrenceDisplay(
                       task.recurrence_rule!,
                       task.recurrence_time_of_day
                     )
                   : task.scheduled_start_at
-                  ? "Scheduled"
-                  : "Schedule"}
+                  ? t("tasks.detail.scheduled")
+                  : t("tasks.detail.schedule")}
               </span>
               {recurring && !scheduleOpen && (
                 <button
@@ -350,7 +352,7 @@ export function TaskDetailView({
                   }}
                   className="text-[10px] text-text-muted hover:text-color-danger transition-colors"
                 >
-                  Clear
+                  {t("common.clear")}
                 </button>
               )}
             </button>
@@ -359,19 +361,33 @@ export function TaskDetailView({
               <div className="space-y-3 mt-3 pl-6">
                 {/* Recurrence row */}
                 <div className="space-y-1">
-                  <span className="text-[10px] text-text-muted">Repeat</span>
+                  <span className="text-[10px] text-text-muted">{t("tasks.detail.repeat")}</span>
                   <Select
                     value={task.recurrence_rule ?? "__none__"}
                     onValueChange={handleRecurrenceChange}
                     disabled={isUpdating}
                   >
                     <SelectTrigger className="w-full h-9">
-                      <SelectValue placeholder="Does not repeat" />
+                      <SelectValue placeholder={t("tasks.detail.doesNotRepeat")} />
                     </SelectTrigger>
                     <SelectContent className="bg-space-deep border-glass-border">
                       {RECURRENCE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
+                          {opt.value === "__none__"
+                            ? t("tasks.detail.doesNotRepeat")
+                            : opt.value === "FREQ=DAILY"
+                              ? t("tasks.recurrence.daily")
+                              : opt.value === "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
+                                ? t("tasks.recurrence.weekdays")
+                                : opt.value === "FREQ=WEEKLY;BYDAY=MO,WE,FR"
+                                  ? t("tasks.recurrence.monWedFri")
+                                  : opt.value === "FREQ=WEEKLY;BYDAY=TU,TH"
+                                    ? t("tasks.recurrence.tueThu")
+                                    : opt.value === "FREQ=WEEKLY"
+                                      ? t("tasks.recurrence.weekly")
+                                      : opt.value === "FREQ=MONTHLY"
+                                        ? t("tasks.recurrence.monthly")
+                                        : opt.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -381,7 +397,7 @@ export function TaskDetailView({
                 {/* Recurring mode: Time picker */}
                 {recurring && (
                   <div className="space-y-1">
-                    <span className="text-[10px] text-text-muted">Time</span>
+                    <span className="text-[10px] text-text-muted">{t("tasks.detail.time")}</span>
                     <Select
                       value={task.recurrence_time_of_day || "09:00"}
                       onValueChange={handleTimeChange}
@@ -405,7 +421,7 @@ export function TaskDetailView({
                 {!recurring && (
                   <>
                     <div className="space-y-1">
-                      <span className="text-[10px] text-text-muted">Start</span>
+                      <span className="text-[10px] text-text-muted">{t("tasks.detail.start")}</span>
                       <div className="flex gap-2">
                         <input
                           type="date"
@@ -439,7 +455,7 @@ export function TaskDetailView({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-[10px] text-text-muted">End</span>
+                      <span className="text-[10px] text-text-muted">{t("tasks.detail.end")}</span>
                       <div className="flex gap-2">
                         <input
                           type="date"
@@ -473,7 +489,7 @@ export function TaskDetailView({
                     </div>
 
                     <div className="space-y-1">
-                      <span className="text-[10px] text-text-muted">Duration (optional)</span>
+                      <span className="text-[10px] text-text-muted">{t("tasks.detail.durationOptional")}</span>
                       <div className="flex gap-2">
                         <input
                           type="number"
@@ -488,10 +504,10 @@ export function TaskDetailView({
                             })
                           }
                           disabled={isUpdating}
-                          placeholder="e.g. 30"
+                          placeholder={t("tasks.detail.durationPlaceholder")}
                           className="w-24 h-9 px-3 text-xs bg-space-deep border border-glass-border rounded-md text-text-primary outline-none focus:border-[var(--glow-green)] transition-colors placeholder:text-text-muted disabled:opacity-50"
                         />
-                        <span className="text-[10px] text-text-muted self-center">minutes</span>
+                        <span className="text-[10px] text-text-muted self-center">{t("tasks.detail.minutes")}</span>
                       </div>
                     </div>
                   </>
@@ -502,13 +518,13 @@ export function TaskDetailView({
 
           {/* Description */}
           <div className="space-y-1">
-            <span className="text-[10px] text-text-muted">Description</span>
+            <span className="text-[10px] text-text-muted">{t("tasks.detail.description")}</span>
             <textarea
               value={descDraft}
               onChange={(e) => setDescDraft(e.target.value)}
               onBlur={handleDescBlur}
               disabled={isUpdating}
-              placeholder="Add notes, details, or a sub-task list..."
+              placeholder={t("tasks.detail.descriptionPlaceholder")}
               rows={6}
               className="w-full text-xs bg-space-deep border border-glass-border rounded-md px-3 py-2 text-text-primary outline-none focus:border-[var(--glow-green)] transition-colors resize-y placeholder:text-text-muted min-h-[80px] disabled:opacity-50"
             />
