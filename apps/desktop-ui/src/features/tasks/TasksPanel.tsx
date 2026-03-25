@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Calendar, ListTodo, CheckCheck, CalendarDays } from "lucide-react";
+import { CheckCircle2, Calendar, ListTodo, CheckCheck, CalendarDays, RefreshCw } from "lucide-react";
 import type { TaskTab } from "@/types/task";
 import { useTasks } from "./hooks/use-tasks";
 import { TaskList } from "./components/TaskList";
@@ -9,6 +9,7 @@ import { ActivityFeed } from "./components/ActivityFeed";
 import { TaskDetailView } from "./components/TaskDetailView";
 import { ErrorToast } from "./components/ErrorToast";
 import { LoadingSpinner } from "./components/LoadingSpinner";
+import { formatSyncStatus } from "./utils/task-sync";
 
 const TAB_CONFIG: { value: TaskTab; label: string; icon: React.ReactNode; emoji: string }[] = [
   { value: "today", label: "Today", icon: <CalendarDays size={13} />, emoji: "📅" },
@@ -43,6 +44,8 @@ export function TasksPanel() {
     activityEvents,
     stats,
     isLoading,
+    isRefreshing,
+    lastSyncedAt,
     isCreating,
     isToggling,
     isUpdating,
@@ -90,8 +93,14 @@ export function TasksPanel() {
   return (
     <div className="flex flex-col h-full gap-3">
       {/* Header with stats */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted">
+            <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
+            <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
+          </div>
+        </div>
         <span className="text-xs text-text-muted font-medium">
           {stats.completed} / {stats.total} done
         </span>
@@ -156,7 +165,9 @@ export function TasksPanel() {
                 onDelete={deleteTask}
                 onStatusChange={updateTaskStatus}
                 onSelect={setSelectedTaskId}
+                isTodayTab={activeTab === "today"}
                 isToggling={isToggling}
+                isUpdating={isUpdating}
                 isDeleting={isDeleting}
               />
             )}

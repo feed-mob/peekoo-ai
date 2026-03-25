@@ -47,6 +47,7 @@ pub struct AgentApplication {
     settings: SettingsService,
     app_settings: AppSettingsService,
     task_service: SqliteTaskService,
+    task_change_callback: Mutex<Option<Arc<dyn Fn(Option<String>) + Send + Sync>>>,
     pomodoro: PomodoroAppService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
@@ -130,6 +131,7 @@ impl AgentApplication {
             settings,
             app_settings,
             task_service: sqlite_task_service,
+            task_change_callback: Mutex::new(None),
             pomodoro,
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
@@ -146,6 +148,18 @@ impl AgentApplication {
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
         })
+    }
+
+    pub fn set_task_change_callback(
+        &self,
+        callback: Arc<dyn Fn(Option<String>) + Send + Sync>,
+    ) -> Result<(), String> {
+        let mut guard = self
+            .task_change_callback
+            .lock()
+            .map_err(|e| format!("Task change callback lock error: {e}"))?;
+        *guard = Some(callback);
+        Ok(())
     }
 
     pub fn start_plugin_runtime(&self) {
@@ -928,10 +942,17 @@ impl AgentApplication {
             }
         }) as Arc<dyn Fn(String) + Send + Sync>);
 
+        let task_change_callback = self
+            .task_change_callback
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(Arc::clone));
+
         TaskRuntimeService::new(
             self.task_service.clone(),
             Arc::clone(&self.notifications),
             follow_up_trigger,
+            task_change_callback,
         )
     }
 }

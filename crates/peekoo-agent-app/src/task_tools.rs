@@ -450,7 +450,7 @@ impl Tool for CommentTaskTool {
     ) -> Result<ToolOutput> {
         let task_id = input["task_id"].as_str().unwrap_or("");
         let text = input["text"].as_str().unwrap_or("");
-        match self.service.add_task_comment(task_id, text, "agent") {
+        match self.service.add_task_comment(task_id, text, "peekoo-agent") {
             Ok(event) => ok_json(serde_json::to_value(&event).unwrap_or_default()),
             Err(e) => err_json(format!("Add comment error: {e}")),
         }

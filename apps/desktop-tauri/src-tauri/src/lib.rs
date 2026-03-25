@@ -36,6 +36,7 @@ const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
 const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
+const TASKS_CHANGED_EVENT: &str = "tasks-changed";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -77,6 +78,21 @@ struct AgentResponse {
 struct ModelInfo {
     provider: String,
     model: String,
+}
+
+#[derive(Clone, Serialize)]
+struct TaskChangeEvent {
+    task_id: Option<String>,
+}
+
+fn emit_tasks_changed(app: &AppHandle, task_id: Option<&str>) {
+    let _ = app.emit_to(
+        MAIN_WINDOW_LABEL,
+        TASKS_CHANGED_EVENT,
+        TaskChangeEvent {
+            task_id: task_id.map(|id| id.to_string()),
+        },
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,10 +392,11 @@ async fn create_task(
     recurrence_rule: Option<String>,
     recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<TaskDto, String> {
     let assignee = assignee.as_deref().unwrap_or("user");
     let labels = labels.as_deref().unwrap_or(&[]);
-    state.app.create_task(
+    let task = state.app.create_task(
         &title,
         &priority,
         assignee,
@@ -390,15 +407,20 @@ async fn create_task(
         estimated_duration_min,
         recurrence_rule.as_deref(),
         recurrence_time_of_day.as_deref(),
-    )
+    )?;
+    emit_tasks_changed(&app, Some(&task.id));
+    Ok(task)
 }
 
 #[tauri::command]
 async fn create_task_from_text(
     text: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<TaskDto, String> {
-    state.app.create_task_from_text(&text)
+    let task = state.app.create_task_from_text(&text)?;
+    emit_tasks_changed(&app, Some(&task.id));
+    Ok(task)
 }
 
 #[tauri::command]
@@ -423,11 +445,12 @@ async fn update_task(
     recurrenceRule: Option<Option<String>>,
     recurrenceTimeOfDay: Option<Option<String>>,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<TaskDto, String> {
     println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
     let recurrence_rule = recurrenceRule;
     let recurrence_time_of_day = recurrenceTimeOfDay;
-    state.app.update_task(
+    let task = state.app.update_task(
         &id,
         title.as_deref(),
         priority.as_deref(),
@@ -440,17 +463,31 @@ async fn update_task(
         estimated_duration_min,
         recurrence_rule.as_ref().map(|o| o.as_deref()),
         recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
-    )
+    )?;
+    emit_tasks_changed(&app, Some(&task.id));
+    Ok(task)
 }
 
 #[tauri::command]
-async fn delete_task(id: String, state: State<'_, AgentState>) -> Result<(), String> {
-    state.app.delete_task(&id)
+async fn delete_task(
+    id: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task(&id)?;
+    emit_tasks_changed(&app, Some(&id));
+    Ok(())
 }
 
 #[tauri::command]
-async fn toggle_task(id: String, state: State<'_, AgentState>) -> Result<TaskDto, String> {
-    state.app.toggle_task(&id)
+async fn toggle_task(
+    id: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<TaskDto, String> {
+    let task = state.app.toggle_task(&id)?;
+    emit_tasks_changed(&app, Some(&task.id));
+    Ok(task)
 }
 
 #[tauri::command]
@@ -478,14 +515,23 @@ async fn add_task_comment(
     text: String,
     author: String,
     state: State<'_, AgentState>,
+    app: AppHandle,
 ) -> Result<TaskEventDto, String> {
-    state.app.add_task_comment(&taskId, &text, &author)
+    let event = state.app.add_task_comment(&taskId, &text, &author)?;
+    emit_tasks_changed(&app, Some(&taskId));
+    Ok(event)
 }
 
 #[tauri::command]
 #[allow(non_snake_case)]
-async fn delete_task_event(eventId: String, state: State<'_, AgentState>) -> Result<(), String> {
-    state.app.delete_task_event(&eventId)
+async fn delete_task_event(
+    eventId: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task_event(&eventId)?;
+    emit_tasks_changed(&app, None);
+    Ok(())
 }
 
 #[tauri::command]
@@ -931,6 +977,15 @@ pub fn run() {
             let _ = tray_builder.build(app)?;
 
             let state = app.state::<AgentState>();
+            let task_change_app = app.handle().clone();
+            if let Err(err) = state
+                .app
+                .set_task_change_callback(std::sync::Arc::new(move |task_id| {
+                    emit_tasks_changed(&task_change_app, task_id.as_deref());
+                }))
+            {
+                return Err(std::io::Error::other(err).into());
+            }
             state.app.start_plugin_runtime();
 
             let app_handle = app.handle().clone();

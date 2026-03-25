@@ -1,5 +1,5 @@
 import type { Task, TaskTab } from "@/types/task";
-import { parseISODate, isToday, isThisWeek } from "./date-helpers";
+import { parseISODate, isOverdue, isThisWeek, toDateString } from "./date-helpers";
 
 /**
  * Filter tasks based on the active tab
@@ -7,18 +7,23 @@ import { parseISODate, isToday, isThisWeek } from "./date-helpers";
 export function filterTasksByTab(
   tasks: Task[],
   tab: TaskTab,
-  _today: Date,
+  today: Date,
   _weekEnd: Date
 ): Task[] {
+  const todayKey = toDateString(today);
+
   switch (tab) {
     case "today":
       return tasks.filter((t) => {
-        if (t.status === "done") return false;
-        // Include tasks scheduled for today OR unscheduled tasks
+        if (t.status === "done") {
+          const finishedAt = parseISODate(t.finished_at);
+          return !!finishedAt && toDateString(finishedAt) === todayKey;
+        }
+
         if (!t.scheduled_start_at) return true;
         const start = parseISODate(t.scheduled_start_at);
         if (!start) return true;
-        return isToday(start);
+        return toDateString(start) === todayKey || isOverdue(t.scheduled_start_at, t.status);
       });
 
     case "week":
@@ -28,7 +33,7 @@ export function filterTasksByTab(
         const start = parseISODate(t.scheduled_start_at);
         if (!start) return false;
         // This week but not today (those are in "today" tab)
-        return isThisWeek(start) && !isToday(start);
+        return isThisWeek(start) && toDateString(start) !== todayKey;
       });
 
     case "all":
@@ -42,13 +47,48 @@ export function filterTasksByTab(
   }
 }
 
+function compareDateDesc(
+  left: string | null | undefined,
+  right: string | null | undefined
+): number {
+  const leftDate = parseISODate(left);
+  const rightDate = parseISODate(right);
+
+  if (leftDate && rightDate) {
+    return rightDate.getTime() - leftDate.getTime();
+  }
+
+  if (leftDate) return -1;
+  if (rightDate) return 1;
+  return 0;
+}
+
 /**
  * Sort tasks by:
  * 1. Scheduled tasks by start time (ascending)
  * 2. Unscheduled tasks by creation time
  */
-export function sortTasks(tasks: Task[]): Task[] {
+export function sortTasks(tasks: Task[], tab?: TaskTab): Task[] {
   return [...tasks].sort((a, b) => {
+    if (tab === "done") {
+      const finishedComparison = compareDateDesc(a.finished_at, b.finished_at);
+      if (finishedComparison !== 0) {
+        return finishedComparison;
+      }
+
+      const updatedComparison = compareDateDesc(a.updated_at, b.updated_at);
+      if (updatedComparison !== 0) {
+        return updatedComparison;
+      }
+
+      return (b.created_at || "").localeCompare(a.created_at || "");
+    }
+
+    if (tab === "today") {
+      if (a.status === "done" && b.status !== "done") return 1;
+      if (a.status !== "done" && b.status === "done") return -1;
+    }
+
     // Both have scheduled start - sort by time
     if (a.scheduled_start_at && b.scheduled_start_at) {
       return a.scheduled_start_at.localeCompare(b.scheduled_start_at);
@@ -58,7 +98,7 @@ export function sortTasks(tasks: Task[]): Task[] {
     if (a.scheduled_start_at) return -1;
     if (b.scheduled_start_at) return 1;
 
-    // Both unscheduled - sort by creation time
-    return (a.created_at || "").localeCompare(b.created_at || "");
+    // Both unscheduled - newest first
+    return (b.created_at || "").localeCompare(a.created_at || "");
   });
 }

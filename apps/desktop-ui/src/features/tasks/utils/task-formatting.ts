@@ -26,6 +26,12 @@ export const STATUS_CONFIG: Record<
   done: { color: "#30A46C", label: "Done", next: "todo" },
 };
 
+export const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
+  { value: "todo", label: STATUS_CONFIG.todo.label },
+  { value: "in_progress", label: STATUS_CONFIG.in_progress.label },
+  { value: "done", label: STATUS_CONFIG.done.label },
+];
+
 /**
  * Recurrence rule options for dropdown
  */

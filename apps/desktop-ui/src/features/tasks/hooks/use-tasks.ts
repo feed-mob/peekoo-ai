@@ -1,9 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import type { Task, TaskEvent, TaskStatus, TaskTab } from "@/types/task";
 import { emitPetReaction } from "@/lib/pet-events";
 import { useToast } from "./use-toast";
 import { filterTasksByTab, sortTasks } from "../utils/task-sorting";
+import { TASKS_CHANGED_EVENT } from "../utils/task-activity";
+import { getCheckboxToggleStatus } from "../utils/task-interactions";
+
+const TASKS_POLL_INTERVAL_MS = 5000;
 
 export function useTasks() {
   const { toasts, removeToast, success, error } = useToast();
@@ -12,6 +17,8 @@ export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activityEvents, setActivityEvents] = useState<TaskEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [globalError, setGlobalError] = useState<Error | null>(null);
 
   // Navigation state
@@ -27,15 +34,18 @@ export function useTasks() {
   // Load tasks from backend
   const loadTasks = useCallback(async () => {
     try {
+      setIsRefreshing(true);
       setGlobalError(null);
       const result = await invoke<Task[]>("list_tasks");
       setTasks(result);
+      setLastSyncedAt(Date.now());
     } catch (err) {
       const errObj = err instanceof Error ? err : new Error(String(err));
       setGlobalError(errObj);
       error("Failed to load tasks");
       console.error("Failed to load tasks:", err);
     } finally {
+      setIsRefreshing(false);
       setIsLoading(false);
     }
   }, [error]);
@@ -98,9 +108,8 @@ export function useTasks() {
       const currentTask = tasks.find((t) => t.id === id);
       if (!currentTask) return;
 
-      const shouldCelebrate = currentTask.status !== "done";
-      const optimisticStatus: TaskStatus =
-        currentTask.status === "done" ? "todo" : "done";
+      const optimisticStatus: TaskStatus = getCheckboxToggleStatus(currentTask.status);
+      const shouldCelebrate = optimisticStatus === "done";
 
       // Optimistic update
       setTasks((prev) =>
@@ -119,7 +128,7 @@ export function useTasks() {
           success("Task completed!");
         }
 
-        // Reload to get any new recurring task instances
+        // Reload to get any new recurring task instances and stay aligned with background changes.
         void loadTasks();
       } catch (err) {
         // Rollback
@@ -228,8 +237,8 @@ export function useTasks() {
   }, [tasks, activeTab]);
 
   const sortedTasks = useMemo(() => {
-    return sortTasks(filteredTasks);
-  }, [filteredTasks]);
+    return sortTasks(filteredTasks, activeTab);
+  }, [activeTab, filteredTasks]);
 
   const selectedTask = useMemo(
     () => tasks.find((t) => t.id === selectedTaskId) || null,
@@ -242,11 +251,38 @@ export function useTasks() {
     return { total, completed };
   }, [tasks]);
 
-  // Initial load
+  // Initial load + background refresh
   useEffect(() => {
-    loadTasks();
-    loadEvents();
-  }, [loadTasks, loadEvents]);
+    void loadTasks();
+    void loadEvents();
+
+    const refresh = () => {
+      void loadTasks();
+      void loadEvents();
+    };
+
+    const unlisten = listen(TASKS_CHANGED_EVENT, refresh);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    };
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        refresh();
+      }
+    }, TASKS_POLL_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void unlisten.then((fn) => fn());
+    };
+  }, [loadEvents, loadTasks]);
 
   return {
     // Data
@@ -257,6 +293,8 @@ export function useTasks() {
 
     // Loading states
     isLoading,
+    isRefreshing,
+    lastSyncedAt,
     isCreating,
     isToggling,
     isUpdating,

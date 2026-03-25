@@ -6,7 +6,7 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
     MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
     MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
-    MIGRATION_0010_POMODORO_RUNTIME,
+    MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_TASK_FINISHED_AT,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -607,6 +607,36 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "pomodoro_state",
         MIGRATION_0010_POMODORO_RUNTIME,
     )?;
+
+    let already_applied_0011: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_task_finished_at'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0011 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0011 {
+        for statement in MIGRATION_0011_TASK_FINISHED_AT.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0011_task_finished_at error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_task_finished_at')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0011 state error: {e}"))?;
+    }
 
     Ok(())
 }

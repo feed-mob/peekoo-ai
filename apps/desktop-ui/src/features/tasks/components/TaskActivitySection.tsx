@@ -1,14 +1,16 @@
 import { useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { useTaskActivity } from "../hooks/use-task-activity";
 import { ActivityFeedItem } from "./ActivityFeedItem";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { formatSyncStatus } from "../utils/task-sync";
 
 interface TaskActivitySectionProps {
   taskId: string;
 }
 
 export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
-  const { events, isLoading, reload, addComment, deleteEvent } = useTaskActivity(taskId);
+  const { events, isLoading, isRefreshing, lastSyncedAt, reload, addComment, deleteEvent } = useTaskActivity(taskId);
   const [commentText, setCommentText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [deletingEventId, setDeletingEventId] = useState<string | null>(null);
@@ -41,13 +43,19 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
 
   return (
     <div className="mt-6 pt-6 border-t border-glass-border">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
-          Activity
-        </h3>
+      <div className="flex items-start justify-between mb-3 gap-3">
+        <div>
+          <h3 className="text-xs font-semibold text-text-muted uppercase tracking-wider">
+            Activity
+          </h3>
+          <div className="mt-1 flex items-center gap-1.5 text-[10px] text-text-muted">
+            <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
+            <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
+          </div>
+        </div>
         <button
           onClick={reload}
-          disabled={isLoading}
+          disabled={isLoading || isRefreshing}
           className="text-[10px] text-text-muted hover:text-text-primary transition-colors disabled:opacity-50"
         >
           Refresh
