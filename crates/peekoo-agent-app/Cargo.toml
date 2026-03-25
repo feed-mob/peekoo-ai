@@ -13,6 +13,7 @@ peekoo-agent = { path = "../peekoo-agent" }
 peekoo-app-settings = { path = "../peekoo-app-settings" }
 peekoo-agent-auth = { path = "../peekoo-agent-auth" }
 peekoo-productivity-domain = { path = "../peekoo-productivity-domain" }
+peekoo-pomodoro-app = { path = "../peekoo-pomodoro-app" }
 peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
 peekoo-security = { path = "../security" }
 peekoo-paths = { path = "../peekoo-paths" }

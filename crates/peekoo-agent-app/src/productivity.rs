@@ -1,30 +1,19 @@
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::{Timelike, Utc};
-use peekoo_productivity_domain::pomodoro::{PomodoroError, PomodoroSession, PomodoroState};
 use peekoo_productivity_domain::task::{
     TaskDto, TaskEventDto, TaskEventType, TaskPriority, TaskService, TaskStatus,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct PomodoroSessionDto {
-    pub id: String,
-    pub minutes: u32,
-    pub state: String,
-}
-
 pub struct ProductivityService {
-    pomodoros: Mutex<HashMap<String, PomodoroSession>>,
     pub(crate) db_conn: Arc<Mutex<Connection>>,
 }
 
 impl Clone for ProductivityService {
     fn clone(&self) -> Self {
         Self {
-            pomodoros: Mutex::new(HashMap::new()),
             db_conn: Arc::clone(&self.db_conn),
         }
     }
@@ -32,10 +21,7 @@ impl Clone for ProductivityService {
 
 impl ProductivityService {
     pub fn new(db_conn: Arc<Mutex<Connection>>) -> Self {
-        Self {
-            pomodoros: Mutex::new(HashMap::new()),
-            db_conn,
-        }
+        Self { db_conn }
     }
 
     fn conn(&self) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
@@ -546,55 +532,6 @@ impl ProductivityService {
         }
 
         Ok(lines.join("\n"))
-    }
-
-    // ── Pomodoro (unchanged) ────────────────────────────────────────
-
-    pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
-        if minutes == 0 {
-            return Err("Pomodoro minutes must be greater than 0".to_string());
-        }
-
-        let id = Uuid::new_v4().to_string();
-        let mut session = PomodoroSession::new(id.clone(), minutes);
-        session.start().map_err(|err| err.to_string())?;
-
-        let mut lock = self
-            .pomodoros
-            .lock()
-            .map_err(|err| format!("Lock error: {err}"))?;
-        lock.insert(id, session.clone());
-
-        Ok(pomodoro_to_dto(session))
-    }
-
-    pub fn pause_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.update_pomodoro(session_id, |session| session.pause())
-    }
-
-    pub fn resume_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.update_pomodoro(session_id, |session| session.resume())
-    }
-
-    pub fn finish_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.update_pomodoro(session_id, |session| session.finish())
-    }
-
-    fn update_pomodoro(
-        &self,
-        session_id: &str,
-        transition: impl FnOnce(&mut PomodoroSession) -> Result<(), PomodoroError>,
-    ) -> Result<PomodoroSessionDto, String> {
-        let mut lock = self
-            .pomodoros
-            .lock()
-            .map_err(|err| format!("Lock error: {err}"))?;
-        let Some(session) = lock.get_mut(session_id) else {
-            return Err(format!("Pomodoro session not found: {session_id}"));
-        };
-
-        transition(session).map_err(|err| err.to_string())?;
-        Ok(pomodoro_to_dto(session.clone()))
     }
 
     // ── Internal helpers ────────────────────────────────────────────
@@ -1167,23 +1104,6 @@ fn task_status_to_str(status: TaskStatus) -> &'static str {
         TaskStatus::InProgress => "in_progress",
         TaskStatus::Done => "done",
         TaskStatus::Cancelled => "cancelled",
-    }
-}
-
-fn pomodoro_to_dto(session: PomodoroSession) -> PomodoroSessionDto {
-    PomodoroSessionDto {
-        id: session.id,
-        minutes: session.minutes,
-        state: pomodoro_state_to_str(session.state).to_string(),
-    }
-}
-
-fn pomodoro_state_to_str(state: PomodoroState) -> &'static str {
-    match state {
-        PomodoroState::Idle => "idle",
-        PomodoroState::Running => "running",
-        PomodoroState::Paused => "paused",
-        PomodoroState::Completed => "completed",
     }
 }
 

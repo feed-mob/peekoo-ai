@@ -5,8 +5,9 @@ use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
+    PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, ProviderAuthDto,
+    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
+    StorePluginDto, TaskDto, TaskEventDto,
 };
 use serde::Serialize;
 use std::env;
@@ -488,51 +489,94 @@ async fn delete_task_event(eventId: String, state: State<'_, AgentState>) -> Res
 }
 
 #[tauri::command]
+async fn pomodoro_get_status(
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.pomodoro_status()?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
+}
+
+#[tauri::command]
+async fn pomodoro_set_settings(
+    work_minutes: u32,
+    break_minutes: u32,
+    enable_memo: bool,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.pomodoro_set_settings(PomodoroSettingsInput {
+        work_minutes,
+        break_minutes,
+        enable_memo,
+    })?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
+}
+
+#[tauri::command]
 async fn pomodoro_start(
+    mode: String,
     minutes: u32,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.start_pomodoro(minutes)?;
-    state.app.dispatch_plugin_event("pomodoro:started", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.start_pomodoro(&mode, minutes)?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_pause(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.pause_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:paused", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.pause_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_resume(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.resume_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:resumed", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.resume_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_finish(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.finish_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:finished", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.finish_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
+}
+
+#[tauri::command]
+async fn pomodoro_switch_mode(
+    mode: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.switch_pomodoro_mode(&mode)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
+}
+
+#[tauri::command]
+async fn pomodoro_history(
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state.app.pomodoro_history(limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
 }
 
 #[tauri::command]
@@ -979,10 +1023,14 @@ pub fn run() {
             task_list_events,
             add_task_comment,
             delete_task_event,
+            pomodoro_get_status,
+            pomodoro_set_settings,
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
             pomodoro_finish,
+            pomodoro_switch_mode,
+            pomodoro_history,
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,

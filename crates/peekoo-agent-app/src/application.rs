@@ -17,6 +17,9 @@ use peekoo_notifications::{
 };
 use peekoo_paths::ensure_windows_pi_agent_env;
 use peekoo_plugin_host::PluginRegistry;
+use peekoo_pomodoro_app::{
+    PomodoroAppService, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+};
 use peekoo_scheduler::Scheduler;
 
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
@@ -27,7 +30,7 @@ use crate::plugin::{
 use crate::plugin_tool_impl::PluginToolProviderImpl;
 use peekoo_productivity_domain::task::{TaskDto, TaskEventDto, TaskService};
 
-use crate::productivity::{PomodoroSessionDto, ProductivityService};
+use crate::productivity::ProductivityService;
 use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -44,6 +47,7 @@ pub struct AgentApplication {
     settings: SettingsService,
     app_settings: AppSettingsService,
     productivity: ProductivityService,
+    pomodoro: PomodoroAppService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
@@ -90,8 +94,23 @@ impl AgentApplication {
         let productivity = ProductivityService::new(Arc::clone(&db_conn));
         let task_service: Arc<dyn peekoo_productivity_domain::task::TaskService> =
             Arc::new(productivity.clone());
-        let (plugin_registry, notifications, notification_receiver, peek_badges, mood_reactions) =
-            create_plugin_registry(db_conn, task_service)?;
+        let (notifications, notification_receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let peek_badges = Arc::new(PeekBadgeService::new());
+        let mood_reactions = Arc::new(MoodReactionService::new());
+        let pomodoro = PomodoroAppService::new(
+            Arc::clone(&db_conn),
+            Arc::clone(&notifications),
+            Arc::clone(&peek_badges),
+            Arc::clone(&mood_reactions),
+        )?;
+        let plugin_registry = create_plugin_registry(
+            db_conn,
+            task_service,
+            Arc::clone(&notifications),
+            Arc::clone(&peek_badges),
+            Arc::clone(&mood_reactions),
+        )?;
         let shutdown_token = plugin_registry.scheduler().shutdown_token();
         install_discovered_plugins(&plugin_registry);
 
@@ -111,6 +130,7 @@ impl AgentApplication {
             settings,
             app_settings,
             productivity,
+            pomodoro,
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
@@ -439,20 +459,39 @@ impl AgentApplication {
         self.productivity.task_activity_summary()
     }
 
-    pub fn start_pomodoro(&self, minutes: u32) -> Result<PomodoroSessionDto, String> {
-        self.productivity.start_pomodoro(minutes)
+    pub fn pomodoro_status(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.get_status()
     }
 
-    pub fn pause_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.pause_pomodoro(session_id)
+    pub fn pomodoro_set_settings(
+        &self,
+        input: PomodoroSettingsInput,
+    ) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.set_settings(input)
     }
 
-    pub fn resume_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.resume_pomodoro(session_id)
+    pub fn start_pomodoro(&self, mode: &str, minutes: u32) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.start(mode, minutes)
     }
 
-    pub fn finish_pomodoro(&self, session_id: &str) -> Result<PomodoroSessionDto, String> {
-        self.productivity.finish_pomodoro(session_id)
+    pub fn pause_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.pause()
+    }
+
+    pub fn resume_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.resume()
+    }
+
+    pub fn finish_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.finish()
+    }
+
+    pub fn switch_pomodoro_mode(&self, mode: &str) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.switch_mode(mode)
+    }
+
+    pub fn pomodoro_history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
+        self.pomodoro.history(limit)
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
@@ -901,20 +940,13 @@ fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bo
     captured_generation == current_generation
 }
 
-#[allow(clippy::type_complexity)]
 fn create_plugin_registry(
     db_conn: Arc<Mutex<Connection>>,
     task_service: Arc<dyn peekoo_productivity_domain::task::TaskService>,
-) -> Result<
-    (
-        Arc<PluginRegistry>,
-        Arc<NotificationService>,
-        UnboundedReceiver<Notification>,
-        Arc<PeekBadgeService>,
-        Arc<MoodReactionService>,
-    ),
-    String,
-> {
+    notifications: Arc<NotificationService>,
+    peek_badges: Arc<PeekBadgeService>,
+    mood_reactions: Arc<MoodReactionService>,
+) -> Result<Arc<PluginRegistry>, String> {
     let global_plugins_dir = peekoo_paths::peekoo_global_data_dir()?.join("plugins");
     if !global_plugins_dir.exists() {
         std::fs::create_dir_all(&global_plugins_dir)
@@ -922,10 +954,6 @@ fn create_plugin_registry(
     }
 
     let scheduler = Arc::new(Scheduler::new());
-    let (notifications, receiver) = NotificationService::new();
-    let notifications = Arc::new(notifications);
-    let peek_badges = Arc::new(PeekBadgeService::new());
-    let mood_reactions = Arc::new(MoodReactionService::new());
     let registry = Arc::new(PluginRegistry::new(
         vec![global_plugins_dir],
         db_conn,
@@ -936,13 +964,7 @@ fn create_plugin_registry(
         task_service,
     ));
 
-    Ok((
-        registry,
-        notifications,
-        receiver,
-        peek_badges,
-        mood_reactions,
-    ))
+    Ok(registry)
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
