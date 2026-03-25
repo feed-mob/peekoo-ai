@@ -337,11 +337,11 @@ async function createTaskFromEvent(event) {
       assignee: "user",
       labels: [],
       description,
-      scheduled_start_at: schedule.startAt,
-      scheduled_end_at: schedule.endAt,
-      estimated_duration_min: null,
-      recurrence_rule: null,
-      recurrence_time_of_day: null,
+      scheduledStartAt: schedule.startAt,
+      scheduledEndAt: schedule.endAt,
+      estimatedDurationMin: null,
+      recurrenceRule: null,
+      recurrenceTimeOfDay: null,
     });
     const syncedTask = await ensureTaskSchedule(createdTask, schedule, description);
     await invoke("plugin_call_tool", {
@@ -373,8 +373,8 @@ async function ensureTaskSchedule(task, schedule, description) {
 
   return invoke("update_task", {
     id: task.id,
-    scheduled_start_at: schedule.startAt,
-    scheduled_end_at: schedule.endAt,
+    scheduledStartAt: schedule.startAt,
+    scheduledEndAt: schedule.endAt,
     description,
   });
 }
