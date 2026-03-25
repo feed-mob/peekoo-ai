@@ -4,10 +4,13 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Notification {
     pub source: String,
     pub title: String,
     pub body: String,
+    pub action_url: Option<String>,
+    pub action_label: Option<String>,
 }
 
 pub struct NotificationService {

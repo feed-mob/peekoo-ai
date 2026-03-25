@@ -61,6 +61,8 @@ impl TaskRuntimeService {
             source: "tasks".to_string(),
             title: format!("Agent commented on {}", task.title),
             body: summarize_comment(text),
+            action_url: None,
+            action_label: None,
         });
 
         tracing::debug!(
@@ -75,6 +77,8 @@ impl TaskRuntimeService {
             source: "tasks".to_string(),
             title: format!("Agent updated {}", task.title),
             body: format!("Status changed to {}", status_label(status)),
+            action_url: None,
+            action_label: None,
         });
 
         tracing::debug!(

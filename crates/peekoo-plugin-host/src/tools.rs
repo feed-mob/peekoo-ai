@@ -50,12 +50,17 @@ impl PluginToolBridge {
     /// Execute a tool call from the agent.
     pub fn call_tool(&self, tool_name: &str, args_json: &str) -> Result<String, PluginError> {
         let tools = self.registry.all_tool_definitions();
-        let (plugin_key, _) = tools
-            .iter()
-            .find(|(_, def)| def.name == tool_name)
-            .ok_or_else(|| PluginError::ToolNotFound(tool_name.to_string()))?;
+        let plugin_key =
+            if let Some((plugin_key, _)) = tools.iter().find(|(_, def)| def.name == tool_name) {
+                plugin_key.clone()
+            } else if let Some(plugin_key) = self.registry.discover_tool_owner(tool_name) {
+                self.registry.reload_plugin(&plugin_key)?;
+                plugin_key
+            } else {
+                return Err(PluginError::ToolNotFound(tool_name.to_string()));
+            };
 
-        self.registry.call_tool(plugin_key, tool_name, args_json)
+        self.registry.call_tool(&plugin_key, tool_name, args_json)
     }
 
     /// Check if a tool name belongs to a plugin.

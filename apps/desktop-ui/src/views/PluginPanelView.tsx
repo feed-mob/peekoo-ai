@@ -74,11 +74,15 @@ export default function PluginPanelView() {
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const data = event.data;
-      if (!data || data.type !== BRIDGE_REQUEST_TYPE || typeof data.command !== "string") {
+      if (!data) {
         return;
       }
 
       if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
+
+      if (data.type !== BRIDGE_REQUEST_TYPE || typeof data.command !== "string") {
         return;
       }
 

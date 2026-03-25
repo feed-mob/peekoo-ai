@@ -59,6 +59,36 @@ description = "Get this week's Google Calendar events with sync metadata"
 parameters = '{"type":"object","properties":{},"required":[]}'
 return_type = "object"
 
+[[tools.definitions]]
+name = "google_calendar_create_event_for_task"
+description = "Create a Google Calendar event from a task and link it"
+parameters = '{"type":"object","properties":{"taskId":{"type":"string"},"title":{"type":"string"},"startAt":{"type":"string"},"endAt":{"type":"string"},"description":{"type":"string"},"location":{"type":"string"}},"required":["taskId","title","startAt","endAt"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_link_existing_event_to_task"
+description = "Link an existing Google Calendar event to a task"
+parameters = '{"type":"object","properties":{"taskId":{"type":"string"},"eventId":{"type":"string"}},"required":["taskId","eventId"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_list_task_events"
+description = "List Google Calendar events linked to a task"
+parameters = '{"type":"object","properties":{"taskId":{"type":"string"}},"required":["taskId"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_unlink_task_event"
+description = "Unlink a Google Calendar event from a task"
+parameters = '{"type":"object","properties":{"taskId":{"type":"string"},"eventId":{"type":"string"}},"required":["taskId","eventId"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "google_calendar_update_calendar_selection"
+description = "Update which Google calendars are enabled for sync"
+parameters = '{"type":"object","properties":{"calendars":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"enabled":{"type":"boolean"}},"required":["id","enabled"]}}},"required":["calendars"]}'
+return_type = "object"
+
 [events]
 subscribe = ["schedule:fired"]
 

@@ -40,9 +40,14 @@ pub(crate) struct EmitEventRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct NotifyRequest {
     pub title: String,
     pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
