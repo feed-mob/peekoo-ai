@@ -61,6 +61,8 @@ impl TaskRuntimeService {
             source: "tasks".to_string(),
             title: format!("Agent commented on {}", task.title),
             body: summarize_comment(text),
+            action_url: None,
+            action_label: None,
         });
 
         tracing::debug!(
@@ -75,6 +77,8 @@ impl TaskRuntimeService {
             source: "tasks".to_string(),
             title: format!("Agent updated {}", task.title),
             body: format!("Status changed to {}", status_label(status)),
+            action_url: None,
+            action_label: None,
         });
 
         tracing::debug!(
@@ -358,7 +362,8 @@ mod tests {
     fn mention_requeues_agent_task_without_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -378,7 +383,8 @@ mod tests {
     fn mention_requeues_even_if_task_was_marked_executing() {
         let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -426,7 +432,8 @@ mod tests {
     fn agent_comment_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -442,7 +449,8 @@ mod tests {
     fn agent_status_change_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service

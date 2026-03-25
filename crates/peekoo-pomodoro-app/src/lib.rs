@@ -6,7 +6,7 @@ use peekoo_notifications::{
 };
 use peekoo_pomodoro_domain::{PomodoroMode, PomodoroSettings, PomodoroState, PomodoroStatus};
 use peekoo_scheduler::Scheduler;
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -372,6 +372,8 @@ impl PomodoroAppService {
             source: POMODORO_OWNER.to_string(),
             title: title.to_string(),
             body: body.to_string(),
+            action_url: None,
+            action_label: None,
         });
 
         self.publish_badges(status);
@@ -499,6 +501,8 @@ fn complete_due_session(
         source: POMODORO_OWNER.to_string(),
         title: title.to_string(),
         body: body.to_string(),
+        action_url: None,
+        action_label: None,
     });
     peek_badges.clear(POMODORO_OWNER);
     Ok(())

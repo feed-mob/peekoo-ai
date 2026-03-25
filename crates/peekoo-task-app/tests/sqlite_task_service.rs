@@ -86,7 +86,10 @@ fn update_task_status_sets_finished_at_when_marked_done_and_clears_it_when_reope
         .expect("mark done");
     assert_eq!(done.status, "done");
     assert!(done.finished_at.is_some());
-    assert_eq!(done.updated_at, done.finished_at.clone().expect("finished_at set"));
+    assert_eq!(
+        done.updated_at,
+        done.finished_at.clone().expect("finished_at set")
+    );
 
     let reopened = service
         .update_task_status(&task.id, peekoo_task_domain::TaskStatus::InProgress)
@@ -119,7 +122,11 @@ fn migration_backfill_sets_finished_at_from_updated_at_for_existing_done_tasks()
         .expect("apply migration 0011");
 
     let finished_at: Option<String> = conn
-        .query_row("SELECT finished_at FROM tasks WHERE id = 'task-1'", [], |row| row.get(0))
+        .query_row(
+            "SELECT finished_at FROM tasks WHERE id = 'task-1'",
+            [],
+            |row| row.get(0),
+        )
         .expect("load finished_at");
 
     assert_eq!(finished_at.as_deref(), Some("2026-03-24T12:00:00Z"));

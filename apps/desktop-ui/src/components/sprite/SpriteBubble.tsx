@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { Droplet, Eye, PersonStanding, Brain, Coffee, type LucideIcon } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import type { MouseEvent } from "react";
 import { finishPomodoro } from "@/features/pomodoro/tool-client";
 import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
@@ -46,6 +47,18 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
 
   const Icon = type ? ICON_MAP[type] : null;
   const themeColor = type ? COLOR_MAP[type] : "currentColor";
+
+  const handleActionClick = async (event: MouseEvent) => {
+    event.stopPropagation();
+    if (!payload?.actionUrl) {
+      return;
+    }
+    try {
+      await invoke("system_open_url", { url: payload.actionUrl });
+    } catch (err) {
+      console.error("Failed to open notification action URL:", err);
+    }
+  };
 
   const handleDismiss = async () => {
     if (!isStyled || !type) return;
@@ -138,6 +151,15 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
               <p className="mt-1 text-[13px] leading-[18px] text-text-primary line-clamp-3">
                 {payload.body}
               </p>
+              {payload.actionUrl && payload.actionLabel && (
+                <button
+                  type="button"
+                  onClick={handleActionClick}
+                  className="mt-3 rounded-lg bg-glow-green/90 px-3 py-1.5 text-[11px] font-semibold text-space-void hover:bg-glow-green"
+                >
+                  {payload.actionLabel}
+                </button>
+              )}
             </>
           )}
         </motion.div>

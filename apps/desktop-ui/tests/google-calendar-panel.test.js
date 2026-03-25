@@ -14,4 +14,11 @@ describe("google calendar panel", () => {
     expect(html).toContain('id="tabWeekly"');
     expect(html).toContain('id="agendaList"');
   });
+
+  test("includes task linking controls in calendar panel", () => {
+    expect(html).not.toContain('id="taskSelect"');
+    expect(html).not.toContain('id="refreshTasksButton"');
+    expect(html).toContain('id="taskLinkStatus"');
+    expect(html).toContain('id="taskModalUnlink"');
+  });
 });

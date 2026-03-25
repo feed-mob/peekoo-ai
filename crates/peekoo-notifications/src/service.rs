@@ -1,13 +1,16 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Notification {
     pub source: String,
     pub title: String,
     pub body: String,
+    pub action_url: Option<String>,
+    pub action_label: Option<String>,
 }
 
 pub struct NotificationService {

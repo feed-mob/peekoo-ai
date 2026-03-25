@@ -106,6 +106,7 @@ async function loadPanelScript() {
       "tabUpcoming",
       "tabDaily",
       "tabWeekly",
+      "taskLinkStatus",
     ].map((id) => [id, createElement(id.startsWith("tab") || id.endsWith("Button") ? "button" : "div")]),
   );
 
@@ -117,6 +118,7 @@ async function loadPanelScript() {
   };
 
   globalThis.window = {
+    addEventListener() {},
     __TAURI__: {
       core: {
         async invoke(command) {
@@ -138,11 +140,22 @@ async function loadPanelScript() {
               today: [],
               week: [
                 {
+                  id: "evt-1",
                   title: "apple one family payment - @Wind_Ace",
                   startAt: "2026-03-20",
+                  endAt: "2026-03-20",
                   allDay: true,
                   calendarName: "Primary",
+                  htmlLink: "https://calendar.google.com/event?eid=abc",
+                  meetingUrl: "https://meet.google.com/abc-defg-hij",
                   location: null,
+                },
+              ],
+              eventLinkStatuses: [
+                {
+                  eventId: "evt-1",
+                  taskId: "task-1",
+                  status: "linked",
                 },
               ],
             });
@@ -178,5 +191,9 @@ describe("google calendar panel runtime", () => {
     expect(agendaList.children).toHaveLength(1);
     expect(agendaList.children[0].innerHTML).toContain("Mar");
     expect(agendaList.children[0].innerHTML).toContain("All day");
+    expect(agendaList.children[0].innerHTML).toContain("Join meeting");
+    expect(agendaList.children[0].innerHTML).toContain("Linked");
+    expect(agendaList.children[0].innerHTML).not.toContain("Add to tasks");
+    expect(agendaList.children[0].innerHTML).toContain("View linked task");
   });
 });

@@ -92,7 +92,9 @@ mod tests {
 
     #[test]
     fn migration_contains_task_finished_at() {
-        assert!(MIGRATION_0011_TASK_FINISHED_AT.contains("ALTER TABLE tasks ADD COLUMN finished_at"));
+        assert!(
+            MIGRATION_0011_TASK_FINISHED_AT.contains("ALTER TABLE tasks ADD COLUMN finished_at")
+        );
         assert!(MIGRATION_0011_TASK_FINISHED_AT.contains("SET finished_at = updated_at"));
     }
 }

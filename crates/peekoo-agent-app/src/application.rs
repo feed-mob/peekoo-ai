@@ -42,12 +42,14 @@ use peekoo_task_app::SqliteTaskService;
 
 use crate::workspace_bootstrap::ensure_agent_workspace;
 
+type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
+
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
     app_settings: AppSettingsService,
     task_service: SqliteTaskService,
-    task_change_callback: Mutex<Option<Arc<dyn Fn(Option<String>) + Send + Sync>>>,
+    task_change_callback: Mutex<Option<TaskChangeCallback>>,
     pomodoro: PomodoroAppService,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
