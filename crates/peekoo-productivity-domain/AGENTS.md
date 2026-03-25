@@ -5,7 +5,6 @@ Domain models for productivity concerns in Peekoo AI.
 
 ## Key Types
 - `Task` with `TaskPriority` and `TaskStatus`
-- `PomodoroSession` with `PomodoroState` transitions
 
 ## Dependencies
 - `serde` for serialization
