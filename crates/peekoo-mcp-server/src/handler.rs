@@ -62,7 +62,7 @@ impl TaskMcpHandler {
     ) -> Result<CallToolResult, McpError> {
         match self
             .task_service
-            .add_task_comment(&params.task_id, &params.text, "agent")
+            .add_task_comment(&params.task_id, &params.text, "peekoo-agent")
         {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text(
                 "Comment added successfully",

@@ -13,6 +13,8 @@ export interface Task {
   recurrence_time_of_day: string | null;
   parent_task_id: string | null;
   created_at: string;
+  updated_at?: string;
+  finished_at?: string | null;
   agent_work_status?: "pending" | "claimed" | "executing" | "completed" | "failed";
   agent_work_attempt_count?: number;
 }

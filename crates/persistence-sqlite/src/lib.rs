@@ -18,6 +18,8 @@ pub const MIGRATION_0009_AGENT_TASK_ASSIGNMENT: &str =
     include_str!("../migrations/0009_agent_task_assignment.sql");
 pub const MIGRATION_0010_POMODORO_RUNTIME: &str =
     include_str!("../migrations/0010_pomodoro_runtime.sql");
+pub const MIGRATION_0011_TASK_FINISHED_AT: &str =
+    include_str!("../migrations/0011_task_finished_at.sql");
 
 #[cfg(test)]
 mod tests {
@@ -86,5 +88,13 @@ mod tests {
                 .contains("CREATE TABLE IF NOT EXISTS pomodoro_cycle_history")
         );
         assert!(MIGRATION_0010_POMODORO_RUNTIME.contains("INSERT OR IGNORE INTO pomodoro_state"));
+    }
+
+    #[test]
+    fn migration_contains_task_finished_at() {
+        assert!(
+            MIGRATION_0011_TASK_FINISHED_AT.contains("ALTER TABLE tasks ADD COLUMN finished_at")
+        );
+        assert!(MIGRATION_0011_TASK_FINISHED_AT.contains("SET finished_at = updated_at"));
     }
 }

@@ -6119,6 +6119,7 @@ name = "peekoo-task-app"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "peekoo-persistence-sqlite",
  "peekoo-task-domain",
  "rusqlite",
  "serde",

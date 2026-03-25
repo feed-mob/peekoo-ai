@@ -11,6 +11,7 @@ pub(crate) struct TaskRuntimeService {
     task_service: SqliteTaskService,
     notifications: Arc<NotificationService>,
     follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
+    task_change_callback: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 }
 
 impl TaskRuntimeService {
@@ -18,16 +19,18 @@ impl TaskRuntimeService {
         task_service: SqliteTaskService,
         notifications: Arc<NotificationService>,
         follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
+        task_change_callback: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
     ) -> Self {
         Self {
             task_service,
             notifications,
             follow_up_trigger,
+            task_change_callback,
         }
     }
 
     fn maybe_requeue_agent_on_mention(&self, task: &TaskDto, text: &str, author: &str) {
-        if author.eq_ignore_ascii_case("agent") {
+        if is_agent_author(author) {
             return;
         }
 
@@ -50,7 +53,7 @@ impl TaskRuntimeService {
     }
 
     fn maybe_notify_agent_comment(&self, task: &TaskDto, text: &str, author: &str) {
-        if !author.eq_ignore_ascii_case("agent") {
+        if !is_agent_author(author) {
             return;
         }
 
@@ -80,6 +83,12 @@ impl TaskRuntimeService {
             "Agent status notification dispatched"
         );
     }
+
+    fn emit_task_changed(&self, task_id: Option<&str>) {
+        if let Some(callback) = &self.task_change_callback {
+            callback(task_id.map(|id| id.to_string()));
+        }
+    }
 }
 
 impl TaskService for TaskRuntimeService {
@@ -96,7 +105,7 @@ impl TaskService for TaskRuntimeService {
         recurrence_rule: Option<&str>,
         recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.task_service.create_task(
+        let task = self.task_service.create_task(
             title,
             priority,
             assignee,
@@ -107,7 +116,9 @@ impl TaskService for TaskRuntimeService {
             estimated_duration_min,
             recurrence_rule,
             recurrence_time_of_day,
-        )
+        )?;
+        self.emit_task_changed(Some(&task.id));
+        Ok(task)
     }
 
     fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
@@ -129,7 +140,7 @@ impl TaskService for TaskRuntimeService {
         recurrence_rule: Option<Option<&str>>,
         recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.task_service.update_task(
+        let task = self.task_service.update_task(
             id,
             title,
             priority,
@@ -142,15 +153,21 @@ impl TaskService for TaskRuntimeService {
             estimated_duration_min,
             recurrence_rule,
             recurrence_time_of_day,
-        )
+        )?;
+        self.emit_task_changed(Some(&task.id));
+        Ok(task)
     }
 
     fn delete_task(&self, id: &str) -> Result<(), String> {
-        self.task_service.delete_task(id)
+        self.task_service.delete_task(id)?;
+        self.emit_task_changed(Some(id));
+        Ok(())
     }
 
     fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
-        self.task_service.toggle_task(id)
+        let task = self.task_service.toggle_task(id)?;
+        self.emit_task_changed(Some(&task.id));
+        Ok(task)
     }
 
     fn get_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskEventDto>, String> {
@@ -168,6 +185,7 @@ impl TaskService for TaskRuntimeService {
 
         self.maybe_requeue_agent_on_mention(&task, text, author);
         self.maybe_notify_agent_comment(&task, text, author);
+        self.emit_task_changed(Some(task_id));
 
         Ok(event)
     }
@@ -183,11 +201,15 @@ impl TaskService for TaskRuntimeService {
         session_id: Option<&str>,
     ) -> Result<(), String> {
         self.task_service
-            .update_agent_work_status(task_id, status, session_id)
+            .update_agent_work_status(task_id, status, session_id)?;
+        self.emit_task_changed(Some(task_id));
+        Ok(())
     }
 
     fn increment_attempt_count(&self, task_id: &str) -> Result<u32, String> {
-        self.task_service.increment_attempt_count(task_id)
+        let count = self.task_service.increment_attempt_count(task_id)?;
+        self.emit_task_changed(Some(task_id));
+        Ok(count)
     }
 
     fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
@@ -195,11 +217,15 @@ impl TaskService for TaskRuntimeService {
     }
 
     fn add_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
-        self.task_service.add_task_label(task_id, label)
+        let task = self.task_service.add_task_label(task_id, label)?;
+        self.emit_task_changed(Some(task_id));
+        Ok(task)
     }
 
     fn remove_task_label(&self, task_id: &str, label: &str) -> Result<TaskDto, String> {
-        self.task_service.remove_task_label(task_id, label)
+        let task = self.task_service.remove_task_label(task_id, label)?;
+        self.emit_task_changed(Some(task_id));
+        Ok(task)
     }
 
     fn update_task_status(&self, task_id: &str, status: TaskStatus) -> Result<TaskDto, String> {
@@ -208,12 +234,17 @@ impl TaskService for TaskRuntimeService {
         if task.assignee == "peekoo-agent" {
             self.notify_agent_status_change(&task, status);
         }
+        self.emit_task_changed(Some(task_id));
         Ok(updated)
     }
 
     fn load_task(&self, task_id: &str) -> Result<TaskDto, String> {
         self.task_service.load_task(task_id)
     }
+}
+
+fn is_agent_author(author: &str) -> bool {
+    author.eq_ignore_ascii_case("agent") || author.eq_ignore_ascii_case("peekoo-agent")
 }
 
 fn contains_agent_mention(text: &str) -> bool {
@@ -276,6 +307,7 @@ mod tests {
               parent_task_id TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL,
+              finished_at TEXT,
               agent_work_status TEXT,
               agent_work_session_id TEXT,
               agent_work_attempt_count INTEGER DEFAULT 0,
@@ -326,7 +358,8 @@ mod tests {
     fn mention_requeues_agent_task_without_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -346,7 +379,8 @@ mod tests {
     fn mention_requeues_even_if_task_was_marked_executing() {
         let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -378,6 +412,7 @@ mod tests {
             Some(Arc::new(move |task_id| {
                 triggered_clone.lock().expect("trigger lock").push(task_id);
             })),
+            None,
         );
         let task_id = create_task(&service, "peekoo-agent");
 
@@ -393,7 +428,8 @@ mod tests {
     fn agent_comment_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -409,7 +445,8 @@ mod tests {
     fn agent_status_change_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service = TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None);
+        let service =
+            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -419,5 +456,30 @@ mod tests {
         let notification = receiver.try_recv().expect("status notification");
         assert!(notification.title.contains("Agent updated"));
         assert!(notification.body.contains("done"));
+    }
+
+    #[test]
+    fn agent_comment_emits_task_changed_callback() {
+        let task_service = test_task_service();
+        let (notifications, _receiver) = NotificationService::new();
+        let changed = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
+        let changed_clone = Arc::clone(&changed);
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            Arc::new(notifications),
+            None,
+            Some(Arc::new(move |task_id| {
+                changed_clone.lock().expect("changed lock").push(task_id);
+            })),
+        );
+        let task_id = create_task(&service, "peekoo-agent");
+        changed.lock().expect("changed lock").clear();
+
+        service
+            .add_task_comment(&task_id, "Background update", "peekoo-agent")
+            .expect("add agent comment");
+
+        let recorded = changed.lock().expect("changed lock");
+        assert_eq!(recorded.as_slice(), &[Some(task_id)]);
     }
 }

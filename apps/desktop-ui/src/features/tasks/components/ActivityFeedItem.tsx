@@ -2,6 +2,11 @@ import { CheckCircle2, Plus, ArrowRight, Tag, Trash2, User, MessageCircle } from
 import { Streamdown } from "streamdown";
 import type { TaskEvent } from "@/types/task";
 import { formatRelativeTime } from "../utils/date-helpers";
+import {
+  getCommentAuthorDisplayName,
+  getCommentText,
+  isUserComment,
+} from "../utils/task-activity";
 
 interface ActivityFeedItemProps {
   event: TaskEvent;
@@ -85,29 +90,49 @@ function getEventDescription(event: TaskEvent, compact: boolean): string {
   }
 }
 
+function getEventLabel(event: TaskEvent): string {
+  switch (event.event_type) {
+    case "created":
+      return "Created";
+    case "status_changed":
+      return "Status";
+    case "assigned":
+      return "Assignment";
+    case "labeled":
+      return "Label";
+    case "unlabeled":
+      return "Label";
+    case "deleted":
+      return "Deleted";
+    case "updated":
+      return "Updated";
+    case "comment":
+      return "Comment";
+    default:
+      return event.event_type;
+  }
+}
+
+function getEventTitle(event: TaskEvent): string | null {
+  const payload = event.payload as Record<string, unknown>;
+  return (payload?.title as string) ?? null;
+}
+
 function isCommentEvent(event: TaskEvent): boolean {
   return event.event_type === "comment";
-}
-
-function getCommentAuthor(event: TaskEvent): "user" | "agent" {
-  const payload = event.payload as Record<string, unknown>;
-  return (payload?.author as "user" | "agent") ?? "user";
-}
-
-function getCommentText(event: TaskEvent): string {
-  const payload = event.payload as Record<string, unknown>;
-  return (payload?.text as string) ?? "";
 }
 
 export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting = false }: ActivityFeedItemProps) {
   const Icon = eventIcons[event.event_type as keyof typeof eventIcons] ?? User;
   const colorClass = eventColors[event.event_type as keyof typeof eventColors] ?? "text-text-muted";
+  const eventLabel = getEventLabel(event);
+  const eventTitle = getEventTitle(event);
 
   // Render comments as chat bubbles
   if (isCommentEvent(event)) {
-    const author = getCommentAuthor(event);
+    const authorLabel = getCommentAuthorDisplayName(event);
     const text = getCommentText(event);
-    const isUser = author === "user";
+    const isUser = isUserComment(event);
 
     if (compact) {
       return (
@@ -124,7 +149,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
           )}
           <div className="flex flex-col gap-0.5 max-w-[85%]">
             <span className={`text-[9px] font-medium ${isUser ? "text-right text-green-400" : "text-left text-purple-400"}`}>
-              {isUser ? "You" : "Agent"}
+              {authorLabel}
             </span>
             <div
               className={`px-2.5 py-1.5 rounded-lg text-xs ${
@@ -157,7 +182,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
         )}
         <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
           <span className={`text-[9px] font-medium mb-0.5 ${isUser ? "text-green-400" : "text-purple-400"}`}>
-            {isUser ? "You" : "Agent"}
+            {authorLabel}
           </span>
           <div
             className={`max-w-[80%] px-3 py-2 rounded-xl text-sm ${
@@ -181,6 +206,12 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
     return (
       <div className="flex items-center gap-2 py-1.5">
         <Icon size={12} className={colorClass} />
+        <span
+          className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${colorClass}`}
+          style={{ borderColor: "currentColor" }}
+        >
+          {eventLabel}
+        </span>
         <span className="flex-1 text-xs text-text-primary truncate">
           {getEventDescription(event, true)}
         </span>
@@ -193,10 +224,23 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
 
   return (
     <div className="flex items-start gap-2.5 py-2">
-      <div className="mt-0.5 shrink-0">
+      <div className="mt-0.5 shrink-0 rounded-full bg-space-deep/80 p-1.5 border border-glass-border">
         <Icon size={14} className={colorClass} />
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 rounded-lg border border-glass-border/60 bg-space-deep/40 px-3 py-2">
+        <div className="mb-1 flex items-center gap-2">
+          <span
+            className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${colorClass}`}
+            style={{ borderColor: "currentColor" }}
+          >
+            {eventLabel}
+          </span>
+          {eventTitle && (
+            <span className="truncate text-[10px] text-text-muted">
+              {eventTitle}
+            </span>
+          )}
+        </div>
         <p className="text-xs text-text-primary leading-relaxed">
           {getEventDescription(event, false)}
         </p>
