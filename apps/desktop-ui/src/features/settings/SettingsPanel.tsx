@@ -95,6 +95,9 @@ export function SettingsPanel() {
           <SelectContent>
             <SelectItem value="en">{t("settings.languageOptions.en")}</SelectItem>
             <SelectItem value="zh-CN">{t("settings.languageOptions.zhCN")}</SelectItem>
+            <SelectItem value="ja">{t("settings.languageOptions.ja")}</SelectItem>
+            <SelectItem value="es">{t("settings.languageOptions.es")}</SelectItem>
+            <SelectItem value="fr">{t("settings.languageOptions.fr")}</SelectItem>
           </SelectContent>
         </Select>
       </section>

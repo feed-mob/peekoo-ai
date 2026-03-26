@@ -37,11 +37,24 @@
     },
     "languageOptions": {
       "en": "English",
-      "zhCN": "简体中文"
+      "zhCN": "简体中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
     },
     "sprite": {
       "title": "精灵形象",
       "loadingPreview": "加载中..."
+    },
+    "spriteMeta": {
+      "dark-cat": {
+        "name": "黑猫",
+        "description": "默认的深色主题 AI 精灵。"
+      },
+      "cute-dog": {
+        "name": "可爱小狗",
+        "description": "一个可爱的替代 AI 精灵。"
+      }
     }
   },
   "chat": {

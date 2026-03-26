@@ -37,11 +37,24 @@
     },
     "languageOptions": {
       "en": "English",
-      "zhCN": "简体中文"
+      "zhCN": "简体中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
     },
     "sprite": {
       "title": "Pet Sprite",
       "loadingPreview": "Loading..."
+    },
+    "spriteMeta": {
+      "dark-cat": {
+        "name": "Dark Cat",
+        "description": "Default dark-themed AI pet."
+      },
+      "cute-dog": {
+        "name": "Cute Dog",
+        "description": "A cute alternative AI pet."
+      }
     }
   },
   "chat": {

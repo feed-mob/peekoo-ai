@@ -1,0 +1,253 @@
+{
+  "common": {
+    "retry": "Réessayer",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "clear": "Effacer",
+    "delete": "Supprimer",
+    "dismiss": "Ignorer",
+    "back": "Retour",
+    "refresh": "Actualiser",
+    "saving": "Enregistrement..."
+  },
+  "panel": {
+    "chat": "Chat",
+    "tasks": "Tâches",
+    "settings": "Paramètres",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins",
+    "about": "À propos de Peekoo"
+  },
+  "menu": {
+    "chat": "Chat",
+    "tasks": "Tâches",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins"
+  },
+  "settings": {
+    "loading": "Chargement des paramètres...",
+    "failedLoad": "Échec du chargement des paramètres : {{error}}",
+    "appearance": "Apparence",
+    "activePet": "Animal actif",
+    "language": "Langue",
+    "theme": {
+      "light": "Clair",
+      "dark": "Sombre",
+      "system": "Système"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "Sprite de l’animal",
+      "loadingPreview": "Chargement..."
+    },
+    "spriteMeta": {
+      "dark-cat": {
+        "name": "Chat Sombre",
+        "description": "Animal IA par défaut au thème sombre."
+      },
+      "cute-dog": {
+        "name": "Chien Mignon",
+        "description": "Un animal IA alternatif et adorable."
+      }
+    }
+  },
+  "chat": {
+    "newChat": "Nouveau chat",
+    "settings": "Paramètres",
+    "hideSettings": "Masquer les paramètres",
+    "empty": "Commencez à discuter avec votre animal Peekoo !",
+    "thinking": "Réflexion...",
+    "inputPlaceholder": "Tapez un message..."
+  },
+  "sprite": {
+    "askPeekoo": "Demander à Peekoo...",
+    "openFullChat": "Ouvrir le chat complet",
+    "needAttention": "Attention requise",
+    "readingMode": "Mode lecture",
+    "quickReply": "Réponse rapide"
+  },
+  "about": {
+    "loading": "Chargement des informations...",
+    "failedLoad": "Échec du chargement des détails de l'application",
+    "checking": "Vérification...",
+    "tryAgain": "Réessayer",
+    "tagline": "Compagnon et animal de bureau",
+    "updateAvailable": "Mise à jour disponible",
+    "upToDate": "À jour",
+    "current": "Actuelle",
+    "latest": "Dernière",
+    "published": "Publiée",
+    "devUpdateDisabled": "La vérification des mises à jour est désactivée en mode développement.",
+    "releaseNotes": "Notes de version",
+    "checkForUpdates": "Vérifier les mises à jour",
+    "installing": "Installation...",
+    "installAndRestart": "Installer et redémarrer"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "loading": "Loading tasks...",
+    "doneCounter": "{{completed}} / {{total}} done",
+    "tabs": {
+      "today": "Today",
+      "week": "This Week",
+      "all": "All",
+      "done": "Done"
+    },
+    "mainTab": {
+      "tasks": "Tasks",
+      "activity": "Activity"
+    },
+    "sections": {
+      "overdue": "Overdue",
+      "unscheduled": "Unscheduled",
+      "completedToday": "Completed today"
+    },
+    "empty": {
+      "todayTitle": "No tasks for today",
+      "todaySubtitle": "Schedule a task or add a new one",
+      "weekTitle": "Nothing this week",
+      "weekSubtitle": "Schedule tasks for the upcoming week",
+      "allTitle": "No tasks",
+      "allSubtitle": "Create a task to get started",
+      "doneTitle": "No completed tasks yet",
+      "doneSubtitle": "Finish some tasks to see them here"
+    },
+    "quickInput": {
+      "placeholder": "Add a task... e.g., 'Meeting tomorrow at 3pm for 1 hour high priority'",
+      "ariaDescription": "Task description",
+      "ariaAdd": "Add task"
+    },
+    "activity": {
+      "yesterday": "Yesterday",
+      "noActivity": "No activity yet",
+      "eventsAppearHere": "Task events will appear here",
+      "addCommentPlaceholder": "Add a comment...",
+      "addComment": "Add Comment",
+      "adding": "Adding..."
+    },
+    "deleteDialog": {
+      "title": "Delete Task?",
+      "message": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
+      "deleting": "Deleting..."
+    },
+    "priority": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "status": {
+      "todo": "Todo",
+      "in_progress": "In Progress",
+      "done": "Done"
+    },
+    "priorityTitle": "{{priority}} priority",
+    "agentWorking": "Agent is currently working on this task",
+    "live": "Live",
+    "agentWorkStatus": "Agent work status: {{status}}",
+    "clickToMoveTo": "Click to move to {{status}}",
+    "detail": {
+      "title": "Task Details",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "agent": "Agent",
+      "labels": "Labels",
+      "schedule": "Schedule",
+      "scheduled": "Scheduled",
+      "repeat": "Repeat",
+      "doesNotRepeat": "Does not repeat",
+      "time": "Time",
+      "start": "Start",
+      "end": "End",
+      "durationOptional": "Duration (optional)",
+      "durationPlaceholder": "e.g. 30",
+      "minutes": "minutes",
+      "description": "Description",
+      "descriptionPlaceholder": "Add notes, details, or a sub-task list..."
+    },
+    "recurrence": {
+      "daily": "Daily",
+      "weekdays": "Every weekday",
+      "monWedFri": "Mon / Wed / Fri",
+      "tueThu": "Tue / Thu",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    }
+  },
+  "pomodoro": {
+    "loadingSystem": "Loading System...",
+    "status": {
+      "focusing": "Focusing",
+      "resting": "Resting",
+      "ready": "Ready",
+      "break": "Break"
+    },
+    "readyToStart": "Ready to Start?",
+    "recentSessions": "Recent Sessions",
+    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
+    "mode": {
+      "focus": "Focus",
+      "break": "Break"
+    },
+    "focusMemo": "Focus Memo",
+    "actions": {
+      "saving": "Saving...",
+      "applied": "Applied",
+      "saveChanges": "Save Changes",
+      "synced": "Synced"
+    },
+    "controls": {
+      "pause": "Pause",
+      "start": "Start",
+      "reset": "Reset",
+      "switchToBreak": "Switch to Break",
+      "switchToWork": "Switch to Work"
+    }
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "Installed",
+      "store": "Store"
+    },
+    "panel": {
+      "defaultTitle": "Plugin",
+      "failedLoad": "Failed to load plugin panel: {{error}}"
+    },
+    "loadingInstalled": "Loading plugins...",
+    "loadingStore": "Loading plugin store...",
+    "loadingRuntimeSettings": "Loading plugin settings...",
+    "system": "Plugin System",
+    "installedTitle": "Installed Plugins",
+    "storeLabel": "Plugin Store",
+    "availableFromGithub": "Available from GitHub",
+    "emptyInstalled": "No plugins installed yet. Browse the Store tab to install plugins.",
+    "emptyStore": "No plugins available in the store.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "installed": "Installed",
+    "available": "Available",
+    "updateAvailable": "Update available",
+    "update": "Update",
+    "install": "Install",
+    "removePlugin": "Remove plugin",
+    "permissions": "Permissions",
+    "tools": "Tools",
+    "panels": "Panels",
+    "location": "Location",
+    "openPanels": "Open panels",
+    "enableHint": "Enable this plugin to open its panels and use its runtime capabilities.",
+    "runtimeSettings": "Runtime settings",
+    "runtimeSettingsHint": "Configure reminder timing and global quiet hours.",
+    "dndOn": "DND on",
+    "dndOff": "DND off",
+    "saveSettings": "Save settings"
+  }
+}

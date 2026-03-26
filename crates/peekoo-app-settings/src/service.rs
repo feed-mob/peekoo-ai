@@ -94,10 +94,10 @@ impl AppSettingsService {
             .unwrap_or_else(|| DEFAULT_APP_LANGUAGE.to_string()))
     }
 
-    /// Set app language. Valid values: "en", "zh-CN".
+    /// Set app language. Valid values: "en", "zh-CN", "ja", "es", "fr".
     pub fn set_app_language(&self, language: &str) -> Result<(), String> {
         match language {
-            "en" | "zh-CN" => self.store.set(SETTING_APP_LANGUAGE, language),
+            "en" | "zh-CN" | "ja" | "es" | "fr" => self.store.set(SETTING_APP_LANGUAGE, language),
             _ => Err(format!("Invalid app language: {language}")),
         }
     }
@@ -200,6 +200,12 @@ mod tests {
         let svc = test_service();
         svc.set_app_language("zh-CN").unwrap();
         assert_eq!(svc.get_app_language().unwrap(), "zh-CN");
+        svc.set_app_language("ja").unwrap();
+        assert_eq!(svc.get_app_language().unwrap(), "ja");
+        svc.set_app_language("es").unwrap();
+        assert_eq!(svc.get_app_language().unwrap(), "es");
+        svc.set_app_language("fr").unwrap();
+        assert_eq!(svc.get_app_language().unwrap(), "fr");
     }
 
     #[test]
@@ -236,7 +242,7 @@ mod tests {
     fn generic_set_validates_app_language() {
         let svc = test_service();
 
-        let result = svc.set(SETTING_APP_LANGUAGE, "ja");
+        let result = svc.set(SETTING_APP_LANGUAGE, "de");
 
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid app language"));

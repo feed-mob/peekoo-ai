@@ -37,6 +37,7 @@ const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
+const SETTING_APP_LANGUAGE: &str = "app_language";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -44,6 +45,83 @@ enum TrayMenuAction {
     OpenSettings,
     OpenAbout,
     Quit,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct TrayMenuLabels {
+    toggle_pet: &'static str,
+    settings: &'static str,
+    about: &'static str,
+    quit: &'static str,
+    tooltip: &'static str,
+}
+
+fn tray_menu_labels(language: &str) -> TrayMenuLabels {
+    if language == "zh-CN" {
+        return TrayMenuLabels {
+            toggle_pet: "显示/隐藏精灵",
+            settings: "设置",
+            about: "关于 Peekoo",
+            quit: "退出 Peekoo",
+            tooltip: TRAY_TOOLTIP,
+        };
+    }
+    if language == "ja" {
+        return TrayMenuLabels {
+            toggle_pet: "ペットを表示/非表示",
+            settings: "設定",
+            about: "Peekoo について",
+            quit: "Peekoo を終了",
+            tooltip: TRAY_TOOLTIP,
+        };
+    }
+    if language == "es" {
+        return TrayMenuLabels {
+            toggle_pet: "Mostrar/Ocultar mascota",
+            settings: "Configuración",
+            about: "Acerca de Peekoo",
+            quit: "Salir de Peekoo",
+            tooltip: TRAY_TOOLTIP,
+        };
+    }
+    if language == "fr" {
+        return TrayMenuLabels {
+            toggle_pet: "Afficher/Masquer l'animal",
+            settings: "Paramètres",
+            about: "À propos de Peekoo",
+            quit: "Quitter Peekoo",
+            tooltip: TRAY_TOOLTIP,
+        };
+    }
+
+    TrayMenuLabels {
+        toggle_pet: "Show/Hide Pet",
+        settings: "Settings",
+        about: "About Peekoo",
+        quit: "Quit Peekoo",
+        tooltip: TRAY_TOOLTIP,
+    }
+}
+
+fn apply_tray_menu_language(app: &AppHandle, language: &str) -> Result<(), String> {
+    let labels = tray_menu_labels(language);
+    let tray_menu = MenuBuilder::new(app)
+        .text(TRAY_TOGGLE_MENU_ID, labels.toggle_pet)
+        .text(TRAY_SETTINGS_MENU_ID, labels.settings)
+        .text(TRAY_ABOUT_MENU_ID, labels.about)
+        .separator()
+        .text(TRAY_QUIT_MENU_ID, labels.quit)
+        .build()
+        .map_err(|e| format!("Build tray menu error: {e}"))?;
+
+    if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
+        tray.set_menu(Some(tray_menu))
+            .map_err(|e| format!("Set tray menu error: {e}"))?;
+        tray.set_tooltip(Some(labels.tooltip))
+            .map_err(|e| format!("Set tray tooltip error: {e}"))?;
+    }
+
+    Ok(())
 }
 
 fn tray_menu_action(menu_id: &str) -> Option<TrayMenuAction> {
@@ -339,9 +417,14 @@ async fn app_settings_get(
 async fn app_settings_set(
     key: String,
     value: String,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.set_app_setting(&key, &value)
+    state.app.set_app_setting(&key, &value)?;
+    if key == SETTING_APP_LANGUAGE {
+        apply_tray_menu_language(&app, &value)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -359,9 +442,12 @@ async fn app_settings_get_language(state: State<'_, AgentState>) -> Result<Strin
 #[tauri::command]
 async fn app_settings_set_language(
     language: String,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.set_app_language(&language)
+    state.app.set_app_language(&language)?;
+    apply_tray_menu_language(&app, &language)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -945,17 +1031,24 @@ pub fn run() {
     tauri::Builder::default()
         .manage(agent_state)
         .setup(|app| {
+            let initial_language = app
+                .state::<AgentState>()
+                .app
+                .get_app_language()
+                .unwrap_or_else(|_| "en".to_string());
+            let labels = tray_menu_labels(&initial_language);
+
             let tray_menu = MenuBuilder::new(app)
-                .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
-                .text(TRAY_SETTINGS_MENU_ID, "Settings")
-                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
+                .text(TRAY_TOGGLE_MENU_ID, labels.toggle_pet)
+                .text(TRAY_SETTINGS_MENU_ID, labels.settings)
+                .text(TRAY_ABOUT_MENU_ID, labels.about)
                 .separator()
-                .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
+                .text(TRAY_QUIT_MENU_ID, labels.quit)
                 .build()?;
 
             let mut tray_builder = tauri::tray::TrayIconBuilder::with_id(TRAY_ICON_ID)
                 .menu(&tray_menu)
-                .tooltip(TRAY_TOOLTIP)
+                .tooltip(labels.tooltip)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| handle_tray_menu_event(app, event.id().as_ref()))
                 .on_tray_icon_event(|tray, event| {

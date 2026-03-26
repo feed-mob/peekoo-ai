@@ -4,8 +4,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import en from "@/locales/en.json";
 import zh from "@/locales/zh.json";
+import ja from "@/locales/ja.json";
+import es from "@/locales/es.json";
+import fr from "@/locales/fr.json";
 
-export type AppLanguage = "en" | "zh-CN";
+export type AppLanguage = "en" | "zh-CN" | "ja" | "es" | "fr";
 
 const DEFAULT_LANGUAGE: AppLanguage = "en";
 const SETTING_APP_LANGUAGE_KEY = "app_language";
@@ -14,6 +17,15 @@ function normalizeLanguage(value?: string | null): AppLanguage {
   if (!value) return DEFAULT_LANGUAGE;
   if (value === "zh" || value === "zh-CN" || value === "zh-Hans") {
     return "zh-CN";
+  }
+  if (value === "ja" || value === "ja-JP") {
+    return "ja";
+  }
+  if (value === "es" || value === "es-ES" || value === "es-MX") {
+    return "es";
+  }
+  if (value === "fr" || value === "fr-FR" || value === "fr-CA") {
+    return "fr";
   }
   return "en";
 }
@@ -40,6 +52,9 @@ export async function initI18n(): Promise<void> {
     resources: {
       en: { translation: en },
       "zh-CN": { translation: zh },
+      ja: { translation: ja },
+      es: { translation: es },
+      fr: { translation: fr },
     },
     lng,
     fallbackLng: DEFAULT_LANGUAGE,
