@@ -1073,11 +1073,12 @@ fn fire_event_reminder(event_id: &str) -> Result<(), String> {
         return Ok(());
     }
     let meeting_url = event.meeting_url.as_deref().or(event.html_link.as_deref());
-    let _ = peekoo::notify::send_with_action(
+    let _ = peekoo::notify::send_full(
         &event.title,
         "Starts now",
         meeting_url,
         meeting_url.map(|_| "Join meeting"),
+        Some("panel-google-calendar"),
     );
     Ok(())
 }

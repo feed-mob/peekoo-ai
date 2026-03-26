@@ -23,7 +23,7 @@ use crate::host_fns::{peekoo_notify, NotifyRequest};
 /// Returns `true` if the notification was delivered, `false` if it was
 /// suppressed (e.g. by do-not-disturb mode).
 pub fn send(title: &str, body: &str) -> Result<bool, Error> {
-    send_with_action(title, body, None, None)
+    send_full(title, body, None, None, None)
 }
 
 /// Send a desktop notification with an optional action payload.
@@ -33,12 +33,24 @@ pub fn send_with_action(
     action_url: Option<&str>,
     action_label: Option<&str>,
 ) -> Result<bool, Error> {
+    send_full(title, body, action_url, action_label, None)
+}
+
+/// Send a desktop notification with optional action and panel routing.
+pub fn send_full(
+    title: &str,
+    body: &str,
+    action_url: Option<&str>,
+    action_label: Option<&str>,
+    panel_label: Option<&str>,
+) -> Result<bool, Error> {
     let response = unsafe {
         peekoo_notify(Json(NotifyRequest {
             title: title.to_string(),
             body: body.to_string(),
             action_url: action_url.map(ToString::to_string),
             action_label: action_label.map(ToString::to_string),
+            panel_label: panel_label.map(ToString::to_string),
         }))?
     };
 

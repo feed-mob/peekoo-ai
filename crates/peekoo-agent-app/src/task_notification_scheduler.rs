@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
 use peekoo_notifications::{Notification, NotificationService};
@@ -7,6 +7,8 @@ use peekoo_scheduler::Scheduler;
 use peekoo_task_app::{SqliteTaskService, TaskDto, TaskService};
 
 const TASK_NOTIFICATION_OWNER: &str = "task-notifications";
+/// Tasks overdue by more than this are considered stale and skipped on startup.
+const MAX_OVERDUE_GRACE_SECS: i64 = 300;
 
 #[derive(Clone)]
 pub(crate) struct TaskNotificationScheduler {
@@ -136,7 +138,22 @@ fn notification_delay_secs(task: &TaskDto, now: DateTime<Utc>) -> Result<Option<
 
     let delay_ms = start_at.signed_duration_since(now).num_milliseconds();
     if delay_ms <= 0 {
-        return Ok(None);
+        let overdue_secs = now.signed_duration_since(start_at).num_seconds();
+        if overdue_secs > MAX_OVERDUE_GRACE_SECS {
+            tracing::debug!(
+                task_id = task.id,
+                overdue_secs,
+                "Skipping stale overdue task reminder"
+            );
+            return Ok(None);
+        }
+
+        tracing::debug!(
+            task_id = task.id,
+            overdue_secs,
+            "Scheduling overdue task reminder immediately within grace window"
+        );
+        return Ok(Some(0));
     }
 
     Ok(Some(((delay_ms + 999) / 1000) as u64))
@@ -163,4 +180,60 @@ fn scheduled_start_at(task: &TaskDto) -> Result<Option<DateTime<Utc>>, String> {
 
 fn is_notifiable_status(status: &str) -> bool {
     !matches!(status, "done" | "cancelled")
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Duration;
+
+    use super::{notification_delay_secs, MAX_OVERDUE_GRACE_SECS};
+    use peekoo_task_app::TaskDto;
+    use peekoo_task_domain::TaskStatus;
+
+    fn sample_task(start_at: &str) -> TaskDto {
+        TaskDto {
+            id: "task-1".to_string(),
+            title: "Task".to_string(),
+            description: None,
+            status: "todo".to_string(),
+            priority: "medium".to_string(),
+            assignee: "user".to_string(),
+            labels: vec![],
+            scheduled_start_at: Some(start_at.to_string()),
+            scheduled_end_at: None,
+            estimated_duration_min: None,
+            recurrence_rule: None,
+            recurrence_time_of_day: None,
+            parent_task_id: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+            updated_at: chrono::Utc::now().to_rfc3339(),
+            finished_at: None,
+            agent_work_status: None,
+            agent_work_session_id: None,
+            agent_work_attempt_count: None,
+            agent_work_started_at: None,
+            agent_work_completed_at: None,
+        }
+    }
+
+    #[test]
+    fn overdue_task_within_grace_window_fires_immediately() {
+        let now = chrono::Utc::now();
+        let task = sample_task(&(now - Duration::seconds(30)).to_rfc3339());
+
+        let delay = notification_delay_secs(&task, now).expect("delay");
+
+        assert_eq!(delay, Some(0));
+    }
+
+    #[test]
+    fn overdue_task_beyond_grace_window_is_skipped() {
+        let now = chrono::Utc::now();
+        let task =
+            sample_task(&(now - Duration::seconds(MAX_OVERDUE_GRACE_SECS + 30)).to_rfc3339());
+
+        let delay = notification_delay_secs(&task, now).expect("delay");
+
+        assert_eq!(delay, None);
+    }
 }

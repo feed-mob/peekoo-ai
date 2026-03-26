@@ -603,6 +603,19 @@ impl AgentApplication {
             notifications.push(plugin_notification_from_message(notification));
         }
 
+        if !notifications.is_empty() {
+            let sources = notifications
+                .iter()
+                .map(|notification| notification.source_plugin.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            tracing::debug!(
+                count = notifications.len(),
+                sources,
+                "Drained notifications"
+            );
+        }
+
         notifications
     }
 

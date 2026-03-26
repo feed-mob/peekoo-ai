@@ -48,6 +48,8 @@ pub(crate) struct NotifyRequest {
     pub action_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub action_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]

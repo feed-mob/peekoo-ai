@@ -1173,6 +1173,12 @@ where
                 first_error = Some(err);
             }
         } else {
+            tracing::debug!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                panel_label = notification.panel_label,
+                "Emitted sprite bubble notification"
+            );
             delivered_any = true;
         }
 
