@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, Sparkles } from "lucide-react";
 import { Streamdown } from "streamdown";
@@ -6,7 +5,6 @@ import type { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 import type { MiniChatReplyDisplayMode } from "@/features/chat/chat-session";
-import { pomodoroSaveMemo } from "@/features/pomodoro/tool-client";
 
 interface SpriteMiniChatBubbleProps {
   message: Message | null;
@@ -26,25 +24,6 @@ export function SpriteMiniChatBubble({
   const isExpanded = displayMode === "expanded";
   const bubbleText = thinking ? "Thinking..." : message?.text;
   const bubbleKey = thinking ? "thinking" : message?.id;
-  
-  // Quick cast to check for memo role type
-  const isMemo = (message as any)?.role === "memo";
-
-  const [memo, setMemo] = useState<string>("");
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    // null id means it saves to the latest work cycle
-    await pomodoroSaveMemo(null, memo).catch(console.error);
-    setIsSaving(false);
-    setMemo("");
-    // After save, the agent will typically drop the memo ask or we can force close
-  };
-
-  const handleCancel = () => {
-    setMemo("");
-  };
 
   return (
     <AnimatePresence>
@@ -102,45 +81,6 @@ export function SpriteMiniChatBubble({
             )}
           >
             <Streamdown>{bubbleText ?? ""}</Streamdown>
-            
-            {isMemo && (
-              <div className="mt-3 flex flex-col gap-2">
-                <textarea
-                  className={cn(
-                    "w-full rounded-md p-2 text-xs border outline-none",
-                    isDark 
-                      ? "bg-black/40 border-white/10 text-white focus:border-white/30" 
-                      : "bg-white/60 border-black/10 text-black focus:border-black/30"
-                  )}
-                  rows={2}
-                  placeholder="记录你的成果..."
-                  value={memo}
-                  onChange={e => setMemo(e.target.value)}
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    className={cn(
-                      "px-3 py-1 rounded bg-gray-200 text-gray-700 text-[10px] uppercase font-bold tracking-wider hover:bg-gray-300 transition-colors",
-                      isDark && "bg-white/10 text-white/80 hover:bg-white/20"
-                    )}
-                    onClick={handleCancel}
-                    disabled={isSaving}
-                  >
-                    忽略
-                  </button>
-                  <button
-                    className={cn(
-                      "px-3 py-1 rounded bg-pomodoro-focus text-white text-[10px] uppercase font-bold tracking-wider hover:bg-pomodoro-focus/90 transition-colors",
-                      isDark && "hover:bg-pomodoro-focus/80"
-                    )}
-                    onClick={handleSave}
-                    disabled={isSaving || !memo.trim()}
-                  >
-                    {isSaving ? "Saving..." : "保存"}
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </motion.div>
       ) : null}

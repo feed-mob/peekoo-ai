@@ -382,6 +382,7 @@ impl PomodoroAppService {
         let notifications = Arc::clone(&self.notifications);
         let peek_badges = Arc::clone(&self.peek_badges);
         let mood_reactions = Arc::clone(&self.mood_reactions);
+        let scheduler = self.scheduler.clone();
         let wake_conn = Arc::clone(&self.conn);
         let wake_peek_badges = Arc::clone(&self.peek_badges);
 
@@ -391,9 +392,13 @@ impl PomodoroAppService {
                     return;
                 }
 
-                if let Err(err) =
-                    complete_due_session(&conn, &notifications, &peek_badges, &mood_reactions)
-                {
+                if let Err(err) = complete_due_session(
+                    &conn,
+                    &scheduler,
+                    &notifications,
+                    &peek_badges,
+                    &mood_reactions,
+                ) {
                     tracing::warn!("Pomodoro scheduled completion failed: {err}");
                 }
             },
@@ -443,15 +448,7 @@ impl PomodoroAppService {
 
                 if status.settings.auto_advance {
                     let next_mode = match status.mode {
-                        PomodoroMode::Work => {
-                            if status.completed_focus > 0
-                                && status.completed_focus % status.settings.long_break_interval == 0
-                            {
-                                PomodoroMode::Break // Still Break, but we'll use long duration
-                            } else {
-                                PomodoroMode::Break
-                            }
-                        }
+                        PomodoroMode::Work => PomodoroMode::Break,
                         PomodoroMode::Break => PomodoroMode::Work,
                     };
 
@@ -676,6 +673,7 @@ fn insert_cycle_record(
 
 fn complete_due_session(
     conn: &Arc<Mutex<Connection>>,
+    scheduler: &Scheduler,
     notifications: &Arc<NotificationService>,
     peek_badges: &Arc<PeekBadgeService>,
     mood_reactions: &Arc<MoodReactionService>,
@@ -752,7 +750,6 @@ fn complete_due_session(
     });
     if status.state == PomodoroState::Running {
         // sync scheduler and badges for the new auto-started session
-        let scheduler = Scheduler::new();
         scheduler.cancel(POMODORO_OWNER, POMODORO_TIMER_KEY);
         scheduler
             .set(
@@ -908,7 +905,9 @@ mod tests {
             .execute_batch(
                 "ALTER TABLE pomodoro_state ADD COLUMN long_break_minutes INTEGER NOT NULL DEFAULT 15;
                  ALTER TABLE pomodoro_state ADD COLUMN long_break_interval INTEGER NOT NULL DEFAULT 4;
-                 ALTER TABLE pomodoro_state ADD COLUMN auto_advance INTEGER NOT NULL DEFAULT 0;"
+                 ALTER TABLE pomodoro_state ADD COLUMN auto_advance INTEGER NOT NULL DEFAULT 0;
+                 ALTER TABLE pomodoro_state ADD COLUMN last_reset_date TEXT;
+                 ALTER TABLE pomodoro_cycle_history ADD COLUMN memo TEXT;"
             )
             .expect("additional columns should be added");
 

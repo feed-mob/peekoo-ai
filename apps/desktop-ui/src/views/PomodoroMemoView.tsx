@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { X, Send } from "lucide-react";
 import { pomodoroSaveMemo } from "@/features/pomodoro/tool-client";
@@ -6,6 +6,7 @@ import { pomodoroSaveMemo } from "@/features/pomodoro/tool-client";
 export default function PomodoroMemoView() {
   const [memo, setMemo] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -23,10 +24,7 @@ export default function PomodoroMemoView() {
   };
 
   useEffect(() => {
-    const textarea = document.querySelector("textarea");
-    if (textarea) {
-      textarea.focus();
-    }
+    textareaRef.current?.focus();
   }, []);
 
   return (
@@ -52,6 +50,7 @@ export default function PomodoroMemoView() {
       {/* Memo Input */}
       <div className="flex-1 px-4 pb-4">
         <textarea
+          ref={textareaRef}
           value={memo}
           onChange={(e) => setMemo(e.target.value)}
           placeholder="Have a nice day! :D"

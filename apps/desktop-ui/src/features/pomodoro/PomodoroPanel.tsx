@@ -92,10 +92,13 @@ export function PomodoroPanel() {
 
   const handleSaveHistoryMemo = async (id: string) => {
     setIsApplying(true);
-    await pomodoroSaveMemo(id, editingMemo);
-    setIsApplying(false);
-    setExpandedId(null);
-    void fetchStatus(true);
+    try {
+      await pomodoroSaveMemo(id, editingMemo);
+      setExpandedId(null);
+      void fetchStatus(true);
+    } finally {
+      setIsApplying(false);
+    }
   };
 
   const fetchStatus = useCallback(async (forceSync = false) => {
@@ -104,16 +107,13 @@ export function PomodoroPanel() {
     // Fetch history based on date filter
     let nextHistory: PomodoroHistoryEntry[];
     const dateRange = getDateRange(dateFilter);
-    console.log('[Pomodoro] Fetching history with filter:', dateFilter, 'dateRange:', dateRange);
-    
+
     if (dateRange) {
       nextHistory = await getPomodoroHistoryByDateRange(dateRange.start, dateRange.end, HISTORY_LIMIT);
     } else {
       nextHistory = await getPomodoroHistory(6);
     }
-    
-    console.log('[Pomodoro] History fetched:', nextHistory.length, 'records');
-    
+
     if (nextStatus && nextStatus.state !== undefined) {
       // Detect completion state change for celebration animation
       const prevState = prevStateRef.current;
@@ -236,8 +236,6 @@ export function PomodoroPanel() {
   const focusCount = status.completed_focus || 0;
   const breakCount = status.completed_breaks || 0;
   const totalCount = focusCount + breakCount;
-
-  console.log('[Pomodoro] Badge counts:', { focusCount, breakCount, totalCount, status });
 
   const badgeSize = totalCount > 10 ? "w-4 h-4" : "w-5 h-5";
   const iconSize = totalCount > 10 ? "w-2.5 h-2.5" : "w-3 h-3";

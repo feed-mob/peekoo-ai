@@ -7,7 +7,7 @@ import { TaskList } from "./components/TaskList";
 import { TaskQuickInput } from "./components/TaskQuickInput";
 import { ActivityFeed } from "./components/ActivityFeed";
 import { TaskDetailView } from "./components/TaskDetailView";
-import { ErrorToast } from "./components/ErrorToast";
+import { NotificationToast } from "./components/ErrorToast";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { formatSyncStatus } from "./utils/task-sync";
 
@@ -190,7 +190,7 @@ export function TasksPanel() {
       )}
 
       {/* Toast notifications */}
-      <ErrorToast toasts={toasts} onRemove={removeToast} />
+      <NotificationToast toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

@@ -44,7 +44,7 @@ export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProp
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Add a task... (⌘/Ctrl + Enter to submit)"
+          placeholder="Add a task... (Enter to submit)"
           disabled={isCreating}
           className="pl-10 h-11 text-sm bg-glass backdrop-blur-xl border-glass-border text-text-primary placeholder:text-text-muted disabled:opacity-50 focus:border-glow-green dark:focus:border-glow-olive transition-colors"
           aria-label="Task description"

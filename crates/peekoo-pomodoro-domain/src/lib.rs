@@ -75,6 +75,9 @@ impl PomodoroSettings {
         if default_break_minutes == 0 {
             return Err(PomodoroError::InvalidBreakMinutes);
         }
+        if long_break_interval == 0 {
+            return Err(PomodoroError::InvalidLongBreakInterval);
+        }
 
         Ok(Self {
             default_work_minutes,
@@ -285,6 +288,8 @@ pub enum PomodoroError {
     InvalidWorkMinutes,
     #[error("break minutes must be greater than zero")]
     InvalidBreakMinutes,
+    #[error("long break interval must be greater than zero")]
+    InvalidLongBreakInterval,
     #[error("session minutes must be greater than zero")]
     InvalidSessionMinutes,
     #[error("pomodoro is already active")]

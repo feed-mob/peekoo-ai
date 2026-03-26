@@ -427,7 +427,6 @@ async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 #[allow(clippy::too_many_arguments)]
 async fn update_task(
     id: String,
@@ -440,14 +439,11 @@ async fn update_task(
     scheduled_start_at: Option<String>,
     scheduled_end_at: Option<String>,
     estimated_duration_min: Option<Option<u32>>,
-    recurrenceRule: Option<Option<String>>,
-    recurrenceTimeOfDay: Option<Option<String>>,
+    recurrence_rule: Option<Option<String>>,
+    recurrence_time_of_day: Option<Option<String>>,
     state: State<'_, AgentState>,
     _app: AppHandle,
 ) -> Result<TaskDto, String> {
-    println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
-    let recurrence_rule = recurrenceRule;
-    let recurrence_time_of_day = recurrenceTimeOfDay;
     let task = state.app.update_task(
         &id,
         title.as_deref(),
@@ -486,13 +482,12 @@ async fn toggle_task(
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn get_task_activity(
-    taskId: String,
+    task_id: String,
     limit: Option<u32>,
     state: State<'_, AgentState>,
 ) -> Result<Vec<TaskEventDto>, String> {
-    state.app.get_task_activity(&taskId, limit.unwrap_or(50))
+    state.app.get_task_activity(&task_id, limit.unwrap_or(50))
 }
 
 #[tauri::command]
@@ -504,26 +499,24 @@ async fn task_list_events(
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn add_task_comment(
-    taskId: String,
+    task_id: String,
     text: String,
     author: String,
     state: State<'_, AgentState>,
     _app: AppHandle,
 ) -> Result<TaskEventDto, String> {
-    let event = state.app.add_task_comment(&taskId, &text, &author)?;
+    let event = state.app.add_task_comment(&task_id, &text, &author)?;
     Ok(event)
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn delete_task_event(
-    eventId: String,
+    event_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    state.app.delete_task_event(&eventId)?;
+    state.app.delete_task_event(&event_id)?;
     emit_tasks_changed(&app, None);
     Ok(())
 }
@@ -539,6 +532,7 @@ async fn pomodoro_get_status(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn pomodoro_set_settings(
     work_minutes: u32,
     break_minutes: u32,

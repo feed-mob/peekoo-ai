@@ -24,8 +24,6 @@ pub const MIGRATION_0012_POMODORO_CYCLE_MEMO: &str =
     include_str!("../migrations/0012_pomodoro_cycle_memo.sql");
 pub const MIGRATION_0013_POMODORO_DAILY_RESET: &str =
     include_str!("../migrations/0013_pomodoro_daily_reset.sql");
-pub const MIGRATION_0014_ADD_NOTES_COLUMN: &str =
-    include_str!("../migrations/0014_add_notes_column.sql");
 pub const MIGRATION_0011_TASK_FINISHED_AT: &str =
     include_str!("../migrations/0011_task_finished_at.sql");
 

@@ -8,7 +8,7 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
     MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_POMODORO_AUTOPILOT,
     MIGRATION_0011_TASK_FINISHED_AT, MIGRATION_0012_POMODORO_CYCLE_MEMO,
-    MIGRATION_0013_POMODORO_DAILY_RESET, MIGRATION_0014_ADD_NOTES_COLUMN,
+    MIGRATION_0013_POMODORO_DAILY_RESET,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -733,69 +733,6 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|e| format!("Record migration 0013 state error: {e}"))?;
-    }
-
-    // Migration 0014: Add notes column if missing (for databases created before notes was in schema)
-    let already_applied_0014: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0014_add_notes_column'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0014 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0014 {
-        let migration_sql = MIGRATION_0014_ADD_NOTES_COLUMN;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0014 error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0014_add_notes_column')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0014 state error: {e}"))?;
-    }
-
-    // Migration 0011 (task finished_at) - different migration with same number
-    let already_applied_0011_task: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_task_finished_at'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0011_task_finished_at state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0011_task {
-        for statement in MIGRATION_0011_TASK_FINISHED_AT.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0011_task_finished_at error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_task_finished_at')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0011_task_finished_at state error: {e}"))?;
     }
 
     Ok(())

@@ -1,7 +1,7 @@
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 import type { Toast } from "../hooks/use-toast";
 
-interface ErrorToastProps {
+interface NotificationToastProps {
   toasts: Toast[];
   onRemove: (id: string) => void;
 }
@@ -18,7 +18,7 @@ const styles = {
   info: "bg-blue-500/15 border-blue-500/30 text-blue-700 dark:text-blue-400",
 };
 
-export function ErrorToast({ toasts, onRemove }: ErrorToastProps) {
+export function NotificationToast({ toasts, onRemove }: NotificationToastProps) {
   if (toasts.length === 0) return null;
 
   return (

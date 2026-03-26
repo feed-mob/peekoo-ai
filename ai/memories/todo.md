@@ -94,10 +94,27 @@
 - [ ] Accessibility testing
 - [ ] Security audit
 
+### Technical Debt (from PR #140 review)
+- [ ] Extract shared `next_mode_after_completion()` from duplicate completion paths
+  - `peekoo-pomodoro-app/src/lib.rs`: `refresh_runtime_if_due` (~line 444) and `complete_due_session` (~line 696) both implement auto-advance + long-break-interval logic independently with subtle differences
+  - Extract into a single pure function taking mode, completed_focus, and settings; returns (next_mode, next_minutes)
+- [ ] Consolidate double polling (`usePomodoroWatcher` + `PomodoroPanel`)
+  - Both poll `getPomodoroStatus` every 3s independently; when both mounted, two concurrent IPC calls per tick
+  - Watcher's memo-trigger concern should be driven by backend events or a shared polling source
+- [ ] Refactor migration runner into table-driven loop
+  - `settings/store.rs` `run_migrations_and_seed()` is ~370 lines of copy-pasted check-apply-record blocks
+  - A helper taking `(id, sql)` would reduce to a loop and prevent duplication bugs
+- [ ] Check affected row count in `save_pomodoro_memo` when `id = None`
+  - `peekoo-pomodoro-app/src/lib.rs:244`: UPDATE via correlated subquery silently no-ops if no work cycles exist; caller gets `Ok(status)` with no indication memo wasn't saved
+- [ ] Replace positional column indices in `load_status` with named access
+  - `peekoo-pomodoro-app/src/lib.rs:578`: columns accessed by index (`row.get::<_, i64>(6)?`); if SELECT order changes, values silently read from wrong columns
+  - Use `row.get::<_, T>("column_name")` instead
+- [ ] Simplify `SpritePeekBadge` duplicate icon DOM into CSS drop-shadow
+  - `SpritePeekBadge.tsx:187-246`: two overlapping DOM elements render the same icon for a glow effect; achievable with a single element + `filter: drop-shadow(...)`
+
 ---
 
-**Last updated**: 2026-03-24
-**Status**: Agent task execution now supports immediate `@peekoo-agent` follow-up triggering, comment-only follow-up context, session reuse, and agent comment/status notifications
+**Last updated**: 2026-03-26
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring
