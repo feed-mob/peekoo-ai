@@ -367,26 +367,30 @@ dependencies = [
 
 [[package]]
 name = "asupersync"
-version = "0.2.5"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c7d8c72c8d8a870a9e5a85a57b04d4e8d15d4be238a0a5818e8c87be2a89da"
+checksum = "0348801439f904e16ef77c54e0ea053e3821a52d8875a77b3d4ac803ad8d0662"
 dependencies = [
  "base64 0.22.1",
  "bincode-next",
+ "crossbeam-deque",
  "crossbeam-queue",
  "franken-decision",
  "franken-evidence",
  "franken-kernel",
+ "futures-lite",
  "getrandom 0.4.2",
+ "hashbrown 0.15.5",
  "hmac",
+ "js-sys",
  "libc",
+ "memchr",
  "nix",
  "parking_lot",
  "pin-project",
  "polling",
  "ring",
  "rmp-serde",
- "rusqlite",
  "rustls",
  "rustls-native-certs",
  "rustls-pemfile",
@@ -395,6 +399,7 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "signal-hook 0.3.18",
  "slab",
  "smallvec",
  "socket2",
@@ -403,6 +408,9 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "visibility",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "x509-parser",
 ]
 
@@ -2757,9 +2765,9 @@ dependencies = [
 
 [[package]]
 name = "franken-decision"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b47c84d2d9791dc0207b7325784cdd814057399493831a88a03c690cab7ce38b"
+checksum = "b33fa1070b94d690c87242247a8e402afbbf983b3f770d5ef45f61fb600f6349"
 dependencies = [
  "franken-evidence",
  "franken-kernel",
@@ -2768,9 +2776,9 @@ dependencies = [
 
 [[package]]
 name = "franken-evidence"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2224c5a9cdc435e1fbbb0b86d3f611d0a142314869da688e249ae1b6e961df19"
+checksum = "055cfe4bb1cc6706adf273e41d75d941b10be8ada0ff4ae5f2f564d91cf24a90"
 dependencies = [
  "serde",
  "serde_json",
@@ -2778,9 +2786,9 @@ dependencies = [
 
 [[package]]
 name = "franken-kernel"
-version = "0.2.7"
+version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9e5cf9bc6789c038384934224c175b12b843270f11b7afcba4645636d63e503"
+checksum = "6d5127a59ac195a757e4fdad400ad808528e9b435d1188ef22e8ae079c868114"
 dependencies = [
  "serde",
 ]
@@ -3134,11 +3142,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0de51e6874e94e7bf76d726fc5d13ba782deca734ff60d5bb2fb2607c7406555"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "r-efi 6.0.0",
  "rand_core 0.10.0",
  "wasip2",
  "wasip3",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -4321,7 +4331,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.61.2",
 ]
 
 [[package]]
@@ -4947,7 +4957,6 @@ version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95b4103cffefa72eb8428cb6b47d6627161e51c2739fc5e3b734584157bc642a"
 dependencies = [
- "cc",
  "pkg-config",
  "vcpkg",
 ]
@@ -5764,7 +5773,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.45.0",
 ]
 
 [[package]]
@@ -6281,9 +6290,8 @@ dependencies = [
 
 [[package]]
 name = "pi_agent_rust"
-version = "0.1.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5168fc48b61c8bcb4b63414c0079477cb3783b98a5bc0a35f02edd71f7c0ce94"
+version = "0.1.10"
+source = "git+https://github.com/0xRichardH/pi_agent_rust?branch=main#d8b22f76131763c824b22dc20b863ccbc1722d7c"
 dependencies = [
  "anyhow",
  "arboard",
@@ -6317,6 +6325,7 @@ dependencies = [
  "regex",
  "rich_rust",
  "rquickjs",
+ "semver",
  "serde",
  "serde_json",
  "sha1",
@@ -6342,6 +6351,7 @@ dependencies = [
  "url",
  "uuid",
  "vergen-gix",
+ "xxhash-rust",
 ]
 
 [[package]]
@@ -11782,6 +11792,12 @@ dependencies = [
  "libc",
  "rustix 1.1.4",
 ]
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fdd20c5420375476fbd4394763288da7eb0cc0b8c11deed431a91562af7335d3"
 
 [[package]]
 name = "y4m"
