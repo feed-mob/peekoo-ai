@@ -5973,7 +5973,7 @@ dependencies = [
 
 [[package]]
 name = "peekoo-desktop-tauri"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "dirs",
  "log",
