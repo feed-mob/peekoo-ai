@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = { version = "2", features = ["tracing"] }
 tauri-plugin-notification = "2"
@@ -31,3 +31,6 @@ peekoo-agent-app = { path = "../../../crates/peekoo-agent-app", default-features
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dirs = "6"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
