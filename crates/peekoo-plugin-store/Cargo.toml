@@ -16,4 +16,4 @@ peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-task-domain = { path = "../peekoo-task-domain" }
 peekoo-task-app = { path = "../peekoo-task-app" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
-rusqlite = { version = "0.38" }
+rusqlite = { workspace = true }
