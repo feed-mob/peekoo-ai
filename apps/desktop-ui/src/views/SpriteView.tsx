@@ -14,6 +14,7 @@ import {
   getSpriteStagePadding,
   getSpriteWindowSize,
 } from "@/lib/sprite-bubble-layout";
+import { getSpriteBubbleDurationMs } from "@/lib/sprite-notification-presentation";
 import { useSpriteState } from "@/hooks/use-sprite-state";
 import { usePanelWindows } from "@/hooks/use-panel-windows";
 import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
@@ -26,7 +27,6 @@ import {
 } from "@/features/chat/chat-session";
 import { usePomodoroWatcher } from "@/hooks/use-pomodoro-watcher";
 import {
-  SPRITE_BUBBLE_DURATION_MS,
   SPRITE_BUBBLE_EVENT,
   SpriteBubblePayloadSchema,
 } from "@/types/sprite-bubble";
@@ -214,13 +214,14 @@ export default function SpriteView() {
       setMiniChatActiveReplyId(null);
       setMiniChatAwaitingReply(false);
       showBubble(parsed.data);
+      const durationMs = getSpriteBubbleDurationMs(parsed.data);
 
       clearMoodResetTimer();
       setMoodOverride("reminder");
       moodResetTimerRef.current = window.setTimeout(() => {
         setMoodOverride(null);
         moodResetTimerRef.current = null;
-      }, SPRITE_BUBBLE_DURATION_MS);
+      }, durationMs);
     });
 
     return () => {
@@ -511,6 +512,10 @@ export default function SpriteView() {
           <SpriteBubble
             payload={bubblePayload}
             visible={bubbleVisible && !miniChatOpen}
+            onOpenPanel={(panelLabel) => {
+              clearBubble();
+              void openPanel(panelLabel);
+            }}
           />
           <SpriteMiniChat
             open={miniChatOpen}

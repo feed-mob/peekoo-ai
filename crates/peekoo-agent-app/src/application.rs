@@ -36,6 +36,7 @@ use crate::settings::{
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
 };
+use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 use peekoo_task_app::SqliteTaskService;
@@ -56,6 +57,7 @@ pub struct AgentApplication {
     plugin_store: PluginStoreService,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
+    task_notifications: Arc<TaskNotificationScheduler>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
     shutdown_token: CancellationToken,
@@ -99,6 +101,11 @@ impl AgentApplication {
             Arc::new(sqlite_task_service.clone());
         let (notifications, notification_receiver) = NotificationService::new();
         let notifications = Arc::new(notifications);
+        let task_notifications = Arc::new(TaskNotificationScheduler::new(
+            sqlite_task_service.clone(),
+            Arc::clone(&notifications),
+        ));
+        task_notifications.start()?;
         let peek_badges = Arc::new(PeekBadgeService::new());
         let mood_reactions = Arc::new(MoodReactionService::new());
         let pomodoro = PomodoroAppService::new(
@@ -140,6 +147,7 @@ impl AgentApplication {
             plugin_store: PluginStoreService::new(),
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
+            task_notifications,
             peek_badges,
             mood_reactions,
             shutdown_token,
@@ -365,7 +373,7 @@ impl AgentApplication {
         recurrence_rule: Option<&str>,
         recurrence_time_of_day: Option<&str>,
     ) -> Result<TaskDto, String> {
-        self.task_service.create_task(
+        self.task_runtime_service().create_task(
             title,
             priority,
             assignee,
@@ -399,7 +407,7 @@ impl AgentApplication {
         recurrence_rule: Option<Option<&str>>,
         recurrence_time_of_day: Option<Option<&str>>,
     ) -> Result<TaskDto, String> {
-        self.task_service.update_task(
+        self.task_runtime_service().update_task(
             id,
             title,
             priority,
@@ -416,11 +424,11 @@ impl AgentApplication {
     }
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
-        self.task_service.delete_task(id)
+        self.task_runtime_service().delete_task(id)
     }
 
     pub fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
-        self.task_service.toggle_task(id)
+        self.task_runtime_service().toggle_task(id)
     }
 
     /// Create a task from natural language text
@@ -431,7 +439,7 @@ impl AgentApplication {
 
         let parsed = parse_task_text(text);
 
-        self.task_service.create_task(
+        self.task_runtime_service().create_task(
             &parsed.title,
             parsed.priority.as_deref().unwrap_or("medium"),
             parsed.assignee.as_deref().unwrap_or("user"),
@@ -593,6 +601,19 @@ impl AgentApplication {
         let mut notifications = Vec::new();
         while let Ok(notification) = receiver.try_recv() {
             notifications.push(plugin_notification_from_message(notification));
+        }
+
+        if !notifications.is_empty() {
+            let sources = notifications
+                .iter()
+                .map(|notification| notification.source_plugin.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            tracing::debug!(
+                count = notifications.len(),
+                sources,
+                "Drained notifications"
+            );
         }
 
         notifications
@@ -953,6 +974,7 @@ impl AgentApplication {
         TaskRuntimeService::new(
             self.task_service.clone(),
             Arc::clone(&self.notifications),
+            Arc::clone(&self.task_notifications),
             follow_up_trigger,
             task_change_callback,
         )

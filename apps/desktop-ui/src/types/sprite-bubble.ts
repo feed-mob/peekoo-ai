@@ -1,9 +1,10 @@
 import { z } from "zod";
 
 export const SPRITE_BUBBLE_EVENT = "sprite:bubble" as const;
-export const SPRITE_BUBBLE_DURATION_MS = 5000;
 
 export const SpriteBubblePayloadSchema = z.object({
+  sourcePlugin: z.string().min(1).optional(),
+  panelLabel: z.string().startsWith("panel-").optional(),
   title: z.string().min(1),
   body: z.string().min(1),
   actionUrl: z.string().url().optional(),

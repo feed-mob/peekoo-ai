@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { SPRITE_BUBBLE_DURATION_MS, type SpriteBubblePayload } from "@/types/sprite-bubble";
+import { getSpriteBubbleDurationMs } from "@/lib/sprite-notification-presentation";
+import type { SpriteBubblePayload } from "@/types/sprite-bubble";
 
 const FADE_OUT_DURATION_MS = 220;
 
@@ -22,6 +23,7 @@ export function useSpriteBubble() {
   }, []);
 
   const showBubble = useCallback((nextPayload: SpriteBubblePayload) => {
+    const durationMs = getSpriteBubbleDurationMs(nextPayload);
     clearTimers();
     setPayload(nextPayload);
     setVisible(true);
@@ -32,7 +34,7 @@ export function useSpriteBubble() {
         setPayload(null);
         clearTimerRef.current = null;
       }, FADE_OUT_DURATION_MS);
-    }, SPRITE_BUBBLE_DURATION_MS);
+    }, durationMs);
   }, [clearTimers]);
 
   const clearBubble = useCallback(() => {

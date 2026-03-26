@@ -11,6 +11,7 @@ pub struct Notification {
     pub body: String,
     pub action_url: Option<String>,
     pub action_label: Option<String>,
+    pub panel_label: Option<String>,
 }
 
 pub struct NotificationService {

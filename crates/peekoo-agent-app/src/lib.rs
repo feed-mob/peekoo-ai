@@ -5,6 +5,7 @@ pub mod mcp_server;
 pub mod plugin;
 pub mod plugin_tool_impl;
 pub mod settings;
+mod task_notification_scheduler;
 pub mod task_parser;
 mod task_runtime_service;
 pub mod task_tools;

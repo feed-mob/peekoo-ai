@@ -466,6 +466,7 @@ fn host_notify(
         body: req["body"].as_str().unwrap_or_default().to_string(),
         action_url: req["actionUrl"].as_str().map(ToString::to_string),
         action_label: req["actionLabel"].as_str().map(ToString::to_string),
+        panel_label: req["panelLabel"].as_str().map(ToString::to_string),
     });
 
     write_output(
