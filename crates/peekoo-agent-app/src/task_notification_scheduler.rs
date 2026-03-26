@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
 use peekoo_notifications::{Notification, NotificationService};
@@ -186,9 +186,8 @@ fn is_notifiable_status(status: &str) -> bool {
 mod tests {
     use chrono::Duration;
 
-    use super::{notification_delay_secs, MAX_OVERDUE_GRACE_SECS};
+    use super::{MAX_OVERDUE_GRACE_SECS, notification_delay_secs};
     use peekoo_task_app::TaskDto;
-    use peekoo_task_domain::TaskStatus;
 
     fn sample_task(start_at: &str) -> TaskDto {
         TaskDto {
