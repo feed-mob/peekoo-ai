@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { MessageSquarePlus, Send, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { useChatSession } from "./chat-session";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
@@ -14,13 +15,25 @@ export function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { messages, isTyping, sendMessage, startNewChat } = useChatSession();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    requestAnimationFrame(() => {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    });
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, scrollToBottom]);
+
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unlistenPromise = win.listen("tauri://focus", () => {
+      scrollToBottom();
+    });
+    return () => {
+      void unlistenPromise.then((fn) => fn());
+    };
+  }, [scrollToBottom]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
