@@ -537,6 +537,9 @@ impl PomodoroAppService {
             source: POMODORO_OWNER.to_string(),
             title: title.to_string(),
             body: body.to_string(),
+            action_url: None,
+            action_label: None,
+            panel_label: None,
         });
 
         self.publish_badges(status);
@@ -714,6 +717,9 @@ fn complete_due_session(
         source: POMODORO_OWNER.to_string(),
         title: title.to_string(),
         body: message,
+        action_url: None,
+        action_label: None,
+        panel_label: None,
     });
     if status.state == PomodoroState::Running {
         // sync scheduler and badges for the new auto-started session

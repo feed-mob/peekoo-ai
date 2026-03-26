@@ -12,3 +12,6 @@ serde_json = "1"
 thiserror = "1"
 tracing = "0.1"
 uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+peekoo-persistence-sqlite = { path = "../persistence-sqlite" }

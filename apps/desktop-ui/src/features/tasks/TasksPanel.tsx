@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, Calendar, ListTodo, CheckCheck, CalendarDays, RefreshCw } from "lucide-react";
 import type { TaskTab } from "@/types/task";
 import { useTasks } from "./hooks/use-tasks";
 import { TaskList } from "./components/TaskList";
@@ -9,6 +9,7 @@ import { ActivityFeed } from "./components/ActivityFeed";
 import { TaskDetailView } from "./components/TaskDetailView";
 import { ErrorToast } from "./components/ErrorToast";
 import { LoadingSpinner } from "./components/LoadingSpinner";
+import { formatSyncStatus } from "./utils/task-sync";
 
 const TAB_CONFIG: { value: TaskTab; label: string; emoji: string }[] = [
   { value: "today", label: "Today", emoji: "📅" },
@@ -50,6 +51,8 @@ export function TasksPanel() {
     activityEvents,
     stats,
     isLoading,
+    isRefreshing,
+    lastSyncedAt,
     isCreating,
     isToggling,
     isUpdating,
@@ -97,43 +100,17 @@ export function TasksPanel() {
   return (
     <div className="flex flex-col h-full gap-3">
       {/* Header with stats */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          <CheckCircle2 size={18} className="text-glow-green dark:text-glow-olive" />
+      <div className="flex items-center justify-between gap-3">
+        <div>
           <h2 className="text-base font-semibold text-text-primary">Tasks</h2>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-text-muted font-medium">
-            {stats.completed} / {stats.total}
-          </span>
-          <div className="relative w-8 h-8">
-            <svg className="w-8 h-8 -rotate-90" viewBox="0 0 32 32">
-              <circle
-                cx="16"
-                cy="16"
-                r="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-space-surface opacity-30"
-              />
-              <circle
-                cx="16"
-                cy="16"
-                r="14"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                className="text-glow-green dark:text-glow-olive transition-all duration-500"
-                strokeDasharray={`${(stats.total > 0 ? stats.completed / stats.total : 0) * 88} 88`}
-              />
-            </svg>
-            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-text-primary">
-              {stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}
-            </span>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted">
+            <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
+            <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
           </div>
         </div>
+        <span className="text-xs text-text-muted font-medium">
+          {stats.completed} / {stats.total} done
+        </span>
       </div>
 
       {/* Main Tabs */}
@@ -187,21 +164,21 @@ export function TasksPanel() {
 
           {/* Task list */}
           <ScrollArea className="flex-1 -mx-1 px-1">
-            <div className="space-y-2.5 pr-2">
-              {tasks.length === 0 ? (
-                <EmptyState tab={activeTab} />
-              ) : (
-                <TaskList
-                  tasks={tasks}
-                  onToggle={toggleTask}
-                  onDelete={deleteTask}
-                  onStatusChange={updateTaskStatus}
-                  onSelect={setSelectedTaskId}
-                  isToggling={isToggling}
-                  isDeleting={isDeleting}
-                />
-              )}
-            </div>
+            {tasks.length === 0 ? (
+              <EmptyState tab={activeTab} />
+            ) : (
+              <TaskList
+                tasks={tasks}
+                onToggle={toggleTask}
+                onDelete={deleteTask}
+                onStatusChange={updateTaskStatus}
+                onSelect={setSelectedTaskId}
+                isTodayTab={activeTab === "today"}
+                isToggling={isToggling}
+                isUpdating={isUpdating}
+                isDeleting={isDeleting}
+              />
+            )}
           </ScrollArea>
         </>
       ) : (

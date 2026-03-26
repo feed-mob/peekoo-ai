@@ -123,7 +123,9 @@ impl SqliteTaskService {
             recurrence_rule: recurrence_rule.map(String::from),
             recurrence_time_of_day: recurrence_time_of_day.map(String::from),
             parent_task_id: None,
-            created_at: now,
+            created_at: now.clone(),
+            updated_at: now,
+            finished_at: None,
             agent_work_status: agent_work_status.map(String::from),
             agent_work_session_id: None,
             agent_work_attempt_count: Some(0),
@@ -136,7 +138,7 @@ impl SqliteTaskService {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks ORDER BY created_at DESC",
+                "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at, finished_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks ORDER BY created_at DESC",
             )
             .map_err(|e| format!("Prepare list_tasks error: {e}"))?;
 
@@ -160,11 +162,13 @@ impl SqliteTaskService {
                     recurrence_time_of_day: row.get(11)?,
                     parent_task_id: row.get(12)?,
                     created_at: row.get(13)?,
-                    agent_work_status: row.get(14)?,
-                    agent_work_session_id: row.get(15)?,
-                    agent_work_attempt_count: row.get(16)?,
-                    agent_work_started_at: row.get(17)?,
-                    agent_work_completed_at: row.get(18)?,
+                    updated_at: row.get(14)?,
+                    finished_at: row.get(15)?,
+                    agent_work_status: row.get(16)?,
+                    agent_work_session_id: row.get(17)?,
+                    agent_work_attempt_count: row.get(18)?,
+                    agent_work_started_at: row.get(19)?,
+                    agent_work_completed_at: row.get(20)?,
                 })
             })
             .map_err(|e| format!("Query tasks error: {e}"))?;
@@ -235,13 +239,23 @@ impl SqliteTaskService {
 
         if let Some(s) = status {
             let parsed = parse_task_status(s)?;
+            let normalized_status = task_status_to_str(parsed).to_string();
+            let now = Utc::now().to_rfc3339();
+            let finished_at = next_finished_at(
+                &current.status,
+                &normalized_status,
+                &now,
+                current.finished_at.as_deref(),
+            );
             conn.execute(
-                "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE id = ?3",
-                params![s.to_lowercase(), Utc::now().to_rfc3339(), id],
+                "UPDATE tasks SET status = ?1, updated_at = ?2, finished_at = ?3 WHERE id = ?4",
+                params![normalized_status, now, finished_at, id],
             )
             .map_err(|e| format!("Update task status error: {e}"))?;
             let from_status = current.status.clone();
-            current.status = task_status_to_str(parsed).to_string();
+            current.status = normalized_status;
+            current.updated_at = now;
+            current.finished_at = finished_at;
             self.write_event_inner(
                 &conn,
                 id,
@@ -362,7 +376,8 @@ impl SqliteTaskService {
         drop(conn);
         self.checkpoint();
 
-        Ok(current)
+        let conn = self.conn()?;
+        self.load_task(&conn, id)
     }
 
     pub fn delete_task(&self, id: &str) -> Result<(), String> {
@@ -402,15 +417,21 @@ impl SqliteTaskService {
         let current = self.load_task(&conn, id)?;
 
         let new_status = if current.status == "done" {
-            "todo"
+            "in_progress"
         } else {
             "done"
         };
         let now = Utc::now().to_rfc3339();
+        let finished_at = next_finished_at(
+            &current.status,
+            new_status,
+            &now,
+            current.finished_at.as_deref(),
+        );
 
         conn.execute(
-            "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE id = ?3",
-            params![new_status, now, id],
+            "UPDATE tasks SET status = ?1, updated_at = ?2, finished_at = ?3 WHERE id = ?4",
+            params![new_status, now, finished_at, id],
         )
         .map_err(|e| format!("Toggle task error: {e}"))?;
 
@@ -467,9 +488,8 @@ impl SqliteTaskService {
         drop(conn);
         self.checkpoint();
 
-        let mut updated = current;
-        updated.status = new_status.to_string();
-        Ok(updated)
+        let conn = self.conn()?;
+        self.load_task(&conn, id)
     }
 
     // ── Task Events ─────────────────────────────────────────────────
@@ -538,7 +558,7 @@ impl SqliteTaskService {
 
     fn load_task(&self, conn: &Connection, id: &str) -> Result<TaskDto, String> {
         conn.query_row(
-            "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks WHERE id = ?1",
+            "SELECT id, title, notes, status, priority, assignee, labels_json, scheduled_start_at, scheduled_end_at, estimated_duration_min, recurrence_rule, recurrence_time_of_day, parent_task_id, created_at, updated_at, finished_at, agent_work_status, agent_work_session_id, agent_work_attempt_count, agent_work_started_at, agent_work_completed_at FROM tasks WHERE id = ?1",
             params![id],
             |row| {
                 let labels_json: String = row.get(6)?;
@@ -559,11 +579,13 @@ impl SqliteTaskService {
                     recurrence_time_of_day: row.get(11)?,
                     parent_task_id: row.get(12)?,
                     created_at: row.get(13)?,
-                    agent_work_status: row.get(14)?,
-                    agent_work_session_id: row.get(15)?,
-                    agent_work_attempt_count: row.get(16)?,
-                    agent_work_started_at: row.get(17)?,
-                    agent_work_completed_at: row.get(18)?,
+                    updated_at: row.get(14)?,
+                    finished_at: row.get(15)?,
+                    agent_work_status: row.get(16)?,
+                    agent_work_session_id: row.get(17)?,
+                    agent_work_attempt_count: row.get(18)?,
+                    agent_work_started_at: row.get(19)?,
+                    agent_work_completed_at: row.get(20)?,
                 })
             },
         )
@@ -699,9 +721,10 @@ impl SqliteTaskService {
             None => Err("Task not found".to_string()),
             Some(None) => Ok(false), // NULL status — not an agent task
             Some(Some(ref status)) if status == "pending" || status == "failed" => {
+                let now = Utc::now().to_rfc3339();
                 let rows = conn.execute(
-                    "UPDATE tasks SET agent_work_status = 'claimed' WHERE id = ?1 AND agent_work_status IN ('pending', 'failed')",
-                    params![task_id],
+                    "UPDATE tasks SET agent_work_status = 'claimed', updated_at = ?2 WHERE id = ?1 AND agent_work_status IN ('pending', 'failed')",
+                    params![task_id, now],
                 )
                 .map_err(|e| format!("Claim task error: {e}"))?;
                 drop(conn);
@@ -724,22 +747,22 @@ impl SqliteTaskService {
         match status {
             "executing" => {
                 conn.execute(
-                    "UPDATE tasks SET agent_work_status = ?1, agent_work_session_id = ?2, agent_work_started_at = ?3 WHERE id = ?4",
+                    "UPDATE tasks SET agent_work_status = ?1, agent_work_session_id = ?2, agent_work_started_at = ?3, updated_at = ?3 WHERE id = ?4",
                     params![status, session_id, now, task_id],
                 )
                 .map_err(|e| format!("Update agent work status error: {e}"))?;
             }
             "completed" | "failed" => {
                 conn.execute(
-                    "UPDATE tasks SET agent_work_status = ?1, agent_work_completed_at = ?2 WHERE id = ?3",
+                    "UPDATE tasks SET agent_work_status = ?1, agent_work_completed_at = ?2, updated_at = ?2 WHERE id = ?3",
                     params![status, now, task_id],
                 )
                 .map_err(|e| format!("Update agent work status error: {e}"))?;
             }
             _ => {
                 conn.execute(
-                    "UPDATE tasks SET agent_work_status = ?1 WHERE id = ?2",
-                    params![status, task_id],
+                    "UPDATE tasks SET agent_work_status = ?1, updated_at = ?3 WHERE id = ?2",
+                    params![status, task_id, now],
                 )
                 .map_err(|e| format!("Update agent work status error: {e}"))?;
             }
@@ -764,9 +787,10 @@ impl SqliteTaskService {
                  agent_work_session_id = NULL,
                  agent_work_attempt_count = 0,
                  agent_work_started_at = NULL,
-                 agent_work_completed_at = NULL
+                 agent_work_completed_at = NULL,
+                 updated_at = ?2
              WHERE id = ?1",
-            params![task_id],
+            params![task_id, Utc::now().to_rfc3339()],
         )
         .map_err(|e| format!("Requeue agent task error: {e}"))?;
 
@@ -779,8 +803,8 @@ impl SqliteTaskService {
         let conn = self.conn()?;
 
         conn.execute(
-            "UPDATE tasks SET agent_work_attempt_count = agent_work_attempt_count + 1 WHERE id = ?1",
-            params![task_id],
+            "UPDATE tasks SET agent_work_attempt_count = agent_work_attempt_count + 1, updated_at = ?2 WHERE id = ?1",
+            params![task_id, Utc::now().to_rfc3339()],
         )
         .map_err(|e| format!("Increment attempt count error: {e}"))?;
 
@@ -806,8 +830,8 @@ impl SqliteTaskService {
                 "SELECT id, title, notes, status, priority, assignee, labels_json,
                         scheduled_start_at, scheduled_end_at, estimated_duration_min,
                         recurrence_rule, recurrence_time_of_day, parent_task_id, created_at,
-                        agent_work_status, agent_work_session_id, agent_work_attempt_count,
-                        agent_work_started_at, agent_work_completed_at
+                        updated_at, finished_at, agent_work_status, agent_work_session_id,
+                        agent_work_attempt_count, agent_work_started_at, agent_work_completed_at
                  FROM tasks
                  WHERE assignee != 'user'
                    AND status != 'done'
@@ -835,11 +859,13 @@ impl SqliteTaskService {
                     recurrence_time_of_day: row.get(11)?,
                     parent_task_id: row.get(12)?,
                     created_at: row.get(13)?,
-                    agent_work_status: row.get(14)?,
-                    agent_work_session_id: row.get(15)?,
-                    agent_work_attempt_count: row.get(16)?,
-                    agent_work_started_at: row.get(17)?,
-                    agent_work_completed_at: row.get(18)?,
+                    updated_at: row.get(14)?,
+                    finished_at: row.get(15)?,
+                    agent_work_status: row.get(16)?,
+                    agent_work_session_id: row.get(17)?,
+                    agent_work_attempt_count: row.get(18)?,
+                    agent_work_started_at: row.get(19)?,
+                    agent_work_completed_at: row.get(20)?,
                 })
             })
             .map_err(|e| format!("Query tasks error: {e}"))?
@@ -916,10 +942,16 @@ impl SqliteTaskService {
             TaskStatus::Cancelled => "cancelled",
         };
         let now = Utc::now().to_rfc3339();
+        let finished_at = next_finished_at(
+            &current.status,
+            status_str,
+            &now,
+            current.finished_at.as_deref(),
+        );
 
         conn.execute(
-            "UPDATE tasks SET status = ?1, updated_at = ?2 WHERE id = ?3",
-            params![status_str, now, task_id],
+            "UPDATE tasks SET status = ?1, updated_at = ?2, finished_at = ?3 WHERE id = ?4",
+            params![status_str, now, finished_at, task_id],
         )
         .map_err(|e| format!("Update status error: {e}"))?;
 
@@ -1105,6 +1137,22 @@ fn task_status_to_str(status: TaskStatus) -> &'static str {
         TaskStatus::Done => "done",
         TaskStatus::Cancelled => "cancelled",
     }
+}
+
+fn next_finished_at(
+    current_status: &str,
+    next_status: &str,
+    now: &str,
+    current_finished_at: Option<&str>,
+) -> Option<String> {
+    if next_status == "done" {
+        if current_status == "done" {
+            return current_finished_at.map(str::to_string);
+        }
+        return Some(now.to_string());
+    }
+
+    None
 }
 
 fn format_event_summary(event: &TaskEventDto) -> String {

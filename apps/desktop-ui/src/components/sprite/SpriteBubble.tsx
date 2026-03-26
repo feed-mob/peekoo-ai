@@ -1,8 +1,19 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { Droplet, Eye, PersonStanding, Brain, Coffee, type LucideIcon } from "lucide-react";
+import {
+  Droplet,
+  Eye,
+  PersonStanding,
+  Brain,
+  Coffee,
+  CalendarClock,
+  ListTodo,
+  type LucideIcon,
+} from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import type { MouseEvent } from "react";
 import { finishPomodoro } from "@/features/pomodoro/tool-client";
 import { BUBBLE_EXTRA_HEIGHT, BUBBLE_WIDTH } from "@/lib/sprite-bubble-layout";
+import { getSpriteBubbleKind } from "@/lib/sprite-notification-presentation";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 import { cn } from "@/lib/utils";
 import type { SpriteBubblePayload } from "@/types/sprite-bubble";
@@ -10,6 +21,7 @@ import type { SpriteBubblePayload } from "@/types/sprite-bubble";
 interface SpriteBubbleProps {
   payload: SpriteBubblePayload | null;
   visible: boolean;
+  onOpenPanel?: (panelLabel: string) => void;
 }
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -18,6 +30,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   stand: PersonStanding,
   focus: Brain,
   break: Coffee,
+  task: ListTodo,
+  calendar: CalendarClock,
 };
 
 const COLOR_MAP: Record<string, string> = {
@@ -26,36 +40,47 @@ const COLOR_MAP: Record<string, string> = {
   stand: "#eab308",
   focus: "#689B8A",
   break: "#E9762B",
+  task: "#22c55e",
+  calendar: "#38bdf8",
 };
 
 
-export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
+export function SpriteBubble({ payload, visible, onOpenPanel }: SpriteBubbleProps) {
   const isDark = useIsDarkMode();
-  const bodyLower = payload?.body.toLowerCase() || "";
-  const titleLower = payload?.title.toLowerCase() || "";
-  
-  const isHealth = titleLower.includes("health");
-  const isPomodoroWork = titleLower.includes("focus");
-  const isPomodoroBreak = titleLower.includes("break");
-  
-  const type = isHealth
-    ? (bodyLower.includes("water") ? "water" : bodyLower.includes("eye") ? "eye" : bodyLower.includes("stand") ? "stand" : null)
-    : isPomodoroWork ? "focus" : isPomodoroBreak ? "break" : null;
-    
-  const isStyled = isHealth || isPomodoroWork || isPomodoroBreak;
+  const kind = payload ? getSpriteBubbleKind(payload) : "default";
+  const type = kind === "default" ? null : kind;
+  const isStyled = type !== null;
+  const showStyledTitle = kind === "task" || kind === "calendar";
+  const isHealth = kind === "water" || kind === "eye" || kind === "stand";
 
   const Icon = type ? ICON_MAP[type] : null;
   const themeColor = type ? COLOR_MAP[type] : "currentColor";
 
+  const handleActionClick = async (event: MouseEvent) => {
+    event.stopPropagation();
+    if (!payload?.actionUrl) {
+      return;
+    }
+    try {
+      await invoke("system_open_url", { url: payload.actionUrl });
+    } catch (err) {
+      console.error("Failed to open notification action URL:", err);
+    }
+  };
+
   const handleDismiss = async () => {
     if (!isStyled || !type) return;
+    if (payload?.panelLabel) {
+      onOpenPanel?.(payload.panelLabel);
+      return;
+    }
     try {
       if (isHealth) {
         await invoke("plugin_call_tool", {
           toolName: "health_dismiss",
           argsJson: JSON.stringify({ reminder_type: type === "stand" ? "standup" : type === "eye" ? "eye_rest" : "water" })
         });
-      } else {
+      } else if (kind === "focus" || kind === "break") {
         await finishPomodoro();
       }
     } catch (err) {
@@ -126,9 +151,26 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
                    />
                 </div>
               )}
-              <p className="text-[12px] font-medium leading-tight text-text-primary/90 dark:text-white/90">
-                {payload.body}
-              </p>
+              <div className="min-w-0">
+                {showStyledTitle ? (
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-text-primary/60 dark:text-white/60">
+                    {payload.title}
+                  </p>
+                ) : null}
+                <p className="text-[12px] font-medium leading-tight text-text-primary/90 dark:text-white/90">
+                  {payload.body}
+                </p>
+                {showStyledTitle && payload.actionUrl && payload.actionLabel && (
+                  <button
+                    type="button"
+                    onClick={handleActionClick}
+                    className="mt-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold text-white"
+                    style={{ background: themeColor }}
+                  >
+                    {payload.actionLabel}
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <>
@@ -138,6 +180,15 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
               <p className="mt-1 text-[13px] leading-[18px] text-text-primary line-clamp-3">
                 {payload.body}
               </p>
+              {payload.actionUrl && payload.actionLabel && (
+                <button
+                  type="button"
+                  onClick={handleActionClick}
+                  className="mt-3 rounded-lg bg-glow-green/90 px-3 py-1.5 text-[11px] font-semibold text-space-void hover:bg-glow-green"
+                >
+                  {payload.actionLabel}
+                </button>
+              )}
             </>
           )}
         </motion.div>

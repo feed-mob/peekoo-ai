@@ -39,10 +39,13 @@ pub struct Task {
     pub recurrence_rule: Option<String>,
     pub recurrence_time_of_day: Option<String>,
     pub created_at: String,
+    pub updated_at: String,
+    pub finished_at: Option<String>,
 }
 
 impl Task {
     pub fn new(id: impl Into<String>, title: impl Into<String>, priority: TaskPriority) -> Self {
+        let now = chrono::Utc::now().to_rfc3339();
         Self {
             id: id.into(),
             title: title.into(),
@@ -56,12 +59,19 @@ impl Task {
             estimated_duration_min: None,
             recurrence_rule: None,
             recurrence_time_of_day: None,
-            created_at: chrono::Utc::now().to_rfc3339(),
+            created_at: now.clone(),
+            updated_at: now,
+            finished_at: None,
         }
     }
 
     pub fn set_status(&mut self, status: TaskStatus) {
         self.status = status;
+        self.updated_at = chrono::Utc::now().to_rfc3339();
+        self.finished_at = match status {
+            TaskStatus::Done => Some(self.updated_at.clone()),
+            _ => None,
+        };
     }
 
     pub fn set_assignee(&mut self, assignee: impl Into<String>) {

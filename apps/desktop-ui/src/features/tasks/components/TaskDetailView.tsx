@@ -18,9 +18,16 @@ import { LoadingSpinner } from "./LoadingSpinner";
 import {
   PRIORITY_CONFIG,
   RECURRENCE_OPTIONS,
+  STATUS_CONFIG,
+  TASK_STATUS_OPTIONS,
   TIME_OPTIONS,
   formatRecurrenceDisplay,
 } from "../utils/task-formatting";
+import { getAgentWorkStatusBadge } from "../utils/task-agent-work";
+import {
+  getAgentFailureDetail,
+  shouldShowAgentExecutingIndicator,
+} from "../utils/task-agent-work-display";
 import {
   toDateInputValue,
   toTimeInputValue,
@@ -86,7 +93,11 @@ export function TaskDetailView({
     onUpdate({ recurrence_time_of_day: time });
   };
 
+
   const isDone = task.status === "done";
+  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
+  const agentFailureDetail = getAgentFailureDetail(task);
+  const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
   const startDate = toDateInputValue(task.scheduled_start_at);
   const startTime = toTimeInputValue(task.scheduled_start_at);
   const endDate = toDateInputValue(task.scheduled_end_at);
@@ -156,6 +167,46 @@ export function TaskDetailView({
                 {task.title}
               </span>
             )}
+
+            {showExecutingIndicator && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-300"
+                title="Agent is currently working on this task"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                Live
+              </span>
+            )}
+          </div>
+
+          {/* Status selector */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-text-muted w-16">Status</span>
+            <Select
+              value={task.status}
+              onValueChange={(value) => onUpdate({ status: value as Task["status"] })}
+              disabled={isUpdating}
+            >
+              <SelectTrigger className="w-32 h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-space-deep border-glass-border">
+                {TASK_STATUS_OPTIONS.map((option) => {
+                  const config = STATUS_CONFIG[option.value];
+                  return (
+                    <SelectItem key={option.value} value={option.value}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: config.color }}
+                        />
+                        {option.label}
+                      </div>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Priority selector */}
@@ -208,6 +259,33 @@ export function TaskDetailView({
               </SelectContent>
             </Select>
           </div>
+
+          {agentWorkBadge && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-text-muted w-16">Agent</span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold"
+                  style={{
+                    backgroundColor: `${agentWorkBadge.color}20`,
+                    color: agentWorkBadge.color,
+                    border: `1px solid ${agentWorkBadge.color}40`,
+                  }}
+                >
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${agentWorkBadge.animated ? "animate-pulse" : ""}`}
+                    style={{ backgroundColor: agentWorkBadge.color }}
+                  />
+                  {agentWorkBadge.label}
+                </span>
+                {agentFailureDetail && (
+                  <span className="text-[10px] text-text-muted">
+                    {agentFailureDetail}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Labels */}
           <div className="flex items-start gap-2">

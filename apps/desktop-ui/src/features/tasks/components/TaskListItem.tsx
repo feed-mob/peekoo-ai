@@ -4,6 +4,9 @@ import type { Task } from "@/types/task";
 import { TaskLabelPills } from "./TaskLabelPills";
 import { PRIORITY_CONFIG, STATUS_CONFIG, formatTimeRange } from "../utils/task-formatting";
 import { isOverdue } from "../utils/date-helpers";
+import { getAgentWorkStatusBadge } from "../utils/task-agent-work";
+import { shouldShowAgentExecutingIndicator } from "../utils/task-agent-work-display";
+import { getDoneTaskVisualStyle } from "../utils/task-visuals";
 import { LoadingSpinner } from "./LoadingSpinner";
 
 interface TaskListItemProps {
@@ -12,7 +15,9 @@ interface TaskListItemProps {
   onDelete: () => void;
   onStatusChange: (status: Task["status"]) => void;
   onSelect: () => void;
+  isTodayTab?: boolean;
   isToggling?: boolean;
+  isUpdating?: boolean;
   isDeleting?: boolean;
 }
 
@@ -22,7 +27,9 @@ export function TaskListItem({
   onDelete,
   onStatusChange,
   onSelect,
+  isTodayTab = false,
   isToggling = false,
+  isUpdating = false,
   isDeleting = false,
 }: TaskListItemProps) {
   const priority = PRIORITY_CONFIG[task.priority];
@@ -38,12 +45,13 @@ export function TaskListItem({
   );
 
   const overdue = isOverdue(task.scheduled_start_at, task.status);
+  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
+  const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
+  const doneTaskVisualStyle = getDoneTaskVisualStyle(isDone, isTodayTab);
 
   return (
     <div
-      className={`group flex items-stretch gap-2 bg-space-deep border border-glass-border rounded-lg hover:border-glow-green/40 dark:hover:border-glow-olive/40 overflow-hidden transition-colors ${
-        isDone ? "opacity-60" : ""
-      } ${overdue ? "border-l-2 border-l-accent-orange" : ""} ${
+      className={`group flex items-stretch gap-2 bg-space-surface border border-glass-border rounded-sm shadow-sm hover:shadow-md hover:border-glow-green/40 overflow-hidden transition-all ${doneTaskVisualStyle} ${overdue ? "border-l-2 border-l-[#E5484D]" : ""} ${
         isDeleting ? "opacity-50" : ""
       }`}
     >
@@ -97,6 +105,16 @@ export function TaskListItem({
               {task.title}
             </span>
 
+            {showExecutingIndicator && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-300"
+                title="Agent is currently working on this task"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
+                Live
+              </span>
+            )}
+
             {/* Recurrence icon */}
             {task.recurrence_rule && (
               <Repeat size={13} className="shrink-0 text-text-muted/60" />
@@ -111,7 +129,7 @@ export function TaskListItem({
           </div>
 
           {/* Time + Labels row */}
-          <div className="flex items-center gap-2 mt-1.5">
+          <div className="flex items-center gap-2 mt-1 flex-wrap">
             {timeLabel && (
               <span
                 className={`inline-flex items-center gap-1 text-[10px] font-medium ${
@@ -127,6 +145,23 @@ export function TaskListItem({
                 {task.estimated_duration_min}m
               </span>
             )}
+            {agentWorkBadge && (
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                style={{
+                  backgroundColor: `${agentWorkBadge.color}20`,
+                  color: agentWorkBadge.color,
+                  border: `1px solid ${agentWorkBadge.color}40`,
+                }}
+                title={`Agent work status: ${agentWorkBadge.label}`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${agentWorkBadge.animated ? "animate-pulse" : ""}`}
+                  style={{ backgroundColor: agentWorkBadge.color }}
+                />
+                {agentWorkBadge.label}
+              </span>
+            )}
             <TaskLabelPills labels={task.labels} />
           </div>
         </div>
@@ -137,8 +172,8 @@ export function TaskListItem({
             e.stopPropagation();
             onStatusChange(status.next);
           }}
-          disabled={isToggling}
-          className="shrink-0 px-2.5 py-1 rounded-full text-[10px] font-semibold leading-tight transition-all hover:brightness-110 disabled:opacity-50"
+          disabled={isToggling || isUpdating}
+          className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold leading-tight transition-colors hover:brightness-125 disabled:opacity-50"
           style={{
             backgroundColor: `${status.color}15`,
             color: status.color,

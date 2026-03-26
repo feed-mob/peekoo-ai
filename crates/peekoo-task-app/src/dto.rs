@@ -16,6 +16,8 @@ pub struct TaskDto {
     pub recurrence_time_of_day: Option<String>,
     pub parent_task_id: Option<String>,
     pub created_at: String,
+    pub updated_at: String,
+    pub finished_at: Option<String>,
     pub agent_work_status: Option<String>,
     pub agent_work_session_id: Option<String>,
     pub agent_work_attempt_count: Option<u32>,

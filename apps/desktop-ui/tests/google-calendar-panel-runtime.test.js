@@ -106,6 +106,14 @@ async function loadPanelScript() {
       "tabUpcoming",
       "tabDaily",
       "tabWeekly",
+      "taskLinkStatus",
+      "accountToggleButton",
+      "accountDetailsPanel",
+      "settingsToggleButton",
+      "calendarSettingsPanel",
+      "calendarSettingsList",
+      "calendarSettingsStatus",
+      "saveCalendarSettingsButton",
     ].map((id) => [id, createElement(id.startsWith("tab") || id.endsWith("Button") ? "button" : "div")]),
   );
 
@@ -117,6 +125,7 @@ async function loadPanelScript() {
   };
 
   globalThis.window = {
+    addEventListener() {},
     __TAURI__: {
       core: {
         async invoke(command) {
@@ -138,11 +147,38 @@ async function loadPanelScript() {
               today: [],
               week: [
                 {
+                  id: "evt-1",
                   title: "apple one family payment - @Wind_Ace",
                   startAt: "2026-03-20",
+                  endAt: "2026-03-20",
                   allDay: true,
                   calendarName: "Primary",
+                  htmlLink: "https://calendar.google.com/event?eid=abc",
+                  meetingUrl: "https://meet.google.com/abc-defg-hij",
                   location: null,
+                },
+              ],
+              calendars: [
+                {
+                  id: "primary",
+                  name: "Primary",
+                  primary: true,
+                  enabled: true,
+                  accessRole: "owner",
+                },
+                {
+                  id: "team@example.com",
+                  name: "Team",
+                  primary: false,
+                  enabled: false,
+                  accessRole: "reader",
+                },
+              ],
+              eventLinkStatuses: [
+                {
+                  eventId: "evt-1",
+                  taskId: "task-1",
+                  status: "linked",
                 },
               ],
             });
@@ -178,5 +214,39 @@ describe("google calendar panel runtime", () => {
     expect(agendaList.children).toHaveLength(1);
     expect(agendaList.children[0].innerHTML).toContain("Mar");
     expect(agendaList.children[0].innerHTML).toContain("All day");
+    expect(agendaList.children[0].innerHTML).toContain("Join meeting");
+    expect(agendaList.children[0].innerHTML).toContain("Linked");
+    expect(agendaList.children[0].innerHTML).not.toContain("Add to tasks");
+    expect(agendaList.children[0].innerHTML).toContain("View linked task");
+  });
+
+  test("renders stored calendars in settings", async () => {
+    const elements = await loadPanelScript();
+
+    const settingsList = elements.get("calendarSettingsList");
+    expect(settingsList.innerHTML).toContain("Primary");
+    expect(settingsList.innerHTML).toContain("Team");
+    expect(settingsList.innerHTML).toContain("Primary calendar");
+  });
+
+  test("keeps account and settings collapsed by default when connected", async () => {
+    const elements = await loadPanelScript();
+
+    expect(elements.get("accountDetailsPanel").classList.contains("hidden")).toBe(true);
+    expect(elements.get("calendarSettingsPanel").classList.contains("hidden")).toBe(true);
+    expect(elements.get("accountToggleButton").attributes.get("aria-expanded")).toBe("false");
+    expect(elements.get("settingsToggleButton").attributes.get("aria-expanded")).toBe("false");
+  });
+
+  test("expands account and settings sections when toggled", async () => {
+    const elements = await loadPanelScript();
+
+    elements.get("accountToggleButton").click();
+    elements.get("settingsToggleButton").click();
+
+    expect(elements.get("accountDetailsPanel").classList.contains("hidden")).toBe(false);
+    expect(elements.get("calendarSettingsPanel").classList.contains("hidden")).toBe(false);
+    expect(elements.get("accountToggleButton").attributes.get("aria-expanded")).toBe("true");
+    expect(elements.get("settingsToggleButton").attributes.get("aria-expanded")).toBe("true");
   });
 });

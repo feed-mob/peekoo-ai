@@ -36,6 +36,7 @@ const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
 const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
+const TASKS_CHANGED_EVENT: &str = "tasks-changed";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -77,6 +78,21 @@ struct AgentResponse {
 struct ModelInfo {
     provider: String,
     model: String,
+}
+
+#[derive(Clone, Serialize)]
+struct TaskChangeEvent {
+    task_id: Option<String>,
+}
+
+fn emit_tasks_changed(app: &AppHandle, task_id: Option<&str>) {
+    let _ = app.emit_to(
+        MAIN_WINDOW_LABEL,
+        TASKS_CHANGED_EVENT,
+        TaskChangeEvent {
+            task_id: task_id.map(|id| id.to_string()),
+        },
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -376,10 +392,11 @@ async fn create_task(
     recurrence_rule: Option<String>,
     recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     let assignee = assignee.as_deref().unwrap_or("user");
     let labels = labels.as_deref().unwrap_or(&[]);
-    state.app.create_task(
+    let task = state.app.create_task(
         &title,
         &priority,
         assignee,
@@ -390,15 +407,18 @@ async fn create_task(
         estimated_duration_min,
         recurrence_rule.as_deref(),
         recurrence_time_of_day.as_deref(),
-    )
+    )?;
+    Ok(task)
 }
 
 #[tauri::command]
 async fn create_task_from_text(
     text: String,
     state: State<'_, AgentState>,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
-    state.app.create_task_from_text(&text)
+    let task = state.app.create_task_from_text(&text)?;
+    Ok(task)
 }
 
 #[tauri::command]
@@ -423,11 +443,12 @@ async fn update_task(
     recurrenceRule: Option<Option<String>>,
     recurrenceTimeOfDay: Option<Option<String>>,
     state: State<'_, AgentState>,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
     let recurrence_rule = recurrenceRule;
     let recurrence_time_of_day = recurrenceTimeOfDay;
-    state.app.update_task(
+    let task = state.app.update_task(
         &id,
         title.as_deref(),
         priority.as_deref(),
@@ -440,17 +461,28 @@ async fn update_task(
         estimated_duration_min,
         recurrence_rule.as_ref().map(|o| o.as_deref()),
         recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
-    )
+    )?;
+    Ok(task)
 }
 
 #[tauri::command]
-async fn delete_task(id: String, state: State<'_, AgentState>) -> Result<(), String> {
-    state.app.delete_task(&id)
+async fn delete_task(
+    id: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task(&id)?;
+    Ok(())
 }
 
 #[tauri::command]
-async fn toggle_task(id: String, state: State<'_, AgentState>) -> Result<TaskDto, String> {
-    state.app.toggle_task(&id)
+async fn toggle_task(
+    id: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<TaskDto, String> {
+    let task = state.app.toggle_task(&id)?;
+    Ok(task)
 }
 
 #[tauri::command]
@@ -478,14 +510,22 @@ async fn add_task_comment(
     text: String,
     author: String,
     state: State<'_, AgentState>,
+    _app: AppHandle,
 ) -> Result<TaskEventDto, String> {
-    state.app.add_task_comment(&taskId, &text, &author)
+    let event = state.app.add_task_comment(&taskId, &text, &author)?;
+    Ok(event)
 }
 
 #[tauri::command]
 #[allow(non_snake_case)]
-async fn delete_task_event(eventId: String, state: State<'_, AgentState>) -> Result<(), String> {
-    state.app.delete_task_event(&eventId)
+async fn delete_task_event(
+    eventId: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task_event(&eventId)?;
+    emit_tasks_changed(&app, None);
+    Ok(())
 }
 
 #[tauri::command]
@@ -974,6 +1014,16 @@ pub fn run() {
             let _ = tray_builder.build(app)?;
 
             let state = app.state::<AgentState>();
+            let task_change_app = app.handle().clone();
+            if let Err(err) =
+                state
+                    .app
+                    .set_task_change_callback(std::sync::Arc::new(move |task_id| {
+                        emit_tasks_changed(&task_change_app, task_id.as_deref());
+                    }))
+            {
+                return Err(std::io::Error::other(err).into());
+            }
             state.app.start_plugin_runtime();
 
             let app_handle = app.handle().clone();
@@ -1125,15 +1175,67 @@ fn show_plugin_notification(
 }
 
 fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(), String> {
-    for notification in state.app.drain_plugin_notifications() {
-        show_plugin_notification(app, &notification)?;
-        app.emit_to("main", "sprite:bubble", &notification)
-            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
-    }
+    process_plugin_notifications(
+        state.app.drain_plugin_notifications(),
+        |notification| show_plugin_notification(app, notification),
+        |notification| {
+            app.emit_to("main", "sprite:bubble", notification)
+                .map_err(|e| format!("Sprite bubble emit error: {e}"))
+        },
+    )?;
 
     flush_peek_badges(app, state)?;
     flush_mood_reactions(app, state)?;
     Ok(())
+}
+
+fn process_plugin_notifications<S, E>(
+    notifications: Vec<PluginNotificationDto>,
+    mut show: S,
+    mut emit_sprite: E,
+) -> Result<(), String>
+where
+    S: FnMut(&PluginNotificationDto) -> Result<(), String>,
+    E: FnMut(&PluginNotificationDto) -> Result<(), String>,
+{
+    let mut first_error: Option<String> = None;
+
+    for notification in notifications {
+        let mut delivered_any = false;
+
+        if let Err(err) = show(&notification) {
+            tracing::warn!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                "System notification delivery failed: {err}"
+            );
+        } else {
+            delivered_any = true;
+        }
+
+        if let Err(err) = emit_sprite(&notification) {
+            if !delivered_any && first_error.is_none() {
+                first_error = Some(err);
+            }
+        } else {
+            tracing::debug!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                panel_label = notification.panel_label,
+                "Emitted sprite bubble notification"
+            );
+            delivered_any = true;
+        }
+
+        if !delivered_any && first_error.is_none() {
+            first_error = Some("Notification could not be delivered".to_string());
+        }
+    }
+
+    match first_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
@@ -1182,9 +1284,11 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
+    use peekoo_agent_app::PluginNotificationDto;
+
     use super::{
         MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
-        tray_menu_action,
+        process_plugin_notifications, tray_menu_action,
     };
     use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use std::io;
@@ -1371,5 +1475,44 @@ mod tests {
         );
 
         assert_eq!(result, Some(PathBuf::from("/fake/home")));
+    }
+
+    fn sample_notification() -> PluginNotificationDto {
+        PluginNotificationDto {
+            source_plugin: "tasks".to_string(),
+            title: "Task due".to_string(),
+            body: "Starts now".to_string(),
+            action_url: None,
+            action_label: None,
+            panel_label: None,
+        }
+    }
+
+    #[test]
+    fn still_emits_sprite_bubble_when_system_notification_fails() {
+        let mut emitted = Vec::new();
+
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |notification| {
+                emitted.push(notification.title.clone());
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(emitted, vec!["Task due".to_string()]);
+    }
+
+    #[test]
+    fn returns_error_when_no_notification_surface_succeeds() {
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |_| Err("sprite emit failed".to_string()),
+        );
+
+        assert!(result.is_err());
     }
 }

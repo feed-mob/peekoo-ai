@@ -92,6 +92,38 @@ impl PluginRegistry {
         found
     }
 
+    fn discovered_plugin_dir(&self, plugin_key: &str) -> Option<PathBuf> {
+        self.discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
+    }
+
+    pub fn discover_tool_owner(&self, tool_name: &str) -> Option<String> {
+        self.discover().into_iter().find_map(|(_, manifest)| {
+            manifest.tools.as_ref().and_then(|tools| {
+                tools
+                    .definitions
+                    .iter()
+                    .any(|definition| definition.name == tool_name)
+                    .then(|| manifest.plugin.key.clone())
+            })
+        })
+    }
+
+    pub fn reload_plugin(&self, plugin_key: &str) -> Result<(), PluginError> {
+        let plugin_dir = self
+            .discovered_plugin_dir(plugin_key)
+            .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+
+        if let Ok(mut plugins) = self.plugins.lock() {
+            plugins.remove(plugin_key);
+        }
+
+        self.load_plugin(&plugin_dir).map(|_| ())
+    }
+
     pub fn load_plugin(&self, plugin_dir: &Path) -> Result<String, PluginError> {
         let manifest_path = plugin_dir.join("peekoo-plugin.toml");
         let manifest = manifest::load_manifest(&manifest_path)?;
@@ -271,14 +303,32 @@ impl PluginRegistry {
         tool_name: &str,
         input_json: &str,
     ) -> Result<String, PluginError> {
-        let mut plugins = self
-            .plugins
-            .lock()
-            .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
-        let instance = plugins
-            .get_mut(plugin_key)
-            .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
-        instance.call_tool(tool_name, input_json)
+        let first_attempt = {
+            let mut plugins = self
+                .plugins
+                .lock()
+                .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
+            let instance = plugins
+                .get_mut(plugin_key)
+                .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+            instance.call_tool(tool_name, input_json)
+        };
+
+        match first_attempt {
+            Ok(result) => Ok(result),
+            Err(PluginError::ToolNotFound(_)) => {
+                self.reload_plugin(plugin_key)?;
+                let mut plugins = self
+                    .plugins
+                    .lock()
+                    .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
+                let instance = plugins
+                    .get_mut(plugin_key)
+                    .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+                instance.call_tool(tool_name, input_json)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub fn dispatch_event(&self, event_name: &str, payload_json: &str) -> Vec<PluginEvent> {
