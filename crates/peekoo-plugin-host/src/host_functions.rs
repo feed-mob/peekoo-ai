@@ -22,6 +22,7 @@ use peekoo_task_app::TaskService;
 use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
+use tungstenite::client::IntoClientRequest;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket, connect};
 use url::Url;
@@ -1148,8 +1149,34 @@ fn host_websocket_connect(
         }
     }
 
-    let (socket, _) = connect(parsed.as_str())
-        .map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
+    // Build request with a valid HTTP Origin header so servers that validate
+    // Origin (e.g. OpenClaw gateway) don't reject the handshake.
+    // Include the port when non-default so the origin matches what the server expects.
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| Error::msg("WebSocket URL missing host"))?;
+    let origin = if let Some(port) = parsed.port() {
+        if host.contains(':') {
+            format!("http://[{}]:{}", host, port)
+        } else {
+            format!("http://{}:{}", host, port)
+        }
+    } else {
+        format!("http://{}", host)
+    };
+
+    tracing::debug!("WebSocket connection origin: {}", origin);
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| Error::msg(e.to_string()))?;
+    request.headers_mut().insert(
+        "Origin",
+        origin
+            .parse()
+            .map_err(|e| Error::msg(format!("Invalid origin header '{}': {}", origin, e)))?,
+    );
+    let (socket, _) =
+        connect(request).map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
     let mut websockets = ctx
         .websockets
         .lock()

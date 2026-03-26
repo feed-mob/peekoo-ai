@@ -10,8 +10,11 @@ export interface PomodoroStatus {
   completed_focus: number;
   completed_breaks: number;
   enable_memo: boolean;
+  auto_advance: boolean;
   default_work_minutes: number;
   default_break_minutes: number;
+  long_break_minutes: number;
+  long_break_interval: number;
 }
 
 export interface PomodoroHistoryEntry {
@@ -23,6 +26,7 @@ export interface PomodoroHistoryEntry {
   started_at: string;
   ended_at: string;
   memo_requested: boolean;
+  memo?: string;
 }
 
 type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -43,16 +47,39 @@ export function getPomodoroHistory(limit: number, invokeFn?: InvokeFn) {
   return callPomodoro<PomodoroHistoryEntry[]>("pomodoro_history", { limit }, invokeFn);
 }
 
-export function setPomodoroSettings(
-  settings: { work_minutes: number; break_minutes: number; enable_memo: boolean },
+export function getPomodoroHistoryByDateRange(
+  startDate: string,
+  endDate: string,
+  limit: number,
   invokeFn?: InvokeFn,
+) {
+  return callPomodoro<PomodoroHistoryEntry[]>(
+    "pomodoro_history_by_date_range",
+    { startDate, endDate, limit },
+    invokeFn,
+  );
+}
+
+export function setPomodoroSettings(
+  settings: {
+    work_minutes: number;
+    break_minutes: number;
+    long_break_minutes: number;
+    long_break_interval: number;
+    enable_memo: boolean;
+    auto_advance: boolean;
+  },
+  invokeFn: InvokeFn = invoke,
 ) {
   return callPomodoro<PomodoroStatus>(
     "pomodoro_set_settings",
     {
       workMinutes: settings.work_minutes,
       breakMinutes: settings.break_minutes,
+      longBreakMinutes: settings.long_break_minutes,
+      longBreakInterval: settings.long_break_interval,
       enableMemo: settings.enable_memo,
+      autoAdvance: settings.auto_advance,
     },
     invokeFn,
   );
@@ -79,4 +106,8 @@ export function finishPomodoro(invokeFn?: InvokeFn) {
 
 export function switchPomodoroMode(mode: "work" | "break", invokeFn?: InvokeFn) {
   return callPomodoro<PomodoroStatus>("pomodoro_switch_mode", { mode }, invokeFn);
+}
+
+export function pomodoroSaveMemo(id: string | null, memo: string, invokeFn?: InvokeFn) {
+  return callPomodoro<PomodoroStatus>("pomodoro_save_memo", { id, memo }, invokeFn);
 }

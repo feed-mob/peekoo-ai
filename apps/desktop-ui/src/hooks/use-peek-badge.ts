@@ -11,12 +11,10 @@ const ROTATION_INTERVAL_MS = 5000;
 const COUNTDOWN_TICK_MS = 1000;
 
 function formatCountdown(seconds: number): string {
-  if (seconds <= 0) return "now";
-  const minutes = Math.max(1, Math.floor(seconds / 60));
-  if (minutes < 60) return `~${minutes} min`;
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder === 0 ? `~${hours} hr` : `~${hours} hr ${remainder} min`;
+  if (seconds <= 0) return "00:00";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
 export function usePeekBadge() {

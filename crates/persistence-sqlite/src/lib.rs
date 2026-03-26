@@ -18,6 +18,12 @@ pub const MIGRATION_0009_AGENT_TASK_ASSIGNMENT: &str =
     include_str!("../migrations/0009_agent_task_assignment.sql");
 pub const MIGRATION_0010_POMODORO_RUNTIME: &str =
     include_str!("../migrations/0010_pomodoro_runtime.sql");
+pub const MIGRATION_0011_POMODORO_AUTOPILOT: &str =
+    include_str!("../migrations/0011_pomodoro_autopilot.sql");
+pub const MIGRATION_0012_POMODORO_CYCLE_MEMO: &str =
+    include_str!("../migrations/0012_pomodoro_cycle_memo.sql");
+pub const MIGRATION_0013_POMODORO_DAILY_RESET: &str =
+    include_str!("../migrations/0013_pomodoro_daily_reset.sql");
 pub const MIGRATION_0011_TASK_FINISHED_AT: &str =
     include_str!("../migrations/0011_task_finished_at.sql");
 

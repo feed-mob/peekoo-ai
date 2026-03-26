@@ -427,7 +427,6 @@ async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 #[allow(clippy::too_many_arguments)]
 async fn update_task(
     id: String,
@@ -440,14 +439,11 @@ async fn update_task(
     scheduled_start_at: Option<String>,
     scheduled_end_at: Option<String>,
     estimated_duration_min: Option<Option<u32>>,
-    recurrenceRule: Option<Option<String>>,
-    recurrenceTimeOfDay: Option<Option<String>>,
+    recurrence_rule: Option<Option<String>>,
+    recurrence_time_of_day: Option<Option<String>>,
     state: State<'_, AgentState>,
     _app: AppHandle,
 ) -> Result<TaskDto, String> {
-    println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
-    let recurrence_rule = recurrenceRule;
-    let recurrence_time_of_day = recurrenceTimeOfDay;
     let task = state.app.update_task(
         &id,
         title.as_deref(),
@@ -486,13 +482,12 @@ async fn toggle_task(
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn get_task_activity(
-    taskId: String,
+    task_id: String,
     limit: Option<u32>,
     state: State<'_, AgentState>,
 ) -> Result<Vec<TaskEventDto>, String> {
-    state.app.get_task_activity(&taskId, limit.unwrap_or(50))
+    state.app.get_task_activity(&task_id, limit.unwrap_or(50))
 }
 
 #[tauri::command]
@@ -504,26 +499,24 @@ async fn task_list_events(
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn add_task_comment(
-    taskId: String,
+    task_id: String,
     text: String,
     author: String,
     state: State<'_, AgentState>,
     _app: AppHandle,
 ) -> Result<TaskEventDto, String> {
-    let event = state.app.add_task_comment(&taskId, &text, &author)?;
+    let event = state.app.add_task_comment(&task_id, &text, &author)?;
     Ok(event)
 }
 
 #[tauri::command]
-#[allow(non_snake_case)]
 async fn delete_task_event(
-    eventId: String,
+    event_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<(), String> {
-    state.app.delete_task_event(&eventId)?;
+    state.app.delete_task_event(&event_id)?;
     emit_tasks_changed(&app, None);
     Ok(())
 }
@@ -539,17 +532,24 @@ async fn pomodoro_get_status(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn pomodoro_set_settings(
     work_minutes: u32,
     break_minutes: u32,
+    long_break_minutes: u32,
+    long_break_interval: u32,
     enable_memo: bool,
+    auto_advance: bool,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<PomodoroStatusDto, String> {
     let status = state.app.pomodoro_set_settings(PomodoroSettingsInput {
         work_minutes,
         break_minutes,
+        long_break_minutes,
+        long_break_interval,
         enable_memo,
+        auto_advance,
     })?;
     flush_plugin_notifications(&app, &state)?;
     Ok(status)
@@ -617,6 +617,33 @@ async fn pomodoro_history(
     let history = state.app.pomodoro_history(limit)?;
     flush_plugin_notifications(&app, &state)?;
     Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_history_by_date_range(
+    start_date: String,
+    end_date: String,
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state
+        .app
+        .pomodoro_history_by_date_range(start_date, end_date, limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_save_memo(
+    id: Option<String>,
+    memo: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.save_pomodoro_memo(id, memo)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -908,14 +935,32 @@ pub fn run() {
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")
-            .map(PathBuf::from)
+            .map(|v| PathBuf::from(v.trim()))
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .join("logs");
-        let _ = std::fs::create_dir_all(&log_dir);
-        Target::new(TargetKind::Folder {
-            path: log_dir,
-            file_name: None,
-        })
+
+        // Ensure log directory exists before plugin initialization
+        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+            eprintln!(
+                "Warning: Failed to create log directory at {:?}: {}",
+                log_dir, e
+            );
+        }
+
+        // Verify the directory exists and is accessible
+        if !log_dir.exists() || !log_dir.is_dir() {
+            eprintln!(
+                "Warning: Log directory does not exist or is not accessible: {:?}",
+                log_dir
+            );
+            // Fallback to LogDir which uses system temp/app data
+            Target::new(TargetKind::LogDir { file_name: None })
+        } else {
+            Target::new(TargetKind::Folder {
+                path: log_dir,
+                file_name: None,
+            })
+        }
     } else {
         Target::new(TargetKind::LogDir { file_name: None })
     };
@@ -1081,6 +1126,8 @@ pub fn run() {
             pomodoro_finish,
             pomodoro_switch_mode,
             pomodoro_history,
+            pomodoro_history_by_date_range,
+            pomodoro_save_memo,
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,
