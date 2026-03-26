@@ -30,6 +30,6 @@ toml = "0.8"
 thiserror = "1"
 uuid = { version = "1", features = ["v4"] }
 tracing = "0.1"
-rusqlite = { version = "0.38" }
+rusqlite = { workspace = true }
 tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 url = "2"
