@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, Calendar, ListTodo, CheckCheck, CalendarDays, RefreshCw } from "lucide-react";
+import { CheckCircle2, RefreshCw } from "lucide-react";
 import type { TaskTab } from "@/types/task";
 import { useTasks } from "./hooks/use-tasks";
 import { TaskList } from "./components/TaskList";

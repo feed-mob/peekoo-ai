@@ -633,7 +633,9 @@ async fn pomodoro_history_by_date_range(
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<Vec<PomodoroCycleDto>, String> {
-    let history = state.app.pomodoro_history_by_date_range(start_date, end_date, limit)?;
+    let history = state
+        .app
+        .pomodoro_history_by_date_range(start_date, end_date, limit)?;
     flush_plugin_notifications(&app, &state)?;
     Ok(history)
 }
@@ -942,15 +944,21 @@ pub fn run() {
             .map(|v| PathBuf::from(v.trim()))
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .join("logs");
-        
+
         // Ensure log directory exists before plugin initialization
         if let Err(e) = std::fs::create_dir_all(&log_dir) {
-            eprintln!("Warning: Failed to create log directory at {:?}: {}", log_dir, e);
+            eprintln!(
+                "Warning: Failed to create log directory at {:?}: {}",
+                log_dir, e
+            );
         }
-        
+
         // Verify the directory exists and is accessible
         if !log_dir.exists() || !log_dir.is_dir() {
-            eprintln!("Warning: Log directory does not exist or is not accessible: {:?}", log_dir);
+            eprintln!(
+                "Warning: Log directory does not exist or is not accessible: {:?}",
+                log_dir
+            );
             // Fallback to LogDir which uses system temp/app data
             Target::new(TargetKind::LogDir { file_name: None })
         } else {

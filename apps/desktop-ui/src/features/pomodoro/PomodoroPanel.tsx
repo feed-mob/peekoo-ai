@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
 import { deriveCountdownSnapshot } from "./countdown";
-import { Brain, Coffee, History, Settings2, Notebook, Play, Calendar } from "lucide-react";
+import { Brain, Coffee, History, Settings2, Notebook, Play } from "lucide-react";
 import { emitPetReaction } from "@/lib/pet-events";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";

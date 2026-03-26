@@ -391,7 +391,6 @@ impl AgentApplication {
         self.task_service.list_tasks()
     }
 
-
     #[allow(clippy::too_many_arguments)]
     pub fn update_task(
         &self,
@@ -515,7 +514,11 @@ impl AgentApplication {
         self.pomodoro.switch_mode(mode)
     }
 
-    pub fn save_pomodoro_memo(&self, id: Option<String>, memo: String) -> Result<PomodoroStatusDto, String> {
+    pub fn save_pomodoro_memo(
+        &self,
+        id: Option<String>,
+        memo: String,
+    ) -> Result<PomodoroStatusDto, String> {
         self.pomodoro.save_pomodoro_memo(id, memo)
     }
 
@@ -523,8 +526,14 @@ impl AgentApplication {
         self.pomodoro.history(limit)
     }
 
-    pub fn pomodoro_history_by_date_range(&self, start_date: String, end_date: String, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
-        self.pomodoro.history_by_date_range(&start_date, &end_date, limit)
+    pub fn pomodoro_history_by_date_range(
+        &self,
+        start_date: String,
+        end_date: String,
+        limit: usize,
+    ) -> Result<Vec<PomodoroCycleDto>, String> {
+        self.pomodoro
+            .history_by_date_range(&start_date, &end_date, limit)
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {

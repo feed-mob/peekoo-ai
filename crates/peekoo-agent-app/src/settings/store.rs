@@ -7,8 +7,8 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
     MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
     MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_POMODORO_AUTOPILOT,
-    MIGRATION_0012_POMODORO_CYCLE_MEMO, MIGRATION_0013_POMODORO_DAILY_RESET,
-    MIGRATION_0014_ADD_NOTES_COLUMN, MIGRATION_0011_TASK_FINISHED_AT,
+    MIGRATION_0011_TASK_FINISHED_AT, MIGRATION_0012_POMODORO_CYCLE_MEMO,
+    MIGRATION_0013_POMODORO_DAILY_RESET, MIGRATION_0014_ADD_NOTES_COLUMN,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -609,7 +609,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "pomodoro_state",
         MIGRATION_0010_POMODORO_RUNTIME,
     )?;
-    
+
     // Migration 0011 (pomodoro autopilot)
     let already_applied_0011_pomo: bool = conn
         .query_row(
@@ -767,8 +767,21 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         .map_err(|e| format!("Record migration 0014 state error: {e}"))?;
     }
 
-    Ok(())
-}
+    // Migration 0011 (task finished_at) - different migration with same number
+    let already_applied_0011_task: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_task_finished_at'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0011_task_finished_at state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0011_task {
+        for statement in MIGRATION_0011_TASK_FINISHED_AT.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
                 continue;
             }
             if let Err(e) = conn.execute(stmt, []) {
@@ -782,7 +795,7 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
             "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_task_finished_at')",
             [],
         )
-        .map_err(|e| format!("Record migration 0011 state error: {e}"))?;
+        .map_err(|e| format!("Record migration 0011_task_finished_at state error: {e}"))?;
     }
 
     Ok(())

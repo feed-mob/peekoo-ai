@@ -86,7 +86,7 @@ impl PomodoroAppService {
         // Check if we need to reset daily counters before returning status
         let conn = self.conn()?;
         let mut status = load_status(&conn)?;
-        
+
         let today = chrono::Local::now().date_naive().to_string();
         tracing::info!(
             "Pomodoro get_status: today={}, last_reset_date={:?}, completed_focus={}, completed_breaks={}",
@@ -95,16 +95,20 @@ impl PomodoroAppService {
             status.completed_focus,
             status.completed_breaks
         );
-        
+
         if status.last_reset_date.as_ref() != Some(&today) {
-            tracing::info!("Resetting daily counters from {} to {}", status.last_reset_date.as_deref().unwrap_or("None"), today);
+            tracing::info!(
+                "Resetting daily counters from {} to {}",
+                status.last_reset_date.as_deref().unwrap_or("None"),
+                today
+            );
             status.completed_focus = 0;
             status.completed_breaks = 0;
             status.last_reset_date = Some(today);
             save_status(&conn, &status)?;
         }
         drop(conn);
-        
+
         let status = self.refresh_runtime_if_due()?;
         self.publish_badges(&status);
         Ok(status_to_dto(&status))
@@ -223,9 +227,13 @@ impl PomodoroAppService {
         Ok(status_to_dto(&status))
     }
 
-    pub fn save_pomodoro_memo(&self, id: Option<String>, memo: String) -> Result<PomodoroStatusDto, String> {
+    pub fn save_pomodoro_memo(
+        &self,
+        id: Option<String>,
+        memo: String,
+    ) -> Result<PomodoroStatusDto, String> {
         let conn = self.conn()?;
-        
+
         if let Some(cycle_id) = id {
             conn.execute(
                 "UPDATE pomodoro_cycle_history SET memo = ?1 WHERE id = ?2",
@@ -239,7 +247,7 @@ impl PomodoroAppService {
             )
             .map_err(|err| format!("Failed to update latest cycle memo: {err}"))?;
         }
-        
+
         let status = load_status(&conn)?;
         Ok(status_to_dto(&status))
     }
@@ -272,14 +280,19 @@ impl PomodoroAppService {
             .map_err(|err| format!("Collect pomodoro history error: {err}"))
     }
 
-    pub fn history_by_date_range(&self, start_date: &str, end_date: &str, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
+    pub fn history_by_date_range(
+        &self,
+        start_date: &str,
+        end_date: &str,
+        limit: usize,
+    ) -> Result<Vec<PomodoroCycleDto>, String> {
         tracing::info!(
             "Pomodoro history_by_date_range: start_date={}, end_date={}, limit={}",
             start_date,
             end_date,
             limit
         );
-        
+
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
@@ -307,22 +320,38 @@ impl PomodoroAppService {
             })
             .map_err(|err| format!("Query pomodoro history by date error: {err}"))?;
 
-        let result = rows.collect::<Result<Vec<_>, _>>()
+        let result = rows
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|err| format!("Collect pomodoro history by date error: {err}"))?;
-        
+
         tracing::info!(
             "Pomodoro history_by_date_range: returned {} records. Breakdown by mode/outcome:",
             result.len()
         );
-        let work_completed = result.iter().filter(|r| r.mode == "work" && r.outcome == "completed").count();
-        let work_cancelled = result.iter().filter(|r| r.mode == "work" && r.outcome == "cancelled").count();
-        let break_completed = result.iter().filter(|r| r.mode == "break" && r.outcome == "completed").count();
-        let break_cancelled = result.iter().filter(|r| r.mode == "break" && r.outcome == "cancelled").count();
+        let work_completed = result
+            .iter()
+            .filter(|r| r.mode == "work" && r.outcome == "completed")
+            .count();
+        let work_cancelled = result
+            .iter()
+            .filter(|r| r.mode == "work" && r.outcome == "cancelled")
+            .count();
+        let break_completed = result
+            .iter()
+            .filter(|r| r.mode == "break" && r.outcome == "completed")
+            .count();
+        let break_cancelled = result
+            .iter()
+            .filter(|r| r.mode == "break" && r.outcome == "cancelled")
+            .count();
         tracing::info!(
             "  work: {} completed, {} cancelled | break: {} completed, {} cancelled",
-            work_completed, work_cancelled, break_completed, break_cancelled
+            work_completed,
+            work_cancelled,
+            break_completed,
+            break_cancelled
         );
-        
+
         Ok(result)
     }
 
@@ -383,7 +412,7 @@ impl PomodoroAppService {
     fn reconcile_runtime_state(&self) -> Result<(), String> {
         let conn = self.conn()?;
         let mut status = load_status(&conn)?;
-        
+
         // Check if we need to reset daily counters (use local timezone)
         let today = chrono::Local::now().date_naive().to_string();
         if status.last_reset_date.as_ref() != Some(&today) {
@@ -393,7 +422,7 @@ impl PomodoroAppService {
             save_status(&conn, &status)?;
         }
         drop(conn);
-        
+
         let status = self.refresh_runtime_if_due()?;
         self.sync_scheduler(&status)?;
         self.publish_badges(&status);
