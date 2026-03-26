@@ -21,6 +21,7 @@ import type { SpriteBubblePayload } from "@/types/sprite-bubble";
 interface SpriteBubbleProps {
   payload: SpriteBubblePayload | null;
   visible: boolean;
+  onOpenPanel?: (panelLabel: string) => void;
 }
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -44,7 +45,7 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 
-export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
+export function SpriteBubble({ payload, visible, onOpenPanel }: SpriteBubbleProps) {
   const isDark = useIsDarkMode();
   const kind = payload ? getSpriteBubbleKind(payload) : "default";
   const type = kind === "default" ? null : kind;
@@ -69,13 +70,17 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
 
   const handleDismiss = async () => {
     if (!isStyled || !type) return;
+    if (payload?.panelLabel) {
+      onOpenPanel?.(payload.panelLabel);
+      return;
+    }
     try {
       if (isHealth) {
         await invoke("plugin_call_tool", {
           toolName: "health_dismiss",
           argsJson: JSON.stringify({ reminder_type: type === "stand" ? "standup" : type === "eye" ? "eye_rest" : "water" })
         });
-      } else {
+      } else if (kind === "focus" || kind === "break") {
         await finishPomodoro();
       }
     } catch (err) {
@@ -155,6 +160,16 @@ export function SpriteBubble({ payload, visible }: SpriteBubbleProps) {
                 <p className="text-[12px] font-medium leading-tight text-text-primary/90 dark:text-white/90">
                   {payload.body}
                 </p>
+                {showStyledTitle && payload.actionUrl && payload.actionLabel && (
+                  <button
+                    type="button"
+                    onClick={handleActionClick}
+                    className="mt-1.5 rounded-md px-2 py-0.5 text-[10px] font-semibold text-white"
+                    style={{ background: themeColor }}
+                  >
+                    {payload.actionLabel}
+                  </button>
+                )}
               </div>
             </div>
           ) : (

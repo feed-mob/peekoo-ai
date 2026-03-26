@@ -67,6 +67,7 @@ impl TaskRuntimeService {
             body: summarize_comment(text),
             action_url: None,
             action_label: None,
+            panel_label: Some("panel-tasks".to_string()),
         });
 
         tracing::debug!(
@@ -83,6 +84,7 @@ impl TaskRuntimeService {
             body: format!("Status changed to {}", status_label(status)),
             action_url: None,
             action_label: None,
+            panel_label: Some("panel-tasks".to_string()),
         });
 
         tracing::debug!(
@@ -507,6 +509,63 @@ mod tests {
             .expect("complete task");
 
         assert!(wait_for_notification(&mut receiver, Duration::from_secs(4)).is_none());
+        task_notifications.shutdown();
+    }
+
+    #[test]
+    fn updating_scheduled_start_reschedules_notification() {
+        let task_service = test_task_service();
+        let (notifications, mut receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            Arc::clone(&task_notifications),
+            None,
+            None,
+        );
+
+        // Create task scheduled far in the future (won't fire during test)
+        let far_start = (Utc::now() + chrono::Duration::seconds(60)).to_rfc3339();
+        let task = service
+            .create_task(
+                "Rescheduled meeting",
+                "medium",
+                "user",
+                &[],
+                None,
+                Some(&far_start),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("create scheduled task");
+
+        // Update to fire in 2 seconds
+        let soon_start = (Utc::now() + chrono::Duration::seconds(2)).to_rfc3339();
+        service
+            .update_task(
+                &task.id,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(&soon_start),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("update scheduled_start_at");
+
+        let notification = wait_for_notification(&mut receiver, Duration::from_secs(4))
+            .expect("rescheduled task notification");
+        assert_eq!(notification.source, "tasks");
+        assert!(notification.body.contains("Rescheduled meeting"));
         task_notifications.shutdown();
     }
 

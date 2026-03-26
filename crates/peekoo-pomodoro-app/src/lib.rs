@@ -374,6 +374,7 @@ impl PomodoroAppService {
             body: body.to_string(),
             action_url: None,
             action_label: None,
+            panel_label: None,
         });
 
         self.publish_badges(status);
@@ -503,6 +504,7 @@ fn complete_due_session(
         body: body.to_string(),
         action_url: None,
         action_label: None,
+        panel_label: None,
     });
     peek_badges.clear(POMODORO_OWNER);
     Ok(())

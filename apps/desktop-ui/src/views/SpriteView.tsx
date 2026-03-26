@@ -512,6 +512,10 @@ export default function SpriteView() {
           <SpriteBubble
             payload={bubblePayload}
             visible={bubbleVisible && !miniChatOpen}
+            onOpenPanel={(panelLabel) => {
+              clearBubble();
+              void openPanel(panelLabel);
+            }}
           />
           <SpriteMiniChat
             open={miniChatOpen}

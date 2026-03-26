@@ -1439,6 +1439,7 @@ mod tests {
             body: "Starts now".to_string(),
             action_url: None,
             action_label: None,
+            panel_label: None,
         }
     }
 

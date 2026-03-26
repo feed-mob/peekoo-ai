@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use chrono::{DateTime, Utc};
 use peekoo_notifications::{Notification, NotificationService};
@@ -114,6 +114,7 @@ fn fire_task_notification(
         body: format!("{} starts now", task.title),
         action_url: None,
         action_label: None,
+        panel_label: Some("panel-tasks".to_string()),
     });
 
     tracing::debug!(

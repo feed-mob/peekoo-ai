@@ -10,6 +10,7 @@ fn sends_notifications_when_dnd_is_disabled() {
         body: "Take a water break".to_string(),
         action_url: None,
         action_label: None,
+        panel_label: None,
     });
 
     assert!(delivered);
@@ -30,6 +31,7 @@ fn suppresses_notifications_when_dnd_is_enabled() {
         body: "Time to stretch".to_string(),
         action_url: None,
         action_label: None,
+        panel_label: None,
     });
 
     assert!(!delivered);
