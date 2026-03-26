@@ -1,3 +1,7 @@
+-- @migrate: create
+-- @id: 0001_init
+-- @sentinel: tasks
+
 CREATE TABLE tasks (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,

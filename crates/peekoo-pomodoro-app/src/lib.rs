@@ -886,20 +886,23 @@ mod tests {
     use super::*;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_persistence_sqlite::{MIGRATION_0001_INIT, MIGRATION_0010_POMODORO_RUNTIME};
+    use peekoo_persistence_sqlite::MIGRATIONS;
+
+    fn run_migration(conn: &rusqlite::Connection, id: &str) {
+        let m = MIGRATIONS
+            .iter()
+            .find(|m| m.id == id)
+            .unwrap_or_else(|| panic!("migration {id} not found"));
+        conn.execute_batch(m.sql)
+            .unwrap_or_else(|e| panic!("apply migration {id}: {e}"));
+    }
 
     fn create_service() -> PomodoroAppService {
         let conn = Arc::new(Mutex::new(
             Connection::open_in_memory().expect("in-memory db should open"),
         ));
-        conn.lock()
-            .expect("db lock")
-            .execute_batch(MIGRATION_0001_INIT)
-            .expect("base migration should apply");
-        conn.lock()
-            .expect("db lock")
-            .execute_batch(MIGRATION_0010_POMODORO_RUNTIME)
-            .expect("pomodoro migration should apply");
+        run_migration(&conn.lock().expect("db lock"), "0001_init");
+        run_migration(&conn.lock().expect("db lock"), "0010_pomodoro_runtime");
         conn.lock()
             .expect("db lock")
             .execute_batch(

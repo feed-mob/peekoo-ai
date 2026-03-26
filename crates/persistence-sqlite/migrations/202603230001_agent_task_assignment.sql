@@ -1,3 +1,7 @@
+-- @migrate: alter
+-- @id: 0009_agent_task_assignment
+-- @tolerates: "duplicate column name", "table agent_registry already exists", "UNIQUE constraint failed: agent_registry.id", "index.*already exists"
+
 -- Migration 0009: Agent Task Assignment
 -- Adds agent work tracking columns to tasks and creates agent_registry table
 

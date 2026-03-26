@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::MIGRATION_0004_GLOBAL_SETTINGS;
+use peekoo_persistence_sqlite::MIGRATIONS;
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Key-value store backed by the `app_settings` SQLite table.
@@ -20,7 +20,11 @@ impl AppSettingsStore {
             let c = conn
                 .lock()
                 .map_err(|e| format!("App settings conn lock error: {e}"))?;
-            c.execute_batch(MIGRATION_0004_GLOBAL_SETTINGS)
+            let migration = MIGRATIONS
+                .iter()
+                .find(|m| m.id == "0004_global_settings")
+                .ok_or("Migration 0004_global_settings not found")?;
+            c.execute_batch(migration.sql)
                 .map_err(|e| format!("App settings migration error: {e}"))?;
         }
         Ok(Self { conn })

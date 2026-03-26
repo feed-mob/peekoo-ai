@@ -1,15 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::{
-    MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-    MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
-    MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
-    MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
-    MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_POMODORO_AUTOPILOT,
-    MIGRATION_0011_TASK_FINISHED_AT, MIGRATION_0012_POMODORO_CYCLE_MEMO,
-    MIGRATION_0013_POMODORO_DAILY_RESET,
-};
+use peekoo_persistence_sqlite::{MIGRATIONS, MigrationDef};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::settings::catalog::{
@@ -440,21 +432,15 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Create migrations table error: {e}"))?;
 
-    apply_migration_if_needed(conn, "0001_init", "tasks", MIGRATION_0001_INIT)?;
-    apply_migration_if_needed(
-        conn,
-        "0002_agent_settings",
-        "agent_settings",
-        MIGRATION_0002_AGENT_SETTINGS,
-    )?;
-    apply_migration_if_needed(
-        conn,
-        "0003_provider_compat",
-        "agent_provider_configs",
-        MIGRATION_0003_PROVIDER_COMPAT,
-    )?;
-    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
+    for m in MIGRATIONS {
+        match m.strategy {
+            "create" => apply_create_migration(conn, m)?,
+            "alter" => apply_alter_migration(conn, m)?,
+            other => return Err(format!("Unknown migration strategy '{other}' in {}", m.id)),
+        }
+    }
 
+    // Seed default agent settings (must run after schema migrations)
     conn.execute(
         &format!(
             "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
@@ -464,325 +450,94 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
 
-    // ALTER TABLE migration — sentinel table already exists, so check the
-    // migration record directly instead of the sentinel table.
-    let already_applied: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0005_task_extensions'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0005 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied {
-        conn.execute_batch(MIGRATION_0005_TASK_EXTENSIONS)
-            .map_err(|e| format!("Apply migration 0005_task_extensions error: {e}"))?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0005_task_extensions')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0005 state error: {e}"))?;
-    }
-
-    // Migration 0006 — add scheduling and recurrence columns to tasks.
-    let already_applied_0006: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0006_task_scheduling_and_recurrence'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0006 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0006 {
-        conn.execute_batch(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE)
-            .map_err(|e| {
-                format!("Apply migration 0006_task_scheduling_and_recurrence error: {e}")
-            })?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0006_task_scheduling_and_recurrence')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0006 state error: {e}"))?;
-    }
-
-    // Migration 0007 — add recurrence_time_of_day to tasks.
-    let already_applied_0007: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0007_recurrence_time_of_day'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0007 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0007 {
-        conn.execute_batch(MIGRATION_0007_RECURRENCE_TIME_OF_DAY)
-            .map_err(|e| format!("Apply migration 0007_recurrence_time_of_day error: {e}"))?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0007_recurrence_time_of_day')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0007 state error: {e}"))?;
-    }
-
-    // Migration 0008: Add created_at column to tasks
-    let already_applied_0008: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0008_task_order_index'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0008 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0008 {
-        // Migration 0008: Add created_at column
-        // Execute statements individually to handle "duplicate column" errors gracefully
-        let migration_sql = MIGRATION_0008_TASK_ORDER_INDEX;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            // Ignore "duplicate column name" errors - column already exists
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0008_task_order_index error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0008_task_order_index')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0008 state error: {e}"))?;
-    }
-
-    // Migration 0009: Agent task assignment
-    let already_applied_0009: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0009_agent_task_assignment'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0009 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0009 {
-        let migration_sql = MIGRATION_0009_AGENT_TASK_ASSIGNMENT;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name")
-                    && !e_str.contains("table agent_registry already exists")
-                    && !e_str.contains("UNIQUE constraint failed: agent_registry.id")
-                    && !e_str.contains("index.*already exists")
-                {
-                    return Err(format!(
-                        "Apply migration 0009_agent_task_assignment error: {e}"
-                    ));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0009_agent_task_assignment')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0009 state error: {e}"))?;
-    }
-
-    apply_migration_if_needed(
-        conn,
-        "0010_pomodoro_runtime",
-        "pomodoro_state",
-        MIGRATION_0010_POMODORO_RUNTIME,
-    )?;
-
-    // Migration 0011 (pomodoro autopilot)
-    let already_applied_0011_pomo: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_pomodoro_autopilot_v4'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0011 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0011_pomo {
-        let migration_sql = MIGRATION_0011_POMODORO_AUTOPILOT;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0011 error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_pomodoro_autopilot_v4')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0011 state error: {e}"))?;
-    }
-
-    // Migration 0011 (task finished_at) - different migration with same number
-    let already_applied_0011_task: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_task_finished_at'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0011_task_finished_at state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0011_task {
-        for statement in MIGRATION_0011_TASK_FINISHED_AT.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0011_task_finished_at error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_task_finished_at')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0011_task_finished_at state error: {e}"))?;
-    }
-
-    let already_applied_0012: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0012_pomo_memo_v1'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0012 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0012 {
-        let migration_sql = MIGRATION_0012_POMODORO_CYCLE_MEMO;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0012 error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0012_pomo_memo_v1')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0012 state error: {e}"))?;
-    }
-
-    let already_applied_0013: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0013_pomo_daily_reset_v1'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0013 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0013 {
-        let migration_sql = MIGRATION_0013_POMODORO_DAILY_RESET;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0013 error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0013_pomo_daily_reset_v1')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0013 state error: {e}"))?;
-    }
-
     Ok(())
 }
 
-fn apply_migration_if_needed(
-    conn: &Connection,
-    migration_id: &str,
-    sentinel_table: &str,
-    sql: &str,
-) -> Result<(), String> {
-    let exists: Option<String> = conn
-        .query_row(
-            "SELECT id FROM _peekoo_migrations WHERE id = ?1",
-            params![migration_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration state error: {e}"))?;
+fn is_migration_applied(conn: &Connection, id: &str) -> Result<bool, String> {
+    conn.query_row(
+        "SELECT 1 FROM _peekoo_migrations WHERE id = ?1",
+        params![id],
+        |_| Ok(true),
+    )
+    .optional()
+    .map_err(|e| format!("Check migration {id} state error: {e}"))
+    .map(|opt| opt.unwrap_or(false))
+}
 
-    if exists.is_some() {
+fn record_migration(conn: &Connection, id: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES (?1)",
+        params![id],
+    )
+    .map_err(|e| format!("Record migration {id} state error: {e}"))?;
+    Ok(())
+}
+
+fn apply_create_migration(conn: &Connection, m: &MigrationDef) -> Result<(), String> {
+    if is_migration_applied(conn, m.id)? {
         return Ok(());
     }
 
-    let table_exists = sqlite_table_exists(conn, sentinel_table)?;
-    if !table_exists {
-        conn.execute_batch(sql)
-            .map_err(|e| format!("Apply migration {migration_id} error: {e}"))?;
+    let sentinel = m
+        .sentinel
+        .ok_or_else(|| format!("CREATE migration {} missing @sentinel", m.id))?;
+
+    // If sentinel table already exists (pre-migration-tracking DB), skip SQL
+    if !sqlite_table_exists(conn, sentinel)? {
+        conn.execute_batch(m.sql)
+            .map_err(|e| format!("Apply migration {} error: {e}", m.id))?;
     }
 
-    conn.execute(
-        "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES (?1)",
-        params![migration_id],
-    )
-    .map_err(|e| format!("Record migration state error: {e}"))?;
+    record_migration(conn, m.id)
+}
 
-    Ok(())
+fn apply_alter_migration(conn: &Connection, m: &MigrationDef) -> Result<(), String> {
+    if is_migration_applied(conn, m.id)? {
+        return Ok(());
+    }
+
+    if m.tolerates.is_empty() {
+        conn.execute_batch(m.sql)
+            .map_err(|e| format!("Apply migration {} error: {e}", m.id))?;
+    } else {
+        // Strip leading metadata comments (-- @migrate, -- @id, -- @tolerates)
+        // so they don't get bundled with the first SQL statement after ; split
+        let sql = m
+            .sql
+            .lines()
+            .skip_while(|l| {
+                let t = l.trim();
+                t.starts_with("--") || t.is_empty()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for statement in sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !m.tolerates.iter().any(|t| e_str.contains(t)) {
+                    return Err(format!("Apply migration {} error: {e}", m.id));
+                }
+            }
+        }
+    }
+
+    record_migration(conn, m.id)
 }
 
 fn sqlite_table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
-    let exists = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
-            params![table_name],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Query sqlite_master error: {e}"))?
-        .unwrap_or(false);
-    Ok(exists)
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
+        params![table_name],
+        |_| Ok(true),
+    )
+    .optional()
+    .map_err(|e| format!("Query sqlite_master error: {e}"))
+    .map(|opt| opt.unwrap_or(false))
 }
 
 fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
