@@ -1,40 +1,39 @@
-const connectButton = document.getElementById("connectButton");
 const refreshButton = document.getElementById("refreshButton");
 const disconnectButton = document.getElementById("disconnectButton");
-const saveClientJsonButton = document.getElementById("saveClientJsonButton");
+const connectButton = document.getElementById("connectButton");
+const toggleSettingsBtn = document.getElementById("toggleSettingsBtn");
 const statusLine = document.getElementById("statusLine");
+const statusIndicator = document.getElementById("statusIndicator");
 const errorBanner = document.getElementById("errorBanner");
 const clientJsonInput = document.getElementById("clientJsonInput");
 const accountBadge = document.getElementById("accountBadge");
 const accountName = document.getElementById("accountName");
 const accountEmail = document.getElementById("accountEmail");
-const agendaLabel = document.getElementById("agendaLabel");
 const agendaTitle = document.getElementById("agendaTitle");
 const agendaList = document.getElementById("agendaList");
 const tabUpcoming = document.getElementById("tabUpcoming");
 const tabDaily = document.getElementById("tabDaily");
 const tabWeekly = document.getElementById("tabWeekly");
+const settingsTray = document.getElementById("settingsTray");
+const setupSection = document.getElementById("setupSection");
 
 const TAB_CONFIG = {
   upcoming: {
     button: tabUpcoming,
-    label: "Upcoming",
-    title: "Next 5 events",
+    title: "Upcoming Agenda",
     emptyTitle: "No upcoming events",
     key: "upcoming",
   },
   daily: {
     button: tabDaily,
-    label: "Daily",
-    title: "Today",
-    emptyTitle: "No daily events",
+    title: "Today's Schedule",
+    emptyTitle: "Focus time: No daily events",
     key: "today",
   },
   weekly: {
     button: tabWeekly,
-    label: "Weekly",
-    title: "This week",
-    emptyTitle: "No weekly events",
+    title: "This Week's Outlook",
+    emptyTitle: "A clear week ahead",
     key: "week",
   },
 };
@@ -58,103 +57,121 @@ function showError(message) {
   errorBanner.textContent = message;
 }
 
-function formatWhen(event) {
-  try {
-    const date = new Date(event.startAt);
-    if (event.allDay) {
-      return `${date.toLocaleDateString([], {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })} • All day`;
-    }
-    return date.toLocaleString([], {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  } catch {
-    return event.allDay ? `${event.startAt} • All day` : event.startAt;
-  }
+function showSuccess(message) {
+  // Temporarily show success in the status line
+  const originalText = statusLine.textContent;
+  const originalColor = statusIndicator.querySelector('.live-dot').style.background;
+  
+  statusLine.textContent = message;
+  statusIndicator.querySelector('.live-dot').style.background = 'var(--success)';
+  
+  setTimeout(() => {
+    statusLine.textContent = originalText;
+    statusIndicator.querySelector('.live-dot').style.background = originalColor;
+  }, 3000);
+}
+
+function formatTime(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDay(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 function renderList(root, events, emptyTitle) {
   root.innerHTML = "";
-  if (!events.length) {
-    const empty = document.createElement("article");
-    empty.className = "empty-card";
-    empty.innerHTML = `<strong>${emptyTitle}</strong><p class="empty-copy">Nothing scheduled here right now.</p>`;
+  if (!events || !events.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.innerHTML = `
+      <div class="empty-icon">🗓️</div>
+      <p style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${emptyTitle}</p>
+      <p style="font-size: 13px;">Nothing scheduled here right now.</p>
+    `;
     root.appendChild(empty);
     return;
   }
 
-  events.forEach((event) => {
+  events.forEach((event, index) => {
     const card = document.createElement("article");
     card.className = "event-card";
-    const location = event.location
-      ? `<p class="event-location">${event.location}</p>`
-      : "";
+    card.style.animationDelay = `${index * 0.05}s`;
+    
+    const startTime = formatTime(event.startAt);
+    const endTime = event.endAt ? formatTime(event.endAt) : "";
+    const dayMark = formatDay(event.startAt);
+
     card.innerHTML = `
-      <p class="event-time">${formatWhen(event)}</p>
-      <h3 class="event-title">${event.title}</h3>
-      ${location}
-      <p class="meta-line">${event.calendarName}</p>
+      <div class="event-accent"></div>
+      <div class="event-time-block">
+        <span class="time-start">${event.allDay ? "All Day" : startTime}</span>
+        <span class="time-end">${event.allDay ? dayMark : endTime}</span>
+      </div>
+      <div class="event-info">
+        <h3 class="event-title">${event.title}</h3>
+        <div class="event-meta">
+          <span class="meta-pill">${event.calendarName}</span>
+          ${event.location ? `<span class="location-snippet">📍 ${event.location}</span>` : ""}
+        </div>
+      </div>
     `;
     root.appendChild(card);
   });
 }
 
-function renderAgenda(snapshot) {
-  const tab = TAB_CONFIG[activeTab];
-  const events = snapshot[tab.key] || [];
-
-  agendaLabel.textContent = tab.label;
-  agendaTitle.textContent = tab.title;
-  renderList(agendaList, events, tab.emptyTitle);
-
-  Object.entries(TAB_CONFIG).forEach(([key, config]) => {
-    const isActive = key === activeTab;
-    config.button.classList.toggle("active", isActive);
-    config.button.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
-}
-
 function applySnapshot(snapshot) {
+  console.log("[Google Calendar] Applying snapshot:", snapshot);
   lastSnapshot = snapshot;
   const { status } = snapshot;
   const connectedAccount = status.connectedAccount;
 
+  // Header Status
   if (!status.clientConfigured) {
-    statusLine.textContent = "Upload your Google OAuth client.json file before connecting.";
+    statusLine.textContent = "Configuration required";
+    statusIndicator.querySelector('.live-dot').style.background = 'var(--text-muted)';
   } else if (!status.connected) {
-    statusLine.textContent = "Connect Google Calendar to load your agenda views.";
-  } else if (status.lastSyncAt) {
-    statusLine.textContent = `Connected. Last synced ${new Date(status.lastSyncAt).toLocaleString()}.`;
+    statusLine.textContent = "Offline";
+    statusIndicator.querySelector('.live-dot').style.background = 'var(--text-muted)';
   } else {
-    statusLine.textContent = "Connected. Pulling your agenda now.";
+    statusLine.textContent = "Live";
+    statusIndicator.querySelector('.live-dot').style.background = 'var(--success)';
   }
 
+  // Account Tray
   if (connectedAccount?.email) {
-    accountName.textContent = connectedAccount.name || "Google account";
+    accountName.textContent = connectedAccount.name || "Google User";
     accountEmail.textContent = connectedAccount.email;
     accountBadge.textContent = "Connected";
-    accountBadge.classList.add("connected");
+    accountBadge.className = "status-pill online";
+    setupSection.classList.add("hidden");
   } else {
-    accountName.textContent = status.clientConfigured ? "Not connected" : "Client setup required";
-    accountEmail.textContent = status.clientConfigured
-      ? "Connect Google Calendar to start syncing events."
-      : "Upload your Google OAuth client.json to enable connection.";
-    accountBadge.textContent = "Offline";
-    accountBadge.classList.remove("connected");
+    accountName.textContent = status.clientConfigured ? "Not Connected" : "Client Needed";
+    accountEmail.textContent = status.clientConfigured 
+      ? "Ready to authenticate." 
+      : "Provide client.json to continue.";
+    accountBadge.textContent = status.clientConfigured ? "Ready" : "Offline";
+    accountBadge.className = "status-pill";
+    setupSection.classList.remove("hidden");
   }
 
-  disconnectButton.disabled = !status.connected;
+  disconnectButton.style.display = status.connected ? "block" : "none";
   connectButton.disabled = !status.clientConfigured;
+  connectButton.textContent = status.connected ? "Re-authenticate" : "Authorize Now";
 
   showError(status.lastError ?? null);
-  renderAgenda(snapshot);
+  
+  // Render List
+  const tab = TAB_CONFIG[activeTab];
+  agendaTitle.textContent = tab.title;
+  renderList(agendaList, snapshot[tab.key] || [], tab.emptyTitle);
+
+  // Update tabs
+  Object.entries(TAB_CONFIG).forEach(([key, config]) => {
+    config.button.classList.toggle("active", key === activeTab);
+  });
 }
 
 async function refreshSnapshot(refresh = false) {
@@ -177,9 +194,7 @@ async function refreshSnapshot(refresh = false) {
 }
 
 async function pollOauthStatus() {
-  if (!oauthFlowId) {
-    return;
-  }
+  if (!oauthFlowId) return;
   try {
     const raw = await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
@@ -190,13 +205,14 @@ async function pollOauthStatus() {
     if (result.status === "completed") {
       oauthFlowId = null;
       stopOauthPolling();
+      settingsTray.classList.remove("visible");
       await refreshSnapshot(true);
       return;
     }
     if (result.status === "failed" || result.status === "expired") {
       oauthFlowId = null;
       stopOauthPolling();
-      showError(result.error ?? "Google Calendar connection failed.");
+      showError(result.error ?? "Authentication failed.");
     }
   } catch (error) {
     stopOauthPolling();
@@ -206,28 +222,33 @@ async function pollOauthStatus() {
 
 function startOauthPolling() {
   stopOauthPolling();
-  pollHandle = setInterval(() => {
-    void pollOauthStatus();
-  }, 1500);
+  pollHandle = setInterval(() => pollOauthStatus(), 2000);
 }
 
 function stopOauthPolling() {
-  if (pollHandle !== null) {
+  if (pollHandle) {
     clearInterval(pollHandle);
     pollHandle = null;
   }
 }
 
-function setActiveTab(tab) {
-  activeTab = tab;
-  if (lastSnapshot) {
-    renderAgenda(lastSnapshot);
-  }
-}
+// Event Listeners
+toggleSettingsBtn.addEventListener("click", () => {
+  settingsTray.classList.toggle("visible");
+});
 
-tabUpcoming.addEventListener("click", () => setActiveTab("upcoming"));
-tabDaily.addEventListener("click", () => setActiveTab("daily"));
-tabWeekly.addEventListener("click", () => setActiveTab("weekly"));
+tabUpcoming.addEventListener("click", () => {
+  activeTab = "upcoming";
+  applySnapshot(lastSnapshot);
+});
+tabDaily.addEventListener("click", () => {
+  activeTab = "daily";
+  applySnapshot(lastSnapshot);
+});
+tabWeekly.addEventListener("click", () => {
+  activeTab = "weekly";
+  applySnapshot(lastSnapshot);
+});
 
 connectButton.addEventListener("click", async () => {
   showError(null);
@@ -246,11 +267,10 @@ connectButton.addEventListener("click", async () => {
   }
 });
 
-refreshButton.addEventListener("click", () => {
-  void refreshSnapshot(true);
-});
+refreshButton.addEventListener("click", () => refreshSnapshot(true));
 
 disconnectButton.addEventListener("click", async () => {
+  if (!confirm("Disconnect Google Calendar? Your local cache will be cleared.")) return;
   showError(null);
   try {
     await invoke("plugin_call_panel_tool", {
@@ -264,23 +284,30 @@ disconnectButton.addEventListener("click", async () => {
   }
 });
 
-saveClientJsonButton.addEventListener("click", async () => {
+clientJsonInput.addEventListener("change", async () => {
+  const file = clientJsonInput.files?.[0];
+  console.log("[Google Calendar] File selected:", file?.name);
+  if (!file) return;
   showError(null);
   try {
-    const file = clientJsonInput.files?.[0];
-    if (!file) {
-      showError("Choose your Google OAuth client.json file first.");
-      return;
-    }
     const clientJson = await file.text();
-    await invoke("plugin_call_panel_tool", {
+    console.log("[Google Calendar] File content length:", clientJson.length);
+    console.log("[Google Calendar] Calling set_client_json tool...");
+    const result = await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_set_client_json",
       argsJson: JSON.stringify({ clientJson }),
     });
+    console.log("[Google Calendar] Tool result:", result);
     clientJsonInput.value = "";
+    console.log("[Google Calendar] Refreshing snapshot...");
     await refreshSnapshot(false);
+    console.log("[Google Calendar] Upload complete");
+    
+    // Show success feedback
+    showSuccess("Client configuration uploaded successfully!");
   } catch (error) {
+    console.error("[Google Calendar] Upload error:", error);
     showError(String(error));
   }
 });

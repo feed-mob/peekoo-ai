@@ -1,74 +1,76 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { callPomodoroTool } from "./tool-client.ts";
+import { describe, expect, test } from "bun:test";
+import {
+  finishPomodoro,
+  getPomodoroHistory,
+  getPomodoroStatus,
+  setPomodoroSettings,
+  switchPomodoroMode,
+} from "./tool-client.ts";
 
-const consoleError = mock(() => {});
+describe("pomodoro tool client", () => {
+  test("loads status from the built-in pomodoro command", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
 
-console.error = consoleError as typeof console.error;
-
-afterEach(() => {
-  consoleError.mockClear();
-});
-
-describe("callPomodoroTool", () => {
-  test("enables the pomodoro plugin and retries when the tool is missing", async () => {
-    const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
-    let firstToolCall = true;
-
-    const invoke = async (command: string, args: Record<string, unknown>) => {
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push({ command, args });
-
-      if (command === "plugin_call_tool") {
-        if (firstToolCall) {
-          firstToolCall = false;
-          throw new Error("Tool not found: pomodoro_get_status");
-        }
-
-        return JSON.stringify({ ok: true });
-      }
-
-      if (command === "plugin_enable") {
-        return null;
-      }
-
-      throw new Error(`Unexpected command: ${command}`);
+      return { state: "Idle" } as T;
     };
 
-    const result = await callPomodoroTool(invoke, "pomodoro_get_status");
+    const result = await getPomodoroStatus(invoke);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ state: "Idle" });
+    expect(calls).toEqual([{ command: "pomodoro_get_status", args: {} }]);
+  });
+
+  test("passes settings using tauri command arguments", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return { ok: true } as T;
+    };
+
+    await setPomodoroSettings(
+      { work_minutes: 45, break_minutes: 10, enable_memo: true },
+      invoke,
+    );
+
     expect(calls).toEqual([
       {
-        command: "plugin_call_tool",
-        args: { toolName: "pomodoro_get_status", argsJson: "{}" },
-      },
-      {
-        command: "plugin_enable",
-        args: { pluginKey: "pomodoro" },
-      },
-      {
-        command: "plugin_call_tool",
-        args: { toolName: "pomodoro_get_status", argsJson: "{}" },
+        command: "pomodoro_set_settings",
+        args: { workMinutes: 45, breakMinutes: 10, enableMemo: true },
       },
     ]);
   });
 
-  test("returns null without enabling the plugin for unrelated errors", async () => {
-    const calls: Array<{ command: string; args: Record<string, unknown> }> = [];
+  test("uses built-in commands for finish and mode switching", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
 
-    const invoke = async (command: string, args: Record<string, unknown>) => {
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
       calls.push({ command, args });
-      throw new Error("permission denied");
+      return {} as T;
     };
 
-    const result = await callPomodoroTool(invoke, "pomodoro_get_status");
+    await finishPomodoro(invoke);
+    await switchPomodoroMode("break", invoke);
 
-    expect(result).toBeNull();
     expect(calls).toEqual([
-      {
-        command: "plugin_call_tool",
-        args: { toolName: "pomodoro_get_status", argsJson: "{}" },
-      },
+      { command: "pomodoro_finish", args: {} },
+      { command: "pomodoro_switch_mode", args: { mode: "break" } },
     ]);
-    expect(consoleError).toHaveBeenCalledTimes(1);
+  });
+
+  test("loads recent pomodoro history with a limit", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return [{ id: "cycle-1", mode: "work" }] as T;
+    };
+
+    const result = await getPomodoroHistory(5, invoke);
+
+    expect(result).toEqual([{ id: "cycle-1", mode: "work" }]);
+    expect(calls).toEqual([{ command: "pomodoro_history", args: { limit: 5 } }]);
   });
 });

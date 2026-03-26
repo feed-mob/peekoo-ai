@@ -94,7 +94,6 @@ plugin name: (plugin-build name) (plugin-install name)
 plugin-build-all:
     just plugin-build health-reminders
     just plugin-build peekoo-opencode-companion
-    just plugin-build pomodoro
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
 plugin-build-opencode-companion:

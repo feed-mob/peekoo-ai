@@ -49,7 +49,7 @@ export function TaskList({
 
   return (
     <>
-      <div className="space-y-2 pr-2">
+      <div className="space-y-2.5 pr-2">
         {tasks.map((task) => (
           <TaskListItem
             key={task.id}

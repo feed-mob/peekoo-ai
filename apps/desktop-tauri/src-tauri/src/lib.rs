@@ -502,14 +502,20 @@ async fn pomodoro_get_status(
 async fn pomodoro_set_settings(
     work_minutes: u32,
     break_minutes: u32,
+    long_break_minutes: u32,
+    long_break_interval: u32,
     enable_memo: bool,
+    auto_advance: bool,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<PomodoroStatusDto, String> {
     let status = state.app.pomodoro_set_settings(PomodoroSettingsInput {
         work_minutes,
         break_minutes,
+        long_break_minutes,
+        long_break_interval,
         enable_memo,
+        auto_advance,
     })?;
     flush_plugin_notifications(&app, &state)?;
     Ok(status)
@@ -577,6 +583,31 @@ async fn pomodoro_history(
     let history = state.app.pomodoro_history(limit)?;
     flush_plugin_notifications(&app, &state)?;
     Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_history_by_date_range(
+    start_date: String,
+    end_date: String,
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state.app.pomodoro_history_by_date_range(start_date, end_date, limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_save_memo(
+    id: Option<String>,
+    memo: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.save_pomodoro_memo(id, memo)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -868,14 +899,26 @@ pub fn run() {
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")
-            .map(PathBuf::from)
+            .map(|v| PathBuf::from(v.trim()))
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .join("logs");
-        let _ = std::fs::create_dir_all(&log_dir);
-        Target::new(TargetKind::Folder {
-            path: log_dir,
-            file_name: None,
-        })
+        
+        // Ensure log directory exists before plugin initialization
+        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+            eprintln!("Warning: Failed to create log directory at {:?}: {}", log_dir, e);
+        }
+        
+        // Verify the directory exists and is accessible
+        if !log_dir.exists() || !log_dir.is_dir() {
+            eprintln!("Warning: Log directory does not exist or is not accessible: {:?}", log_dir);
+            // Fallback to LogDir which uses system temp/app data
+            Target::new(TargetKind::LogDir { file_name: None })
+        } else {
+            Target::new(TargetKind::Folder {
+                path: log_dir,
+                file_name: None,
+            })
+        }
     } else {
         Target::new(TargetKind::LogDir { file_name: None })
     };
@@ -1031,6 +1074,8 @@ pub fn run() {
             pomodoro_finish,
             pomodoro_switch_mode,
             pomodoro_history,
+            pomodoro_history_by_date_range,
+            pomodoro_save_memo,
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,

@@ -22,8 +22,11 @@ pub struct PomodoroStatusDto {
     pub completed_focus: u32,
     pub completed_breaks: u32,
     pub enable_memo: bool,
+    pub auto_advance: bool,
     pub default_work_minutes: u32,
     pub default_break_minutes: u32,
+    pub long_break_minutes: u32,
+    pub long_break_interval: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -36,13 +39,17 @@ pub struct PomodoroCycleDto {
     pub started_at: String,
     pub ended_at: String,
     pub memo_requested: bool,
+    pub memo: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PomodoroSettingsInput {
     pub work_minutes: u32,
     pub break_minutes: u32,
+    pub long_break_minutes: u32,
+    pub long_break_interval: u32,
     pub enable_memo: bool,
+    pub auto_advance: bool,
 }
 
 pub struct PomodoroAppService {
@@ -76,14 +83,43 @@ impl PomodoroAppService {
     }
 
     pub fn get_status(&self) -> Result<PomodoroStatusDto, String> {
+        // Check if we need to reset daily counters before returning status
+        let conn = self.conn()?;
+        let mut status = load_status(&conn)?;
+        
+        let today = chrono::Local::now().date_naive().to_string();
+        tracing::info!(
+            "Pomodoro get_status: today={}, last_reset_date={:?}, completed_focus={}, completed_breaks={}",
+            today,
+            status.last_reset_date,
+            status.completed_focus,
+            status.completed_breaks
+        );
+        
+        if status.last_reset_date.as_ref() != Some(&today) {
+            tracing::info!("Resetting daily counters from {} to {}", status.last_reset_date.as_deref().unwrap_or("None"), today);
+            status.completed_focus = 0;
+            status.completed_breaks = 0;
+            status.last_reset_date = Some(today);
+            save_status(&conn, &status)?;
+        }
+        drop(conn);
+        
         let status = self.refresh_runtime_if_due()?;
+        self.publish_badges(&status);
         Ok(status_to_dto(&status))
     }
 
     pub fn set_settings(&self, input: PomodoroSettingsInput) -> Result<PomodoroStatusDto, String> {
-        let settings =
-            PomodoroSettings::new(input.work_minutes, input.break_minutes, input.enable_memo)
-                .map_err(|err| err.to_string())?;
+        let settings = PomodoroSettings::new(
+            input.work_minutes,
+            input.break_minutes,
+            input.long_break_minutes,
+            input.long_break_interval,
+            input.enable_memo,
+            input.auto_advance,
+        )
+        .map_err(|err| err.to_string())?;
 
         let conn = self.conn()?;
         let mut status = load_status(&conn)?;
@@ -187,11 +223,32 @@ impl PomodoroAppService {
         Ok(status_to_dto(&status))
     }
 
+    pub fn save_pomodoro_memo(&self, id: Option<String>, memo: String) -> Result<PomodoroStatusDto, String> {
+        let conn = self.conn()?;
+        
+        if let Some(cycle_id) = id {
+            conn.execute(
+                "UPDATE pomodoro_cycle_history SET memo = ?1 WHERE id = ?2",
+                params![memo, cycle_id],
+            )
+            .map_err(|err| format!("Failed to update specific cycle memo: {err}"))?;
+        } else {
+            conn.execute(
+                "UPDATE pomodoro_cycle_history SET memo = ?1 WHERE mode = 'work' AND id = (SELECT id FROM pomodoro_cycle_history WHERE mode = 'work' ORDER BY ended_at DESC LIMIT 1)",
+                params![memo],
+            )
+            .map_err(|err| format!("Failed to update latest cycle memo: {err}"))?;
+        }
+        
+        let status = load_status(&conn)?;
+        Ok(status_to_dto(&status))
+    }
+
     pub fn history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested FROM pomodoro_cycle_history ORDER BY ended_at DESC LIMIT ?1",
+                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo FROM pomodoro_cycle_history ORDER BY ended_at DESC LIMIT ?1",
             )
             .map_err(|err| format!("Prepare pomodoro history query error: {err}"))?;
 
@@ -206,12 +263,67 @@ impl PomodoroAppService {
                     started_at: row.get(5)?,
                     ended_at: row.get(6)?,
                     memo_requested: row.get::<_, i64>(7)? == 1,
+                    memo: row.get(8)?,
                 })
             })
             .map_err(|err| format!("Query pomodoro history error: {err}"))?;
 
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|err| format!("Collect pomodoro history error: {err}"))
+    }
+
+    pub fn history_by_date_range(&self, start_date: &str, end_date: &str, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
+        tracing::info!(
+            "Pomodoro history_by_date_range: start_date={}, end_date={}, limit={}",
+            start_date,
+            end_date,
+            limit
+        );
+        
+        let conn = self.conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo 
+                 FROM pomodoro_cycle_history 
+                 WHERE date(datetime(ended_at, 'localtime')) BETWEEN ?1 AND ?2 
+                 ORDER BY ended_at DESC 
+                 LIMIT ?3",
+            )
+            .map_err(|err| format!("Prepare pomodoro history by date query error: {err}"))?;
+
+        let rows = stmt
+            .query_map(params![start_date, end_date, limit as i64], |row| {
+                Ok(PomodoroCycleDto {
+                    id: row.get(0)?,
+                    mode: row.get(1)?,
+                    planned_minutes: row.get::<_, i64>(2)? as u32,
+                    actual_elapsed_secs: row.get::<_, i64>(3)? as u64,
+                    outcome: row.get(4)?,
+                    started_at: row.get(5)?,
+                    ended_at: row.get(6)?,
+                    memo_requested: row.get::<_, i64>(7)? == 1,
+                    memo: row.get(8)?,
+                })
+            })
+            .map_err(|err| format!("Query pomodoro history by date error: {err}"))?;
+
+        let result = rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|err| format!("Collect pomodoro history by date error: {err}"))?;
+        
+        tracing::info!(
+            "Pomodoro history_by_date_range: returned {} records. Breakdown by mode/outcome:",
+            result.len()
+        );
+        let work_completed = result.iter().filter(|r| r.mode == "work" && r.outcome == "completed").count();
+        let work_cancelled = result.iter().filter(|r| r.mode == "work" && r.outcome == "cancelled").count();
+        let break_completed = result.iter().filter(|r| r.mode == "break" && r.outcome == "completed").count();
+        let break_cancelled = result.iter().filter(|r| r.mode == "break" && r.outcome == "cancelled").count();
+        tracing::info!(
+            "  work: {} completed, {} cancelled | break: {} completed, {} cancelled",
+            work_completed, work_cancelled, break_completed, break_cancelled
+        );
+        
+        Ok(result)
     }
 
     fn conn(&self) -> Result<MutexGuard<'_, Connection>, String> {
@@ -226,8 +338,9 @@ impl PomodoroAppService {
             concat!(
                 "INSERT OR IGNORE INTO pomodoro_state (",
                 "id, mode, state, minutes, time_remaining_secs, started_at_epoch, expected_fire_at_epoch, ",
-                "default_work_minutes, default_break_minutes, enable_memo, completed_focus, completed_breaks, updated_at",
-                ") VALUES (1, 'work', 'Idle', 25, 1500, NULL, NULL, 25, 5, 0, 0, 0, datetime('now'))"
+                "default_work_minutes, default_break_minutes, long_break_minutes, long_break_interval, ",
+                "enable_memo, auto_advance, completed_focus, completed_breaks, last_reset_date, updated_at",
+                ") VALUES (1, 'work', 'Idle', 25, 1500, NULL, NULL, 25, 5, 15, 4, 0, 0, 0, 0, date('now'), datetime('now'))"
             ),
             [],
         )
@@ -268,6 +381,19 @@ impl PomodoroAppService {
     }
 
     fn reconcile_runtime_state(&self) -> Result<(), String> {
+        let conn = self.conn()?;
+        let mut status = load_status(&conn)?;
+        
+        // Check if we need to reset daily counters (use local timezone)
+        let today = chrono::Local::now().date_naive().to_string();
+        if status.last_reset_date.as_ref() != Some(&today) {
+            status.completed_focus = 0;
+            status.completed_breaks = 0;
+            status.last_reset_date = Some(today);
+            save_status(&conn, &status)?;
+        }
+        drop(conn);
+        
         let status = self.refresh_runtime_if_due()?;
         self.sync_scheduler(&status)?;
         self.publish_badges(&status);
@@ -285,12 +411,51 @@ impl PomodoroAppService {
             if status.time_remaining_secs == 0 {
                 let record = status.complete(now).map_err(|err| err.to_string())?;
                 insert_cycle_record(&conn, &record)?;
+
+                if status.settings.auto_advance {
+                    let next_mode = match status.mode {
+                        PomodoroMode::Work => {
+                            if status.completed_focus > 0
+                                && status.completed_focus % status.settings.long_break_interval == 0
+                            {
+                                PomodoroMode::Break // Still Break, but we'll use long duration
+                            } else {
+                                PomodoroMode::Break
+                            }
+                        }
+                        PomodoroMode::Break => PomodoroMode::Work,
+                    };
+
+                    let next_minutes = match next_mode {
+                        PomodoroMode::Work => status.settings.default_work_minutes,
+                        PomodoroMode::Break => {
+                            if status.mode == PomodoroMode::Work
+                                && status.completed_focus > 0
+                                && status.completed_focus % status.settings.long_break_interval == 0
+                            {
+                                status.settings.long_break_minutes
+                            } else {
+                                status.settings.default_break_minutes
+                            }
+                        }
+                    };
+
+                    status
+                        .start(next_mode, next_minutes, now)
+                        .map_err(|err| err.to_string())?;
+                }
+
                 save_status(&conn, &status)?;
                 drop(conn);
 
                 self.sync_scheduler(&status)?;
                 self.publish_badges(&status);
-                self.publish_completion_side_effects(&status, &record.mode);
+
+                if status.state == PomodoroState::Running {
+                    self.publish_start_mood(&status);
+                } else {
+                    self.publish_completion_side_effects(&status, &record.mode);
+                }
                 return Ok(status);
             }
         }
@@ -382,7 +547,8 @@ fn load_status(conn: &Connection) -> Result<PomodoroStatus, String> {
     conn.query_row(
         concat!(
             "SELECT mode, state, minutes, time_remaining_secs, started_at_epoch, expected_fire_at_epoch, ",
-            "default_work_minutes, default_break_minutes, enable_memo, completed_focus, completed_breaks ",
+            "default_work_minutes, default_break_minutes, enable_memo, completed_focus, completed_breaks, ",
+            "long_break_minutes, long_break_interval, auto_advance, last_reset_date ",
             "FROM pomodoro_state WHERE id = 1"
         ),
         [],
@@ -390,7 +556,10 @@ fn load_status(conn: &Connection) -> Result<PomodoroStatus, String> {
             let settings = PomodoroSettings::new(
                 row.get::<_, i64>(6)? as u32,
                 row.get::<_, i64>(7)? as u32,
+                row.get::<_, i64>(11)? as u32,
+                row.get::<_, i64>(12)? as u32,
                 row.get::<_, i64>(8)? == 1,
+                row.get::<_, i64>(13)? == 1,
             )
             .map_err(|err| {
                 rusqlite::Error::FromSqlConversionFailure(
@@ -410,6 +579,7 @@ fn load_status(conn: &Connection) -> Result<PomodoroStatus, String> {
                 settings,
                 completed_focus: row.get::<_, i64>(9)? as u32,
                 completed_breaks: row.get::<_, i64>(10)? as u32,
+                last_reset_date: row.get(14)?,
             })
         },
     )
@@ -421,7 +591,8 @@ fn save_status(conn: &Connection, status: &PomodoroStatus) -> Result<(), String>
         concat!(
             "UPDATE pomodoro_state SET ",
             "mode = ?1, state = ?2, minutes = ?3, time_remaining_secs = ?4, started_at_epoch = ?5, expected_fire_at_epoch = ?6, ",
-            "default_work_minutes = ?7, default_break_minutes = ?8, enable_memo = ?9, completed_focus = ?10, completed_breaks = ?11, updated_at = datetime('now') ",
+            "default_work_minutes = ?7, default_break_minutes = ?8, enable_memo = ?9, completed_focus = ?10, completed_breaks = ?11, ",
+            "long_break_minutes = ?12, long_break_interval = ?13, auto_advance = ?14, last_reset_date = ?15, updated_at = datetime('now') ",
             "WHERE id = 1"
         ),
         params![
@@ -436,6 +607,10 @@ fn save_status(conn: &Connection, status: &PomodoroStatus) -> Result<(), String>
             i64::from(status.settings.enable_memo),
             status.completed_focus as i64,
             status.completed_breaks as i64,
+            status.settings.long_break_minutes as i64,
+            status.settings.long_break_interval as i64,
+            i64::from(status.settings.auto_advance),
+            status.last_reset_date.as_deref(),
         ],
     )
     .map_err(|err| format!("Save pomodoro state error: {err}"))?;
@@ -485,9 +660,44 @@ fn complete_due_session(
         .complete(now_epoch())
         .map_err(|err| err.to_string())?;
     insert_cycle_record(&conn, &record)?;
-    save_status(&conn, &status)?;
 
-    mood_reactions.set("pomodoro-completed", false);
+    if status.settings.auto_advance {
+        let now = now_epoch();
+        let next_mode = match status.mode {
+            PomodoroMode::Work => PomodoroMode::Break,
+            PomodoroMode::Break => PomodoroMode::Work,
+        };
+        let next_minutes = match next_mode {
+            PomodoroMode::Work => status.settings.default_work_minutes,
+            PomodoroMode::Break => {
+                if status.mode == PomodoroMode::Work
+                    && status.completed_focus > 0
+                    && status.completed_focus % status.settings.long_break_interval == 0
+                {
+                    status.settings.long_break_minutes
+                } else {
+                    status.settings.default_break_minutes
+                }
+            }
+        };
+        status
+            .start(next_mode, next_minutes, now)
+            .map_err(|err| err.to_string())?;
+    }
+
+    save_status(&conn, &status)?;
+    drop(conn);
+
+    if status.state == PomodoroState::Running {
+        let trigger = match status.mode {
+            PomodoroMode::Work => "pomodoro-started",
+            PomodoroMode::Break => "pomodoro-resting",
+        };
+        mood_reactions.set(trigger, true);
+    } else {
+        mood_reactions.set("pomodoro-completed", false);
+    }
+
     let (title, body) = match record.mode {
         PomodoroMode::Work => (
             "Focus Session Complete",
@@ -495,12 +705,49 @@ fn complete_due_session(
         ),
         PomodoroMode::Break => ("Break Complete", "Ready to start focusing again?"),
     };
+    let message = if status.state == PomodoroState::Running {
+        format!("{} {} session started automatically.", body, status.minutes)
+    } else {
+        body.to_string()
+    };
     let _ = notifications.notify(Notification {
         source: POMODORO_OWNER.to_string(),
         title: title.to_string(),
-        body: body.to_string(),
+        body: message,
     });
-    peek_badges.clear(POMODORO_OWNER);
+    if status.state == PomodoroState::Running {
+        // sync scheduler and badges for the new auto-started session
+        let scheduler = Scheduler::new();
+        scheduler.cancel(POMODORO_OWNER, POMODORO_TIMER_KEY);
+        scheduler
+            .set(
+                POMODORO_OWNER,
+                POMODORO_TIMER_KEY,
+                status.time_remaining_secs,
+                false,
+                Some(status.time_remaining_secs),
+            )
+            .map_err(|err| err.to_string())?;
+
+        let label = match (status.mode, status.state) {
+            (PomodoroMode::Work, _) => "Focus".to_string(),
+            (PomodoroMode::Break, _) => "Break".to_string(),
+        };
+        peek_badges.set(
+            POMODORO_OWNER,
+            vec![PeekBadgeItem {
+                label,
+                value: format_countdown(status.time_remaining_secs),
+                icon: Some(match status.mode {
+                    PomodoroMode::Work => "brain".to_string(),
+                    PomodoroMode::Break => "coffee".to_string(),
+                }),
+                countdown_secs: Some(status.time_remaining_secs),
+            }],
+        );
+    } else {
+        peek_badges.clear(POMODORO_OWNER);
+    }
     Ok(())
 }
 
@@ -552,8 +799,11 @@ fn status_to_dto(status: &PomodoroStatus) -> PomodoroStatusDto {
         completed_focus: status.completed_focus,
         completed_breaks: status.completed_breaks,
         enable_memo: status.settings.enable_memo,
+        auto_advance: status.settings.auto_advance,
         default_work_minutes: status.settings.default_work_minutes,
         default_break_minutes: status.settings.default_break_minutes,
+        long_break_minutes: status.settings.long_break_minutes,
+        long_break_interval: status.settings.long_break_interval,
     }
 }
 
@@ -618,6 +868,14 @@ mod tests {
             .expect("db lock")
             .execute_batch(MIGRATION_0010_POMODORO_RUNTIME)
             .expect("pomodoro migration should apply");
+        conn.lock()
+            .expect("db lock")
+            .execute_batch(
+                "ALTER TABLE pomodoro_state ADD COLUMN long_break_minutes INTEGER NOT NULL DEFAULT 15;
+                 ALTER TABLE pomodoro_state ADD COLUMN long_break_interval INTEGER NOT NULL DEFAULT 4;
+                 ALTER TABLE pomodoro_state ADD COLUMN auto_advance INTEGER NOT NULL DEFAULT 0;"
+            )
+            .expect("additional columns should be added");
 
         let (notifications, _receiver) = NotificationService::new();
 
@@ -666,12 +924,16 @@ mod tests {
             .set_settings(PomodoroSettingsInput {
                 work_minutes: 40,
                 break_minutes: 8,
+                long_break_minutes: 15,
+                long_break_interval: 4,
                 enable_memo: true,
+                auto_advance: true,
             })
             .expect("settings update should succeed");
 
         assert_eq!(updated.default_work_minutes, 40);
         assert_eq!(updated.default_break_minutes, 8);
         assert!(updated.enable_memo);
+        assert!(updated.auto_advance);
     }
 }

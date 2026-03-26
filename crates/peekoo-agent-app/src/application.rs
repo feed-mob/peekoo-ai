@@ -367,6 +367,7 @@ impl AgentApplication {
         self.task_service.list_tasks()
     }
 
+
     #[allow(clippy::too_many_arguments)]
     pub fn update_task(
         &self,
@@ -490,8 +491,16 @@ impl AgentApplication {
         self.pomodoro.switch_mode(mode)
     }
 
+    pub fn save_pomodoro_memo(&self, id: Option<String>, memo: String) -> Result<PomodoroStatusDto, String> {
+        self.pomodoro.save_pomodoro_memo(id, memo)
+    }
+
     pub fn pomodoro_history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
         self.pomodoro.history(limit)
+    }
+
+    pub fn pomodoro_history_by_date_range(&self, start_date: String, end_date: String, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
+        self.pomodoro.history_by_date_range(&start_date, &end_date, limit)
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
@@ -968,7 +977,9 @@ fn create_plugin_registry(
 }
 
 fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
-    for (plugin_dir, manifest) in plugin_registry.discover() {
+    let discovered = plugin_registry.discover();
+    tracing::info!("Plugin discovery: found {} plugin(s)", discovered.len());
+    for (plugin_dir, manifest) in discovered {
         let enabled = match plugin_registry.sync_plugin_registration(&plugin_dir) {
             Ok(_) => match plugin_registry.is_plugin_enabled(&manifest.plugin.key) {
                 Ok(enabled) => enabled,
@@ -1002,10 +1013,10 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 
         match plugin_registry.install_plugin(&plugin_dir) {
             Ok(key) => tracing::info!(plugin = key.as_str(), "Plugin installed and loaded"),
-            Err(err) => tracing::warn!(
+            Err(err) => tracing::error!(
                 plugin = manifest.plugin.key.as_str(),
                 dir = %plugin_dir.display(),
-                "Skipping plugin during startup: {err}"
+                "Plugin load FAILED: {err}"
             ),
         }
     }

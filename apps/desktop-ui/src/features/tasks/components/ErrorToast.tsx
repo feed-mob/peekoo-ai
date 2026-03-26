@@ -13,9 +13,9 @@ const icons = {
 };
 
 const styles = {
-  success: "bg-green-500/20 border-green-500/40 text-green-400",
-  error: "bg-red-500/20 border-red-500/40 text-red-400",
-  info: "bg-blue-500/20 border-blue-500/40 text-blue-400",
+  success: "bg-green-500/15 border-green-500/30 text-green-700 dark:text-green-400",
+  error: "bg-red-500/15 border-red-500/30 text-[#662222] dark:text-red-400",
+  info: "bg-blue-500/15 border-blue-500/30 text-blue-700 dark:text-blue-400",
 };
 
 export function ErrorToast({ toasts, onRemove }: ErrorToastProps) {

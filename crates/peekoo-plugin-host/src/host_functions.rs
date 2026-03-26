@@ -1148,19 +1148,25 @@ fn host_websocket_connect(
 
     // Build request with a valid HTTP Origin header so servers that validate
     // Origin (e.g. OpenClaw gateway) don't reject the handshake.
-    let origin = format!(
-        "http://{}",
-        parsed.host_str().unwrap_or("localhost")
-    );
-    let mut request = parsed
-        .as_str()
-        .into_client_request()
-        .map_err(|e| Error::msg(format!("WebSocket request build error: {e}")))?;
+    // Include the port when non-default so the origin matches what the server expects.
+    let host = parsed.host_str().ok_or_else(|| Error::msg("WebSocket URL missing host"))?;
+    let origin = if let Some(port) = parsed.port() {
+        if host.contains(':') {
+            format!("http://[{}]:{}", host, port)
+        } else {
+            format!("http://{}:{}", host, port)
+        }
+    } else {
+        format!("http://{}", host)
+    };
+
+    tracing::debug!("WebSocket connection origin: {}", origin);
+    let mut request = url.into_client_request().map_err(|e| Error::msg(e.to_string()))?;
     request.headers_mut().insert(
         "Origin",
         origin
             .parse()
-            .map_err(|e| Error::msg(format!("Invalid origin header: {e}")))?,
+            .map_err(|e| Error::msg(format!("Invalid origin header '{}': {}", origin, e)))?,
     );
     let (socket, _) = connect(request)
         .map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;

@@ -8,57 +8,68 @@
   </head>
   <body>
     <main class="panel">
-      <section class="header-card">
+      <!-- Top Card: Title & Settings Toggle -->
+      <section class="glass-card">
         <div class="header-row">
           <div>
             <p class="kicker">Google Calendar</p>
-            <h1 class="title">Agenda</h1>
+            <h1 class="title">My Agenda</h1>
           </div>
-          <button id="refreshButton" class="btn btn-primary" type="button">Refresh</button>
+          <button id="toggleSettingsBtn" class="icon-btn" title="Settings" type="button">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
         </div>
-        <p id="statusLine" class="status-copy">Connect your calendar to see your agenda.</p>
-      </section>
 
-      <section id="errorBanner" class="message message-error hidden"></section>
+        <div id="statusIndicator" class="location-snippet">
+          <div class="live-dot"></div>
+          <span id="statusLine">Syncing...</span>
+        </div>
 
-      <section class="control-card">
-        <div class="account-row">
-          <div class="account-copy">
-            <p class="section-label">Connected account</p>
-            <p id="accountName" class="account-name">Not connected</p>
-            <p id="accountEmail" class="account-email">Upload your client.json and connect Google Calendar.</p>
+        <!-- Hidden Settings Tray -->
+        <div id="settingsTray" class="settings-tray">
+          <div class="account-row">
+            <div class="account-copy">
+              <p class="section-label">Account</p>
+              <p id="accountName" class="account-name">Not connected</p>
+              <p id="accountEmail" class="account-email" style="font-size: 11px;">Connect to sync events.</p>
+            </div>
+            <div id="accountBadge" class="status-pill">Offline</div>
           </div>
-          <div id="accountBadge" class="account-badge">Offline</div>
-        </div>
 
-        <label class="file-field">
-          <span class="section-label">Google OAuth client.json</span>
-          <input id="clientJsonInput" type="file" accept="application/json,.json" />
-        </label>
+          <div id="setupSection">
+            <p class="label-small" style="margin: 12px 0 6px 0;">Authentication</p>
+            <div class="file-input-wrapper">
+              <span class="label-small">Drop client.json or click</span>
+              <input id="clientJsonInput" type="file" accept="application/json,.json" />
+            </div>
+          </div>
 
-        <div class="action-row">
-          <button id="saveClientJsonButton" class="btn btn-secondary" type="button">Upload</button>
-          <button id="connectButton" class="btn btn-primary" type="button">Connect</button>
-          <button id="disconnectButton" class="btn btn-secondary" type="button">Disconnect</button>
-        </div>
-      </section>
-
-      <section class="agenda-card">
-        <div class="tabs" role="tablist" aria-label="Agenda views">
-          <button id="tabUpcoming" class="tab-button active" type="button" role="tab" aria-selected="true">Upcoming</button>
-          <button id="tabDaily" class="tab-button" type="button" role="tab" aria-selected="false">Daily</button>
-          <button id="tabWeekly" class="tab-button" type="button" role="tab" aria-selected="false">Weekly</button>
-        </div>
-
-        <div class="agenda-header">
-          <div>
-            <p id="agendaLabel" class="section-label">Upcoming</p>
-            <h2 id="agendaTitle" class="agenda-title">Next 5 events</h2>
+          <div class="action-row" style="margin-top: 12px; display: flex; gap: 8px;">
+            <button id="connectButton" class="btn-luxury" style="flex: 1;" type="button">Connect</button>
+            <button id="disconnectButton" class="btn-luxury" style="background: var(--glow-error); color: #ff8a8a;" type="button">Reset</button>
           </div>
         </div>
-
-        <div id="agendaList" class="agenda-list"></div>
       </section>
+
+      <section id="errorBanner" class="message-banner message-error hidden"></section>
+
+      <!-- Main Agenda Section -->
+      <div class="tabs-control" role="tablist">
+        <button id="tabUpcoming" class="tab-button active" type="button" role="tab" aria-selected="true">Upcoming</button>
+        <button id="tabDaily" class="tab-button" type="button" role="tab" aria-selected="false">Today</button>
+        <button id="tabWeekly" class="tab-button" type="button" role="tab" aria-selected="false">Week</button>
+      </div>
+
+      <div class="header-row" style="padding: 0 4px;">
+        <h2 id="agendaTitle" class="agenda-title">Agenda</h2>
+        <button id="refreshButton" class="icon-btn" style="width: 28px; height: 24px; border-radius: 6px;" title="Sync Now" type="button">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+        </button>
+      </div>
+
+      <div id="agendaList" class="agenda-list">
+        <!-- Events injected here -->
+      </div>
     </main>
 
     <script src="panel.js"></script>

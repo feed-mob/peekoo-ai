@@ -6,7 +6,9 @@ use peekoo_persistence_sqlite::{
     MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
     MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
     MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
-    MIGRATION_0010_POMODORO_RUNTIME,
+    MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_POMODORO_AUTOPILOT,
+    MIGRATION_0012_POMODORO_CYCLE_MEMO, MIGRATION_0013_POMODORO_DAILY_RESET,
+    MIGRATION_0014_ADD_NOTES_COLUMN,
 };
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -607,6 +609,130 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
         "pomodoro_state",
         MIGRATION_0010_POMODORO_RUNTIME,
     )?;
+    let already_applied_0011: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_pomodoro_autopilot_v4'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0011 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0011 {
+        let migration_sql = MIGRATION_0011_POMODORO_AUTOPILOT;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0011 error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_pomodoro_autopilot_v4')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0011 state error: {e}"))?;
+    }
+
+    let already_applied_0012: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0012_pomo_memo_v1'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0012 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0012 {
+        let migration_sql = MIGRATION_0012_POMODORO_CYCLE_MEMO;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0012 error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0012_pomo_memo_v1')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0012 state error: {e}"))?;
+    }
+
+    let already_applied_0013: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0013_pomo_daily_reset_v1'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0013 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0013 {
+        let migration_sql = MIGRATION_0013_POMODORO_DAILY_RESET;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0013 error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0013_pomo_daily_reset_v1')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0013 state error: {e}"))?;
+    }
+
+    // Migration 0014: Add notes column if missing (for databases created before notes was in schema)
+    let already_applied_0014: bool = conn
+        .query_row(
+            "SELECT 1 FROM _peekoo_migrations WHERE id = '0014_add_notes_column'",
+            [],
+            |_| Ok(true),
+        )
+        .optional()
+        .map_err(|e| format!("Check migration 0014 state error: {e}"))?
+        .unwrap_or(false);
+
+    if !already_applied_0014 {
+        let migration_sql = MIGRATION_0014_ADD_NOTES_COLUMN;
+        for statement in migration_sql.split(';') {
+            let stmt = statement.trim();
+            if stmt.is_empty() {
+                continue;
+            }
+            if let Err(e) = conn.execute(stmt, []) {
+                let e_str = e.to_string();
+                if !e_str.contains("duplicate column name") {
+                    return Err(format!("Apply migration 0014 error: {e}"));
+                }
+            }
+        }
+        conn.execute(
+            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0014_add_notes_column')",
+            [],
+        )
+        .map_err(|e| format!("Record migration 0014 state error: {e}"))?;
+    }
 
     Ok(())
 }

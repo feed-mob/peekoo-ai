@@ -37,7 +37,9 @@ import type { AnimationType, SpriteState } from "@/types/sprite";
 const MOOD_OVERRIDE_DURATION_MS = 3000;
 const DRAG_THRESHOLD_PX = 8;
 /** Maximum gap (ms) between two clicks to be treated as a double-click. */
-const DOUBLE_CLICK_THRESHOLD_MS = 300;
+const DOUBLE_CLICK_THRESHOLD_MS = 250;
+/** Maximum position delta (px) between two clicks to be treated as a double-click. */
+const DOUBLE_CLICK_POSITION_TOLERANCE_PX = 10;
 
 export async function openSettingsPanelFromTray(
   openPanel: (label: PanelLabel) => Promise<void>,
@@ -88,6 +90,7 @@ export default function SpriteView() {
   const moodResetTimerRef = useRef<number | null>(null);
   const interactionRootRef = useRef<HTMLDivElement | null>(null);
   const lastClickTimeRef = useRef<number>(0);
+  const lastClickPositionRef = useRef<{ x: number; y: number } | null>(null);
   const dragStateRef = useRef<{
     startX: number;
     startY: number;
@@ -365,21 +368,45 @@ export default function SpriteView() {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
 
-        if (!dragState?.dragging) {
-          const now = Date.now();
-          const timeSinceLastClick = now - lastClickTimeRef.current;
-          const isDoubleClick = timeSinceLastClick <= DOUBLE_CLICK_THRESHOLD_MS;
-          lastClickTimeRef.current = isDoubleClick ? 0 : now;
+        // If dragging occurred, don't trigger click actions
+        if (dragState?.dragging) {
+          lastClickPositionRef.current = null;
+          return;
+        }
 
-          if (isDoubleClick) {
+        if (!dragState) return;
+
+        const now = Date.now();
+        const currentPosition = { x: dragState.startX, y: dragState.startY };
+        const timeSinceLastClick = now - lastClickTimeRef.current;
+        
+        // Check both time and position for double-click
+        const isDoubleClick = 
+          timeSinceLastClick <= DOUBLE_CLICK_THRESHOLD_MS &&
+          lastClickPositionRef.current !== null &&
+          Math.hypot(
+            currentPosition.x - lastClickPositionRef.current.x,
+            currentPosition.y - lastClickPositionRef.current.y
+          ) <= DOUBLE_CLICK_POSITION_TOLERANCE_PX;
+
+        if (isDoubleClick) {
+          // Double-click: only open MiniChat if in default state
+          if (!menuOpen && !miniChatOpenRef.current) {
             collapseBadge();
-            setMenuOpen(false);
-            setMiniChatOpen((prev) => !prev);
-            if (miniChatOpenRef.current) {
-              setMiniChatActiveReplyId(null);
-              setMiniChatAwaitingReply(false);
-            }
+            setMiniChatOpen(true);
           }
+          lastClickTimeRef.current = 0;
+          lastClickPositionRef.current = null;
+        } else {
+          // Single-click: close any open panels to return to default state
+          if (menuOpen || miniChatOpenRef.current) {
+            setMenuOpen(false);
+            setMiniChatOpen(false);
+            setMiniChatActiveReplyId(null);
+            setMiniChatAwaitingReply(false);
+          }
+          lastClickTimeRef.current = now;
+          lastClickPositionRef.current = currentPosition;
         }
       };
 

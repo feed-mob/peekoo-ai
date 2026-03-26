@@ -54,14 +54,20 @@ impl PomodoroCycleOutcome {
 pub struct PomodoroSettings {
     pub default_work_minutes: u32,
     pub default_break_minutes: u32,
+    pub long_break_minutes: u32,
+    pub long_break_interval: u32,
     pub enable_memo: bool,
+    pub auto_advance: bool,
 }
 
 impl PomodoroSettings {
     pub fn new(
         default_work_minutes: u32,
         default_break_minutes: u32,
+        long_break_minutes: u32,
+        long_break_interval: u32,
         enable_memo: bool,
+        auto_advance: bool,
     ) -> Result<Self, PomodoroError> {
         if default_work_minutes == 0 {
             return Err(PomodoroError::InvalidWorkMinutes);
@@ -73,7 +79,10 @@ impl PomodoroSettings {
         Ok(Self {
             default_work_minutes,
             default_break_minutes,
+            long_break_minutes,
+            long_break_interval,
             enable_memo,
+            auto_advance,
         })
     }
 
@@ -106,6 +115,7 @@ pub struct PomodoroStatus {
     pub expected_fire_at_epoch: Option<i64>,
     pub completed_focus: u32,
     pub completed_breaks: u32,
+    pub last_reset_date: Option<String>,
     pub settings: PomodoroSettings,
 }
 
@@ -121,6 +131,7 @@ impl PomodoroStatus {
             expected_fire_at_epoch: None,
             completed_focus: 0,
             completed_breaks: 0,
+            last_reset_date: None,
             settings,
         }
     }
@@ -298,7 +309,8 @@ mod tests {
 
     #[test]
     fn new_status_uses_default_work_settings() {
-        let settings = PomodoroSettings::new(25, 5, true).expect("settings should be valid");
+        let settings =
+            PomodoroSettings::new(25, 5, 15, 4, true, false).expect("settings should be valid");
         let status = PomodoroStatus::new(settings.clone());
 
         assert_eq!(status.mode, PomodoroMode::Work);
@@ -308,11 +320,13 @@ mod tests {
         assert_eq!(status.settings, settings);
         assert_eq!(status.completed_focus, 0);
         assert_eq!(status.completed_breaks, 0);
+        assert_eq!(status.last_reset_date, None);
     }
 
     #[test]
     fn completing_work_session_updates_focus_counter() {
-        let settings = PomodoroSettings::new(25, 5, true).expect("settings should be valid");
+        let settings =
+            PomodoroSettings::new(25, 5, 15, 4, true, false).expect("settings should be valid");
         let mut status = PomodoroStatus::new(settings);
 
         status
@@ -331,7 +345,8 @@ mod tests {
 
     #[test]
     fn cancelling_break_session_records_history_without_incrementing_focus() {
-        let settings = PomodoroSettings::new(25, 5, false).expect("settings should be valid");
+        let settings =
+            PomodoroSettings::new(25, 5, 15, 4, false, false).expect("settings should be valid");
         let mut status = PomodoroStatus::new(settings);
 
         status
@@ -349,7 +364,8 @@ mod tests {
 
     #[test]
     fn switching_mode_while_idle_resets_duration_from_settings() {
-        let settings = PomodoroSettings::new(30, 7, false).expect("settings should be valid");
+        let settings =
+            PomodoroSettings::new(30, 7, 20, 4, false, false).expect("settings should be valid");
         let mut status = PomodoroStatus::new(settings);
 
         status
@@ -363,7 +379,7 @@ mod tests {
 
     #[test]
     fn invalid_settings_are_rejected() {
-        let result = PomodoroSettings::new(0, 5, true);
+        let result = PomodoroSettings::new(0, 5, 15, 4, true, false);
 
         assert_eq!(result.unwrap_err(), PomodoroError::InvalidWorkMinutes);
     }
