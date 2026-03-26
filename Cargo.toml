@@ -21,6 +21,10 @@ members = [
 ]
 resolver = "2"
 
+[workspace.dependencies]
+pi = { git = "https://github.com/0xRichardH/pi_agent_rust", branch = "main", package = "pi_agent_rust", default-features = false, features = ["image-resize", "clipboard", "sqlite-sessions"] }
+asupersync = "=0.2.9"
+
 [workspace.package]
 edition = "2024"
 license = "MIT"
