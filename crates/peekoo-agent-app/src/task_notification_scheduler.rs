@@ -136,7 +136,7 @@ fn notification_delay_secs(task: &TaskDto, now: DateTime<Utc>) -> Result<Option<
 
     let delay_ms = start_at.signed_duration_since(now).num_milliseconds();
     if delay_ms <= 0 {
-        return Ok(Some(0));
+        return Ok(None);
     }
 
     Ok(Some(((delay_ms + 999) / 1000) as u64))

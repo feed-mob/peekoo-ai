@@ -514,6 +514,7 @@ pub fn tool_google_calendar_create_event_for_task(input: String) -> FnResult<Str
     upsert_task_link(&mut state, &payload.task_id, &created.id, "created");
     state.cached_events = upsert_cached_event(state.cached_events, created.clone());
     save_calendar_state(&state).map_err(Error::msg)?;
+    schedule_event_reminders(&[created.clone()]).map_err(Error::msg)?;
 
     Ok(serde_json::to_string(&TaskCalendarEventActionResult {
         ok: true,

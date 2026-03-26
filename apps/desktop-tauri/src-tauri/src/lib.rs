@@ -392,7 +392,7 @@ async fn create_task(
     recurrence_rule: Option<String>,
     recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     let assignee = assignee.as_deref().unwrap_or("user");
     let labels = labels.as_deref().unwrap_or(&[]);
@@ -408,7 +408,6 @@ async fn create_task(
         recurrence_rule.as_deref(),
         recurrence_time_of_day.as_deref(),
     )?;
-    emit_tasks_changed(&app, Some(&task.id));
     Ok(task)
 }
 
@@ -416,10 +415,9 @@ async fn create_task(
 async fn create_task_from_text(
     text: String,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     let task = state.app.create_task_from_text(&text)?;
-    emit_tasks_changed(&app, Some(&task.id));
     Ok(task)
 }
 
@@ -445,7 +443,7 @@ async fn update_task(
     recurrenceRule: Option<Option<String>>,
     recurrenceTimeOfDay: Option<Option<String>>,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     println!("[update_task tauri] recurrenceRule = {:?}", recurrenceRule);
     let recurrence_rule = recurrenceRule;
@@ -464,7 +462,6 @@ async fn update_task(
         recurrence_rule.as_ref().map(|o| o.as_deref()),
         recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
     )?;
-    emit_tasks_changed(&app, Some(&task.id));
     Ok(task)
 }
 
@@ -472,10 +469,9 @@ async fn update_task(
 async fn delete_task(
     id: String,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<(), String> {
     state.app.delete_task(&id)?;
-    emit_tasks_changed(&app, Some(&id));
     Ok(())
 }
 
@@ -483,10 +479,9 @@ async fn delete_task(
 async fn toggle_task(
     id: String,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
     let task = state.app.toggle_task(&id)?;
-    emit_tasks_changed(&app, Some(&task.id));
     Ok(task)
 }
 
@@ -515,10 +510,9 @@ async fn add_task_comment(
     text: String,
     author: String,
     state: State<'_, AgentState>,
-    app: AppHandle,
+    _app: AppHandle,
 ) -> Result<TaskEventDto, String> {
     let event = state.app.add_task_comment(&taskId, &text, &author)?;
-    emit_tasks_changed(&app, Some(&taskId));
     Ok(event)
 }
 
