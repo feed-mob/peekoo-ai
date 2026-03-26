@@ -1136,15 +1136,61 @@ fn show_plugin_notification(
 }
 
 fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(), String> {
-    for notification in state.app.drain_plugin_notifications() {
-        show_plugin_notification(app, &notification)?;
-        app.emit_to("main", "sprite:bubble", &notification)
-            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
-    }
+    process_plugin_notifications(
+        state.app.drain_plugin_notifications(),
+        |notification| show_plugin_notification(app, notification),
+        |notification| {
+            app.emit_to("main", "sprite:bubble", notification)
+                .map_err(|e| format!("Sprite bubble emit error: {e}"))
+        },
+    )?;
 
     flush_peek_badges(app, state)?;
     flush_mood_reactions(app, state)?;
     Ok(())
+}
+
+fn process_plugin_notifications<S, E>(
+    notifications: Vec<PluginNotificationDto>,
+    mut show: S,
+    mut emit_sprite: E,
+) -> Result<(), String>
+where
+    S: FnMut(&PluginNotificationDto) -> Result<(), String>,
+    E: FnMut(&PluginNotificationDto) -> Result<(), String>,
+{
+    let mut first_error: Option<String> = None;
+
+    for notification in notifications {
+        let mut delivered_any = false;
+
+        if let Err(err) = show(&notification) {
+            tracing::warn!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                "System notification delivery failed: {err}"
+            );
+        } else {
+            delivered_any = true;
+        }
+
+        if let Err(err) = emit_sprite(&notification) {
+            if !delivered_any && first_error.is_none() {
+                first_error = Some(err);
+            }
+        } else {
+            delivered_any = true;
+        }
+
+        if !delivered_any && first_error.is_none() {
+            first_error = Some("Notification could not be delivered".to_string());
+        }
+    }
+
+    match first_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
 }
 
 fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
@@ -1193,9 +1239,11 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
+    use peekoo_agent_app::PluginNotificationDto;
+
     use super::{
         MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
-        tray_menu_action,
+        process_plugin_notifications, tray_menu_action,
     };
     use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use std::io;
@@ -1382,5 +1430,43 @@ mod tests {
         );
 
         assert_eq!(result, Some(PathBuf::from("/fake/home")));
+    }
+
+    fn sample_notification() -> PluginNotificationDto {
+        PluginNotificationDto {
+            source_plugin: "tasks".to_string(),
+            title: "Task due".to_string(),
+            body: "Starts now".to_string(),
+            action_url: None,
+            action_label: None,
+        }
+    }
+
+    #[test]
+    fn still_emits_sprite_bubble_when_system_notification_fails() {
+        let mut emitted = Vec::new();
+
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |notification| {
+                emitted.push(notification.title.clone());
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(emitted, vec!["Task due".to_string()]);
+    }
+
+    #[test]
+    fn returns_error_when_no_notification_surface_succeeds() {
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |_| Err("sprite emit failed".to_string()),
+        );
+
+        assert!(result.is_err());
     }
 }

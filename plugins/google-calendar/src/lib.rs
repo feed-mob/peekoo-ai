@@ -9,13 +9,14 @@ const TOKEN_BUNDLE_KEY: &str = "token-bundle";
 const CONNECTED_ACCOUNT_KEY: &str = "connected-account";
 const STATE_KEY: &str = "calendar-state";
 const SYNC_SCHEDULE_KEY: &str = "calendar-sync";
+const REMINDER_SCHEDULE_PREFIX: &str = "reminder:";
 const GOOGLE_PROVIDER_ID: &str = "google-calendar";
 const GOOGLE_AUTHORIZE_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
 const GOOGLE_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 const GOOGLE_SCOPES: &str = "https://www.googleapis.com/auth/calendar openid email profile";
 const DEFAULT_REFRESH_INTERVAL_SECS: i64 = 300;
-const DEFAULT_REMINDER_LEAD_MINUTES: i64 = 10;
+
 const DEFAULT_UPCOMING_LIMIT: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -262,12 +263,6 @@ struct BucketedCalendarEvents {
     week: Vec<CalendarEventBucket>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ReminderState {
-    notified_event_ids: Vec<String>,
-}
-
 #[derive(Debug, Deserialize)]
 struct GoogleClientJson {
     installed: Option<GoogleInstalledClient>,
@@ -374,10 +369,15 @@ pub fn plugin_init(_: String) -> FnResult<String> {
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
     let event: Value = serde_json::from_str(&input)?;
-    if event["event"].as_str() == Some("schedule:fired")
-        && event["payload"]["key"].as_str() == Some(SYNC_SCHEDULE_KEY)
-    {
-        let _ = refresh_snapshot(false);
+    let event_name = event["event"].as_str().unwrap_or_default();
+    let key = event["payload"]["key"].as_str().unwrap_or_default();
+
+    if event_name == "schedule:fired" {
+        if key == SYNC_SCHEDULE_KEY {
+            let _ = refresh_snapshot(false);
+        } else if let Some(event_id) = key.strip_prefix(REMINDER_SCHEDULE_PREFIX) {
+            let _ = fire_event_reminder(event_id);
+        }
     }
     Ok(r#"{"ok":true}"#.to_string())
 }
@@ -1059,50 +1059,36 @@ fn fetch_account_profile(access_token: &str) -> Result<GoogleAccountProfile, Str
 }
 
 fn notify_due_events(state: &mut StoredCalendarState) -> Result<(), String> {
-    let due_ids = due_notification_ids(
-        &state.cached_events,
-        &Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
-        DEFAULT_REMINDER_LEAD_MINUTES,
-        &ReminderState {
-            notified_event_ids: state.notified_event_ids.clone(),
-        },
-    )?;
-
-    for notification_id in due_ids {
-        if let Some(event) = state
-            .cached_events
-            .iter()
-            .find(|event| reminder_id(&event.id, &event.start_at) == notification_id)
-        {
-            let when = if event.all_day {
-                "today".to_string()
-            } else {
-                event.start_at.clone()
-            };
-            let meeting_url = event.meeting_url.as_deref().or(event.html_link.as_deref());
-            let _ = peekoo::notify::send_with_action(
-                &event.title,
-                &format!("Starts at {when}"),
-                meeting_url,
-                meeting_url.map(|_| "Join meeting"),
-            );
-            state.notified_event_ids.push(notification_id);
-        }
-    }
-
-    prune_notified_ids(state);
+    schedule_event_reminders(&state.cached_events)?;
     Ok(())
 }
 
-fn prune_notified_ids(state: &mut StoredCalendarState) {
-    let active_ids = state
-        .cached_events
-        .iter()
-        .map(|event| reminder_id(&event.id, &event.start_at))
-        .collect::<std::collections::HashSet<_>>();
-    state
-        .notified_event_ids
-        .retain(|notification_id| active_ids.contains(notification_id));
+fn fire_event_reminder(event_id: &str) -> Result<(), String> {
+    let state = load_calendar_state()?;
+    let Some(event) = state.cached_events.iter().find(|e| e.id == event_id) else {
+        return Ok(());
+    };
+    if event.all_day {
+        return Ok(());
+    }
+    let meeting_url = event.meeting_url.as_deref().or(event.html_link.as_deref());
+    let _ = peekoo::notify::send_with_action(
+        &event.title,
+        "Starts now",
+        meeting_url,
+        meeting_url.map(|_| "Join meeting"),
+    );
+    Ok(())
+}
+
+fn schedule_event_reminders(events: &[CalendarEvent]) -> Result<(), String> {
+    let now_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let delays = pending_reminder_delays(events, &now_iso)?;
+    for (event_id, delay_secs) in delays {
+        let key = reminder_schedule_key(&event_id);
+        let _ = peekoo::schedule::set(&key, delay_secs.max(1), false, Some(delay_secs));
+    }
+    Ok(())
 }
 
 fn token_expired_soon(bundle: &TokenBundle) -> bool {
@@ -1322,39 +1308,29 @@ fn bucket_events(
     })
 }
 
-fn due_notification_ids(
+fn reminder_schedule_key(event_id: &str) -> String {
+    format!("{REMINDER_SCHEDULE_PREFIX}{event_id}")
+}
+
+/// Returns `(event_id, delay_secs)` for every future timed event.
+fn pending_reminder_delays(
     events: &[CalendarEvent],
     now_iso: &str,
-    reminder_lead_minutes: i64,
-    reminder_state: &ReminderState,
-) -> Result<Vec<String>, String> {
+) -> Result<Vec<(String, u64)>, String> {
     let now = parse_datetime(now_iso)?;
-    let lead = Duration::minutes(reminder_lead_minutes);
-    let mut due = Vec::new();
+    let mut out = Vec::new();
     for event in events {
         if event.all_day {
             continue;
         }
         let start = parse_datetime(&event.start_at)?;
-        if start < now || start > now + lead {
+        if start <= now {
             continue;
         }
-        let reminder_id = reminder_id(&event.id, &event.start_at);
-        if reminder_state
-            .notified_event_ids
-            .iter()
-            .any(|id| id == &reminder_id)
-        {
-            continue;
-        }
-        due.push(reminder_id);
+        let delay_secs = (start - now).num_seconds().max(0) as u64;
+        out.push((event.id.clone(), delay_secs));
     }
-    due.sort();
-    Ok(due)
-}
-
-fn reminder_id(event_id: &str, start_at: &str) -> String {
-    format!("{event_id}@{start_at}")
+    Ok(out)
 }
 
 #[derive(Clone)]
@@ -1506,36 +1482,6 @@ mod tests {
         assert_eq!(bucketed.upcoming.len(), 2);
         assert_eq!(bucketed.today.len(), 1);
         assert_eq!(bucketed.week.len(), 1);
-    }
-
-    #[test]
-    fn due_notification_ids_skip_already_notified_events() {
-        let events = vec![CalendarEvent {
-            id: "a".to_string(),
-            title: "Daily standup".to_string(),
-            start_at: "2026-03-19T10:05:00Z".to_string(),
-            end_at: "2026-03-19T10:30:00Z".to_string(),
-            all_day: false,
-            location: None,
-            description: None,
-            calendar_id: "primary".to_string(),
-            calendar_name: "Primary".to_string(),
-            html_link: None,
-            meeting_url: None,
-            status: "confirmed".to_string(),
-        }];
-
-        let ids = due_notification_ids(
-            &events,
-            "2026-03-19T10:00:00Z",
-            10,
-            &ReminderState {
-                notified_event_ids: vec![reminder_id("a", "2026-03-19T10:05:00Z")],
-            },
-        )
-        .expect("notification ids");
-
-        assert!(ids.is_empty());
     }
 
     #[test]
@@ -1881,6 +1827,70 @@ mod tests {
 
         assert!(!raw.contains("calendarId"));
         assert!(!raw.contains("calendar_id"));
+    }
+
+    #[test]
+    fn reminder_schedule_key_uses_event_id() {
+        let key = reminder_schedule_key("evt-abc");
+        assert_eq!(key, "reminder:evt-abc");
+    }
+
+    #[test]
+    fn pending_reminder_delays_returns_future_events_only() {
+        let now = "2026-03-26T10:00:00Z";
+        let events = vec![
+            // future — should schedule
+            CalendarEvent {
+                id: "a".to_string(),
+                title: "Standup".to_string(),
+                start_at: "2026-03-26T10:30:00Z".to_string(),
+                end_at: "2026-03-26T11:00:00Z".to_string(),
+                all_day: false,
+                location: None,
+                description: None,
+                calendar_id: "primary".to_string(),
+                calendar_name: "Primary".to_string(),
+                html_link: None,
+                meeting_url: None,
+                status: "confirmed".to_string(),
+            },
+            // past — should not schedule
+            CalendarEvent {
+                id: "b".to_string(),
+                title: "Old meeting".to_string(),
+                start_at: "2026-03-26T09:00:00Z".to_string(),
+                end_at: "2026-03-26T09:30:00Z".to_string(),
+                all_day: false,
+                location: None,
+                description: None,
+                calendar_id: "primary".to_string(),
+                calendar_name: "Primary".to_string(),
+                html_link: None,
+                meeting_url: None,
+                status: "confirmed".to_string(),
+            },
+            // all-day — should not schedule
+            CalendarEvent {
+                id: "c".to_string(),
+                title: "Holiday".to_string(),
+                start_at: "2026-03-26".to_string(),
+                end_at: "2026-03-27".to_string(),
+                all_day: true,
+                location: None,
+                description: None,
+                calendar_id: "primary".to_string(),
+                calendar_name: "Primary".to_string(),
+                html_link: None,
+                meeting_url: None,
+                status: "confirmed".to_string(),
+            },
+        ];
+
+        let delays = pending_reminder_delays(&events, now).expect("delays");
+
+        assert_eq!(delays.len(), 1);
+        assert_eq!(delays[0].0, "a");
+        assert_eq!(delays[0].1, 30 * 60); // 30 minutes in seconds
     }
 
     #[test]

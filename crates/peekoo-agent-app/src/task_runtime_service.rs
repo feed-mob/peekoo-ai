@@ -4,12 +4,14 @@ use peekoo_notifications::{Notification, NotificationService};
 use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
 use peekoo_task_domain::TaskStatus;
 
+use crate::task_notification_scheduler::TaskNotificationScheduler;
 use peekoo_task_app::SqliteTaskService;
 
 #[derive(Clone)]
 pub(crate) struct TaskRuntimeService {
     task_service: SqliteTaskService,
     notifications: Arc<NotificationService>,
+    task_notifications: Arc<TaskNotificationScheduler>,
     follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
     task_change_callback: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
 }
@@ -18,12 +20,14 @@ impl TaskRuntimeService {
     pub(crate) fn new(
         task_service: SqliteTaskService,
         notifications: Arc<NotificationService>,
+        task_notifications: Arc<TaskNotificationScheduler>,
         follow_up_trigger: Option<Arc<dyn Fn(String) + Send + Sync>>,
         task_change_callback: Option<Arc<dyn Fn(Option<String>) + Send + Sync>>,
     ) -> Self {
         Self {
             task_service,
             notifications,
+            task_notifications,
             follow_up_trigger,
             task_change_callback,
         }
@@ -121,6 +125,7 @@ impl TaskService for TaskRuntimeService {
             recurrence_rule,
             recurrence_time_of_day,
         )?;
+        self.task_notifications.sync_task(&task)?;
         self.emit_task_changed(Some(&task.id));
         Ok(task)
     }
@@ -158,18 +163,21 @@ impl TaskService for TaskRuntimeService {
             recurrence_rule,
             recurrence_time_of_day,
         )?;
+        self.task_notifications.sync_task(&task)?;
         self.emit_task_changed(Some(&task.id));
         Ok(task)
     }
 
     fn delete_task(&self, id: &str) -> Result<(), String> {
         self.task_service.delete_task(id)?;
+        self.task_notifications.remove_task(id);
         self.emit_task_changed(Some(id));
         Ok(())
     }
 
     fn toggle_task(&self, id: &str) -> Result<TaskDto, String> {
         let task = self.task_service.toggle_task(id)?;
+        self.task_notifications.sync_task(&task)?;
         self.emit_task_changed(Some(&task.id));
         Ok(task)
     }
@@ -238,6 +246,7 @@ impl TaskService for TaskRuntimeService {
         if task.assignee == "peekoo-agent" {
             self.notify_agent_status_change(&task, status);
         }
+        self.task_notifications.sync_task(&updated)?;
         self.emit_task_changed(Some(task_id));
         Ok(updated)
     }
@@ -282,11 +291,15 @@ fn status_label(status: TaskStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::{Duration, Instant};
 
+    use chrono::Utc;
     use peekoo_notifications::NotificationService;
     use rusqlite::Connection;
 
     use super::TaskRuntimeService;
+    use crate::task_notification_scheduler::TaskNotificationScheduler;
     use peekoo_task_app::SqliteTaskService;
     use peekoo_task_app::TaskService;
     use peekoo_task_domain::TaskStatus;
@@ -358,12 +371,52 @@ mod tests {
             .id
     }
 
+    fn test_task_notifications(
+        task_service: &SqliteTaskService,
+        notifications: Arc<NotificationService>,
+    ) -> Arc<TaskNotificationScheduler> {
+        let task_notifications = Arc::new(TaskNotificationScheduler::new(
+            task_service.clone(),
+            notifications,
+        ));
+        task_notifications
+            .start()
+            .expect("start task notifications");
+        task_notifications
+    }
+
+    fn wait_for_notification(
+        receiver: &mut tokio::sync::mpsc::UnboundedReceiver<peekoo_notifications::Notification>,
+        timeout: Duration,
+    ) -> Option<peekoo_notifications::Notification> {
+        let start = Instant::now();
+        loop {
+            match receiver.try_recv() {
+                Ok(notification) => return Some(notification),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                    if start.elapsed() >= timeout {
+                        return None;
+                    }
+                    thread::sleep(Duration::from_millis(20));
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => return None,
+            }
+        }
+    }
+
     #[test]
     fn mention_requeues_agent_task_without_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service =
-            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            task_notifications,
+            None,
+            None,
+        );
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -380,11 +433,96 @@ mod tests {
     }
 
     #[test]
+    fn scheduled_task_sends_notification_at_start_time() {
+        let task_service = test_task_service();
+        let (notifications, mut receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            Arc::clone(&task_notifications),
+            None,
+            None,
+        );
+
+        let start_at = (Utc::now() + chrono::Duration::seconds(2)).to_rfc3339();
+
+        service
+            .create_task(
+                "Join standup",
+                "medium",
+                "user",
+                &[],
+                None,
+                Some(&start_at),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("create scheduled task");
+
+        let notification = wait_for_notification(&mut receiver, Duration::from_secs(4))
+            .expect("scheduled task notification");
+        assert_eq!(notification.source, "tasks");
+        assert_eq!(notification.title, "Task reminder");
+        assert_eq!(notification.body, "Join standup starts now");
+        task_notifications.shutdown();
+    }
+
+    #[test]
+    fn completing_scheduled_task_cancels_due_notification() {
+        let task_service = test_task_service();
+        let (notifications, mut receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            Arc::clone(&task_notifications),
+            None,
+            None,
+        );
+
+        let start_at = (Utc::now() + chrono::Duration::seconds(2)).to_rfc3339();
+        let task_id = service
+            .create_task(
+                "Send report",
+                "medium",
+                "user",
+                &[],
+                None,
+                Some(&start_at),
+                None,
+                None,
+                None,
+                None,
+            )
+            .expect("create scheduled task")
+            .id;
+
+        service
+            .update_task_status(&task_id, TaskStatus::Done)
+            .expect("complete task");
+
+        assert!(wait_for_notification(&mut receiver, Duration::from_secs(4)).is_none());
+        task_notifications.shutdown();
+    }
+
+    #[test]
     fn mention_requeues_even_if_task_was_marked_executing() {
         let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
-        let service =
-            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            task_notifications,
+            None,
+            None,
+        );
         let task_id = create_task(&service, "peekoo-agent");
 
         task_service
@@ -408,11 +546,14 @@ mod tests {
     fn mention_invokes_follow_up_trigger() {
         let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
         let triggered = Arc::new(Mutex::new(Vec::<String>::new()));
         let triggered_clone = Arc::clone(&triggered);
         let service = TaskRuntimeService::new(
             task_service.clone(),
-            Arc::new(notifications),
+            notifications,
+            task_notifications,
             Some(Arc::new(move |task_id| {
                 triggered_clone.lock().expect("trigger lock").push(task_id);
             })),
@@ -432,8 +573,15 @@ mod tests {
     fn agent_comment_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service =
-            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            task_notifications,
+            None,
+            None,
+        );
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -449,8 +597,15 @@ mod tests {
     fn agent_status_change_sends_notification() {
         let task_service = test_task_service();
         let (notifications, mut receiver) = NotificationService::new();
-        let service =
-            TaskRuntimeService::new(task_service.clone(), Arc::new(notifications), None, None);
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
+        let service = TaskRuntimeService::new(
+            task_service.clone(),
+            notifications,
+            task_notifications,
+            None,
+            None,
+        );
         let task_id = create_task(&service, "peekoo-agent");
 
         service
@@ -466,11 +621,14 @@ mod tests {
     fn agent_comment_emits_task_changed_callback() {
         let task_service = test_task_service();
         let (notifications, _receiver) = NotificationService::new();
+        let notifications = Arc::new(notifications);
+        let task_notifications = test_task_notifications(&task_service, Arc::clone(&notifications));
         let changed = Arc::new(Mutex::new(Vec::<Option<String>>::new()));
         let changed_clone = Arc::clone(&changed);
         let service = TaskRuntimeService::new(
             task_service.clone(),
-            Arc::new(notifications),
+            notifications,
+            task_notifications,
             None,
             Some(Arc::new(move |task_id| {
                 changed_clone.lock().expect("changed lock").push(task_id);
