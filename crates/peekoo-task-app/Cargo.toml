@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 peekoo-task-domain = { path = "../peekoo-task-domain" }
-rusqlite = { version = "0.38" }
+rusqlite = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "1"

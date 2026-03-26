@@ -68,6 +68,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enable long paths (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          git config --system core.longpaths true
+          reg add "HKLM\SYSTEM\CurrentControlSet\Control\FileSystem" /v LongPathsEnabled /t REG_DWORD /d 1 /f
+        shell: pwsh
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 

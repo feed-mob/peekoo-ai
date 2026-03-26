@@ -20,6 +20,7 @@ export interface SessionMessageLike {
 export type MiniChatReplyDisplayMode = "compact" | "expanded";
 
 const CHAT_SESSION_CHANGED_EVENT = "chat-session:changed";
+const CHAT_SESSION_NEW_EVENT = "chat-session:new";
 const MINI_CHAT_EXPANDED_TEXT_LENGTH = 72;
 
 function buildStreamingText(
@@ -108,6 +109,14 @@ async function notifyChatSessionChanged() {
   }
 }
 
+async function notifyChatSessionNew() {
+  try {
+    await emit(CHAT_SESSION_NEW_EVENT);
+  } catch {
+    // Keep chat usable if cross-window sync fails.
+  }
+}
+
 export function useChatSession() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
@@ -151,6 +160,19 @@ export function useChatSession() {
       unlisten.then((fn) => fn());
     };
   }, [loadLastSession]);
+
+  useEffect(() => {
+    const unlisten = listen(CHAT_SESSION_NEW_EVENT, () => {
+      setMessages([]);
+      streamingTextRef.current = "";
+      streamingIdRef.current = null;
+      toolStatusRef.current = new Map();
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const flushStreaming = useCallback(() => {
     const id = streamingIdRef.current;
@@ -291,7 +313,7 @@ export function useChatSession() {
       streamingTextRef.current = "";
       streamingIdRef.current = null;
       toolStatusRef.current = new Map();
-      await notifyChatSessionChanged();
+      await notifyChatSessionNew();
       return true;
     } catch {
       return false;
