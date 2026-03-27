@@ -1,11 +1,17 @@
 import json
-import os
 import sys
 import time
 import types
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib import parse
+
+AUTH_BASE_DIR = (Path.home() / ".peekoo" / "mijia").resolve()
+
+
+def _debug_log(message):
+    print(f"[mijia_bridge] {message}", file=sys.stderr)
+
 
 def _bootstrap_import_paths():
     script_dir = Path(__file__).resolve().parent
@@ -45,12 +51,18 @@ def emit(payload, code=0):
 
 
 def _normalize_auth_path(raw):
+    AUTH_BASE_DIR.mkdir(parents=True, exist_ok=True)
     if raw:
         p = Path(raw).expanduser()
+        if not p.is_absolute():
+            p = AUTH_BASE_DIR / p
     else:
-        p = Path.home() / ".peekoo" / "mijia" / "auth.json"
+        p = AUTH_BASE_DIR / "auth.json"
     if p.is_dir():
         p = p / "auth.json"
+    p = p.resolve()
+    if AUTH_BASE_DIR != p and AUTH_BASE_DIR not in p.parents:
+        raise ValueError("auth_path must be inside ~/.peekoo/mijia")
     return p
 
 
@@ -72,7 +84,6 @@ def _build_room_index(homes):
 def _detect_toggle_property(props):
     for prop in props:
         name = str(prop.get("name", "")).strip().lower()
-        desc = str(prop.get("description", "")).strip().lower()
         rw = str(prop.get("rw", ""))
         ptype = str(prop.get("type", ""))
         if "w" not in rw:
@@ -87,14 +98,15 @@ def _detect_toggle_property(props):
 def _safe_device_info(get_device_info, model, cache_dir):
     try:
         return get_device_info(model, cache_path=cache_dir)
-    except Exception:
+    except Exception as err:
+        _debug_log(f"get_device_info failed for model={model}: {err}")
         return {"properties": [], "actions": []}
 
 
 def _auth_ready(api):
     try:
         return bool(api.available)
-    except Exception:
+    except (AttributeError, TypeError, ValueError):
         return False
 
 
@@ -259,7 +271,6 @@ def action_list_devices(payload):
         model_toggle_map[model] = prop
 
     prop_queries = []
-    query_keys = []
     for device in devices:
         did = str(device.get("did", ""))
         model = str(device.get("model", ""))
@@ -275,7 +286,6 @@ def action_list_devices(payload):
         if query["siid"] is None or query["piid"] is None:
             continue
         prop_queries.append(query)
-        query_keys.append(f"{did}:{query['siid']}:{query['piid']}")
 
     values_by_key = {}
     if prop_queries:
@@ -284,8 +294,8 @@ def action_list_devices(payload):
             for item in prop_results:
                 key = f"{item.get('did')}:{item.get('siid')}:{item.get('piid')}"
                 values_by_key[key] = item.get("value")
-        except Exception:
-            pass
+        except Exception as err:
+            _debug_log(f"get_devices_prop failed in list_devices: {err}")
 
     home_filter = str(payload.get("home_id", "all"))
     room_filter = str(payload.get("room_id", "all"))
@@ -371,7 +381,7 @@ def _parse_stat_value(raw):
                 return parsed[0]
             if isinstance(parsed, (int, float)):
                 return parsed
-        except Exception:
+        except (json.JSONDecodeError, TypeError, ValueError):
             pass
         try:
             parsed = ast.literal_eval(s)
@@ -379,7 +389,7 @@ def _parse_stat_value(raw):
                 return parsed[0]
             if isinstance(parsed, (int, float)):
                 return parsed
-        except Exception:
+        except (SyntaxError, ValueError):
             pass
     return None
 
@@ -400,7 +410,8 @@ def _read_stat_metric(api, did, key, data_types, time_start, time_end):
                 value = _parse_stat_value(rows[0].get("value"))
                 if value is not None:
                     return value
-        except Exception:
+        except Exception as err:
+            _debug_log(f"get_statistics failed for key={key}, data_type={data_type}: {err}")
             continue
     return None
 
@@ -480,8 +491,8 @@ def action_device_detail(payload):
             prop_results = api.get_devices_prop(readable_methods)
             for item in prop_results:
                 current_values[f"{item.get('siid')}:{item.get('piid')}"] = item.get("value")
-        except Exception:
-            pass
+        except Exception as err:
+            _debug_log(f"get_devices_prop failed in device_detail: {err}")
 
     normalized_props = []
     for prop in properties:
@@ -560,7 +571,7 @@ def action_device_detail(payload):
         try:
             today_usage = float(curr) * _energy_scale_from_prop(prop)
             break
-        except Exception:
+        except (TypeError, ValueError):
             continue
 
     month_usage = None
@@ -643,7 +654,7 @@ def main():
     payload_text = sys.argv[2]
     try:
         payload = json.loads(payload_text)
-    except Exception:
+    except (json.JSONDecodeError, TypeError, ValueError):
         payload = {}
 
     try:
@@ -652,8 +663,11 @@ def main():
 
         logger.handlers = []
         logger.setLevel(logging.CRITICAL)
-    except Exception:
+    except ModuleNotFoundError:
+        # Logger module is optional; continue with default logging behavior.
         pass
+    except Exception as err:
+        _debug_log(f"failed to mute mijiaAPI logger: {err}")
 
     actions = {
         "status": action_status,
@@ -677,7 +691,8 @@ if __name__ == "__main__":
     try:
         main()
     except ModuleNotFoundError as err:
-        if "mijiaAPI" in str(err):
+        msg = str(err)
+        if "mijiaAPI" in msg:
             emit(
                 {
                     "success": False,
@@ -686,6 +701,15 @@ if __name__ == "__main__":
                 },
                 1,
             )
-        emit({"success": False, "message": str(err)}, 1)
+        if "requests" in msg:
+            emit(
+                {
+                    "success": False,
+                    "message": "Python package requests not found. Install it with: pip install requests",
+                    "code": "requests_missing",
+                },
+                1,
+            )
+        emit({"success": False, "message": msg}, 1)
     except Exception as err:
         emit({"success": False, "message": str(err)}, 1)

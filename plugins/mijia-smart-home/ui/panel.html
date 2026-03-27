@@ -1292,7 +1292,7 @@
     const run = async () => {
       if (!state.loginPolling || state.authenticated) return;
       try {
-        const result = await callBridge("login_finish", { timeout_secs: 8 });
+        const result = await callBridge("login_finish", { timeout_secs: 20 });
         if (result.authenticated) {
           state.authenticated = true;
           stopLoginPolling();
@@ -1315,7 +1315,7 @@
         }
       }
       if (!state.loginPolling || state.authenticated) return;
-      state.loginPollTimer = window.setTimeout(run, 1000);
+      state.loginPollTimer = window.setTimeout(run, 3000);
     };
 
     run();
@@ -2003,7 +2003,7 @@
     let isPoweredOn = listDevice?.quick_toggle?.supported
       ? boolLikeToBoolean(listDevice.quick_toggle.current)
       : true;
-    let disabledAttr = isPoweredOn ? "" : "disabled";
+    let disabledAttr;
 
     if (!props.length) {
       propsBox.innerHTML = `<div class="empty">No recognizable properties for this device.</div>`;
