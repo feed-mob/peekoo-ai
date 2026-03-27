@@ -7,7 +7,6 @@ import {
   HeartPulse,
   Puzzle,
   Blocks,
-  House,
 } from "lucide-react";
 import type { PanelLabel } from "@/types/window";
 import type { PanelWindowStates } from "@/hooks/use-panel-windows";
@@ -38,9 +37,6 @@ const POPUP_BOTTOM_OFFSET = 46;
 function iconForPluginPanel(panel: PluginPanel): LucideIcon {
   if (panel.pluginKey === "health-reminders") {
     return HeartPulse;
-  }
-  if (panel.pluginKey === "mijia-smart-home") {
-    return House;
   }
   return Puzzle;
 }

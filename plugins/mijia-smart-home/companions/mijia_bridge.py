@@ -1,9 +1,3 @@
-use serde_json::{Value, json};
-use std::env;
-use std::path::PathBuf;
-use std::process::Command;
-
-const PYTHON_BRIDGE_SCRIPT: &str = r#"
 import json
 import os
 import sys
@@ -14,8 +8,12 @@ from pathlib import Path
 from urllib import parse
 
 def _bootstrap_import_paths():
+    script_dir = Path(__file__).resolve().parent
+    plugin_dir = script_dir.parent
     vendor_candidates = [
+        plugin_dir / "vendor",
         Path.home() / ".peekoo" / "mijia" / "vendor",
+        Path.home() / ".peekoo" / "plugins" / "mijia-smart-home" / "vendor",
         Path.cwd() / "plugins" / "mijia-smart-home" / "vendor",
         Path("/tmp/mijia-api-inspect"),
     ]
@@ -691,84 +689,3 @@ if __name__ == "__main__":
         emit({"success": False, "message": str(err)}, 1)
     except Exception as err:
         emit({"success": False, "message": str(err)}, 1)
-"#;
-
-fn python_candidates() -> Vec<String> {
-    let mut candidates = Vec::new();
-
-    if let Ok(explicit) = env::var("PYTHON") {
-        if !explicit.trim().is_empty() {
-            candidates.push(explicit);
-        }
-    }
-
-    if cfg!(target_os = "windows") {
-        candidates.push("python".to_string());
-        candidates.push("py".to_string());
-    } else {
-        candidates.push("python".to_string());
-        candidates.push("python3".to_string());
-    }
-
-    candidates
-}
-
-fn summarize_output(stdout: &[u8], stderr: &[u8]) -> String {
-    let out = String::from_utf8_lossy(stdout).trim().to_string();
-    let err = String::from_utf8_lossy(stderr).trim().to_string();
-    match (out.is_empty(), err.is_empty()) {
-        (false, false) => format!("stdout: {out}\nstderr: {err}"),
-        (false, true) => out,
-        (true, false) => err,
-        (true, true) => "command returned no output".to_string(),
-    }
-}
-
-fn working_dir() -> PathBuf {
-    if let Ok(cwd) = env::current_dir() {
-        return cwd;
-    }
-    PathBuf::from(".")
-}
-
-pub fn run_bridge(action: &str, payload_json: &str) -> Result<String, String> {
-    let payload: Value = serde_json::from_str(payload_json)
-        .unwrap_or_else(|_| json!({}));
-    let payload_compact = serde_json::to_string(&payload)
-        .map_err(|err| format!("payload json serialize error: {err}"))?;
-
-    let mut errors = Vec::new();
-
-    for bin in python_candidates() {
-        let output = Command::new(&bin)
-            .arg("-c")
-            .arg(PYTHON_BRIDGE_SCRIPT)
-            .arg(action)
-            .arg(&payload_compact)
-            .current_dir(working_dir())
-            .output();
-
-        let output = match output {
-            Ok(output) => output,
-            Err(err) => {
-                errors.push(format!("{bin}: {err}"));
-                continue;
-            }
-        };
-
-        if output.status.success() {
-            return Ok(String::from_utf8_lossy(&output.stdout).trim().to_string());
-        }
-
-        errors.push(format!(
-            "{bin}: exit status {} ({})",
-            output.status,
-            summarize_output(&output.stdout, &output.stderr)
-        ));
-    }
-
-    Err(format!(
-        "Failed to run Mijia bridge script. Please make sure Python and mijiaAPI are installed.\n{}",
-        errors.join("\n")
-    ))
-}

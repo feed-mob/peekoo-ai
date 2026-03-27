@@ -1329,11 +1329,14 @@
   }
 
   async function callBridge(action, payload = {}) {
-    const resultText = await invoke("mijia_plugin_bridge", {
-      action,
-      payloadJson: JSON.stringify({
-        auth_path: state.authPath || undefined,
-        ...payload,
+    const resultText = await invoke("plugin_call_tool", {
+      toolName: "mijia_bridge",
+      argsJson: JSON.stringify({
+        action,
+        payload: {
+          auth_path: state.authPath || undefined,
+          ...payload,
+        },
       }),
     });
 

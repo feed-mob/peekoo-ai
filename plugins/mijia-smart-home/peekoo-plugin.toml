@@ -9,6 +9,13 @@ wasm = "target/wasm32-wasip1/release/mijia_smart_home.wasm"
 
 [permissions]
 required = []
+optional = ["process:exec"]
+
+[[tools.definitions]]
+name = "mijia_bridge"
+description = "Run Mijia bridge action via companion script"
+parameters = '{"type":"object","properties":{"action":{"type":"string"},"payload":{"type":"object"}},"required":["action"]}'
+return_type = "object"
 
 [[ui.panels]]
 label = "panel-mijia-smart-home"

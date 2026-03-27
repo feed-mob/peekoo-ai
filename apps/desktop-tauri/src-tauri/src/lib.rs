@@ -8,7 +8,6 @@ use peekoo_agent_app::{
     PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
     SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
 };
-mod mijia;
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
@@ -542,11 +541,6 @@ async fn plugin_store_uninstall(
     Ok(())
 }
 
-#[tauri::command]
-async fn mijia_plugin_bridge(action: String, payload_json: String) -> Result<String, String> {
-    mijia::run_bridge(&action, &payload_json)
-}
-
 // ============================================================================
 // WebView2 data directory (Windows)
 // ============================================================================
@@ -797,8 +791,7 @@ pub fn run() {
             plugin_store_catalog,
             plugin_store_install,
             plugin_store_update,
-            plugin_store_uninstall,
-            mijia_plugin_bridge
+            plugin_store_uninstall
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -94,6 +94,7 @@ pub mod fs;
 pub mod log;
 pub mod mood;
 pub mod notify;
+pub mod process;
 pub mod schedule;
 pub mod state;
 pub mod system;
@@ -120,6 +121,7 @@ pub mod peekoo {
     pub use crate::log;
     pub use crate::mood;
     pub use crate::notify;
+    pub use crate::process;
     pub use crate::schedule;
     pub use crate::state;
     pub use crate::system;
