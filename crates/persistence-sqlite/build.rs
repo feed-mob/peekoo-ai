@@ -30,9 +30,14 @@ fn main() {
 
         let meta = parse_metadata(&sql_content);
 
-        let strategy = meta.strategy.unwrap_or_else(|| {
+        let strategy_str = meta.strategy.unwrap_or_else(|| {
             panic!("Migration {file_name_str} missing -- @migrate: (create|alter) header")
         });
+        let strategy = match strategy_str {
+            "create" => "MigrationStrategy::Create",
+            "alter" => "MigrationStrategy::Alter",
+            other => panic!("Migration {file_name_str} has unknown strategy '{other}'; expected 'create' or 'alter'"),
+        };
 
         let id = meta.id.unwrap_or(stem);
 
@@ -55,7 +60,7 @@ fn main() {
         let sql_path = format!("{}/migrations/{}", manifest_dir, file_name_str);
 
         generated.push_str(&format!(
-            "    MigrationDef {{ id: \"{id}\", sql: include_str!(\"{sql_path}\"), strategy: \"{strategy}\", sentinel: {sentinel}, tolerates: {tolerates} }},\n",
+            "    MigrationDef {{ id: \"{id}\", sql: include_str!(\"{sql_path}\"), strategy: {strategy}, sentinel: {sentinel}, tolerates: {tolerates} }},\n",
         ));
     }
 

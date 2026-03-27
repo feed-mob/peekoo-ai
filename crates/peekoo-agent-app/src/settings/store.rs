@@ -1,11 +1,10 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::{MIGRATIONS, MigrationDef};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
+    default_model_for_provider, normalize_model_for_provider, DEFAULT_MODEL, DEFAULT_PROVIDER,
 };
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
@@ -426,19 +425,7 @@ impl SettingsStore {
 }
 
 fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
-        [],
-    )
-    .map_err(|e| format!("Create migrations table error: {e}"))?;
-
-    for m in MIGRATIONS {
-        match m.strategy {
-            "create" => apply_create_migration(conn, m)?,
-            "alter" => apply_alter_migration(conn, m)?,
-            other => return Err(format!("Unknown migration strategy '{other}' in {}", m.id)),
-        }
-    }
+    peekoo_persistence_sqlite::run_all_migrations(conn)?;
 
     // Seed default agent settings (must run after schema migrations)
     conn.execute(
@@ -451,93 +438,6 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
 
     Ok(())
-}
-
-fn is_migration_applied(conn: &Connection, id: &str) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT 1 FROM _peekoo_migrations WHERE id = ?1",
-        params![id],
-        |_| Ok(true),
-    )
-    .optional()
-    .map_err(|e| format!("Check migration {id} state error: {e}"))
-    .map(|opt| opt.unwrap_or(false))
-}
-
-fn record_migration(conn: &Connection, id: &str) -> Result<(), String> {
-    conn.execute(
-        "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES (?1)",
-        params![id],
-    )
-    .map_err(|e| format!("Record migration {id} state error: {e}"))?;
-    Ok(())
-}
-
-fn apply_create_migration(conn: &Connection, m: &MigrationDef) -> Result<(), String> {
-    if is_migration_applied(conn, m.id)? {
-        return Ok(());
-    }
-
-    let sentinel = m
-        .sentinel
-        .ok_or_else(|| format!("CREATE migration {} missing @sentinel", m.id))?;
-
-    // If sentinel table already exists (pre-migration-tracking DB), skip SQL
-    if !sqlite_table_exists(conn, sentinel)? {
-        conn.execute_batch(m.sql)
-            .map_err(|e| format!("Apply migration {} error: {e}", m.id))?;
-    }
-
-    record_migration(conn, m.id)
-}
-
-fn apply_alter_migration(conn: &Connection, m: &MigrationDef) -> Result<(), String> {
-    if is_migration_applied(conn, m.id)? {
-        return Ok(());
-    }
-
-    if m.tolerates.is_empty() {
-        conn.execute_batch(m.sql)
-            .map_err(|e| format!("Apply migration {} error: {e}", m.id))?;
-    } else {
-        // Strip leading metadata comments (-- @migrate, -- @id, -- @tolerates)
-        // so they don't get bundled with the first SQL statement after ; split
-        let sql = m
-            .sql
-            .lines()
-            .skip_while(|l| {
-                let t = l.trim();
-                t.starts_with("--") || t.is_empty()
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        for statement in sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !m.tolerates.iter().any(|t| e_str.contains(t)) {
-                    return Err(format!("Apply migration {} error: {e}", m.id));
-                }
-            }
-        }
-    }
-
-    record_migration(conn, m.id)
-}
-
-fn sqlite_table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
-    conn.query_row(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
-        params![table_name],
-        |_| Ok(true),
-    )
-    .optional()
-    .map_err(|e| format!("Query sqlite_master error: {e}"))
-    .map(|opt| opt.unwrap_or(false))
 }
 
 fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
