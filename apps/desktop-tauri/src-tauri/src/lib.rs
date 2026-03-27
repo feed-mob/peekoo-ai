@@ -326,6 +326,19 @@ async fn system_open_url(url: String, app: AppHandle) -> Result<(), String> {
         .map_err(|e| format!("Open URL error: {e}"))
 }
 
+#[tauri::command]
+async fn system_open_log_dir(app: AppHandle) -> Result<(), String> {
+    let log_dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("Get log dir error: {e}"))?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(log_dir.to_string_lossy().to_string(), None)
+        .map(|_| ())
+        .map_err(|e| format!("Open log dir error: {e}"))
+}
+
 // ── Global app settings ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -1105,6 +1118,7 @@ pub fn run() {
             agent_oauth_status,
             agent_oauth_cancel,
             system_open_url,
+            system_open_log_dir,
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
@@ -1181,8 +1195,10 @@ fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(),
         state.app.drain_plugin_notifications(),
         |notification| show_plugin_notification(app, notification),
         |notification| {
-            app.emit_to("main", "sprite:bubble", notification)
-                .map_err(|e| format!("Sprite bubble emit error: {e}"))
+            if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+                let _ = app.emit_to(MAIN_WINDOW_LABEL, "sprite:bubble", notification);
+            }
+            Ok(())
         },
     )?;
 
@@ -1242,15 +1258,16 @@ where
 
 fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
     for reaction in state.app.drain_mood_reactions() {
-        app.emit_to(
-            "main",
-            "pet:react",
-            &PetReactionPayload {
-                trigger: reaction.trigger,
-                sticky: Some(reaction.sticky),
-            },
-        )
-        .map_err(|e| format!("Mood reaction emit error: {e}"))?;
+        if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+            let _ = app.emit_to(
+                MAIN_WINDOW_LABEL,
+                "pet:react",
+                &PetReactionPayload {
+                    trigger: reaction.trigger,
+                    sticky: Some(reaction.sticky),
+                },
+            );
+        }
     }
     Ok(())
 }
@@ -1263,8 +1280,9 @@ struct PetReactionPayload {
 
 fn flush_peek_badges(app: &AppHandle, state: &AgentState) -> Result<(), String> {
     if let Some(badges) = state.app.take_peek_badges_if_changed() {
-        app.emit_to("main", "sprite:peek-badges", &badges)
-            .map_err(|e| format!("Peek badge emit error: {e}"))?;
+        if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "sprite:peek-badges", &badges);
+        }
     }
     Ok(())
 }
