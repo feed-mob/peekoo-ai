@@ -324,21 +324,13 @@ export default function SpriteView() {
       setDragAnimation(null);
     };
 
-    // On Windows, startDragging() hands mouse control to the OS, so 'mouseup' is
-    // never delivered to the WebView after the drag ends.  When the OS releases the
-    // drag, the WebView regains focus — use that event as the fallback reset signal.
-    // We intentionally do NOT listen to 'blur', which fires prematurely on Windows
-    // the moment startDragging() is called (before the user has even moved the window).
-    const handleWindowFocus = () => {
-      setDragAnimation(null);
-    };
-
+    // We only listen to mouseup.
+    // We EXCLUDE 'blur' because startDragging often causes the window to lose focus on Windows,
+    // which was likely causing the premature reset to Idle animation.
     window.addEventListener("mouseup", handleGlobalMouseUp);
-    window.addEventListener("focus", handleWindowFocus);
 
     return () => {
       window.removeEventListener("mouseup", handleGlobalMouseUp);
-      window.removeEventListener("focus", handleWindowFocus);
     };
   }, []);
 
