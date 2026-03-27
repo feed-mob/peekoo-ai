@@ -36,7 +36,9 @@ fn main() {
         let strategy = match strategy_str {
             "create" => "MigrationStrategy::Create",
             "alter" => "MigrationStrategy::Alter",
-            other => panic!("Migration {file_name_str} has unknown strategy '{other}'; expected 'create' or 'alter'"),
+            other => panic!(
+                "Migration {file_name_str} has unknown strategy '{other}'; expected 'create' or 'alter'"
+            ),
         };
 
         let id = meta.id.unwrap_or(stem);

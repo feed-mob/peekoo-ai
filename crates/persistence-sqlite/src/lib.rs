@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 /// Application strategy for a migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +65,15 @@ pub fn setup_test_db() -> Connection {
     let conn = Connection::open_in_memory().expect("open in-memory db");
     run_all_migrations(&conn).expect("apply migrations");
     conn
+}
+
+/// Apply a single migration by ID directly (bypasses the tracking table).
+/// Intended for tests that need selective migration application,
+/// e.g. backfill tests that insert data between migration steps.
+pub fn apply_migration(conn: &Connection, id: &str) {
+    let m = find_migration(id);
+    conn.execute_batch(m.sql)
+        .unwrap_or_else(|e| panic!("apply migration {id}: {e}"));
 }
 
 fn is_migration_applied(conn: &Connection, id: &str) -> Result<bool, String> {
@@ -182,6 +191,9 @@ mod tests {
 
     #[test]
     fn migration_ids_are_sorted() {
+        // Legacy migrations use @id overrides like "0001_init"; new migrations
+        // default to their filename stem (e.g., "202607010001_foo"). Lexicographic
+        // ordering holds because all "0*" IDs sort before "2*" timestamps.
         for window in MIGRATIONS.windows(2) {
             assert!(
                 window[0].id < window[1].id,

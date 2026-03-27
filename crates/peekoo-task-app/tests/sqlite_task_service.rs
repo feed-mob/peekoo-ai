@@ -1,28 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::MIGRATIONS;
 use peekoo_task_app::SqliteTaskService;
-use rusqlite::Connection;
-
-fn run_migration(conn: &Connection, id: &str) {
-    let m = MIGRATIONS
-        .iter()
-        .find(|m| m.id == id)
-        .unwrap_or_else(|| panic!("migration {id} not found"));
-    conn.execute_batch(m.sql)
-        .unwrap_or_else(|e| panic!("apply migration {id}: {e}"));
-}
 
 fn create_test_service() -> SqliteTaskService {
-    let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
-    run_migration(&conn, "0001_init");
-    run_migration(&conn, "0005_task_extensions");
-    run_migration(&conn, "0006_task_scheduling_and_recurrence");
-    run_migration(&conn, "0007_recurrence_time_of_day");
-    run_migration(&conn, "0009_agent_task_assignment");
-    run_migration(&conn, "0011_task_finished_at");
-
-    let conn = Arc::new(Mutex::new(conn));
+    let conn = Arc::new(Mutex::new(peekoo_persistence_sqlite::setup_test_db()));
     SqliteTaskService::new(conn)
 }
 
@@ -104,12 +85,12 @@ fn update_task_status_sets_finished_at_when_marked_done_and_clears_it_when_reope
 
 #[test]
 fn migration_backfill_sets_finished_at_from_updated_at_for_existing_done_tasks() {
-    let conn = Connection::open_in_memory().expect("Failed to create in-memory database");
-    run_migration(&conn, "0001_init");
-    run_migration(&conn, "0005_task_extensions");
-    run_migration(&conn, "0006_task_scheduling_and_recurrence");
-    run_migration(&conn, "0007_recurrence_time_of_day");
-    run_migration(&conn, "0009_agent_task_assignment");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to create in-memory database");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0001_init");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0005_task_extensions");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0006_task_scheduling_and_recurrence");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0007_recurrence_time_of_day");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0009_agent_task_assignment");
 
     conn.execute(
         "INSERT INTO tasks (id, title, notes, status, priority, due_at, source, created_at, updated_at, assignee, labels_json) VALUES (?1, ?2, NULL, 'done', 'high', NULL, NULL, ?3, ?4, 'user', '[]')",
@@ -117,7 +98,7 @@ fn migration_backfill_sets_finished_at_from_updated_at_for_existing_done_tasks()
     )
     .expect("seed task");
 
-    run_migration(&conn, "0011_task_finished_at");
+    peekoo_persistence_sqlite::apply_migration(&conn, "0011_task_finished_at");
 
     let finished_at: Option<String> = conn
         .query_row(

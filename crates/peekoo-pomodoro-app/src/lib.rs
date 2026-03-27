@@ -886,33 +886,8 @@ mod tests {
     use super::*;
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
-    use peekoo_persistence_sqlite::MIGRATIONS;
-
-    fn run_migration(conn: &rusqlite::Connection, id: &str) {
-        let m = MIGRATIONS
-            .iter()
-            .find(|m| m.id == id)
-            .unwrap_or_else(|| panic!("migration {id} not found"));
-        conn.execute_batch(m.sql)
-            .unwrap_or_else(|e| panic!("apply migration {id}: {e}"));
-    }
-
     fn create_service() -> PomodoroAppService {
-        let conn = Arc::new(Mutex::new(
-            Connection::open_in_memory().expect("in-memory db should open"),
-        ));
-        run_migration(&conn.lock().expect("db lock"), "0001_init");
-        run_migration(&conn.lock().expect("db lock"), "0010_pomodoro_runtime");
-        conn.lock()
-            .expect("db lock")
-            .execute_batch(
-                "ALTER TABLE pomodoro_state ADD COLUMN long_break_minutes INTEGER NOT NULL DEFAULT 15;
-                 ALTER TABLE pomodoro_state ADD COLUMN long_break_interval INTEGER NOT NULL DEFAULT 4;
-                 ALTER TABLE pomodoro_state ADD COLUMN auto_advance INTEGER NOT NULL DEFAULT 0;
-                 ALTER TABLE pomodoro_state ADD COLUMN last_reset_date TEXT;
-                 ALTER TABLE pomodoro_cycle_history ADD COLUMN memo TEXT;"
-            )
-            .expect("additional columns should be added");
+        let conn = Arc::new(Mutex::new(peekoo_persistence_sqlite::setup_test_db()));
 
         let (notifications, _receiver) = NotificationService::new();
 

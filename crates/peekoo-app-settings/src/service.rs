@@ -48,7 +48,7 @@ impl AppSettingsService {
     /// The caller is responsible for running all migrations before calling this.
     pub fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
         let store = AppSettingsStore::with_conn(conn);
-        Ok(Self { store: store })
+        Ok(Self { store })
     }
 
     /// Return the currently selected sprite ID, falling back to the default.
