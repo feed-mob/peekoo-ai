@@ -23,7 +23,8 @@
 
 ## Workflows
 
-- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, drafts a GitHub Release, can publish a draft release as latest, and publishes to AUR when the release is published.
+- `Auto Tag`: watches `master` for version bumps in `Cargo.toml`, then creates the matching `v0.x.y` tag.
+- `Release`: runs after `Auto Tag` succeeds or from manual dispatch, builds installers, creates updater artifacts, drafts a GitHub Release, can publish a draft release as latest, and publishes to AUR when the release is published.
 - `PR Release Label`: fails non-draft PRs that do not have a release-note label.
 - `CI`: validates the workspace, release tooling tests, and the desktop UI build.
 
@@ -53,8 +54,8 @@ Use `.github/pull_request_template.md` as the default checklist when opening PRs
 
 ## Standard tagged release
 
-1. Merge the changes you want released into `master`.
-2. Start from a clean working copy.
+1. Start from a clean working copy.
+2. Create a branch for the release bump.
 3. Run:
 
    ```bash
@@ -70,25 +71,29 @@ Use `.github/pull_request_template.md` as the default checklist when opening PRs
    cd apps/desktop-ui && bun run build
    ```
 
-5. Create and push the release commit and tag:
+5. Create and push the release commit:
 
    ```bash
-   just release 0.x.y
+   git add Cargo.toml Cargo.lock apps/desktop-tauri/src-tauri/Cargo.toml apps/desktop-tauri/src-tauri/tauri.conf.json apps/desktop-ui/package.json
+   git commit -S -m "chore(release): bump version to 0.x.y"
+   git push origin <branch>
    ```
 
-6. GitHub Actions runs the `Release` workflow automatically from the `v0.x.y` tag.
-7. The workflow:
-   - builds Windows installers (`nsis`, `msi`)
-   - builds a macOS ARM64 `dmg` plus updater archives
-   - builds Linux `AppImage` and `deb`
-   - signs updater artifacts with the Tauri private key
-   - asks GitHub to generate release notes
-   - creates a draft GitHub Release
-8. Open the draft release in GitHub.
-9. Verify the uploaded files and the generated notes.
-10. Open `Actions` -> `Release` -> `Run workflow`.
-11. Set `finalize_release_tag` to `v0.x.y` and run the workflow.
-12. The workflow publishes the draft release, marks it as GitHub's latest release, and triggers the `publish-aur` job automatically.
+6. Open a PR for the release bump and merge it into `master`.
+7. `Auto Tag` creates `v0.x.y` from the merged `master` commit.
+8. GitHub Actions runs the `Release` workflow automatically after `Auto Tag` finishes.
+9. The workflow:
+    - builds Windows installers (`nsis`, `msi`)
+    - builds a macOS ARM64 `dmg` plus updater archives
+    - builds Linux `AppImage` and `deb`
+    - signs updater artifacts with the Tauri private key
+    - asks GitHub to generate release notes
+    - creates a draft GitHub Release
+10. Open the draft release in GitHub.
+11. Verify the uploaded files and the generated notes.
+12. Open `Actions` -> `Release` -> `Run workflow`.
+13. Set `finalize_release_tag` to `v0.x.y` and run the workflow.
+14. The workflow publishes the draft release, marks it as GitHub's latest release, and triggers the `publish-aur` job automatically.
 
 ## Manual workflow dispatch
 
