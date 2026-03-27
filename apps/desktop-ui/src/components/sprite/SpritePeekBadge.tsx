@@ -93,7 +93,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
   const isPomodoro = item.icon === "brain" || item.icon === "coffee";
   const isPaused = item.label.includes("(Paused)");
   
-  const lightGray = "#75787B";
+  const lightGray = "#3D3D3D";
   const darkWhite = "rgba(255, 255, 255, 0.9)";
   
   const handleControl = async (e: React.MouseEvent) => {
