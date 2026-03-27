@@ -1,9 +1,6 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::{
-    MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::settings::catalog::{
@@ -428,26 +425,9 @@ impl SettingsStore {
 }
 
 fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
-        [],
-    )
-    .map_err(|e| format!("Create migrations table error: {e}"))?;
+    peekoo_persistence_sqlite::run_all_migrations(conn)?;
 
-    apply_migration_if_needed(conn, "0001_init", "tasks", MIGRATION_0001_INIT)?;
-    apply_migration_if_needed(
-        conn,
-        "0002_agent_settings",
-        "agent_settings",
-        MIGRATION_0002_AGENT_SETTINGS,
-    )?;
-    apply_migration_if_needed(
-        conn,
-        "0003_provider_compat",
-        "agent_provider_configs",
-        MIGRATION_0003_PROVIDER_COMPAT,
-    )?;
-
+    // Seed default agent settings (must run after schema migrations)
     conn.execute(
         &format!(
             "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
@@ -458,53 +438,6 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
 
     Ok(())
-}
-
-fn apply_migration_if_needed(
-    conn: &Connection,
-    migration_id: &str,
-    sentinel_table: &str,
-    sql: &str,
-) -> Result<(), String> {
-    let exists: Option<String> = conn
-        .query_row(
-            "SELECT id FROM _peekoo_migrations WHERE id = ?1",
-            params![migration_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration state error: {e}"))?;
-
-    if exists.is_some() {
-        return Ok(());
-    }
-
-    let table_exists = sqlite_table_exists(conn, sentinel_table)?;
-    if !table_exists {
-        conn.execute_batch(sql)
-            .map_err(|e| format!("Apply migration {migration_id} error: {e}"))?;
-    }
-
-    conn.execute(
-        "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES (?1)",
-        params![migration_id],
-    )
-    .map_err(|e| format!("Record migration state error: {e}"))?;
-
-    Ok(())
-}
-
-fn sqlite_table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
-    let exists = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
-            params![table_name],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Query sqlite_master error: {e}"))?
-        .unwrap_or(false);
-    Ok(exists)
 }
 
 fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
@@ -535,6 +468,9 @@ mod tests {
         let path = temp_db_path();
         let first = SettingsStore::from_path(&path);
         assert!(first.is_ok());
+
+        // Drop the first connection before creating the second to avoid lock contention
+        drop(first);
 
         let second = SettingsStore::from_path(&path);
         assert!(second.is_ok());

@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::MIGRATION_0004_GLOBAL_SETTINGS;
 use rusqlite::{Connection, OptionalExtension, params};
 
 /// Key-value store backed by the `app_settings` SQLite table.
@@ -12,18 +11,10 @@ pub(crate) struct AppSettingsStore {
 impl AppSettingsStore {
     /// Create a store using a shared database connection.
     ///
-    /// The caller is responsible for opening the connection and setting
-    /// pragmas. This constructor runs the migration that creates the
-    /// `app_settings` table if it does not already exist.
-    pub(crate) fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
-        {
-            let c = conn
-                .lock()
-                .map_err(|e| format!("App settings conn lock error: {e}"))?;
-            c.execute_batch(MIGRATION_0004_GLOBAL_SETTINGS)
-                .map_err(|e| format!("App settings migration error: {e}"))?;
-        }
-        Ok(Self { conn })
+    /// The caller is responsible for running all migrations before calling
+    /// this constructor.
+    pub(crate) fn with_conn(conn: Arc<Mutex<Connection>>) -> Self {
+        Self { conn }
     }
 
     /// Read a single setting by key.
@@ -84,8 +75,8 @@ mod tests {
     use super::*;
 
     fn in_memory_store() -> AppSettingsStore {
-        let conn = Connection::open_in_memory().expect("in-memory db");
-        AppSettingsStore::with_conn(Arc::new(Mutex::new(conn))).expect("store")
+        let conn = peekoo_persistence_sqlite::setup_test_db();
+        AppSettingsStore::with_conn(Arc::new(Mutex::new(conn)))
     }
 
     #[test]

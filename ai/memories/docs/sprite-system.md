@@ -3,6 +3,42 @@
 ## Overview
 Peekoo's desktop pet system uses a modular "Sprite Store" architecture. Each sprite is fully self-contained in its own directory within `apps/desktop-ui/public/sprites/`.
 
+## Window Sizing and Interaction
+The sprite runs inside the main undecorated transparent Tauri window and uses frontend layout state plus a backend resize command to keep the window aligned with the visible UI.
+
+### Base window behavior
+- Default sprite window size is `200x250`
+- The main window remains configured as non-resizable by default so the sprite keeps its expected click/drag behavior on Linux/Wayland compositors
+- When UI chrome appears, the frontend computes the next window bounds and invokes the backend `resize_sprite_window` command
+
+### Auto-resize flow
+1. Frontend layout helpers in `apps/desktop-ui/src/lib/sprite-bubble-layout.ts` calculate:
+   - target `width`
+   - target `height`
+   - `extraLeft` to preserve horizontal centering
+   - `extraTop` to preserve vertical anchoring when bubbles expand upward
+2. `SpriteView` watches sprite UI state changes and calls `resize_sprite_window`
+3. The Tauri command temporarily enables resizing, applies tight min/max constraints, adjusts position, resizes the window, then restores the window to non-resizable
+
+### Why this matters
+This constrained-resize approach was added because permanently making the main transparent sprite window resizable caused broken click behavior on Linux/Wayland in practice. Temporarily toggling resizability during programmatic resize preserves sprite interaction while still allowing automatic expansion and shrink.
+
+### Related changes
+- Mini chat open state now widens and heightens the sprite window
+- Expanded mini chat reading mode uses a wider bubble and a larger window width
+- Panel windows remain separately resizable via explicit resize handles in `PanelShell`
+
+### Relevant files
+- `apps/desktop-ui/src/views/SpriteView.tsx`
+- `apps/desktop-ui/src/lib/sprite-bubble-layout.ts`
+- `apps/desktop-ui/src/lib/sprite-bubble-layout.test.ts`
+- `apps/desktop-ui/src/components/sprite/SpriteMiniChatBubble.tsx`
+- `apps/desktop-ui/src/components/panels/PanelShell.tsx`
+- `apps/desktop-tauri/src-tauri/src/lib.rs`
+- `apps/desktop-tauri/src-tauri/tauri.conf.json`
+- `apps/desktop-tauri/src-tauri/capabilities/default.json`
+- `ai/memories/changelogs/202603200347-fix-sprite-window-constrained-resize.md`
+
 ## Directory Structure
 ```text
 apps/desktop-ui/public/sprites/

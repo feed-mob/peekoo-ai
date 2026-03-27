@@ -8,6 +8,9 @@ fn sends_notifications_when_dnd_is_disabled() {
         source: "health-reminders".to_string(),
         title: "Drink water".to_string(),
         body: "Take a water break".to_string(),
+        action_url: None,
+        action_label: None,
+        panel_label: None,
     });
 
     assert!(delivered);
@@ -26,6 +29,9 @@ fn suppresses_notifications_when_dnd_is_enabled() {
         source: "health-reminders".to_string(),
         title: "Stand up".to_string(),
         body: "Time to stretch".to_string(),
+        action_url: None,
+        action_label: None,
+        panel_label: None,
     });
 
     assert!(!delivered);

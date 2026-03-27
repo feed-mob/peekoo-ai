@@ -284,3 +284,24 @@ body {
   height: 100vh;
   position: relative;
 }
+
+/* ©¤©¤©¤ Custom Scrollbar Style ©¤©¤©¤ */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  opacity: 0.3;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-teal);
+}

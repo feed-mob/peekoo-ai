@@ -1,5 +1,6 @@
 const BRIDGE_REQUEST_TYPE = "peekoo-plugin-invoke";
 const BRIDGE_RESPONSE_TYPE = "peekoo-plugin-invoke-result";
+const THEME_STYLE_MARKER = "peekoo-plugin-theme";
 
 const BRIDGE_SCRIPT = `<script>
 (() => {
@@ -56,6 +57,30 @@ export function injectPluginPanelBridge(html: string): string {
   }
 
   return `${BRIDGE_SCRIPT}${html}`;
+}
+
+export function injectPluginPanelTheme(
+  html: string,
+  variables: Record<string, string>,
+): string {
+  if (html.includes(THEME_STYLE_MARKER)) {
+    return html;
+  }
+
+  const entries = Object.entries(variables).filter(([, value]) => value.trim().length > 0);
+  if (!entries.length) {
+    return html;
+  }
+
+  const themeStyle = `<style id="${THEME_STYLE_MARKER}">:root {\n${entries
+    .map(([key, value]) => `  ${key}: ${value};`)
+    .join("\n")}\n}</style>`;
+
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `${themeStyle}</head>`);
+  }
+
+  return `${themeStyle}${html}`;
 }
 
 export { BRIDGE_REQUEST_TYPE, BRIDGE_RESPONSE_TYPE };

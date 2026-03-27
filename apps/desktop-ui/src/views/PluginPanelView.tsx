@@ -6,7 +6,38 @@ import {
   BRIDGE_REQUEST_TYPE,
   BRIDGE_RESPONSE_TYPE,
   injectPluginPanelBridge,
+  injectPluginPanelTheme,
 } from "@/lib/plugin-panel-bridge";
+
+const THEME_VARIABLES = [
+  "--space-void",
+  "--space-deep",
+  "--space-surface",
+  "--space-overlay",
+  "--text-primary",
+  "--text-secondary",
+  "--text-muted",
+  "--glow-green",
+  "--glow-sage",
+  "--glow-olive",
+  "--accent-orange",
+  "--accent-peach",
+  "--accent-teal",
+  "--success",
+  "--warning",
+  "--danger",
+  "--info",
+  "--glass",
+  "--glass-border",
+  "--radius",
+];
+
+function currentThemeVariables(): Record<string, string> {
+  const computed = getComputedStyle(document.documentElement);
+  return Object.fromEntries(
+    THEME_VARIABLES.map((name) => [name, computed.getPropertyValue(name).trim()]),
+  );
+}
 
 export default function PluginPanelView() {
   const [html, setHtml] = useState<string>("");
@@ -31,7 +62,8 @@ export default function PluginPanelView() {
 
     invoke<string>("plugin_panel_html", { label })
       .then((content) => {
-        setHtml(injectPluginPanelBridge(content));
+        const withBridge = injectPluginPanelBridge(content);
+        setHtml(injectPluginPanelTheme(withBridge, currentThemeVariables()));
         setError(null);
       })
       .catch((err) => {
@@ -42,11 +74,15 @@ export default function PluginPanelView() {
   useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const data = event.data;
-      if (!data || data.type !== BRIDGE_REQUEST_TYPE || typeof data.command !== "string") {
+      if (!data) {
         return;
       }
 
       if (event.source !== iframeRef.current?.contentWindow) {
+        return;
+      }
+
+      if (data.type !== BRIDGE_REQUEST_TYPE || typeof data.command !== "string") {
         return;
       }
 

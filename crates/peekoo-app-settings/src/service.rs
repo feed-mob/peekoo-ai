@@ -7,7 +7,9 @@ use crate::dto::SpriteInfo;
 use crate::store::AppSettingsStore;
 
 const SETTING_ACTIVE_SPRITE_ID: &str = "active_sprite_id";
+const SETTING_THEME_MODE: &str = "theme_mode";
 const DEFAULT_SPRITE_ID: &str = "dark-cat";
+const DEFAULT_THEME_MODE: &str = "system";
 
 /// Internal static representation of built-in sprites.
 ///
@@ -42,8 +44,10 @@ pub struct AppSettingsService {
 
 impl AppSettingsService {
     /// Create a service using a shared database connection.
+    ///
+    /// The caller is responsible for running all migrations before calling this.
     pub fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
-        let store = AppSettingsStore::with_conn(conn)?;
+        let store = AppSettingsStore::with_conn(conn);
         Ok(Self { store })
     }
 
@@ -64,6 +68,22 @@ impl AppSettingsService {
             return Err(format!("Unknown sprite: {sprite_id}"));
         }
         self.store.set(SETTING_ACTIVE_SPRITE_ID, sprite_id)
+    }
+
+    /// Return the currently selected theme mode, falling back to "system".
+    pub fn get_theme_mode(&self) -> Result<String, String> {
+        Ok(self
+            .store
+            .get(SETTING_THEME_MODE)?
+            .unwrap_or_else(|| DEFAULT_THEME_MODE.to_string()))
+    }
+
+    /// Set the theme mode. Valid values: "light", "dark", "system".
+    pub fn set_theme_mode(&self, mode: &str) -> Result<(), String> {
+        match mode {
+            "light" | "dark" | "system" => self.store.set(SETTING_THEME_MODE, mode),
+            _ => Err(format!("Invalid theme mode: {mode}")),
+        }
     }
 
     /// List all available sprites.
@@ -88,6 +108,9 @@ impl AppSettingsService {
         if key == SETTING_ACTIVE_SPRITE_ID {
             return self.set_active_sprite_id(value);
         }
+        if key == SETTING_THEME_MODE {
+            return self.set_theme_mode(value);
+        }
         self.store.set(key, value)
     }
 }
@@ -97,7 +120,7 @@ mod tests {
     use super::*;
 
     fn test_service() -> AppSettingsService {
-        let conn = Connection::open_in_memory().expect("in-memory db");
+        let conn = peekoo_persistence_sqlite::setup_test_db();
         AppSettingsService::with_conn(Arc::new(Mutex::new(conn))).expect("service")
     }
 
@@ -108,10 +131,27 @@ mod tests {
     }
 
     #[test]
+    fn default_theme_is_system() {
+        let svc = test_service();
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
     fn set_valid_sprite_succeeds() {
         let svc = test_service();
         svc.set_active_sprite_id("cute-dog").unwrap();
         assert_eq!(svc.get_active_sprite_id().unwrap(), "cute-dog");
+    }
+
+    #[test]
+    fn set_valid_theme_succeeds() {
+        let svc = test_service();
+        svc.set_theme_mode("dark").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "dark");
+        svc.set_theme_mode("light").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "light");
+        svc.set_theme_mode("system").unwrap();
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
     }
 
     #[test]
@@ -123,6 +163,14 @@ mod tests {
     }
 
     #[test]
+    fn set_invalid_theme_returns_error() {
+        let svc = test_service();
+        let result = svc.set_theme_mode("cobalt");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid theme mode"));
+    }
+
+    #[test]
     fn generic_set_validates_active_sprite_id() {
         let svc = test_service();
 
@@ -131,6 +179,17 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Unknown sprite"));
         assert_eq!(svc.get_active_sprite_id().unwrap(), "dark-cat");
+    }
+
+    #[test]
+    fn generic_set_validates_theme_mode() {
+        let svc = test_service();
+
+        let result = svc.set(SETTING_THEME_MODE, "invalid");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid theme mode"));
+        assert_eq!(svc.get_theme_mode().unwrap(), "system");
     }
 
     #[test]

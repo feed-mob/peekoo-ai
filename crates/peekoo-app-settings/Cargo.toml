@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
-rusqlite = { version = "0.38" }
+rusqlite = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
+
+[dev-dependencies]
+peekoo-persistence-sqlite = { path = "../persistence-sqlite" }

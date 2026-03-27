@@ -35,6 +35,9 @@ pub struct PluginNotificationDto {
     pub source_plugin: String,
     pub title: String,
     pub body: String,
+    pub action_url: Option<String>,
+    pub action_label: Option<String>,
+    pub panel_label: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -85,6 +88,9 @@ pub fn plugin_notification_from_message(notification: Notification) -> PluginNot
         source_plugin: notification.source,
         title: notification.title,
         body: notification.body,
+        action_url: notification.action_url,
+        action_label: notification.action_label,
+        panel_label: notification.panel_label,
     }
 }
 
@@ -100,10 +106,18 @@ mod tests {
             source: "health-reminders".to_string(),
             title: "Drink water".to_string(),
             body: "Time for a break".to_string(),
+            action_url: Some("https://example.com/join".to_string()),
+            action_label: Some("Join".to_string()),
+            panel_label: None,
         });
 
         assert_eq!(notification.source_plugin, "health-reminders");
         assert_eq!(notification.title, "Drink water");
         assert_eq!(notification.body, "Time for a break");
+        assert_eq!(
+            notification.action_url.as_deref(),
+            Some("https://example.com/join")
+        );
+        assert_eq!(notification.action_label.as_deref(), Some("Join"));
     }
 }

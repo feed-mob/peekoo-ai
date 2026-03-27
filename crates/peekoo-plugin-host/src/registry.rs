@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
 use peekoo_scheduler::Scheduler;
+use peekoo_task_app::TaskService;
 use rusqlite::{Connection, OptionalExtension};
 
 use crate::config::{resolved_config_map, set_config_field};
@@ -31,6 +32,7 @@ pub struct PluginRegistry {
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     scheduler_started: AtomicBool,
     scheduler_handle: Mutex<Option<std::thread::JoinHandle<()>>>,
 }
@@ -43,6 +45,7 @@ impl PluginRegistry {
         notifications: Arc<NotificationService>,
         peek_badges: Arc<PeekBadgeService>,
         mood_reactions: Arc<MoodReactionService>,
+        task_service: Arc<dyn TaskService>,
     ) -> Self {
         let permissions = PermissionStore::new(Arc::clone(&db_conn));
         let state = PluginStateStore::new(Arc::clone(&db_conn));
@@ -58,6 +61,7 @@ impl PluginRegistry {
             notifications,
             peek_badges,
             mood_reactions,
+            task_service,
             scheduler_started: AtomicBool::new(false),
             scheduler_handle: Mutex::new(None),
         }
@@ -86,6 +90,38 @@ impl PluginRegistry {
             }
         }
         found
+    }
+
+    fn discovered_plugin_dir(&self, plugin_key: &str) -> Option<PathBuf> {
+        self.discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
+    }
+
+    pub fn discover_tool_owner(&self, tool_name: &str) -> Option<String> {
+        self.discover().into_iter().find_map(|(_, manifest)| {
+            manifest.tools.as_ref().and_then(|tools| {
+                tools
+                    .definitions
+                    .iter()
+                    .any(|definition| definition.name == tool_name)
+                    .then(|| manifest.plugin.key.clone())
+            })
+        })
+    }
+
+    pub fn reload_plugin(&self, plugin_key: &str) -> Result<(), PluginError> {
+        let plugin_dir = self
+            .discovered_plugin_dir(plugin_key)
+            .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+
+        if let Ok(mut plugins) = self.plugins.lock() {
+            plugins.remove(plugin_key);
+        }
+
+        self.load_plugin(&plugin_dir).map(|_| ())
     }
 
     pub fn load_plugin(&self, plugin_dir: &Path) -> Result<String, PluginError> {
@@ -149,6 +185,7 @@ impl PluginRegistry {
             &self.notifications,
             &self.peek_badges,
             &self.mood_reactions,
+            Arc::clone(&self.task_service),
             manifest
                 .config
                 .as_ref()
@@ -267,14 +304,32 @@ impl PluginRegistry {
         tool_name: &str,
         input_json: &str,
     ) -> Result<String, PluginError> {
-        let mut plugins = self
-            .plugins
-            .lock()
-            .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
-        let instance = plugins
-            .get_mut(plugin_key)
-            .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
-        instance.call_tool(tool_name, input_json)
+        let first_attempt = {
+            let mut plugins = self
+                .plugins
+                .lock()
+                .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
+            let instance = plugins
+                .get_mut(plugin_key)
+                .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+            instance.call_tool(tool_name, input_json)
+        };
+
+        match first_attempt {
+            Ok(result) => Ok(result),
+            Err(PluginError::ToolNotFound(_)) => {
+                self.reload_plugin(plugin_key)?;
+                let mut plugins = self
+                    .plugins
+                    .lock()
+                    .map_err(|e| PluginError::Internal(format!("Lock error: {e}")))?;
+                let instance = plugins
+                    .get_mut(plugin_key)
+                    .ok_or_else(|| PluginError::NotFound(plugin_key.to_string()))?;
+                instance.call_tool(tool_name, input_json)
+            }
+            Err(err) => Err(err),
+        }
     }
 
     pub fn dispatch_event(&self, event_name: &str, payload_json: &str) -> Vec<PluginEvent> {
@@ -773,11 +828,93 @@ mod tests {
 
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
+    use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use crate::PluginError;
 
     use super::PluginRegistry;
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
+            Err("noop".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn test_registry(plugin_dirs: Vec<std::path::PathBuf>) -> PluginRegistry {
         let conn = Connection::open_in_memory().expect("in-memory db");
@@ -820,6 +957,7 @@ mod tests {
             Arc::new(notifications),
             Arc::new(PeekBadgeService::new()),
             Arc::new(MoodReactionService::new()),
+            Arc::new(NoopTaskService),
         )
     }
 

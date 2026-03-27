@@ -13,6 +13,11 @@ PROJECT_FILES = [
     "apps/desktop-ui/package.json",
     "apps/desktop-tauri/src-tauri/Cargo.toml",
 ]
+RELEASE_NOTES_CHECKLIST = [
+    "- [ ] Add at least one release-note label: `feature`, `fix`, `docs`, `test`, `chore`, `ci`, or `refactor`",
+    "- [ ] Use `skip-changelog` if this PR should be excluded from generated release notes",
+]
+VERIFICATION_CHECKLIST = ["- [ ] Tests pass locally"]
 
 SEMVER_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
 TOML_VERSION_PATTERN = re.compile(r'(?m)^(version\s*=\s*")(\d+\.\d+\.\d+)(")$')
@@ -71,15 +76,113 @@ def run_git(project_root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=project_root, check=True)
 
 
+def run_gh(project_root: Path, *args: str) -> None:
+    subprocess.run(["gh", *args], cwd=project_root, check=True)
+
+
+def parse_gh_json(project_root: Path, *args: str) -> object:
+    result = subprocess.run(
+        ["gh", *args],
+        cwd=project_root,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def ensure_gh_authentication(project_root: Path) -> None:
+    try:
+        subprocess.run(
+            ["gh", "auth", "status"],
+            cwd=project_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as error:
+        stderr = error.stderr.strip() if isinstance(error.stderr, str) else ""
+        message = "GitHub CLI is not authenticated. Run `gh auth login` and try again."
+        if stderr:
+            message = f"{message}\n\n`gh auth status` output:\n{stderr}"
+        raise SystemExit(message) from error
+
+
+def release_branch_name(version: str) -> str:
+    return f"release/{version}"
+
+
+def create_release_branch(project_root: Path, version: str) -> str:
+    branch_name = release_branch_name(version)
+    run_git(project_root, "switch", "-c", branch_name)
+    return branch_name
+
+
 def create_release_commit(project_root: Path, version: str) -> None:
     run_git(project_root, "add", *PROJECT_FILES, "Cargo.lock")
     run_git(project_root, "commit", "-S", "-m", f"chore(release): {version}")
-    run_git(project_root, "tag", f"v{version}")
 
 
-def push_release_refs(project_root: Path) -> None:
-    run_git(project_root, "push")
-    run_git(project_root, "push", "--tags")
+def push_release_branch(project_root: Path, version: str) -> str:
+    branch_name = release_branch_name(version)
+    run_git(project_root, "push", "-u", "origin", branch_name)
+    return branch_name
+
+
+def build_release_pr_body(version: str) -> str:
+    release_notes = "\n".join(RELEASE_NOTES_CHECKLIST)
+    verification = "\n".join(VERIFICATION_CHECKLIST)
+    return (
+        "## What changed\n\n"
+        f"- Bump release version to {version}\n\n"
+        "## Release notes\n\n"
+        f"{release_notes}\n\n"
+        "## Verification\n\n"
+        f"{verification}\n"
+    )
+
+
+def create_release_pr(project_root: Path, version: str) -> None:
+    ensure_gh_authentication(project_root)
+    run_gh(
+        project_root,
+        "pr",
+        "create",
+        "--base",
+        "master",
+        "--head",
+        release_branch_name(version),
+        "--title",
+        f"chore(release): {version}",
+        "--body",
+        build_release_pr_body(version),
+    )
+    apply_release_label_if_available(project_root, version)
+
+
+def apply_release_label_if_available(project_root: Path, version: str) -> None:
+    labels = parse_gh_json(
+        project_root, "label", "list", "--json", "name", "--limit", "200"
+    )
+    if not isinstance(labels, list):
+        return
+
+    label_names = {
+        label.get("name")
+        for label in labels
+        if isinstance(label, dict) and "name" in label
+    }
+    if "chore" not in label_names:
+        return
+
+    run_gh(
+        project_root,
+        "pr",
+        "edit",
+        release_branch_name(version),
+        "--add-label",
+        "chore",
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,12 +193,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--commit",
         action="store_true",
-        help="create a signed release commit and tag after updating versions",
+        help="create a release branch and signed commit after updating versions",
     )
     parser.add_argument(
         "--push",
         action="store_true",
-        help="push the current branch and tags after creating the release commit",
+        help="push the release branch and open a pull request after creating the release commit",
     )
     return parser.parse_args()
 
@@ -119,12 +222,14 @@ def main() -> int:
         print(f"- {path}")
 
     if args.commit:
+        branch_name = create_release_branch(project_root, version)
         create_release_commit(project_root, version)
-        print(f"Created git commit and tag v{version}")
+        print(f"Created release branch {branch_name} and signed commit")
 
     if args.push:
-        push_release_refs(project_root)
-        print("Pushed branch and tags")
+        branch_name = push_release_branch(project_root, version)
+        create_release_pr(project_root, version)
+        print(f"Pushed {branch_name} and opened a pull request")
 
     return 0
 

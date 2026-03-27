@@ -40,9 +40,16 @@ pub(crate) struct EmitEventRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct NotifyRequest {
     pub title: String,
     pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -83,6 +90,106 @@ pub(crate) struct ConfigGetRequest {
 #[derive(Serialize, Deserialize)]
 pub(crate) struct ConfigGetResponse {
     pub value: Value,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthStartRequest {
+    pub provider_id: String,
+    pub authorize_url: String,
+    pub token_url: String,
+    pub client_id: String,
+    pub client_secret: Option<String>,
+    pub redirect_uri: String,
+    pub scope: String,
+    #[serde(default)]
+    pub authorize_params: Vec<OAuthKeyValue>,
+    #[serde(default)]
+    pub token_params: Vec<OAuthKeyValue>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthKeyValue {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthStartResponse {
+    pub flow_id: String,
+    pub authorize_url: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthStatusRequest {
+    pub flow_id: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthStatusResponse {
+    pub provider_id: String,
+    pub status: String,
+    pub access_token: Option<String>,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct OAuthCancelResponse {
+    pub cancelled: bool,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SecretGetRequest {
+    pub key: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SecretGetResponse {
+    pub value: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SecretSetRequest {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub(crate) struct SecretDeleteRequest {
+    pub key: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpRequest {
+    pub method: String,
+    pub url: String,
+    #[serde(default)]
+    pub headers: Vec<HttpHeader>,
+    pub body: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpHeader {
+    pub name: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct HttpResponse {
+    pub status: u16,
+    pub body: String,
+    #[serde(default)]
+    pub headers: Vec<HttpHeader>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -228,6 +335,15 @@ extern "ExtismHost" {
     pub(crate) fn peekoo_schedule_get(input: Json<ScheduleGetRequest>)
         -> Json<ScheduleGetResponse>;
     pub(crate) fn peekoo_config_get(input: Json<ConfigGetRequest>) -> Json<ConfigGetResponse>;
+    pub(crate) fn peekoo_oauth_start(input: Json<OAuthStartRequest>) -> Json<OAuthStartResponse>;
+    pub(crate) fn peekoo_oauth_status(input: Json<OAuthStatusRequest>)
+        -> Json<OAuthStatusResponse>;
+    pub(crate) fn peekoo_oauth_cancel(input: Json<OAuthStatusRequest>)
+        -> Json<OAuthCancelResponse>;
+    pub(crate) fn peekoo_secret_get(input: Json<SecretGetRequest>) -> Json<SecretGetResponse>;
+    pub(crate) fn peekoo_secret_set(input: Json<SecretSetRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_secret_delete(input: Json<SecretDeleteRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_http_request(input: Json<HttpRequest>) -> Json<HttpResponse>;
     pub(crate) fn peekoo_set_peek_badge(input: String) -> Json<OkResponse>;
     pub(crate) fn peekoo_bridge_fs_read(input: String) -> Json<BridgeFsReadResponse>;
     pub(crate) fn peekoo_fs_read(input: Json<FsReadRequest>) -> Json<FsReadResponse>;
@@ -257,8 +373,9 @@ extern "ExtismHost" {
 #[cfg(test)]
 mod tests {
     use super::{
-        CryptoEd25519GetOrCreateResponse, CryptoEd25519SignResponse, SystemTimeMillisResponse,
-        WebSocketConnectRequest, WebSocketConnectResponse,
+        CryptoEd25519GetOrCreateResponse, CryptoEd25519SignResponse, HttpRequest, OAuthKeyValue,
+        OAuthStartRequest, SecretSetRequest, SystemTimeMillisResponse, WebSocketConnectRequest,
+        WebSocketConnectResponse,
     };
 
     #[test]
@@ -306,5 +423,74 @@ mod tests {
             serde_json::from_str(r#"{"signatureBase64Url":"sig"}"#).expect("deserialize response");
 
         assert_eq!(response.signature_base64_url, "sig");
+    }
+
+    #[test]
+    fn oauth_start_request_serializes_camel_case() {
+        let json = serde_json::to_value(OAuthStartRequest {
+            provider_id: "google-calendar".to_string(),
+            authorize_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+            token_url: "https://oauth2.googleapis.com/token".to_string(),
+            client_id: "client-id".to_string(),
+            client_secret: Some("secret".to_string()),
+            redirect_uri: "http://localhost:1455/auth/callback".to_string(),
+            scope: "openid email profile".to_string(),
+            authorize_params: vec![OAuthKeyValue {
+                key: "prompt".to_string(),
+                value: "consent".to_string(),
+            }],
+            token_params: vec![],
+        })
+        .expect("serialize request");
+
+        assert_eq!(
+            json.get("providerId").and_then(|v| v.as_str()),
+            Some("google-calendar")
+        );
+        assert_eq!(
+            json.get("clientId").and_then(|v| v.as_str()),
+            Some("client-id")
+        );
+        assert_eq!(
+            json.get("clientSecret").and_then(|v| v.as_str()),
+            Some("secret")
+        );
+        assert_eq!(
+            json.get("authorizeUrl").and_then(|v| v.as_str()),
+            Some("https://accounts.google.com/o/oauth2/v2/auth")
+        );
+        assert_eq!(
+            json.get("tokenUrl").and_then(|v| v.as_str()),
+            Some("https://oauth2.googleapis.com/token")
+        );
+    }
+
+    #[test]
+    fn secret_set_request_serializes_plain_keys() {
+        let json = serde_json::to_value(SecretSetRequest {
+            key: "token".to_string(),
+            value: "value".to_string(),
+        })
+        .expect("serialize request");
+
+        assert_eq!(json.get("key").and_then(|v| v.as_str()), Some("token"));
+        assert_eq!(json.get("value").and_then(|v| v.as_str()), Some("value"));
+    }
+
+    #[test]
+    fn http_request_serializes_camel_case() {
+        let json = serde_json::to_value(HttpRequest {
+            method: "GET".to_string(),
+            url: "https://www.googleapis.com/calendar/v3/calendars/primary/events".to_string(),
+            headers: vec![],
+            body: None,
+        })
+        .expect("serialize request");
+
+        assert_eq!(json.get("method").and_then(|v| v.as_str()), Some("GET"));
+        assert_eq!(
+            json.get("url").and_then(|v| v.as_str()),
+            Some("https://www.googleapis.com/calendar/v3/calendars/primary/events")
+        );
     }
 }

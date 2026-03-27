@@ -9,12 +9,21 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use extism::{CurrentPlugin, Error, Function, UserData, Val, ValType};
+use peekoo_agent_auth::{
+    OAuthQueryParam, OAuthService, OAuthStartConfig, OAuthTokenExchangeConfig,
+};
 use peekoo_notifications::{
     MoodReactionService, Notification, NotificationService, PeekBadgeItem, PeekBadgeService,
 };
 use peekoo_scheduler::{ScheduleInfo, Scheduler};
+use peekoo_security::{
+    FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
+};
+use peekoo_task_app::TaskService;
 use rand::rngs::OsRng;
+use reqwest::Method;
 use sha2::{Digest, Sha256};
+use tungstenite::client::IntoClientRequest;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket, connect};
 use url::Url;
@@ -34,12 +43,15 @@ struct HostContext {
     declared_capabilities: Vec<String>,
     allowed_paths: Vec<PathBuf>,
     allowed_hosts: Vec<String>,
+    oauth: Arc<OAuthService>,
+    secret_store: Arc<dyn SecretStore>,
     websockets: Arc<Mutex<WebSocketStore>>,
     event_bus: Arc<EventBus>,
     scheduler: Arc<Scheduler>,
     notifications: Arc<NotificationService>,
     peek_badges: Arc<PeekBadgeService>,
     mood_reactions: Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 }
 
@@ -65,8 +77,16 @@ pub fn build_host_functions(
     notifications: &Arc<NotificationService>,
     peek_badges: &Arc<PeekBadgeService>,
     mood_reactions: &Arc<MoodReactionService>,
+    task_service: Arc<dyn TaskService>,
     config_fields: Vec<ConfigFieldDef>,
 ) -> Vec<Function> {
+    let secret_root = peekoo_paths::peekoo_global_data_dir()
+        .unwrap_or_else(|_| std::env::temp_dir().join("peekoo"))
+        .join("plugin-secrets");
+    let secret_store: Arc<dyn SecretStore> = Arc::new(FallbackSecretStore::new(
+        Box::new(KeyringSecretStore::new("peekoo-desktop")),
+        Box::new(FileSecretStore::new(secret_root)),
+    ));
     let ctx = HostContext {
         plugin_key: plugin_key.to_string(),
         plugin_dir: plugin_dir.to_path_buf(),
@@ -75,12 +95,15 @@ pub fn build_host_functions(
         declared_capabilities,
         allowed_paths,
         allowed_hosts,
+        oauth: Arc::new(OAuthService::new()),
+        secret_store,
         websockets: Arc::new(Mutex::new(WebSocketStore::default())),
         event_bus: Arc::clone(event_bus),
         scheduler: Arc::clone(scheduler),
         notifications: Arc::clone(notifications),
         peek_badges: Arc::clone(peek_badges),
         mood_reactions: Arc::clone(mood_reactions),
+        task_service,
         config_fields,
     };
 
@@ -147,6 +170,55 @@ pub fn build_host_functions(
             [ValType::I64],
             UserData::new(ctx.clone()),
             host_config_get,
+        ),
+        Function::new(
+            "peekoo_oauth_start",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_start,
+        ),
+        Function::new(
+            "peekoo_oauth_status",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_status,
+        ),
+        Function::new(
+            "peekoo_oauth_cancel",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_oauth_cancel,
+        ),
+        Function::new(
+            "peekoo_secret_get",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_get,
+        ),
+        Function::new(
+            "peekoo_secret_set",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_set,
+        ),
+        Function::new(
+            "peekoo_secret_delete",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_secret_delete,
+        ),
+        Function::new(
+            "peekoo_http_request",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_http_request,
         ),
         Function::new(
             "peekoo_set_peek_badge",
@@ -243,8 +315,50 @@ pub fn build_host_functions(
             "peekoo_set_mood",
             [ValType::I64],
             [ValType::I64],
-            UserData::new(ctx),
+            UserData::new(ctx.clone()),
             host_set_mood,
+        ),
+        Function::new(
+            "peekoo_task_create",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_create,
+        ),
+        Function::new(
+            "peekoo_task_list",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_list,
+        ),
+        Function::new(
+            "peekoo_task_update",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_update,
+        ),
+        Function::new(
+            "peekoo_task_delete",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_delete,
+        ),
+        Function::new(
+            "peekoo_task_toggle",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_task_toggle,
+        ),
+        Function::new(
+            "peekoo_task_assign",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx),
+            host_task_assign,
         ),
     ]
 }
@@ -362,6 +476,9 @@ fn host_notify(
         source: ctx.plugin_key.clone(),
         title: req["title"].as_str().unwrap_or_default().to_string(),
         body: req["body"].as_str().unwrap_or_default().to_string(),
+        action_url: req["actionUrl"].as_str().map(ToString::to_string),
+        action_label: req["actionLabel"].as_str().map(ToString::to_string),
+        panel_label: req["panelLabel"].as_str().map(ToString::to_string),
     });
 
     write_output(
@@ -463,6 +580,191 @@ fn host_config_get(
 
     write_output(plugin, outputs, &response.to_string())?;
     Ok(())
+}
+
+fn host_oauth_start(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let start_config = OAuthStartConfig {
+        provider_id: req["providerId"].as_str().unwrap_or_default().to_string(),
+        authorize_url: req["authorizeUrl"].as_str().unwrap_or_default().to_string(),
+        token_exchange: OAuthTokenExchangeConfig {
+            token_url: req["tokenUrl"].as_str().unwrap_or_default().to_string(),
+            token_params: json_params_to_query_params(&req["tokenParams"]),
+        },
+        client_id: req["clientId"].as_str().unwrap_or_default().to_string(),
+        client_secret: req["clientSecret"].as_str().map(ToString::to_string),
+        redirect_uri: req["redirectUri"].as_str().unwrap_or_default().to_string(),
+        scope: req["scope"].as_str().unwrap_or_default().to_string(),
+        authorize_params: json_params_to_query_params(&req["authorizeParams"]),
+    };
+
+    let started = ctx
+        .oauth
+        .start_custom(start_config)
+        .map_err(|e| Error::msg(format!("Plugin OAuth start error: {e}")))?;
+
+    let response = serde_json::json!({
+        "flowId": started.flow_id,
+        "authorizeUrl": started.authorize_url,
+    })
+    .to_string();
+    write_output(plugin, outputs, &response)
+}
+
+fn host_oauth_status(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let flow_id = req["flowId"].as_str().unwrap_or_default();
+
+    let status = block_on_oauth_status(Arc::clone(&ctx.oauth), flow_id)
+        .map_err(|e| Error::msg(format!("Plugin OAuth status error: {e}")))?;
+
+    let response = serde_json::json!({
+        "providerId": status.provider_id,
+        "status": status.status.as_str(),
+        "accessToken": status.access_token,
+        "refreshToken": status.refresh_token,
+        "expiresAt": status.expires_at,
+        "error": status.error,
+    })
+    .to_string();
+    write_output(plugin, outputs, &response)
+}
+
+fn host_oauth_cancel(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_oauth(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let flow_id = req["flowId"].as_str().unwrap_or_default();
+    let cancelled = ctx
+        .oauth
+        .cancel(flow_id)
+        .map_err(|e| Error::msg(format!("Plugin OAuth cancel error: {e}")))?;
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "cancelled": cancelled }).to_string(),
+    )
+}
+
+fn host_secret_get(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_read(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+
+    let value = match ctx.secret_store.get(&key) {
+        Ok(value) => Some(value),
+        Err(SecretStoreError::NotFound) => None,
+        Err(err) => return Err(Error::msg(format!("Plugin secret get error: {err}"))),
+    };
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({ "value": value }).to_string(),
+    )
+}
+
+fn host_secret_set(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_write(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+    let value = req["value"].as_str().unwrap_or_default();
+    ctx.secret_store
+        .put(&key, value)
+        .map_err(|e| Error::msg(format!("Plugin secret set error: {e}")))?;
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)
+}
+
+fn host_secret_delete(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_secret_write(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let key = plugin_secret_key(&ctx.plugin_key, req["key"].as_str().unwrap_or_default());
+
+    match ctx.secret_store.delete(&key) {
+        Ok(()) | Err(SecretStoreError::NotFound) => {}
+        Err(err) => return Err(Error::msg(format!("Plugin secret delete error: {err}"))),
+    }
+
+    write_output(plugin, outputs, r#"{"ok":true}"#)
+}
+
+fn host_http_request(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    can_http(&ctx)?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+    let method = req["method"].as_str().unwrap_or("GET");
+    let url = req["url"].as_str().unwrap_or_default();
+    if !is_http_url_allowed(url, &ctx.allowed_hosts) {
+        return Err(Error::msg(format!(
+            "HTTP host is not allowlisted for plugin '{}': {url}",
+            ctx.plugin_key
+        )));
+    }
+
+    let headers = req["headers"].as_array().cloned().unwrap_or_default();
+    let body = req["body"].as_str().map(ToString::to_string);
+    let response = execute_http_request(method.to_string(), url.to_string(), headers, body)
+        .map_err(Error::msg)?;
+
+    write_output(plugin, outputs, &response)
 }
 
 fn host_set_peek_badge(
@@ -596,7 +898,9 @@ fn host_set_mood(
     Ok(())
 }
 
-fn host_process_exec(
+// ── Task host functions ──────────────────────────────────────────────
+
+fn host_task_create(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
     outputs: &mut [Val],
@@ -604,50 +908,222 @@ fn host_process_exec(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_declared_capability(&ctx, "process:exec")?;
+    require_capability(&ctx, "tasks")?;
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
 
-    let program = req["program"].as_str().unwrap_or_default().trim();
-    if program.is_empty() {
-        return Err(Error::msg("process program is required"));
-    }
-
-    let args = req["args"]
+    let title = req["title"].as_str().unwrap_or("");
+    let priority = req["priority"].as_str().unwrap_or("medium");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    let labels: Vec<String> = req["labels"]
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|item| item.as_str().map(ToString::to_string))
-                .collect::<Vec<_>>()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
         })
         .unwrap_or_default();
 
-    let cwd = req["cwd"].as_str().unwrap_or(".");
-    let resolved_cwd = resolve_process_cwd(&ctx, cwd)?;
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min = req["estimated_duration_min"].as_u64().map(|v| v as u32);
+    let recurrence_rule = req["recurrence_rule"].as_str();
+    let recurrence_time_of_day = req["recurrence_time_of_day"].as_str();
 
-    let output = Command::new(program)
-        .args(&args)
-        .current_dir(&resolved_cwd)
-        .output()
-        .map_err(|e| Error::msg(format!("Process spawn failed: {e}")))?;
+    match ctx.task_service.create_task(
+        title,
+        priority,
+        assignee,
+        &labels,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task create error: {e}"))),
+    }
+}
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    let status_code = output.status.code().unwrap_or(-1);
-    let ok = output.status.success();
+fn host_task_list(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
 
-    write_output(
-        plugin,
-        outputs,
-        &serde_json::json!({
-            "ok": ok,
-            "statusCode": status_code,
-            "stdout": stdout,
-            "stderr": stderr,
-        })
-        .to_string(),
-    )?;
-    Ok(())
+    match ctx.task_service.list_tasks() {
+        Ok(tasks) => {
+            let filtered: Vec<_> = match req["status_filter"].as_str() {
+                Some(status) => tasks.into_iter().filter(|t| t.status == status).collect(),
+                None => tasks,
+            };
+            write_output(
+                plugin,
+                outputs,
+                &serde_json::to_string(&filtered).unwrap_or_default(),
+            )
+        }
+        Err(e) => Err(Error::msg(format!("Task list error: {e}"))),
+    }
+}
+
+fn host_task_update(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let title = req["title"].as_str();
+    let priority = req["priority"].as_str();
+    let status = req["status"].as_str();
+    let assignee = req["assignee"].as_str();
+    let labels: Option<Vec<String>> = req["labels"].as_array().map(|arr| {
+        arr.iter()
+            .filter_map(|v| v.as_str().map(String::from))
+            .collect()
+    });
+    let labels_ref = labels.as_deref();
+    let description = req["description"].as_str();
+    let scheduled_start_at = req["scheduled_start_at"].as_str();
+    let scheduled_end_at = req["scheduled_end_at"].as_str();
+    let estimated_duration_min: Option<Option<u32>> = if req.get("estimated_duration_min").is_some()
+    {
+        Some(req["estimated_duration_min"].as_u64().map(|v| v as u32))
+    } else {
+        None
+    };
+    let recurrence_rule: Option<Option<&str>> = if req.get("recurrence_rule").is_some() {
+        Some(req["recurrence_rule"].as_str())
+    } else {
+        None
+    };
+    let recurrence_time_of_day: Option<Option<&str>> =
+        if req.get("recurrence_time_of_day").is_some() {
+            Some(req["recurrence_time_of_day"].as_str())
+        } else {
+            None
+        };
+
+    match ctx.task_service.update_task(
+        id,
+        title,
+        priority,
+        status,
+        assignee,
+        labels_ref,
+        description,
+        scheduled_start_at,
+        scheduled_end_at,
+        estimated_duration_min,
+        recurrence_rule,
+        recurrence_time_of_day,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task update error: {e}"))),
+    }
+}
+
+fn host_task_delete(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.delete_task(id) {
+        Ok(()) => write_output(plugin, outputs, r#"{"ok":true}"#),
+        Err(e) => Err(Error::msg(format!("Task delete error: {e}"))),
+    }
+}
+
+fn host_task_toggle(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    match ctx.task_service.toggle_task(id) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task toggle error: {e}"))),
+    }
+}
+
+fn host_task_assign(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_capability(&ctx, "tasks")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let id = req["id"].as_str().unwrap_or("");
+    let assignee = req["assignee"].as_str().unwrap_or("user");
+    match ctx.task_service.update_task(
+        id,
+        None,
+        None,
+        None,
+        Some(assignee),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    ) {
+        Ok(dto) => write_output(
+            plugin,
+            outputs,
+            &serde_json::to_string(&dto).unwrap_or_default(),
+        ),
+        Err(e) => Err(Error::msg(format!("Task assign error: {e}"))),
+    }
 }
 
 fn host_websocket_connect(
@@ -684,8 +1160,34 @@ fn host_websocket_connect(
         }
     }
 
-    let (socket, _) = connect(parsed.as_str())
-        .map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
+    // Build request with a valid HTTP Origin header so servers that validate
+    // Origin (e.g. OpenClaw gateway) don't reject the handshake.
+    // Include the port when non-default so the origin matches what the server expects.
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| Error::msg("WebSocket URL missing host"))?;
+    let origin = if let Some(port) = parsed.port() {
+        if host.contains(':') {
+            format!("http://[{}]:{}", host, port)
+        } else {
+            format!("http://{}:{}", host, port)
+        }
+    } else {
+        format!("http://{}", host)
+    };
+
+    tracing::debug!("WebSocket connection origin: {}", origin);
+    let mut request = url
+        .into_client_request()
+        .map_err(|e| Error::msg(e.to_string()))?;
+    request.headers_mut().insert(
+        "Origin",
+        origin
+            .parse()
+            .map_err(|e| Error::msg(format!("Invalid origin header '{}': {}", origin, e)))?,
+    );
+    let (socket, _) =
+        connect(request).map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
     let mut websockets = ctx
         .websockets
         .lock()
@@ -978,6 +1480,22 @@ fn can_schedule(ctx: &HostContext) -> Result<(), Error> {
     require_capability(ctx, "scheduler")
 }
 
+fn can_oauth(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "oauth")
+}
+
+fn can_secret_read(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "secrets:read")
+}
+
+fn can_secret_write(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "secrets:write")
+}
+
+fn can_http(ctx: &HostContext) -> Result<(), Error> {
+    require_capability(ctx, "net:http")
+}
+
 fn resolve_allowed_path(path: &str, allowed_paths: &[PathBuf]) -> Option<PathBuf> {
     let requested_path = expand_tilde_path(path);
     let requested_path = PathBuf::from(requested_path);
@@ -1054,6 +1572,14 @@ fn is_path_allowed(path: &Path, allowed_paths: &[PathBuf]) -> bool {
 }
 
 fn is_websocket_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
+    is_network_url_allowed(url, allowed_hosts)
+}
+
+fn is_http_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
+    is_network_url_allowed(url, allowed_hosts)
+}
+
+fn is_network_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     if allowed_hosts.is_empty() {
         return false;
     }
@@ -1069,6 +1595,107 @@ fn is_websocket_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     allowed_hosts
         .iter()
         .any(|allowed| host_matches_rule(host, port, allowed))
+}
+
+fn plugin_secret_key(plugin_key: &str, key: &str) -> String {
+    format!("plugin/{plugin_key}/{key}")
+}
+
+fn json_params_to_query_params(value: &serde_json::Value) -> Vec<OAuthQueryParam> {
+    value
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            Some(OAuthQueryParam::new(
+                entry.get("key")?.as_str()?,
+                entry.get("value")?.as_str()?,
+            ))
+        })
+        .collect()
+}
+
+fn block_on_oauth_status(
+    oauth: Arc<OAuthService>,
+    flow_id: &str,
+) -> Result<peekoo_agent_auth::OAuthStatusResult, String> {
+    let flow_id = flow_id.to_string();
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build();
+        let result = match runtime {
+            Ok(runtime) => runtime
+                .block_on(oauth.status(&flow_id))
+                .map_err(|e| e.to_string()),
+            Err(err) => Err(format!("Create OAuth runtime error: {err}")),
+        };
+        let _ = tx.send(result);
+    });
+
+    rx.recv()
+        .map_err(|err| format!("Receive OAuth status error: {err}"))?
+}
+
+fn execute_http_request(
+    method: String,
+    url: String,
+    headers: Vec<serde_json::Value>,
+    body: Option<String>,
+) -> Result<String, String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = (|| {
+            let method = Method::from_bytes(method.as_bytes())
+                .map_err(|e| format!("Invalid HTTP method: {e}"))?;
+            let client = reqwest::blocking::Client::new();
+            let mut request = client.request(method, &url);
+            for header in headers {
+                if let (Some(name), Some(value)) =
+                    (header["name"].as_str(), header["value"].as_str())
+                {
+                    request = request.header(name, value);
+                }
+            }
+            if let Some(body) = body {
+                request = request.body(body);
+            }
+
+            let response = request
+                .send()
+                .map_err(|e| format!("HTTP request failed: {e}"))?;
+            let status = response.status().as_u16();
+            let headers = response
+                .headers()
+                .iter()
+                .filter_map(|(name, value)| {
+                    value.to_str().ok().map(|value| {
+                        serde_json::json!({
+                            "name": name.as_str(),
+                            "value": value,
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            let body = response
+                .text()
+                .map_err(|e| format!("HTTP response body read failed: {e}"))?;
+
+            Ok::<String, String>(
+                serde_json::json!({
+                    "status": status,
+                    "body": body,
+                    "headers": headers,
+                })
+                .to_string(),
+            )
+        })();
+        let _ = tx.send(result);
+    });
+
+    rx.recv()
+        .map_err(|err| format!("Receive HTTP response error: {err}"))?
 }
 
 fn host_matches_rule(host: &str, port: Option<u16>, rule: &str) -> bool {
@@ -1217,8 +1844,12 @@ mod tests {
     use std::fs;
     use std::sync::{Arc, Mutex};
 
+    use peekoo_agent_auth::OAuthService;
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_scheduler::Scheduler;
+    use peekoo_security::InMemorySecretStore;
+    use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
+    use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
     use crate::events::EventBus;
@@ -1227,8 +1858,89 @@ mod tests {
 
     use super::{
         HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
-        is_path_allowed, is_websocket_url_allowed, read_file_content, sanitize_key_component,
+        is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
+        read_file_content, sanitize_key_component,
     };
+
+    struct NoopTaskService;
+    impl TaskService for NoopTaskService {
+        fn create_task(
+            &self,
+            _: &str,
+            _: &str,
+            _: &str,
+            _: &[String],
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<u32>,
+            _: Option<&str>,
+            _: Option<&str>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn list_tasks(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn update_task(
+            &self,
+            _: &str,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&[String]>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<&str>,
+            _: Option<Option<u32>>,
+            _: Option<Option<&str>>,
+            _: Option<Option<&str>>,
+        ) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn delete_task(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn toggle_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn get_task_activity(&self, _: &str, _: u32) -> Result<Vec<TaskEventDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_comment(&self, _: &str, _: &str, _: &str) -> Result<TaskEventDto, String> {
+            Err("noop".into())
+        }
+        fn claim_task_for_agent(&self, _: &str) -> Result<bool, String> {
+            Err("noop".into())
+        }
+        fn update_agent_work_status(
+            &self,
+            _: &str,
+            _: &str,
+            _: Option<&str>,
+        ) -> Result<(), String> {
+            Err("noop".into())
+        }
+        fn increment_attempt_count(&self, _: &str) -> Result<u32, String> {
+            Err("noop".into())
+        }
+        fn list_tasks_for_agent_execution(&self) -> Result<Vec<TaskDto>, String> {
+            Ok(vec![])
+        }
+        fn add_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn remove_task_label(&self, _: &str, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn update_task_status(&self, _: &str, _: TaskStatus) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+        fn load_task(&self, _: &str) -> Result<TaskDto, String> {
+            Err("noop".into())
+        }
+    }
 
     fn temp_dir(prefix: &str) -> std::path::PathBuf {
         let dir =
@@ -1301,6 +2013,25 @@ mod tests {
     }
 
     #[test]
+    fn http_url_is_allowed_for_exact_host_and_port() {
+        assert!(is_http_url_allowed(
+            "https://oauth2.googleapis.com/token",
+            &["oauth2.googleapis.com".to_string()],
+        ));
+    }
+
+    #[test]
+    fn http_url_is_rejected_when_host_not_allowlisted() {
+        assert!(!is_http_url_allowed(
+            "https://evil.example.com/token",
+            &[
+                "oauth2.googleapis.com".to_string(),
+                "www.googleapis.com".to_string()
+            ],
+        ));
+    }
+
+    #[test]
     fn sanitize_key_component_replaces_unsafe_characters() {
         assert_eq!(
             sanitize_key_component("openclaw/device identity:v2"),
@@ -1316,6 +2047,14 @@ mod tests {
         let display = path.to_string_lossy();
         assert!(display.contains("openclaw-sessions"));
         assert!(display.contains("device_identity_v2.json"));
+    }
+
+    #[test]
+    fn plugin_secret_key_is_namespaced_by_plugin() {
+        assert_eq!(
+            plugin_secret_key("google-calendar", "oauth-token"),
+            "plugin/google-calendar/oauth-token"
+        );
     }
 
     fn permission_test_context(
@@ -1376,12 +2115,15 @@ mod tests {
                 .collect(),
             allowed_paths: vec![],
             allowed_hosts: vec![],
+            oauth: Arc::new(OAuthService::new()),
+            secret_store: Arc::new(InMemorySecretStore::default()),
             websockets: Arc::new(Mutex::new(Default::default())),
             event_bus: Arc::new(EventBus::new()),
             scheduler: Arc::new(Scheduler::new()),
             notifications: Arc::new(notifications),
             peek_badges: Arc::new(PeekBadgeService::new()),
             mood_reactions: Arc::new(MoodReactionService::new()),
+            task_service: Arc::new(NoopTaskService),
             config_fields: vec![],
         }
     }

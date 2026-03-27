@@ -1,0 +1,3 @@
+- Removed the Google-specific OAuth provider adapter from `peekoo-agent-auth` and replaced it with a provider-agnostic `OAuthStartConfig` / token-exchange flow.
+- Updated the plugin host OAuth bridge to accept generic authorize/token configuration from plugins instead of switching on `google-calendar` internally.
+- Updated the Google Calendar plugin to pass its own Google OAuth endpoints and params through the generic OAuth bridge while keeping token refresh and Google API calls inside the plugin.

@@ -5,8 +5,9 @@ use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
     LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
     OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroSessionDto, ProviderAuthDto, ProviderConfigDto, ProviderRequest,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto,
+    PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, ProviderAuthDto,
+    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
+    StorePluginDto, TaskDto, TaskEventDto,
 };
 use serde::Serialize;
 use std::env;
@@ -14,16 +15,16 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use std::time::Duration;
-#[cfg(target_os = "macos")]
-use tauri::utils::config::Color;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, Manager, State, Window,
+    AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, State, Window,
+    WindowSizeConstraints,
     image::Image,
     menu::MenuBuilder,
     tray::{MouseButton, MouseButtonState, TrayIconEvent},
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_shell::ShellExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -31,10 +32,29 @@ use tauri_plugin_notification::NotificationExt;
 const MAIN_WINDOW_LABEL: &str = "main";
 const TRAY_ICON_ID: &str = "main-tray";
 const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
-const TRAY_SETTINGS_MENU_ID: &str = "settings";
-const TRAY_ABOUT_MENU_ID: &str = "about";
+const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
+const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
+const TASKS_CHANGED_EVENT: &str = "tasks-changed";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrayMenuAction {
+    ToggleVisible,
+    OpenSettings,
+    OpenAbout,
+    Quit,
+}
+
+fn tray_menu_action(menu_id: &str) -> Option<TrayMenuAction> {
+    match menu_id {
+        TRAY_TOGGLE_MENU_ID => Some(TrayMenuAction::ToggleVisible),
+        TRAY_SETTINGS_MENU_ID => Some(TrayMenuAction::OpenSettings),
+        TRAY_ABOUT_MENU_ID => Some(TrayMenuAction::OpenAbout),
+        TRAY_QUIT_MENU_ID => Some(TrayMenuAction::Quit),
+        _ => None,
+    }
+}
 
 struct AgentState {
     app: AgentApplication,
@@ -58,6 +78,21 @@ struct AgentResponse {
 struct ModelInfo {
     provider: String,
     model: String,
+}
+
+#[derive(Clone, Serialize)]
+struct TaskChangeEvent {
+    task_id: Option<String>,
+}
+
+fn emit_tasks_changed(app: &AppHandle, task_id: Option<&str>) {
+    let _ = app.emit_to(
+        MAIN_WINDOW_LABEL,
+        TASKS_CHANGED_EVENT,
+        TaskChangeEvent {
+            task_id: task_id.map(|id| id.to_string()),
+        },
+    );
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -97,16 +132,18 @@ fn toggle_main_window_visibility(app: &AppHandle) {
 }
 
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
-    match menu_id {
-        TRAY_TOGGLE_MENU_ID => toggle_main_window_visibility(app),
-        TRAY_SETTINGS_MENU_ID => {
-            let _ = app.emit("open-settings", ());
+    match tray_menu_action(menu_id) {
+        Some(TrayMenuAction::ToggleVisible) => toggle_main_window_visibility(app),
+        Some(TrayMenuAction::OpenSettings) => {
+            apply_main_window_visibility_action(app, MainWindowVisibilityAction::ShowAndFocus);
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "open-settings", ());
         }
-        TRAY_ABOUT_MENU_ID => {
-            let _ = app.emit("open-about", ());
+        Some(TrayMenuAction::OpenAbout) => {
+            apply_main_window_visibility_action(app, MainWindowVisibilityAction::ShowAndFocus);
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "open-about", ());
         }
-        TRAY_QUIT_MENU_ID => app.exit(0),
-        _ => {}
+        Some(TrayMenuAction::Quit) => app.exit(0),
+        None => {}
     }
 }
 
@@ -121,55 +158,63 @@ fn handle_tray_icon_event(app: &AppHandle, event: &TrayIconEvent) {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn apply_macos_transparent_background(app: &tauri::App) {
-    // macOS transparency workaround details and distribution tradeoffs are documented in:
-    // apps/desktop-tauri/src-tauri/MACOS_PRIVATE_API.md
-    if let Some(window) = app.handle().get_webview_window(MAIN_WINDOW_LABEL) {
-        if let Err(err) = window.set_background_color(Some(Color(0, 0, 0, 0))) {
-            tracing::warn!(
-                "Failed to set macOS main window background color to transparent: {err}"
-            );
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn apply_macos_transparent_background(_: &tauri::App) {}
-
 // ============================================================================
 // Tauri Commands
 // ============================================================================
 
-/// Resize the sprite window from Rust, bypassing the `resizable: false` JS restriction.
-/// The window is intentionally non-resizable by the user but we need programmatic control.
+/// Resize the sprite window from Rust and keep tight size constraints in sync.
+/// This is more reliable on Linux / Wayland compositors than resizing a non-resizable window.
 /// `delta_top` shifts the window vertically in logical pixels (positive = move up, negative = move down).
+/// `delta_left` shifts the window horizontally in logical pixels (positive = move left, negative = move right).
 #[tauri::command]
 async fn resize_sprite_window(
     width: f64,
     height: f64,
+    delta_left: f64,
     delta_top: f64,
     window: Window,
 ) -> Result<(), String> {
-    if delta_top.abs() > 0.5 {
+    window
+        .set_resizable(true)
+        .map_err(|e| format!("set resizable error: {e}"))?;
+
+    let constraints = WindowSizeConstraints {
+        min_width: Some(PixelUnit::Logical(LogicalUnit(width))),
+        min_height: Some(PixelUnit::Logical(LogicalUnit(height))),
+        max_width: Some(PixelUnit::Logical(LogicalUnit(width))),
+        max_height: Some(PixelUnit::Logical(LogicalUnit(height))),
+    };
+
+    window
+        .set_size_constraints(constraints)
+        .map_err(|e| format!("set size constraints error: {e}"))?;
+
+    if delta_top.abs() > 0.5 || delta_left.abs() > 0.5 {
         let pos = window
             .outer_position()
             .map_err(|e| format!("get position error: {e}"))?;
         let scale = window
             .scale_factor()
             .map_err(|e| format!("scale error: {e}"))?;
+        let logical_x = pos.x as f64 / scale - delta_left;
         let logical_y = pos.y as f64 / scale - delta_top;
+        let physical_x = (logical_x * scale).round() as i32;
         let physical_y = (logical_y * scale).round() as i32;
         window
             .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: pos.x,
+                x: physical_x,
                 y: physical_y,
             }))
             .map_err(|e| format!("set position error: {e}"))?;
     }
+
     window
         .set_size(LogicalSize::new(width, height))
-        .map_err(|e| format!("resize error: {e}"))
+        .map_err(|e| format!("resize error: {e}"))?;
+
+    window
+        .set_resizable(false)
+        .map_err(|e| format!("restore resizable error: {e}"))
 }
 
 #[tauri::command]
@@ -272,6 +317,28 @@ async fn agent_oauth_cancel(
     state.app.oauth_cancel(req)
 }
 
+#[tauri::command]
+async fn system_open_url(url: String, app: AppHandle) -> Result<(), String> {
+    #[allow(deprecated)]
+    app.shell()
+        .open(&url, None)
+        .map(|_| ())
+        .map_err(|e| format!("Open URL error: {e}"))
+}
+
+#[tauri::command]
+async fn system_open_log_dir(app: AppHandle) -> Result<(), String> {
+    let log_dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("Get log dir error: {e}"))?;
+    #[allow(deprecated)]
+    app.shell()
+        .open(log_dir.to_string_lossy().to_string(), None)
+        .map(|_| ())
+        .map_err(|e| format!("Open log dir error: {e}"))
+}
+
 // ── Global app settings ─────────────────────────────────────────────────
 
 #[tauri::command]
@@ -296,7 +363,6 @@ async fn app_settings_list_sprites(
 ) -> Result<Vec<SpriteInfo>, String> {
     Ok(state.app.list_sprites())
 }
-
 #[tauri::command]
 async fn agent_set_model(
     provider: String,
@@ -326,60 +392,271 @@ async fn chat_new_session(state: State<'_, AgentState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 async fn create_task(
     title: String,
     priority: String,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<u32>,
+    recurrence_rule: Option<String>,
+    recurrence_time_of_day: Option<String>,
     state: State<'_, AgentState>,
+    _app: AppHandle,
 ) -> Result<TaskDto, String> {
-    state.app.create_task(&title, &priority)
+    let assignee = assignee.as_deref().unwrap_or("user");
+    let labels = labels.as_deref().unwrap_or(&[]);
+    let task = state.app.create_task(
+        &title,
+        &priority,
+        assignee,
+        labels,
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_deref(),
+        recurrence_time_of_day.as_deref(),
+    )?;
+    Ok(task)
+}
+
+#[tauri::command]
+async fn create_task_from_text(
+    text: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<TaskDto, String> {
+    let task = state.app.create_task_from_text(&text)?;
+    Ok(task)
+}
+
+#[tauri::command]
+async fn list_tasks(state: State<'_, AgentState>) -> Result<Vec<TaskDto>, String> {
+    state.app.list_tasks()
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn update_task(
+    id: String,
+    title: Option<String>,
+    priority: Option<String>,
+    status: Option<String>,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<Option<u32>>,
+    recurrence_rule: Option<Option<String>>,
+    recurrence_time_of_day: Option<Option<String>>,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<TaskDto, String> {
+    let task = state.app.update_task(
+        &id,
+        title.as_deref(),
+        priority.as_deref(),
+        status.as_deref(),
+        assignee.as_deref(),
+        labels.as_deref(),
+        description.as_deref(),
+        scheduled_start_at.as_deref(),
+        scheduled_end_at.as_deref(),
+        estimated_duration_min,
+        recurrence_rule.as_ref().map(|o| o.as_deref()),
+        recurrence_time_of_day.as_ref().map(|o| o.as_deref()),
+    )?;
+    Ok(task)
+}
+
+#[tauri::command]
+async fn delete_task(
+    id: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task(&id)?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn toggle_task(
+    id: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<TaskDto, String> {
+    let task = state.app.toggle_task(&id)?;
+    Ok(task)
+}
+
+#[tauri::command]
+async fn get_task_activity(
+    task_id: String,
+    limit: Option<u32>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.get_task_activity(&task_id, limit.unwrap_or(50))
+}
+
+#[tauri::command]
+async fn task_list_events(
+    limit: Option<i64>,
+    state: State<'_, AgentState>,
+) -> Result<Vec<TaskEventDto>, String> {
+    state.app.list_task_events(limit.unwrap_or(50))
+}
+
+#[tauri::command]
+async fn add_task_comment(
+    task_id: String,
+    text: String,
+    author: String,
+    state: State<'_, AgentState>,
+    _app: AppHandle,
+) -> Result<TaskEventDto, String> {
+    let event = state.app.add_task_comment(&task_id, &text, &author)?;
+    Ok(event)
+}
+
+#[tauri::command]
+async fn delete_task_event(
+    event_id: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    state.app.delete_task_event(&event_id)?;
+    emit_tasks_changed(&app, None);
+    Ok(())
+}
+
+#[tauri::command]
+async fn pomodoro_get_status(
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.pomodoro_status()?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+async fn pomodoro_set_settings(
+    work_minutes: u32,
+    break_minutes: u32,
+    long_break_minutes: u32,
+    long_break_interval: u32,
+    enable_memo: bool,
+    auto_advance: bool,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.pomodoro_set_settings(PomodoroSettingsInput {
+        work_minutes,
+        break_minutes,
+        long_break_minutes,
+        long_break_interval,
+        enable_memo,
+        auto_advance,
+    })?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
 }
 
 #[tauri::command]
 async fn pomodoro_start(
+    mode: String,
     minutes: u32,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.start_pomodoro(minutes)?;
-    state.app.dispatch_plugin_event("pomodoro:started", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.start_pomodoro(&mode, minutes)?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_pause(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.pause_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:paused", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.pause_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_resume(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.resume_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:resumed", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.resume_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
 }
 
 #[tauri::command]
 async fn pomodoro_finish(
-    session_id: String,
     state: State<'_, AgentState>,
     app: AppHandle,
-) -> Result<PomodoroSessionDto, String> {
-    let session = state.app.finish_pomodoro(&session_id)?;
-    state.app.dispatch_plugin_event("pomodoro:finished", "{}")?;
+) -> Result<PomodoroStatusDto, String> {
+    let session = state.app.finish_pomodoro()?;
     flush_plugin_notifications(&app, &state)?;
     Ok(session)
+}
+
+#[tauri::command]
+async fn pomodoro_switch_mode(
+    mode: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.switch_pomodoro_mode(&mode)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
+}
+
+#[tauri::command]
+async fn pomodoro_history(
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state.app.pomodoro_history(limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_history_by_date_range(
+    start_date: String,
+    end_date: String,
+    limit: usize,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<Vec<PomodoroCycleDto>, String> {
+    let history = state
+        .app
+        .pomodoro_history_by_date_range(start_date, end_date, limit)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(history)
+}
+
+#[tauri::command]
+async fn pomodoro_save_memo(
+    id: Option<String>,
+    memo: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<PomodoroStatusDto, String> {
+    let status = state.app.save_pomodoro_memo(id, memo)?;
+    flush_plugin_notifications(&app, &state)?;
+    Ok(status)
 }
 
 #[tauri::command]
@@ -402,6 +679,21 @@ async fn plugin_call_tool(
     let result = state.app.call_plugin_tool(&tool_name, &args_json)?;
     flush_plugin_notifications(&app, &state)?;
 
+    Ok(result)
+}
+
+#[tauri::command]
+async fn plugin_call_panel_tool(
+    plugin_key: String,
+    tool_name: String,
+    args_json: String,
+    state: State<'_, AgentState>,
+    app: AppHandle,
+) -> Result<String, String> {
+    let result = state
+        .app
+        .call_plugin_panel_tool(&plugin_key, &tool_name, &args_json)?;
+    flush_plugin_notifications(&app, &state)?;
     Ok(result)
 }
 
@@ -546,25 +838,43 @@ async fn plugin_store_uninstall(
 // ============================================================================
 
 /// Try each candidate directory in order, returning the first one that can be
-/// created successfully. The `try_create` callback is responsible for creating
-/// the directory (or simulating creation in tests).
+/// created and written to successfully. The `try_create` callback is responsible
+/// for creating the directory (or simulating creation in tests).
 #[cfg(any(target_os = "windows", test))]
-fn resolve_webview2_data_dir<F>(
+fn can_write_to_dir(path: &std::path::Path) -> std::io::Result<()> {
+    let test_file = path.join(".peekoo-write-test");
+    std::fs::write(&test_file, b"test")?;
+    let _ = std::fs::remove_file(&test_file);
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn resolve_webview2_data_dir_with_write_check<F, W>(
     candidates: &[(&str, PathBuf)],
     mut try_create: F,
+    mut can_write: W,
 ) -> Option<PathBuf>
 where
     F: FnMut(&std::path::Path) -> std::io::Result<()>,
+    W: FnMut(&std::path::Path) -> std::io::Result<()>,
 {
     for (label, path) in candidates {
         match try_create(path) {
-            Ok(()) => {
-                eprintln!(
-                    "info: WebView2 data folder set to ({label}): {}",
-                    path.display()
-                );
-                return Some(path.clone());
-            }
+            Ok(()) => match can_write(path) {
+                Ok(_) => {
+                    eprintln!(
+                        "info: WebView2 data folder set to ({label}): {}",
+                        path.display()
+                    );
+                    return Some(path.clone());
+                }
+                Err(e) => {
+                    eprintln!(
+                        "info: {label} WebView2 path not writable ({:?}): {e}",
+                        path.display()
+                    );
+                }
+            },
             Err(e) => {
                 eprintln!(
                     "info: failed to use {label} WebView2 path ({:?}): {e}",
@@ -576,20 +886,28 @@ where
     None
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn resolve_webview2_data_dir<F>(candidates: &[(&str, PathBuf)], try_create: F) -> Option<PathBuf>
+where
+    F: FnMut(&std::path::Path) -> std::io::Result<()>,
+{
+    resolve_webview2_data_dir_with_write_check(candidates, try_create, can_write_to_dir)
+}
+
 /// Build the ordered list of candidate directories for WebView2 user data.
 #[cfg(target_os = "windows")]
 fn webview2_candidate_dirs() -> Vec<(&'static str, PathBuf)> {
     let mut v = Vec::new();
-    // Primary: %LOCALAPPDATA%\com.peekoo.desktop\WebView2
+    // Primary: %LOCALAPPDATA%\Peekoo\WebView2
     if let Some(mut p) = dirs::data_local_dir() {
-        p.push("com.peekoo.desktop");
+        p.push("Peekoo");
         p.push("WebView2");
         v.push(("primary", p));
     }
-    // Fallback: %USERPROFILE%\.peekoo-desktop\WebView2
+    // Fallback: %USERPROFILE%\.peekoo\webview2
     if let Some(mut p) = dirs::home_dir() {
-        p.push(".peekoo-desktop");
-        p.push("WebView2");
+        p.push(".peekoo");
+        p.push("webview2");
         v.push(("home", p));
     }
     // Last resort: %TEMP%\peekoo-webview-data
@@ -620,18 +938,42 @@ pub fn run() {
     let default_level = env::var("RUST_LOG")
         .ok()
         .and_then(|v| v.parse::<log::LevelFilter>().ok())
-        .unwrap_or(log::LevelFilter::Error);
+        .unwrap_or({
+            if cfg!(debug_assertions) {
+                log::LevelFilter::Info
+            } else {
+                log::LevelFilter::Error
+            }
+        });
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")
-            .map(PathBuf::from)
+            .map(|v| PathBuf::from(v.trim()))
             .unwrap_or_else(|_| env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
             .join("logs");
-        let _ = std::fs::create_dir_all(&log_dir);
-        Target::new(TargetKind::Folder {
-            path: log_dir,
-            file_name: None,
-        })
+
+        // Ensure log directory exists before plugin initialization
+        if let Err(e) = std::fs::create_dir_all(&log_dir) {
+            eprintln!(
+                "Warning: Failed to create log directory at {:?}: {}",
+                log_dir, e
+            );
+        }
+
+        // Verify the directory exists and is accessible
+        if !log_dir.exists() || !log_dir.is_dir() {
+            eprintln!(
+                "Warning: Log directory does not exist or is not accessible: {:?}",
+                log_dir
+            );
+            // Fallback to LogDir which uses system temp/app data
+            Target::new(TargetKind::LogDir { file_name: None })
+        } else {
+            Target::new(TargetKind::Folder {
+                path: log_dir,
+                file_name: None,
+            })
+        }
     } else {
         Target::new(TargetKind::LogDir { file_name: None })
     };
@@ -686,9 +1028,17 @@ pub fn run() {
 
             let _ = tray_builder.build(app)?;
 
-            apply_macos_transparent_background(app);
-
             let state = app.state::<AgentState>();
+            let task_change_app = app.handle().clone();
+            if let Err(err) =
+                state
+                    .app
+                    .set_task_change_callback(std::sync::Arc::new(move |task_id| {
+                        emit_tasks_changed(&task_change_app, task_id.as_deref());
+                    }))
+            {
+                return Err(std::io::Error::other(err).into());
+            }
             state.app.start_plugin_runtime();
 
             let app_handle = app.handle().clone();
@@ -767,17 +1117,35 @@ pub fn run() {
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
+            system_open_url,
+            system_open_log_dir,
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
             create_task,
+            create_task_from_text,
+            list_tasks,
+            update_task,
+            delete_task,
+            toggle_task,
+            get_task_activity,
+            task_list_events,
+            add_task_comment,
+            delete_task_event,
+            pomodoro_get_status,
+            pomodoro_set_settings,
             pomodoro_start,
             pomodoro_pause,
             pomodoro_resume,
             pomodoro_finish,
+            pomodoro_switch_mode,
+            pomodoro_history,
+            pomodoro_history_by_date_range,
+            pomodoro_save_memo,
             plugins_list,
             plugin_panels_list,
             plugin_call_tool,
+            plugin_call_panel_tool,
             plugin_query_data,
             plugin_panel_html,
             plugin_dispatch_event,
@@ -791,7 +1159,7 @@ pub fn run() {
             plugin_store_catalog,
             plugin_store_install,
             plugin_store_update,
-            plugin_store_uninstall
+            plugin_store_uninstall,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -823,28 +1191,83 @@ fn show_plugin_notification(
 }
 
 fn flush_plugin_notifications(app: &AppHandle, state: &AgentState) -> Result<(), String> {
-    for notification in state.app.drain_plugin_notifications() {
-        show_plugin_notification(app, &notification)?;
-        app.emit_to("main", "sprite:bubble", &notification)
-            .map_err(|e| format!("Sprite bubble emit error: {e}"))?;
-    }
+    process_plugin_notifications(
+        state.app.drain_plugin_notifications(),
+        |notification| show_plugin_notification(app, notification),
+        |notification| {
+            if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+                let _ = app.emit_to(MAIN_WINDOW_LABEL, "sprite:bubble", notification);
+            }
+            Ok(())
+        },
+    )?;
 
     flush_peek_badges(app, state)?;
     flush_mood_reactions(app, state)?;
     Ok(())
 }
 
+fn process_plugin_notifications<S, E>(
+    notifications: Vec<PluginNotificationDto>,
+    mut show: S,
+    mut emit_sprite: E,
+) -> Result<(), String>
+where
+    S: FnMut(&PluginNotificationDto) -> Result<(), String>,
+    E: FnMut(&PluginNotificationDto) -> Result<(), String>,
+{
+    let mut first_error: Option<String> = None;
+
+    for notification in notifications {
+        let mut delivered_any = false;
+
+        if let Err(err) = show(&notification) {
+            tracing::warn!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                "System notification delivery failed: {err}"
+            );
+        } else {
+            delivered_any = true;
+        }
+
+        if let Err(err) = emit_sprite(&notification) {
+            if !delivered_any && first_error.is_none() {
+                first_error = Some(err);
+            }
+        } else {
+            tracing::debug!(
+                source_plugin = notification.source_plugin,
+                title = notification.title,
+                panel_label = notification.panel_label,
+                "Emitted sprite bubble notification"
+            );
+            delivered_any = true;
+        }
+
+        if !delivered_any && first_error.is_none() {
+            first_error = Some("Notification could not be delivered".to_string());
+        }
+    }
+
+    match first_error {
+        Some(err) => Err(err),
+        None => Ok(()),
+    }
+}
+
 fn flush_mood_reactions(app: &AppHandle, state: &AgentState) -> Result<(), String> {
     for reaction in state.app.drain_mood_reactions() {
-        app.emit_to(
-            "main",
-            "pet:react",
-            &PetReactionPayload {
-                trigger: reaction.trigger,
-                sticky: Some(reaction.sticky),
-            },
-        )
-        .map_err(|e| format!("Mood reaction emit error: {e}"))?;
+        if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+            let _ = app.emit_to(
+                MAIN_WINDOW_LABEL,
+                "pet:react",
+                &PetReactionPayload {
+                    trigger: reaction.trigger,
+                    sticky: Some(reaction.sticky),
+                },
+            );
+        }
     }
     Ok(())
 }
@@ -857,8 +1280,9 @@ struct PetReactionPayload {
 
 fn flush_peek_badges(app: &AppHandle, state: &AgentState) -> Result<(), String> {
     if let Some(badges) = state.app.take_peek_badges_if_changed() {
-        app.emit_to("main", "sprite:peek-badges", &badges)
-            .map_err(|e| format!("Peek badge emit error: {e}"))?;
+        if app.get_webview_window(MAIN_WINDOW_LABEL).is_some() {
+            let _ = app.emit_to(MAIN_WINDOW_LABEL, "sprite:peek-badges", &badges);
+        }
     }
     Ok(())
 }
@@ -880,8 +1304,13 @@ fn send_linux_notification_fallback(notification: &PluginNotificationDto) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::resolve_webview2_data_dir;
-    use super::{MainWindowVisibilityAction, next_main_window_visibility_action};
+    use peekoo_agent_app::PluginNotificationDto;
+
+    use super::{
+        MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
+        process_plugin_notifications, tray_menu_action,
+    };
+    use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use std::io;
     use std::path::PathBuf;
 
@@ -901,6 +1330,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn tray_menu_maps_settings_action() {
+        assert_eq!(
+            tray_menu_action("open_settings"),
+            Some(TrayMenuAction::OpenSettings)
+        );
+    }
+
+    #[test]
+    fn tray_menu_maps_about_action() {
+        assert_eq!(
+            tray_menu_action("open_about"),
+            Some(TrayMenuAction::OpenAbout)
+        );
+    }
+
+    #[test]
+    fn tray_menu_rejects_unknown_ids() {
+        assert_eq!(tray_menu_action("unknown"), None);
+    }
+
     // -- WebView2 data directory fallback tests --
 
     #[test]
@@ -911,7 +1361,8 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |_| Ok(()));
+        let result =
+            resolve_webview2_data_dir_with_write_check(&candidates, |_| Ok(()), |_| Ok(()));
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
     }
@@ -924,16 +1375,20 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |p| {
-            if p == std::path::Path::new("/fake/primary") {
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Access Denied",
-                ))
-            } else {
-                Ok(())
-            }
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                if p == std::path::Path::new("/fake/primary") {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/home")));
     }
@@ -946,16 +1401,20 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |p| {
-            if p == std::path::Path::new("/fake/temp") {
-                Ok(())
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "Access Denied",
-                ))
-            }
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                if p == std::path::Path::new("/fake/temp") {
+                    Ok(())
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                }
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/temp")));
     }
@@ -968,12 +1427,16 @@ mod tests {
             ("temp", PathBuf::from("/fake/temp")),
         ];
 
-        let result = resolve_webview2_data_dir(&candidates, |_| {
-            Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Access Denied",
-            ))
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |_| {
+                Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "Access Denied",
+                ))
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, None);
     }
@@ -996,12 +1459,80 @@ mod tests {
         ];
 
         let mut attempts = Vec::new();
-        let result = resolve_webview2_data_dir(&candidates, |p| {
-            attempts.push(p.to_path_buf());
-            Ok(())
-        });
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |p| {
+                attempts.push(p.to_path_buf());
+                Ok(())
+            },
+            |_| Ok(()),
+        );
 
         assert_eq!(result, Some(PathBuf::from("/fake/primary")));
         assert_eq!(attempts, vec![PathBuf::from("/fake/primary")]);
+    }
+
+    #[test]
+    fn webview2_skips_candidates_that_fail_write_check() {
+        let candidates: Vec<(&str, PathBuf)> = vec![
+            ("primary", PathBuf::from("/fake/primary")),
+            ("home", PathBuf::from("/fake/home")),
+        ];
+
+        let result = resolve_webview2_data_dir_with_write_check(
+            &candidates,
+            |_| Ok(()),
+            |p| {
+                if p == std::path::Path::new("/fake/primary") {
+                    Err(io::Error::new(
+                        io::ErrorKind::PermissionDenied,
+                        "Access Denied",
+                    ))
+                } else {
+                    Ok(())
+                }
+            },
+        );
+
+        assert_eq!(result, Some(PathBuf::from("/fake/home")));
+    }
+
+    fn sample_notification() -> PluginNotificationDto {
+        PluginNotificationDto {
+            source_plugin: "tasks".to_string(),
+            title: "Task due".to_string(),
+            body: "Starts now".to_string(),
+            action_url: None,
+            action_label: None,
+            panel_label: None,
+        }
+    }
+
+    #[test]
+    fn still_emits_sprite_bubble_when_system_notification_fails() {
+        let mut emitted = Vec::new();
+
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |notification| {
+                emitted.push(notification.title.clone());
+                Ok(())
+            },
+        );
+
+        assert!(result.is_ok());
+        assert_eq!(emitted, vec!["Task due".to_string()]);
+    }
+
+    #[test]
+    fn returns_error_when_no_notification_surface_succeeds() {
+        let result = process_plugin_notifications(
+            vec![sample_notification()],
+            |_| Err("notification backend unavailable".to_string()),
+            |_| Err("sprite emit failed".to_string()),
+        );
+
+        assert!(result.is_err());
     }
 }
