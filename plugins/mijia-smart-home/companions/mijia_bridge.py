@@ -382,7 +382,8 @@ def _parse_stat_value(raw):
             if isinstance(parsed, (int, float)):
                 return parsed
         except (json.JSONDecodeError, TypeError, ValueError):
-            pass
+            # Parse failure is expected for non-JSON strings; try literal_eval next.
+            _debug_log(f"json parse failed for stat value: {s!r}")
         try:
             parsed = ast.literal_eval(s)
             if isinstance(parsed, list) and parsed:
@@ -390,7 +391,8 @@ def _parse_stat_value(raw):
             if isinstance(parsed, (int, float)):
                 return parsed
         except (SyntaxError, ValueError):
-            pass
+            # Parse failure is expected for non-literal strings; return None.
+            _debug_log(f"literal_eval parse failed for stat value: {s!r}")
     return None
 
 

@@ -2000,9 +2000,7 @@
     const props = data.properties || [];
     const energySummary = data.energy_summary || {};
     const listDevice = getDeviceByDid(device.did);
-    let isPoweredOn = listDevice?.quick_toggle?.supported
-      ? boolLikeToBoolean(listDevice.quick_toggle.current)
-      : true;
+    let isPoweredOn;
     let disabledAttr;
 
     if (!props.length) {
