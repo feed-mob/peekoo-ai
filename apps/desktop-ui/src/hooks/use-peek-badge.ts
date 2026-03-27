@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import {
@@ -49,6 +49,12 @@ export function usePeekBadge() {
     };
   }, []);
 
+  // Create a stable key that changes only when badge data actually changes
+  const itemsKey = useMemo(
+    () => items.map((i) => `${i.label}-${i.countdown_secs}`).join(","),
+    [items],
+  );
+
   // Local countdown tick: decrement countdown_secs every second
   useEffect(() => {
     if (items.length === 0) return;
@@ -72,7 +78,7 @@ export function usePeekBadge() {
     }, COUNTDOWN_TICK_MS);
 
     return () => clearInterval(id);
-  }, [items.length]);
+  }, [itemsKey]);
 
   // Auto-rotate through items
   useEffect(() => {

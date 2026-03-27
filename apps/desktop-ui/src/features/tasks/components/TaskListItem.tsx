@@ -51,13 +51,13 @@ export function TaskListItem({
 
   return (
     <div
-      className={`group flex items-stretch gap-2 bg-space-surface border border-glass-border rounded-sm shadow-sm hover:shadow-md hover:border-glow-green/40 overflow-hidden transition-all ${doneTaskVisualStyle} ${overdue ? "border-l-2 border-l-[#E5484D]" : ""} ${
+      className={`group flex items-stretch gap-2 bg-space-deep dark:bg-space-deep border border-glass-border/50 dark:border-glass-border/60 rounded-sm shadow-sm hover:shadow-sm hover:border-glow-green/20 dark:hover:border-glow-olive/20 overflow-hidden transition-all ${doneTaskVisualStyle} ${overdue ? "border-l-2 border-l-[#E5484D]" : ""} ${
         isDeleting ? "opacity-50" : ""
       }`}
     >
       {/* Priority color bar */}
       <div
-        className="w-1.5 shrink-0"
+        className="w-1 shrink-0"
         style={{ backgroundColor: priority.color }}
       />
 
