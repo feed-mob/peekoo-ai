@@ -33,13 +33,13 @@ check:
 # Run all tests
 test:
     cargo test
-    python -m unittest tests.test_release
+    python -m unittest scripts.tests.test_release
 
 # Bump release versions without creating git refs
 release-bump version:
     python ./scripts/release.py {{version}}
 
-# Create and push a signed release commit + tag
+# Create a signed release branch, push it, and open a PR
 release version:
     python ./scripts/release.py {{version}} --commit --push
 

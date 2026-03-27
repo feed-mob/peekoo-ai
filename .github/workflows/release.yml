@@ -191,7 +191,7 @@ jobs:
           fi
 
       - name: Compute AppImage SHA256 and patch PKGBUILD
-        working-directory: packaging/aur
+        working-directory: scripts/aur
         run: |
           VERSION=${{ steps.version.outputs.pkgver }}
           URL="https://github.com/feed-mob/peekoo-ai/releases/download/v${VERSION}/Peekoo_${VERSION}_amd64.AppImage"
@@ -203,10 +203,10 @@ jobs:
         uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
         with:
           pkgname: peekoo-bin
-          pkgbuild: packaging/aur/PKGBUILD
+          pkgbuild: scripts/aur/PKGBUILD
           assets: |
-            packaging/aur/peekoo.desktop
-            packaging/aur/peekoo.png
+            scripts/aur/peekoo.desktop
+            scripts/aur/peekoo.png
           updpkgsums: false
           commit_username: ${{ secrets.AUR_USERNAME }}
           commit_email: ${{ secrets.AUR_EMAIL }}

@@ -55,7 +55,7 @@ jobs:
           fi
 
       - name: Test release tooling
-        run: python -m unittest tests.test_release
+        run: python -m unittest scripts.tests.test_release
 
   desktop-ui:
     runs-on: ubuntu-latest
