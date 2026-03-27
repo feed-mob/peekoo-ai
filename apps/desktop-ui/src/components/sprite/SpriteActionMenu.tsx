@@ -1,13 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  MessageSquare,
-  CheckSquare,
-  Timer,
-  HeartPulse,
-  Puzzle,
-  Blocks,
-} from "lucide-react";
+import { MessageSquare, CheckSquare, Timer, HeartPulse, Puzzle, Blocks } from "lucide-react";
 import type { PanelLabel } from "@/types/window";
 import type { PanelWindowStates } from "@/hooks/use-panel-windows";
 import type { LucideIcon } from "lucide-react";
@@ -52,11 +45,13 @@ export function SpriteActionMenu({
   installedPlugins = [],
 }: SpriteActionMenuProps) {
   const [pluginsPopupOpen, setPluginsPopupOpen] = useState(false);
-  const enabledPluginPanels = pluginPanels.filter((panel) =>
-    installedPlugins.some(
-      (plugin) => plugin.enabled && plugin.pluginKey === panel.pluginKey,
-    ),
-  );
+  const enabledPlugins = installedPlugins.filter((plugin) => {
+    if (!plugin.enabled) {
+      return false;
+    }
+
+    return pluginPanels.some((panel) => panel.pluginKey === plugin.pluginKey);
+  });
 
   const items: MenuItemConfig[] = getSpriteActionMenuItems().map((item) => {
     return {

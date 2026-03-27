@@ -877,6 +877,60 @@ fn host_fs_read_dir(
     Ok(())
 }
 
+fn host_process_exec(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_declared_capability(&ctx, "process:exec")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let program = req["program"].as_str().unwrap_or_default().trim();
+    if program.is_empty() {
+        return Err(Error::msg("process program is required"));
+    }
+
+    let args = req["args"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let cwd = req["cwd"].as_str().unwrap_or(".");
+    let resolved_cwd = resolve_process_cwd(&ctx, cwd)?;
+
+    let output = Command::new(program)
+        .args(&args)
+        .current_dir(&resolved_cwd)
+        .output()
+        .map_err(|e| Error::msg(format!("Process spawn failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let status_code = output.status.code().unwrap_or(-1);
+    let ok = output.status.success();
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({
+            "ok": ok,
+            "statusCode": status_code,
+            "stdout": stdout,
+            "stderr": stderr,
+        })
+        .to_string(),
+    )?;
+    Ok(())
+}
+
 fn host_set_mood(
     plugin: &mut CurrentPlugin,
     inputs: &[Val],
@@ -2107,6 +2161,7 @@ mod tests {
 
         HostContext {
             plugin_key: "openclaw-sessions".to_string(),
+            plugin_dir: std::env::temp_dir().join("openclaw-sessions"),
             state_store: PluginStateStore::new(conn),
             permissions,
             declared_capabilities: declared_capabilities
