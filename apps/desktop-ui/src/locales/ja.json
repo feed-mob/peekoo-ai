@@ -90,164 +90,164 @@
     "installAndRestart": "インストールして再起動"
   },
   "tasks": {
-    "title": "Tasks",
-    "loading": "Loading tasks...",
-    "doneCounter": "{{completed}} / {{total}} done",
+    "title": "タスク",
+    "loading": "タスクを読み込み中...",
+    "doneCounter": "完了 {{completed}} / {{total}}",
     "tabs": {
-      "today": "Today",
-      "week": "This Week",
-      "all": "All",
-      "done": "Done"
+      "today": "今日",
+      "week": "今週",
+      "all": "すべて",
+      "done": "完了"
     },
     "mainTab": {
-      "tasks": "Tasks",
-      "activity": "Activity"
+      "tasks": "タスク",
+      "activity": "アクティビティ"
     },
     "sections": {
-      "overdue": "Overdue",
-      "unscheduled": "Unscheduled",
-      "completedToday": "Completed today"
+      "overdue": "期限超過",
+      "unscheduled": "未設定",
+      "completedToday": "本日完了"
     },
     "empty": {
-      "todayTitle": "No tasks for today",
-      "todaySubtitle": "Schedule a task or add a new one",
-      "weekTitle": "Nothing this week",
-      "weekSubtitle": "Schedule tasks for the upcoming week",
-      "allTitle": "No tasks",
-      "allSubtitle": "Create a task to get started",
-      "doneTitle": "No completed tasks yet",
-      "doneSubtitle": "Finish some tasks to see them here"
+      "todayTitle": "今日のタスクはありません",
+      "todaySubtitle": "タスクを予定するか、新しいタスクを追加してください",
+      "weekTitle": "今週のタスクはありません",
+      "weekSubtitle": "来週に向けてタスクを予定しましょう",
+      "allTitle": "タスクがありません",
+      "allSubtitle": "タスクを作成して始めましょう",
+      "doneTitle": "完了タスクはまだありません",
+      "doneSubtitle": "タスクを完了するとここに表示されます"
     },
     "quickInput": {
-      "placeholder": "Add a task... e.g., 'Meeting tomorrow at 3pm for 1 hour high priority'",
-      "ariaDescription": "Task description",
-      "ariaAdd": "Add task"
+      "placeholder": "タスクを追加... 例: '明日15時に1時間の会議（高優先度）'",
+      "ariaDescription": "タスク説明",
+      "ariaAdd": "タスクを追加"
     },
     "activity": {
-      "yesterday": "Yesterday",
-      "noActivity": "No activity yet",
-      "eventsAppearHere": "Task events will appear here",
-      "addCommentPlaceholder": "Add a comment...",
-      "addComment": "Add Comment",
-      "adding": "Adding..."
+      "yesterday": "昨日",
+      "noActivity": "アクティビティはまだありません",
+      "eventsAppearHere": "タスクイベントがここに表示されます",
+      "addCommentPlaceholder": "コメントを追加...",
+      "addComment": "コメントを追加",
+      "adding": "追加中..."
     },
     "deleteDialog": {
-      "title": "Delete Task?",
-      "message": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
-      "deleting": "Deleting..."
+      "title": "タスクを削除しますか？",
+      "message": "「{{title}}」を削除してもよろしいですか？この操作は元に戻せません。",
+      "deleting": "削除中..."
     },
     "priority": {
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
+      "high": "高",
+      "medium": "中",
+      "low": "低"
     },
     "status": {
-      "todo": "Todo",
-      "in_progress": "In Progress",
-      "done": "Done"
+      "todo": "未着手",
+      "in_progress": "進行中",
+      "done": "完了"
     },
-    "priorityTitle": "{{priority}} priority",
-    "agentWorking": "Agent is currently working on this task",
-    "live": "Live",
-    "agentWorkStatus": "Agent work status: {{status}}",
-    "clickToMoveTo": "Click to move to {{status}}",
+    "priorityTitle": "{{priority}} 優先度",
+    "agentWorking": "エージェントがこのタスクを処理中です",
+    "live": "実行中",
+    "agentWorkStatus": "エージェント状態: {{status}}",
+    "clickToMoveTo": "クリックして {{status}} に移動",
     "detail": {
-      "title": "Task Details",
-      "status": "Status",
-      "priority": "Priority",
-      "assignee": "Assignee",
-      "agent": "Agent",
-      "labels": "Labels",
-      "schedule": "Schedule",
-      "scheduled": "Scheduled",
-      "repeat": "Repeat",
-      "doesNotRepeat": "Does not repeat",
-      "time": "Time",
-      "start": "Start",
-      "end": "End",
-      "durationOptional": "Duration (optional)",
-      "durationPlaceholder": "e.g. 30",
-      "minutes": "minutes",
-      "description": "Description",
-      "descriptionPlaceholder": "Add notes, details, or a sub-task list..."
+      "title": "タスク詳細",
+      "status": "状態",
+      "priority": "優先度",
+      "assignee": "担当者",
+      "agent": "エージェント",
+      "labels": "ラベル",
+      "schedule": "スケジュール",
+      "scheduled": "予定済み",
+      "repeat": "繰り返し",
+      "doesNotRepeat": "繰り返さない",
+      "time": "時間",
+      "start": "開始",
+      "end": "終了",
+      "durationOptional": "所要時間（任意）",
+      "durationPlaceholder": "例: 30",
+      "minutes": "分",
+      "description": "説明",
+      "descriptionPlaceholder": "メモ、詳細、サブタスク一覧を追加..."
     },
     "recurrence": {
-      "daily": "Daily",
-      "weekdays": "Every weekday",
-      "monWedFri": "Mon / Wed / Fri",
-      "tueThu": "Tue / Thu",
-      "weekly": "Weekly",
-      "monthly": "Monthly"
+      "daily": "毎日",
+      "weekdays": "平日",
+      "monWedFri": "月 / 水 / 金",
+      "tueThu": "火 / 木",
+      "weekly": "毎週",
+      "monthly": "毎月"
     }
   },
   "pomodoro": {
-    "loadingSystem": "Loading System...",
+    "loadingSystem": "システムを読み込み中...",
     "status": {
-      "focusing": "Focusing",
-      "resting": "Resting",
-      "ready": "Ready",
-      "break": "Break"
+      "focusing": "集中中",
+      "resting": "休憩中",
+      "ready": "準備完了",
+      "break": "休憩"
     },
-    "readyToStart": "Ready to Start?",
-    "recentSessions": "Recent Sessions",
-    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
+    "readyToStart": "開始しますか？",
+    "recentSessions": "最近のセッション",
+    "noSessions": "まだセッションはありません。最近の集中と休憩のサイクルがここに表示されます。",
     "mode": {
-      "focus": "Focus",
-      "break": "Break"
+      "focus": "集中",
+      "break": "休憩"
     },
-    "focusMemo": "Focus Memo",
+    "focusMemo": "集中メモ",
     "actions": {
-      "saving": "Saving...",
-      "applied": "Applied",
-      "saveChanges": "Save Changes",
-      "synced": "Synced"
+      "saving": "保存中...",
+      "applied": "適用済み",
+      "saveChanges": "変更を保存",
+      "synced": "同期済み"
     },
     "controls": {
-      "pause": "Pause",
-      "start": "Start",
-      "reset": "Reset",
-      "switchToBreak": "Switch to Break",
-      "switchToWork": "Switch to Work"
+      "pause": "一時停止",
+      "start": "開始",
+      "reset": "リセット",
+      "switchToBreak": "休憩へ切替",
+      "switchToWork": "集中へ切替"
     }
   },
   "plugins": {
     "tabs": {
-      "installed": "Installed",
-      "store": "Store"
+      "installed": "インストール済み",
+      "store": "ストア"
     },
     "panel": {
-      "defaultTitle": "Plugin",
-      "failedLoad": "Failed to load plugin panel: {{error}}"
+      "defaultTitle": "プラグイン",
+      "failedLoad": "プラグインパネルの読み込みに失敗しました: {{error}}"
     },
-    "loadingInstalled": "Loading plugins...",
-    "loadingStore": "Loading plugin store...",
-    "loadingRuntimeSettings": "Loading plugin settings...",
-    "system": "Plugin System",
-    "installedTitle": "Installed Plugins",
-    "storeLabel": "Plugin Store",
-    "availableFromGithub": "Available from GitHub",
-    "emptyInstalled": "No plugins installed yet. Browse the Store tab to install plugins.",
-    "emptyStore": "No plugins available in the store.",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
-    "enable": "Enable",
-    "disable": "Disable",
-    "installed": "Installed",
-    "available": "Available",
-    "updateAvailable": "Update available",
-    "update": "Update",
-    "install": "Install",
-    "removePlugin": "Remove plugin",
-    "permissions": "Permissions",
-    "tools": "Tools",
-    "panels": "Panels",
-    "location": "Location",
-    "openPanels": "Open panels",
-    "enableHint": "Enable this plugin to open its panels and use its runtime capabilities.",
-    "runtimeSettings": "Runtime settings",
-    "runtimeSettingsHint": "Configure reminder timing and global quiet hours.",
-    "dndOn": "DND on",
-    "dndOff": "DND off",
-    "saveSettings": "Save settings"
+    "loadingInstalled": "プラグインを読み込み中...",
+    "loadingStore": "プラグインストアを読み込み中...",
+    "loadingRuntimeSettings": "プラグイン設定を読み込み中...",
+    "system": "プラグイン システム",
+    "installedTitle": "インストール済みプラグイン",
+    "storeLabel": "プラグインストア",
+    "availableFromGithub": "GitHub で利用可能",
+    "emptyInstalled": "まだプラグインはインストールされていません。ストアタブからインストールできます。",
+    "emptyStore": "ストアに利用可能なプラグインがありません。",
+    "enabled": "有効",
+    "disabled": "無効",
+    "enable": "有効化",
+    "disable": "無効化",
+    "installed": "インストール済み",
+    "available": "利用可能",
+    "updateAvailable": "更新あり",
+    "update": "更新",
+    "install": "インストール",
+    "removePlugin": "プラグインを削除",
+    "permissions": "権限",
+    "tools": "ツール",
+    "panels": "パネル",
+    "location": "場所",
+    "openPanels": "パネルを開く",
+    "enableHint": "このプラグインを有効化すると、パネルを開いて機能を利用できます。",
+    "runtimeSettings": "ランタイム設定",
+    "runtimeSettingsHint": "リマインダーの間隔と全体の静音時間を設定します。",
+    "dndOn": "おやすみモード ON",
+    "dndOff": "おやすみモード OFF",
+    "saveSettings": "設定を保存"
   }
 }
