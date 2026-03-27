@@ -288,8 +288,8 @@
     }
 
     async function invokePluginTool(toolName, toolArgs = {}) {
-      return invokeTauri('plugin:peekoo-plugin-host|invoke_tool', {
-        toolName, toolArgs: JSON.stringify(toolArgs),
+      return invokeTauri('plugin_call_panel_tool', {
+        pluginKey: 'openclaw-sessions', toolName, argsJson: JSON.stringify(toolArgs),
       });
     }
 
@@ -429,6 +429,8 @@
       if (Array.isArray(data.sessions)) return data.sessions.map(normalizeSession).filter(Boolean);
       if (Array.isArray(data.data)) return data.data.map(normalizeSession).filter(Boolean);
       if (Array.isArray(data.items)) return data.items.map(normalizeSession).filter(Boolean);
+      // Gateway response envelope: { ok: true, payload: { sessions: [...] } | [...] }
+      if (data.payload) return extractSessions(data.payload);
       return [];
     }
 
@@ -530,6 +532,8 @@
 
     function extractHistoryMessages(data) {
       if (!data) return [];
+      // Gateway response envelope: { ok: true, payload: { messages: [...] } | [...] }
+      if (data.payload) return extractHistoryMessages(data.payload);
       const arr = Array.isArray(data) ? data
         : Array.isArray(data.messages) ? data.messages
         : Array.isArray(data.history) ? data.history
@@ -599,7 +603,7 @@
       dom.btnSaveConfig.disabled = true;
       dom.btnSaveConfig.textContent = 'Saving…';
       try {
-        await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
+        await invokePluginTool('save_openclaw_config', { websocketUrl: wsUrl, token, password });
         setModalBanner(dom.configModalSuccess, 'Configuration saved.', 'success');
         setTimeout(() => { closeConfigModal(); refreshSessions(); }, 900);
       } catch (e) {
@@ -612,10 +616,10 @@
 
     async function loadPersistedConfig() {
       try {
-        const raw = await invokePluginTool('openclaw_get_config', {});
+        const raw = await invokePluginTool('get_openclaw_config', {});
         const cfg = normalizeConfig(parsePluginJson(raw));
-        const isMissingConfig = !cfg || (!cfg.ws_url && !cfg.token && !cfg.password);
-        if (cfg.ws_url) dom.inputWsUrl.value = cfg.ws_url;
+        const isMissingConfig = !cfg || (!cfg.websocketUrl && !cfg.token && !cfg.password);
+        if (cfg.websocketUrl) dom.inputWsUrl.value = cfg.websocketUrl;
         if (cfg.token) dom.inputToken.value = cfg.token;
         if (cfg.password) dom.inputPassword.value = cfg.password;
         if (isMissingConfig) {
@@ -639,7 +643,7 @@
       dom.btnRefresh.disabled = true;
       setStatusMessage('');
       try {
-        const raw = await invokePluginTool('openclaw_list_sessions', {});
+        const raw = await invokePluginTool('list_sessions', {});
         const data = parsePluginJson(raw);
         state.sessions = extractSessions(data);
         state.connected = true;
@@ -657,7 +661,7 @@
     // ── Chat ───────────────────────────────────────────────────────────────────
     async function loadSessionHistory(sessionId) {
       try {
-        const raw = await invokePluginTool('openclaw_get_session_history', { session_id: sessionId });
+        const raw = await invokePluginTool('openclaw_chat_history', { sessionKey: sessionId });
         const data = parsePluginJson(raw);
         return extractHistoryMessages(data);
       } catch (e) {
@@ -713,7 +717,7 @@
       msgs.push({ role: 'user', content: text, ts: Date.now() });
       renderChatMessages(msgs, true);
       try {
-        await invokePluginTool('openclaw_send_message', { session_id: state.chatSessionId, message: text });
+        await invokePluginTool('openclaw_chat_send', { sessionKey: state.chatSessionId, message: text });
         await sleep(800);
         const updated = await loadSessionHistory(state.chatSessionId);
         state.chatLastCount = updated.length;

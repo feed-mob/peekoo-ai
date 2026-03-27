@@ -1155,15 +1155,7 @@ fn host_websocket_connect(
     let host = parsed
         .host_str()
         .ok_or_else(|| Error::msg("WebSocket URL missing host"))?;
-    let origin = if let Some(port) = parsed.port() {
-        if host.contains(':') {
-            format!("http://[{}]:{}", host, port)
-        } else {
-            format!("http://{}:{}", host, port)
-        }
-    } else {
-        format!("http://{}", host)
-    };
+    let origin = websocket_origin(parsed.scheme(), host, parsed.port());
 
     tracing::debug!("WebSocket connection origin: {}", origin);
     let mut request = url
@@ -1516,6 +1508,21 @@ fn is_http_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     is_network_url_allowed(url, allowed_hosts)
 }
 
+/// Build the HTTP `Origin` header value for a WebSocket handshake.
+///
+/// Per RFC 6454 / RFC 6455:
+/// - `ws://` → `http://` scheme; `wss://` → `https://` scheme.
+/// - `host_str()` from the `url` crate already includes brackets for IPv6
+///   addresses (e.g. `[::1]`), so we use it directly without re-wrapping.
+/// - The port is omitted only when it is the scheme's default (80 / 443).
+fn websocket_origin(scheme: &str, host: &str, port: Option<u16>) -> String {
+    let origin_scheme = if scheme == "wss" { "https" } else { "http" };
+    match port {
+        Some(p) => format!("{}://{}:{}", origin_scheme, host, p),
+        None => format!("{}://{}", origin_scheme, host),
+    }
+}
+
 fn is_network_url_allowed(url: &str, allowed_hosts: &[String]) -> bool {
     if allowed_hosts.is_empty() {
         return false;
@@ -1796,7 +1803,7 @@ mod tests {
     use super::{
         HostContext, can_emit_events, can_log, can_notify, can_schedule, crypto_key_alias_path,
         is_http_url_allowed, is_path_allowed, is_websocket_url_allowed, plugin_secret_key,
-        read_file_content, sanitize_key_component,
+        read_file_content, sanitize_key_component, websocket_origin,
     };
 
     struct NoopTaskService;
@@ -1991,6 +1998,39 @@ mod tests {
         assert_eq!(
             plugin_secret_key("google-calendar", "oauth-token"),
             "plugin/google-calendar/oauth-token"
+        );
+    }
+
+    #[test]
+    fn websocket_origin_uses_http_for_ws_scheme() {
+        assert_eq!(
+            websocket_origin("ws", "127.0.0.1", Some(18789)),
+            "http://127.0.0.1:18789"
+        );
+    }
+
+    #[test]
+    fn websocket_origin_uses_https_for_wss_scheme() {
+        assert_eq!(
+            websocket_origin("wss", "gateway.example.com", None),
+            "https://gateway.example.com"
+        );
+    }
+
+    #[test]
+    fn websocket_origin_does_not_double_bracket_ipv6() {
+        // url::Url::host_str() already returns IPv6 addresses with brackets.
+        assert_eq!(
+            websocket_origin("ws", "[::1]", Some(18789)),
+            "http://[::1]:18789"
+        );
+    }
+
+    #[test]
+    fn websocket_origin_omits_port_when_none() {
+        assert_eq!(
+            websocket_origin("wss", "example.com", None),
+            "https://example.com"
         );
     }
 
