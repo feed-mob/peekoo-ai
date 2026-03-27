@@ -1,3 +1,7 @@
+-- @migrate: alter
+-- @id: 0011_pomodoro_autopilot_v4
+-- @tolerates: "duplicate column name"
+
 -- Add Autopilot (Auto-Advance) settings to pomodoro_state
 -- default values match the proposal: work 25, break 5, long 15, int 4, memo 1, auto 0
 ALTER TABLE pomodoro_state ADD COLUMN long_break_minutes INTEGER NOT NULL DEFAULT 15;

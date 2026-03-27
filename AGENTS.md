@@ -72,7 +72,7 @@ cd apps/desktop-ui && npx tsc --noEmit
   - `peekoo-agent/`: Agent runtime facade over the underlying SDK/session
   - `peekoo-agent-auth/`: OAuth and provider auth protocol orchestration
   - `peekoo-agent-app/`: Agent application orchestration and settings/use-case domain validation
-  - `persistence-sqlite/`: Embedded SQLite migrations used by the app layer
+  - `persistence-sqlite/`: SQLite migrations with compile-time auto-discovery (`build.rs`)
   - `security/`: Secret-store abstractions and fallback implementations
   - `peekoo-paths/`: Shared filesystem/path helpers for app and agent crates
 - `apps/desktop-ui/`: React + Vite + TypeScript frontend
@@ -116,6 +116,21 @@ just dev
 1. Create `crates/<name>/` with `Cargo.toml` and `src/lib.rs`
 2. Add to workspace `Cargo.toml` members list
 3. Follow naming convention: `peekoo-<name>`
+
+### Adding a New Database Migration
+1. Create `crates/persistence-sqlite/migrations/YYYYMMDDHHMM_description.sql`
+2. Add metadata header (see `crates/persistence-sqlite/AGENTS.md` for full rules)
+3. Write idempotent SQL (`IF NOT EXISTS`, `OR IGNORE`, `@tolerates` for ALTER)
+4. Run `cargo test -p peekoo-persistence-sqlite` to validate
+5. No Rust code changes needed — `build.rs` auto-discovers the file
+
+**Quick example:**
+```sql
+-- @migrate: alter
+-- @tolerates: "duplicate column name"
+
+ALTER TABLE tasks ADD COLUMN priority_score REAL DEFAULT 0.0;
+```
 
 ### Running Single Tests
 ```bash

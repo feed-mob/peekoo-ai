@@ -1,3 +1,7 @@
+-- @migrate: create
+-- @id: 0010_pomodoro_runtime
+-- @sentinel: pomodoro_state
+
 CREATE TABLE IF NOT EXISTS pomodoro_state (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   mode TEXT NOT NULL,

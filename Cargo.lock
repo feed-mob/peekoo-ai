@@ -6031,6 +6031,9 @@ dependencies = [
 [[package]]
 name = "peekoo-persistence-sqlite"
 version = "0.1.0"
+dependencies = [
+ "rusqlite",
+]
 
 [[package]]
 name = "peekoo-plugin-host"

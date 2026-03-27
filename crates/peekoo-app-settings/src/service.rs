@@ -44,8 +44,10 @@ pub struct AppSettingsService {
 
 impl AppSettingsService {
     /// Create a service using a shared database connection.
+    ///
+    /// The caller is responsible for running all migrations before calling this.
     pub fn with_conn(conn: Arc<Mutex<Connection>>) -> Result<Self, String> {
-        let store = AppSettingsStore::with_conn(conn)?;
+        let store = AppSettingsStore::with_conn(conn);
         Ok(Self { store })
     }
 
@@ -118,7 +120,7 @@ mod tests {
     use super::*;
 
     fn test_service() -> AppSettingsService {
-        let conn = Connection::open_in_memory().expect("in-memory db");
+        let conn = peekoo_persistence_sqlite::setup_test_db();
         AppSettingsService::with_conn(Arc::new(Mutex::new(conn))).expect("service")
     }
 

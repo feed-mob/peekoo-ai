@@ -1,3 +1,7 @@
+-- @migrate: create
+-- @id: 0002_agent_settings
+-- @sentinel: agent_settings
+
 CREATE TABLE agent_settings (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   active_provider_id TEXT NOT NULL,

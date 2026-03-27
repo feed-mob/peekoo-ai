@@ -101,9 +101,15 @@
 - [ ] Consolidate double polling (`usePomodoroWatcher` + `PomodoroPanel`)
   - Both poll `getPomodoroStatus` every 3s independently; when both mounted, two concurrent IPC calls per tick
   - Watcher's memo-trigger concern should be driven by backend events or a shared polling source
-- [ ] Refactor migration runner into table-driven loop
-  - `settings/store.rs` `run_migrations_and_seed()` is ~370 lines of copy-pasted check-apply-record blocks
-  - A helper taking `(id, sql)` would reduce to a loop and prevent duplication bugs
+- [x] Refactor migration runner into table-driven loop
+  - `settings/store.rs` `run_migrations_and_seed()` reduced from ~370 lines to ~70 lines
+  - `build.rs` auto-discovers `migrations/*.sql` at compile time with metadata parsing
+  - `MigrationDef` struct replaces 15 manual `pub const` declarations
+  - SQL files renamed to timestamp prefixes with `-- @migrate:` metadata headers
+  - Two helpers (`apply_create_migration`, `apply_alter_migration`) replace inline blocks
+  - 6 new validation tests in `persistence-sqlite/src/lib.rs`
+  - All 4 consumer files updated (`store.rs`, `app-settings`, `pomodoro-app`, `task-app`)
+  - See plan: `ai/plans/migration-runner-refactor.md`
 - [ ] Check affected row count in `save_pomodoro_memo` when `id = None`
   - `peekoo-pomodoro-app/src/lib.rs:244`: UPDATE via correlated subquery silently no-ops if no work cycles exist; caller gets `Ok(status)` with no indication memo wasn't saved
 - [ ] Replace positional column indices in `load_status` with named access
@@ -114,7 +120,7 @@
 
 ---
 
-**Last updated**: 2026-03-26
+**Last updated**: 2026-03-27
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring

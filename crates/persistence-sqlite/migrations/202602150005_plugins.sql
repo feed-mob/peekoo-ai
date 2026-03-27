@@ -1,3 +1,7 @@
+-- @migrate: create
+-- @id: 0005_plugins
+-- @sentinel: plugins
+
 CREATE TABLE IF NOT EXISTS plugins (
   id TEXT PRIMARY KEY,
   plugin_key TEXT NOT NULL,
