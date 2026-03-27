@@ -1,5 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
+#[cfg(test)]
+mod generated_paths;
+
 /// Application strategy for a migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MigrationStrategy {

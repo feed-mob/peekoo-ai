@@ -2,6 +2,9 @@ use std::env;
 use std::fs;
 use std::path::Path;
 
+#[path = "src/generated_paths.rs"]
+mod generated_paths;
+
 fn main() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let migrations_dir = Path::new(&manifest_dir).join("migrations");
@@ -60,9 +63,10 @@ fn main() {
         };
 
         let sql_path = format!("{}/migrations/{}", manifest_dir, file_name_str);
+        let sql_literal = generated_paths::include_str_path_literal(&sql_path);
 
         generated.push_str(&format!(
-            "    MigrationDef {{ id: \"{id}\", sql: include_str!(\"{sql_path}\"), strategy: {strategy}, sentinel: {sentinel}, tolerates: {tolerates} }},\n",
+            "    MigrationDef {{ id: \"{id}\", sql: include_str!({sql_literal}), strategy: {strategy}, sentinel: {sentinel}, tolerates: {tolerates} }},\n",
         ));
     }
 
