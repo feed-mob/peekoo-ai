@@ -1,20 +1,43 @@
 //! Peekoo Agent — AI agent service for the peekoo-ai desktop app.
 //!
-//! This crate wraps [`pi`] (the `pi_agent_rust` library) and provides a
-//! simplified, peekoo-specific API for:
-//!
-//! - Creating agent sessions with chosen LLM providers
+//! This crate provides a peekoo-specific API for:
+//! - Creating agent sessions with chosen LLM providers via ACP
 //! - Sending prompts and streaming responses
 //! - Registering custom domain-specific tools ("skills")
 //! - Switching providers/models at runtime
 
+pub mod backend;
 pub mod config;
-pub mod mcp_client;
-pub mod plugin_tool;
+pub mod mcp_bridge;
 pub mod service;
+pub mod session_store;
 
-// Re-export key types for convenience.
-pub use pi::error::{Error, Result as PiResult};
-pub use pi::sdk::{AgentEvent, AssistantMessage, ContentBlock, SubscriptionId};
-pub use pi::session::Session;
-pub use pi::session_index::{SessionIndex, SessionMeta};
+// TODO: Re-enable after migration
+// pub mod mcp_client;
+// pub mod plugin_tool;
+// pub mod service;
+
+// Temporary compatibility types (replacing pi re-exports)
+// These will be removed once migration is complete
+
+/// Error type for agent operations
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Agent error: {0}")]
+    Message(String),
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Protocol error: {0}")]
+    Protocol(String),
+    #[error("Configuration error: {0}")]
+    Config(String),
+}
+
+/// Result type alias
+pub type PiResult<T> = Result<T, Error>;
+
+/// Re-export key types from backend for convenience
+pub use backend::{
+    AgentEvent, BackendConfig, ContentBlock, Message, MessageRole, ModelInfo, PromptResult,
+    StopReason, TokenUsage,
+};
