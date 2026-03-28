@@ -9,7 +9,10 @@ use std::sync::LazyLock;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
+use peekoo_app_settings::AppSettingsService;
 use peekoo_mcp_server::{mcp_url_for, start_tcp_server};
+use peekoo_plugin_host::PluginRegistry;
+use peekoo_pomodoro_app::PomodoroAppService;
 use peekoo_task_app::TaskService;
 
 /// Port range for MCP server
@@ -30,12 +33,25 @@ pub fn get_mcp_address() -> Option<SocketAddr> {
         .and_then(|g| g.as_ref().map(|(addr, _)| *addr))
 }
 
+/// Get the full MCP server URL if already started (e.g. `http://127.0.0.1:49152/mcp`).
+pub fn get_mcp_url() -> Option<String> {
+    get_mcp_address().map(mcp_url_for)
+}
+
+/// Get the MCP plugins endpoint URL if already started (e.g. `http://127.0.0.1:49152/mcp/plugins`).
+pub fn get_mcp_plugins_url() -> Option<String> {
+    get_mcp_address().map(|addr| format!("{}/plugins", mcp_url_for(addr)))
+}
+
 /// Start the MCP server synchronously on a dedicated thread.
 ///
 /// This can be called from outside a tokio runtime (e.g., during app startup).
 /// Returns the bound address on success.
 pub fn start_sync(
     task_service: Arc<dyn TaskService>,
+    pomodoro_service: Arc<PomodoroAppService>,
+    app_settings_service: Arc<AppSettingsService>,
+    plugin_registry: Option<Arc<PluginRegistry>>,
     shutdown_token: CancellationToken,
 ) -> Result<SocketAddr, String> {
     // Check if already started
@@ -66,7 +82,15 @@ pub fn start_sync(
         };
 
         rt.block_on(async {
-            match McpServerManager::start(task_service, token_for_thread.clone()).await {
+            match McpServerManager::start(
+                task_service,
+                pomodoro_service,
+                app_settings_service,
+                plugin_registry,
+                token_for_thread.clone(),
+            )
+            .await
+            {
                 Ok(manager) => {
                     let addr = manager.address();
                     tracing::info!("✅ [MCP] Server running at {}", mcp_url_for(addr));
@@ -121,6 +145,9 @@ impl McpServerManager {
     /// The server runs until the cancellation token is triggered.
     async fn start(
         task_service: Arc<dyn TaskService>,
+        pomodoro_service: Arc<PomodoroAppService>,
+        app_settings_service: Arc<AppSettingsService>,
+        plugin_registry: Option<Arc<PluginRegistry>>,
         shutdown_token: CancellationToken,
     ) -> Result<Self, String> {
         // Find an available port and bind immediately (avoids race condition)
@@ -133,16 +160,23 @@ impl McpServerManager {
         tracing::info!("🚀 [MCP] Binding server on {}", mcp_url_for(actual_address));
 
         // Start the MCP server (takes ownership of listener)
-        let server_address = start_tcp_server(task_service, listener)
-            .await
-            .map_err(|e| format!("Failed to start MCP server: {}", e))?;
+        let server_address = start_tcp_server(
+            task_service,
+            pomodoro_service,
+            app_settings_service,
+            plugin_registry,
+            listener,
+        )
+        .await
+        .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
         tracing::info!(
             "✅ [MCP] Server listening at {}",
             mcp_url_for(server_address)
         );
         tracing::info!(
-            "📋 [MCP] Available tools: task_comment, update_task_labels, update_task_status"
+            "📋 [MCP] Available tools: 24 native tools (task, pomodoro, settings) \
+             (+ plugin tools if registry provided)"
         );
 
         // Watch for shutdown signal
@@ -160,16 +194,6 @@ impl McpServerManager {
     /// Get the MCP server address (host:port)
     pub fn address(&self) -> SocketAddr {
         self.address
-    }
-
-    /// Get the MCP server host
-    pub fn host(&self) -> String {
-        self.address.ip().to_string()
-    }
-
-    /// Get the MCP server port
-    pub fn port(&self) -> u16 {
-        self.address.port()
     }
 
     /// Find an available TCP port and return a bound listener.

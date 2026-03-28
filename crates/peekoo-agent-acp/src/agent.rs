@@ -1,7 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use agent_client_protocol as acp;
 use agent_client_protocol::{
@@ -16,7 +15,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::context::TaskContext;
-use crate::mcp_tools::{connect_task_mcp_tools, summarize_agent_event};
+use crate::mcp_tools::{TaskScopedTool, summarize_agent_event};
 
 #[derive(Clone)]
 struct SessionContext {
@@ -171,16 +170,44 @@ impl acp::Agent for PeekooAgent {
 
         let mut _mcp_handles = Vec::new();
         let tools_count = if let Some(session) = &session_context {
-            let (tools, handles) =
-                connect_task_mcp_tools(&task_context.task_id, &session.mcp_servers)
-                    .await
-                    .map_err(|error| {
-                        tracing::error!("Failed to connect session MCP servers: {}", error);
-                        acp::Error::internal_error()
-                    })?;
-            let count = tools.len();
-            agent.register_native_tools(tools);
-            _mcp_handles = handles;
+            let mut all_tools = Vec::new();
+            for server in &session.mcp_servers {
+                let url = match server {
+                    acp::McpServer::Http(http) => http.url.clone(),
+                    _ => {
+                        tracing::warn!("Skipping non-HTTP MCP server: {:?}", server);
+                        continue;
+                    }
+                };
+                match peekoo_agent::mcp_client::connect_http_mcp_tools(&url).await {
+                    Ok((tools, handle)) => {
+                        tracing::info!(
+                            url = url.as_str(),
+                            tool_count = tools.len(),
+                            "Connected MCP server for task {}",
+                            task_context.task_id
+                        );
+                        let task_id = task_context.task_id.clone();
+                        let wrapped: Vec<Box<dyn pi::tools::Tool>> = tools
+                            .into_iter()
+                            .map(|t| -> Box<dyn pi::tools::Tool> {
+                                if TaskScopedTool::needs_scoping(t.name()) {
+                                    Box::new(TaskScopedTool::new(t, task_id.clone()))
+                                } else {
+                                    t
+                                }
+                            })
+                            .collect();
+                        all_tools.extend(wrapped);
+                        _mcp_handles.push(handle);
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to connect MCP server {}: {}", url, e);
+                    }
+                }
+            }
+            let count = all_tools.len();
+            agent.register_native_tools(all_tools);
             count
         } else {
             0
@@ -265,14 +292,6 @@ impl acp::Agent for PeekooAgent {
         tracing::info!("Received extension notification: method={}", args.method);
         Ok(())
     }
-}
-
-pub(crate) fn ensure_rustls_provider() {
-    static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
-
-    RUSTLS_PROVIDER.get_or_init(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -240,12 +240,17 @@ async fn agent_prompt(
     window: Window,
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
+    let message_len = message.chars().count();
     let reply = state
         .app
         .prompt_streaming(&message, move |event| {
             let _ = window.emit("agent-event", event);
         })
-        .await?;
+        .await
+        .map_err(|err| {
+            tracing::error!(error = %err, message_len, "agent_prompt command failed");
+            err
+        })?;
     Ok(AgentResponse { response: reply })
 }
 
