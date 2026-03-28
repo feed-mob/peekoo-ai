@@ -3,17 +3,14 @@
 //! Provides a simplified API for creating sessions, sending prompts,
 //! and switching models at runtime.
 
-use std::path::Path;
-use std::sync::Arc;
-
 use pi::error::Result;
 use pi::sdk::{
     AgentEvent, AgentSessionHandle, AssistantMessage, ContentBlock, SessionOptions, SubscriptionId,
     create_agent_session,
 };
+use std::path::Path;
 
 use crate::config::AgentServiceConfig;
-use crate::plugin_tool::{PluginToolAdapter, PluginToolProvider};
 
 /// High-level agent service that wraps pi's session handle.
 ///
@@ -37,6 +34,8 @@ use crate::plugin_tool::{PluginToolAdapter, PluginToolProvider};
 /// ```
 pub struct AgentService {
     handle: AgentSessionHandle,
+    /// Keeps MCP client connections alive for the lifetime of this service.
+    _mcp_handles: Vec<crate::mcp_client::McpClientHandle>,
 }
 
 impl AgentService {
@@ -177,7 +176,10 @@ impl AgentService {
 
         let handle = create_agent_session(options).await?;
 
-        Ok(Self { handle })
+        Ok(Self {
+            handle,
+            _mcp_handles: Vec::new(),
+        })
     }
 
     /// Send a user prompt through the agent loop.
@@ -248,30 +250,20 @@ impl AgentService {
             .collect()
     }
 
-    /// Register plugin-provided tools with the agent's tool registry.
+    /// Register tools with the agent's tool registry.
     ///
-    /// Each plugin tool is wrapped in a [`PluginToolAdapter`] that implements
-    /// pi's [`Tool`] trait. Tool names are namespaced as
-    /// `plugin__{plugin_key}__{tool_name}` to avoid collisions with built-in
-    /// tools.
-    ///
-    /// This should be called once after session creation, before prompting.
-    pub fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
-        let tools = PluginToolAdapter::from_provider(provider);
+    /// Use this to add MCP-backed or other app-level tools that the LLM
+    /// can call during the agent loop.
+    pub fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
         if !tools.is_empty() {
             self.handle.session_mut().agent.extend_tools(tools);
         }
     }
 
-    /// Register native (non-plugin) tools with the agent's tool registry.
-    ///
-    /// Use this to add app-level tools (e.g., task management) that the LLM
-    /// can call during the agent loop. Tool names must not collide with
-    /// built-in tools or plugin tools.
-    pub fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
-        if !tools.is_empty() {
-            self.handle.session_mut().agent.extend_tools(tools);
-        }
+    /// Store an MCP client handle so the connection stays alive for the
+    /// lifetime of this service.
+    pub fn store_mcp_handle(&mut self, handle: crate::mcp_client::McpClientHandle) {
+        self._mcp_handles.push(handle);
     }
 
     /// Return the path to the persisted session file, if any.

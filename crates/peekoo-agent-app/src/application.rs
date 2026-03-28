@@ -7,7 +7,6 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_agent::AgentEvent;
-use peekoo_agent::PluginToolProvider;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use peekoo_app_settings::{AppSettingsService, SpriteInfo};
@@ -61,12 +60,12 @@ fn format_error_chain(err: &dyn std::error::Error) -> String {
 }
 
 pub struct AgentApplication {
-    agent: Mutex<Option<AgentService>>,
+    agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
-    app_settings: AppSettingsService,
+    app_settings: Arc<AppSettingsService>,
     task_service: SqliteTaskService,
     task_change_callback: Mutex<Option<TaskChangeCallback>>,
-    pomodoro: PomodoroAppService,
+    pomodoro: Arc<PomodoroAppService>,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
@@ -110,7 +109,7 @@ impl AgentApplication {
         let db_conn = Arc::new(Mutex::new(conn));
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
-        let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
+        let app_settings = Arc::new(AppSettingsService::with_conn(Arc::clone(&db_conn))?);
         let sqlite_task_service = SqliteTaskService::new(Arc::clone(&db_conn));
         let task_service: Arc<dyn peekoo_task_app::TaskService> =
             Arc::new(sqlite_task_service.clone());
@@ -123,12 +122,12 @@ impl AgentApplication {
         task_notifications.start()?;
         let peek_badges = Arc::new(PeekBadgeService::new());
         let mood_reactions = Arc::new(MoodReactionService::new());
-        let pomodoro = PomodoroAppService::new(
+        let pomodoro = Arc::new(PomodoroAppService::new(
             Arc::clone(&db_conn),
             Arc::clone(&notifications),
             Arc::clone(&peek_badges),
             Arc::clone(&mood_reactions),
-        )?;
+        )?);
         let plugin_registry = create_plugin_registry(
             db_conn,
             task_service,
@@ -151,7 +150,7 @@ impl AgentApplication {
             crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
 
         Ok(Self {
-            agent: Mutex::new(None),
+            agent: Arc::new(Mutex::new(None)),
             settings,
             app_settings,
             task_service: sqlite_task_service,
@@ -195,9 +194,18 @@ impl AgentApplication {
         // Start MCP server on a dedicated thread (survives app lifetime)
         let task_service: Arc<dyn peekoo_task_app::TaskService> =
             Arc::new(self.task_runtime_service());
+        let pomodoro_service = Arc::clone(&self.pomodoro);
+        let app_settings_service = Arc::clone(&self.app_settings);
         let mcp_shutdown = self.shutdown_token.clone();
 
-        match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
+        let plugin_registry = Some(Arc::clone(&self.plugin_registry));
+        match crate::mcp_server::start_sync(
+            task_service,
+            pomodoro_service,
+            app_settings_service,
+            plugin_registry,
+            mcp_shutdown,
+        ) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);
                 eprintln!("[peekoo][mcp] server ready at {}", url);
@@ -909,7 +917,7 @@ impl AgentApplication {
         }
     }
 
-    /// Build a fresh `AgentService` from current settings + plugin tools.
+    /// Build a fresh `AgentService` from current settings + MCP-backed tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
         let (mut config, settings_version) = self.settings.to_agent_config(config)?;
@@ -931,20 +939,13 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let mut service = runtime
+        let service = runtime
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
 
-        // Register plugin tools natively in the agent's tool registry so the
-        // LLM can invoke them during the agent loop (tool call -> execute ->
-        // result -> next turn).
-        service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
-
-        // Register native task tools so the LLM can manage tasks.
-        let task_service: Arc<dyn peekoo_task_app::TaskService> =
-            Arc::new(self.task_service.clone());
-        let task_tools = crate::task_tools::create_task_tools(task_service);
-        service.register_native_tools(task_tools);
+        // Spawn MCP connection in background to avoid blocking chat startup
+        // The agent will respond immediately, and tools will be added when ready
+        self.spawn_mcp_connection_task();
 
         Ok((service, settings_version))
     }
@@ -1022,6 +1023,88 @@ impl AgentApplication {
             follow_up_trigger,
             task_change_callback,
         )
+    }
+
+    /// Spawn a background task to connect to MCP servers and add tools asynchronously.
+    /// This prevents blocking the chat startup while waiting for MCP connections.
+    fn spawn_mcp_connection_task(&self) {
+        let agent_weak = Arc::downgrade(&self.agent);
+
+        // Get URLs - if None, no need to spawn task
+        let native_url = crate::mcp_server::get_mcp_url();
+        let plugins_url = crate::mcp_server::get_mcp_plugins_url();
+
+        if native_url.is_none() && plugins_url.is_none() {
+            return;
+        }
+
+        tokio::spawn(async move {
+            // Helper to connect and add tools
+            async fn try_connect_and_add_tools(
+                url: &str,
+                agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
+                endpoint_type: &str,
+            ) {
+                tracing::debug!(
+                    url = url,
+                    endpoint = endpoint_type,
+                    "Connecting to MCP endpoint"
+                );
+
+                match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
+                    Ok((tools, handle)) => {
+                        tracing::info!(
+                            tool_count = tools.len(),
+                            url = url,
+                            endpoint = endpoint_type,
+                            "MCP tools connected, registering with agent"
+                        );
+
+                        // Try to get the agent and add tools
+                        if let Some(agent_arc) = agent_weak.upgrade() {
+                            if let Ok(mut guard) = agent_arc.lock() {
+                                if let Some(ref mut service) = *guard {
+                                    service.register_native_tools(tools);
+                                    service.store_mcp_handle(handle);
+                                    tracing::info!(
+                                        endpoint = endpoint_type,
+                                        "MCP tools registered successfully"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        endpoint = endpoint_type,
+                                        "Agent service not available for tool registration"
+                                    );
+                                }
+                            } else {
+                                tracing::warn!(
+                                    endpoint = endpoint_type,
+                                    "Could not lock agent mutex to register tools"
+                                );
+                            }
+                        } else {
+                            tracing::warn!(
+                                endpoint = endpoint_type,
+                                "Agent dropped before MCP tools could be registered"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
+                    }
+                }
+            }
+
+            // Connect to native tools
+            if let Some(url) = native_url {
+                try_connect_and_add_tools(&url, &agent_weak, "native").await;
+            }
+
+            // Connect to plugin tools
+            if let Some(url) = plugins_url {
+                try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
+            }
+        });
     }
 }
 

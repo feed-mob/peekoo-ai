@@ -9,6 +9,10 @@ pi = { workspace = true }
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt"] }
 serde_json = "1"
+rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "main", features = ["client", "transport-streamable-http-client-reqwest"] }
+anyhow = "1"
+rustls = { version = "0.23", features = ["ring"] }
+tracing = "0.1"
 
 [dev-dependencies]
 asupersync = { workspace = true }
