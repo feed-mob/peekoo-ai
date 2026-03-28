@@ -36,6 +36,11 @@ pub fn get_mcp_url() -> Option<String> {
     get_mcp_address().map(mcp_url_for)
 }
 
+/// Get the MCP plugins endpoint URL if already started (e.g. `http://127.0.0.1:49152/mcp/plugins`).
+pub fn get_mcp_plugins_url() -> Option<String> {
+    get_mcp_address().map(|addr| format!("{}/plugins", mcp_url_for(addr)))
+}
+
 /// Start the MCP server synchronously on a dedicated thread.
 ///
 /// This can be called from outside a tokio runtime (e.g., during app startup).

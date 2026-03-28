@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "peekoo-mcp": {
+      "baseUrl": "http://127.0.0.1:49152/mcp"
+    },
+    "peekoo-mcp-plugins": {
+      "baseUrl": "http://127.0.0.1:49152/mcp/plugins"
+    }
+  },
+  "imports": []
+}

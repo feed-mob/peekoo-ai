@@ -557,10 +557,18 @@ async fn execute_task_acp(
 fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<McpServer> {
     mcp_address
         .map(|addr| {
-            vec![McpServer::Http(McpServerHttp::new(
-                "peekoo-task-tools",
-                peekoo_mcp_server::mcp_url_for(addr),
-            ))]
+            let base_url = peekoo_mcp_server::mcp_url_for(addr);
+            let plugins_url = format!("{}/plugins", base_url);
+            vec![
+                McpServer::Http(McpServerHttp::new(
+                    "peekoo-task-tools",
+                    base_url,
+                )),
+                McpServer::Http(McpServerHttp::new(
+                    "peekoo-plugin-tools",
+                    plugins_url,
+                )),
+            ]
         })
         .unwrap_or_default()
 }

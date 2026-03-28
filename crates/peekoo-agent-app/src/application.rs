@@ -911,23 +911,43 @@ impl AgentApplication {
 
         // Connect to the shared MCP server and register all Peekoo-owned tools
         // (task tools + plugin tools) via the shared HTTP MCP adapter.
+        // Task tools are at /mcp, plugin tools are at /mcp/plugins.
         if let Some(mcp_url) = crate::mcp_server::get_mcp_url() {
+            // Connect to task tools endpoint
             match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&mcp_url)) {
                 Ok((tools, handle)) => {
                     tracing::info!(
                         tool_count = tools.len(),
-                        "Registered MCP tools for chat session"
+                        url = mcp_url,
+                        "Registered task MCP tools for chat session"
                     );
                     service.register_native_tools(tools);
-                    // Keep the handle alive for the lifetime of the service.
                     service.store_mcp_handle(handle);
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to connect to MCP server {mcp_url}: {e}");
+                    tracing::warn!("Failed to connect to task MCP server {mcp_url}: {e}");
                 }
             }
         } else {
             tracing::warn!("MCP server not running — chat session has no task/plugin tools");
+        }
+
+        // Connect to plugin tools endpoint (if plugins are enabled)
+        if let Some(plugins_url) = crate::mcp_server::get_mcp_plugins_url() {
+            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&plugins_url)) {
+                Ok((tools, handle)) => {
+                    tracing::info!(
+                        tool_count = tools.len(),
+                        url = plugins_url,
+                        "Registered plugin MCP tools for chat session"
+                    );
+                    service.register_native_tools(tools);
+                    service.store_mcp_handle(handle);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to connect to plugin MCP server {plugins_url}: {e}");
+                }
+            }
         }
 
         Ok((service, settings_version))
