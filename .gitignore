@@ -35,3 +35,6 @@ apps/desktop-tauri/src-tauri/LOGS.txt
 
 # JJ workspaces
 .workspaces/
+
+# mcporter and local config
+config/
