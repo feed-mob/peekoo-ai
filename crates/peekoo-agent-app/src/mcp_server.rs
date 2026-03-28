@@ -9,8 +9,10 @@ use std::sync::LazyLock;
 use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 
+use peekoo_app_settings::AppSettingsService;
 use peekoo_mcp_server::{mcp_url_for, start_tcp_server};
 use peekoo_plugin_host::PluginRegistry;
+use peekoo_pomodoro_app::PomodoroAppService;
 use peekoo_task_app::TaskService;
 
 /// Port range for MCP server
@@ -47,6 +49,8 @@ pub fn get_mcp_plugins_url() -> Option<String> {
 /// Returns the bound address on success.
 pub fn start_sync(
     task_service: Arc<dyn TaskService>,
+    pomodoro_service: Arc<PomodoroAppService>,
+    app_settings_service: Arc<AppSettingsService>,
     plugin_registry: Option<Arc<PluginRegistry>>,
     shutdown_token: CancellationToken,
 ) -> Result<SocketAddr, String> {
@@ -78,7 +82,13 @@ pub fn start_sync(
         };
 
         rt.block_on(async {
-            match McpServerManager::start(task_service, plugin_registry, token_for_thread.clone())
+            match McpServerManager::start(
+                task_service,
+                pomodoro_service,
+                app_settings_service,
+                plugin_registry,
+                token_for_thread.clone(),
+            )
                 .await
             {
                 Ok(manager) => {
@@ -135,6 +145,8 @@ impl McpServerManager {
     /// The server runs until the cancellation token is triggered.
     async fn start(
         task_service: Arc<dyn TaskService>,
+        pomodoro_service: Arc<PomodoroAppService>,
+        app_settings_service: Arc<AppSettingsService>,
         plugin_registry: Option<Arc<PluginRegistry>>,
         shutdown_token: CancellationToken,
     ) -> Result<Self, String> {
@@ -148,7 +160,13 @@ impl McpServerManager {
         tracing::info!("🚀 [MCP] Binding server on {}", mcp_url_for(actual_address));
 
         // Start the MCP server (takes ownership of listener)
-        let server_address = start_tcp_server(task_service, plugin_registry, listener)
+        let server_address = start_tcp_server(
+            task_service,
+            pomodoro_service,
+            app_settings_service,
+            plugin_registry,
+            listener,
+        )
             .await
             .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
@@ -157,8 +175,7 @@ impl McpServerManager {
             mcp_url_for(server_address)
         );
         tracing::info!(
-            "📋 [MCP] Available tools: task_create, task_list, task_update, task_delete, \
-             task_toggle, task_assign, task_comment, update_task_labels, update_task_status \
+            "📋 [MCP] Available tools: 24 native tools (task, pomodoro, settings) \
              (+ plugin tools if registry provided)"
         );
 

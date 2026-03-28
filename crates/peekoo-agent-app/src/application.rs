@@ -47,10 +47,10 @@ type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
-    app_settings: AppSettingsService,
+    app_settings: Arc<AppSettingsService>,
     task_service: SqliteTaskService,
     task_change_callback: Mutex<Option<TaskChangeCallback>>,
-    pomodoro: PomodoroAppService,
+    pomodoro: Arc<PomodoroAppService>,
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
@@ -94,7 +94,7 @@ impl AgentApplication {
         let db_conn = Arc::new(Mutex::new(conn));
 
         let settings = SettingsService::with_conn(Arc::clone(&db_conn))?;
-        let app_settings = AppSettingsService::with_conn(Arc::clone(&db_conn))?;
+        let app_settings = Arc::new(AppSettingsService::with_conn(Arc::clone(&db_conn))?);
         let sqlite_task_service = SqliteTaskService::new(Arc::clone(&db_conn));
         let task_service: Arc<dyn peekoo_task_app::TaskService> =
             Arc::new(sqlite_task_service.clone());
@@ -107,12 +107,12 @@ impl AgentApplication {
         task_notifications.start()?;
         let peek_badges = Arc::new(PeekBadgeService::new());
         let mood_reactions = Arc::new(MoodReactionService::new());
-        let pomodoro = PomodoroAppService::new(
+        let pomodoro = Arc::new(PomodoroAppService::new(
             Arc::clone(&db_conn),
             Arc::clone(&notifications),
             Arc::clone(&peek_badges),
             Arc::clone(&mood_reactions),
-        )?;
+        )?);
         let plugin_registry = create_plugin_registry(
             db_conn,
             task_service,
@@ -179,10 +179,18 @@ impl AgentApplication {
         // Start MCP server on a dedicated thread (survives app lifetime)
         let task_service: Arc<dyn peekoo_task_app::TaskService> =
             Arc::new(self.task_runtime_service());
+        let pomodoro_service = Arc::clone(&self.pomodoro);
+        let app_settings_service = Arc::clone(&self.app_settings);
         let mcp_shutdown = self.shutdown_token.clone();
 
         let plugin_registry = Some(Arc::clone(&self.plugin_registry));
-        match crate::mcp_server::start_sync(task_service, plugin_registry, mcp_shutdown) {
+        match crate::mcp_server::start_sync(
+            task_service,
+            pomodoro_service,
+            app_settings_service,
+            plugin_registry,
+            mcp_shutdown,
+        ) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);
                 eprintln!("[peekoo][mcp] server ready at {}", url);
@@ -910,26 +918,26 @@ impl AgentApplication {
             .map_err(|e| format!("Agent init error: {e}"))?;
 
         // Connect to the shared MCP server and register all Peekoo-owned tools
-        // (task tools + plugin tools) via the shared HTTP MCP adapter.
-        // Task tools are at /mcp, plugin tools are at /mcp/plugins.
+        // (task + pomodoro + settings) via the shared HTTP MCP adapter.
+        // Native tools are at /mcp, plugin tools are at /mcp/plugins.
         if let Some(mcp_url) = crate::mcp_server::get_mcp_url() {
-            // Connect to task tools endpoint
+            // Connect to native tools endpoint
             match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&mcp_url)) {
                 Ok((tools, handle)) => {
                     tracing::info!(
                         tool_count = tools.len(),
                         url = mcp_url,
-                        "Registered task MCP tools for chat session"
+                        "Registered native MCP tools for chat session"
                     );
                     service.register_native_tools(tools);
                     service.store_mcp_handle(handle);
                 }
                 Err(e) => {
-                    tracing::warn!("Failed to connect to task MCP server {mcp_url}: {e}");
+                    tracing::warn!("Failed to connect to native MCP server {mcp_url}: {e}");
                 }
             }
         } else {
-            tracing::warn!("MCP server not running — chat session has no task/plugin tools");
+            tracing::warn!("MCP server not running — chat session has no Peekoo tools");
         }
 
         // Connect to plugin tools endpoint (if plugins are enabled)

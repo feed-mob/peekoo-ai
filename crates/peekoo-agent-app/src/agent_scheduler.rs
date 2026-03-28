@@ -561,7 +561,7 @@ fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<M
             let plugins_url = format!("{}/plugins", base_url);
             vec![
                 McpServer::Http(McpServerHttp::new(
-                    "peekoo-task-tools",
+                    "peekoo-native-tools",
                     base_url,
                 )),
                 McpServer::Http(McpServerHttp::new(

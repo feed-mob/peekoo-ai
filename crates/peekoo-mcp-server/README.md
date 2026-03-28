@@ -1,34 +1,81 @@
 # Peekoo MCP Server
 
-MCP (Model Context Protocol) server that exposes task management tools for AI agents.
+MCP (Model Context Protocol) server that exposes Peekoo productivity tools for AI agents.
 
 ## Overview
 
-This crate provides an MCP server that runs embedded in the Peekoo application and exposes task management operations to AI agents via the Model Context Protocol.
+This crate provides an MCP server that runs embedded in the Peekoo application and exposes task management, pomodoro timer, and app settings operations to AI agents via the Model Context Protocol.
 
-**Architecture**: Single shared server started at app startup, serving all agent ACP processes.
+**Architecture**: Single shared server started at app startup, serving all agent ACP processes and chat sessions.
 
-## Tools Provided
+## Endpoints
+
+| Endpoint | Path | Description |
+|----------|------|-------------|
+| **Native Tools** | `/mcp` | All Peekoo-native tools: tasks, pomodoro, settings (24 tools) |
+| **Plugin Tools** | `/mcp/plugins` | Third-party plugin tools via WASM runtime |
+
+**Design Rationale**: Native Peekoo tools are unified at a single endpoint. Plugin tools remain separate as they require a different runtime (WASM) and are third-party extensions.
+
+## Native Tools at `/mcp`
+
+### Task Tools (9)
 
 | Tool | Description |
 |------|-------------|
+| `task_create` | Create a new task with title, priority, assignee, labels, description, scheduling, and recurrence rules. |
+| `task_list` | List all tasks. Optionally filter by status (todo/in_progress/done). |
+| `task_update` | Update a task's title, priority, status, assignee, labels, description, scheduling, or recurrence. |
+| `task_delete` | Delete a task by its ID. |
+| `task_toggle` | Toggle a task's completion status (todo <-> done). |
+| `task_assign` | Assign a task to a user or agent. |
 | `task_comment` | Add a comment to a task. Use this to ask questions or provide updates. |
 | `update_task_labels` | Add or remove labels from a task. Use to mark state like `needs_clarification`, `agent_done`, `needs_review`. |
-| `update_task_status` | Update task status. Use to mark as `pending`, `in_progress`, `done`, `cancelled`. |
+| `update_task_status` | Update task status. Use to mark as `in_progress`, `done`, `cancelled`. |
 
-All tool calls require a `task_id` parameter to identify which task to operate on.
+### Pomodoro Tools (10)
+
+| Tool | Description |
+|------|-------------|
+| `pomodoro_status` | Get the current pomodoro timer status including mode, time remaining, and daily stats. |
+| `pomodoro_start` | Start a new pomodoro session. Mode can be 'focus' or 'break'. |
+| `pomodoro_pause` | Pause the currently active pomodoro timer. |
+| `pomodoro_resume` | Resume a paused pomodoro timer. |
+| `pomodoro_finish` | Finish or cancel the current pomodoro session. |
+| `pomodoro_switch_mode` | Switch between focus and break modes. |
+| `pomodoro_save_memo` | Save a memo for a pomodoro session. |
+| `pomodoro_history` | Get pomodoro session history. Defaults to last 10 sessions. |
+| `pomodoro_history_by_date_range` | Get pomodoro sessions within a date range (YYYY-MM-DD format). |
+| `pomodoro_set_settings` | Configure pomodoro settings: work duration, break duration, long break settings. |
+
+### Settings Tools (5)
+
+| Tool | Description |
+|------|-------------|
+| `settings_get_active_sprite` | Get the currently active character (sprite) ID. |
+| `settings_set_active_sprite` | Set the active character (sprite). Use `settings_list_sprites` to see available options. |
+| `settings_list_sprites` | List all available characters (sprites) with their IDs and descriptions. |
+| `settings_get_theme` | Get the current theme mode: 'light', 'dark', or 'system'. |
+| `settings_set_theme` | Set the theme mode. Valid values: 'light', 'dark', 'system'. |
 
 ## Architecture
 
 ```
 Main Application (AgentApplication)
-  └─ MCP Server (tcp://127.0.0.1:PORT) [SHARED, starts at app startup]
-      └─ TaskService (shared SQLite connection)
-  
+  └─ MCP Server (http://127.0.0.1:PORT) [SHARED, starts at app startup]
+      ├─ /mcp ───┬─ Task Tools (9)
+      │           ├─ Pomodoro Tools (10) 
+      │           └─ Settings Tools (5)
+      └─ /mcp/plugins ── Plugin Tools (via WASM)
+   
 AgentScheduler
   ├─ Task 1: spawn peekoo-agent-acp ───┐
   ├─ Task 2: spawn peekoo-agent-acp ───┼── All connect via env vars
   └─ Task 3: spawn peekoo-agent-acp ───┘
+
+Chat Sessions
+  └─ Agent Service ──┬─ Connect to /mcp (native tools)
+                     └─ Connect to /mcp/plugins (plugin tools)
 ```
 
 ## Startup Flow
@@ -99,18 +146,15 @@ AgentScheduler
 When the app starts, you'll see:
 
 ```
-🚀 [MCP] Starting server on tcp://127.0.0.1:49152
-✅ [MCP] Server ready at tcp://127.0.0.1:49152
-📋 [MCP] Available tools: task_comment, update_task_labels, update_task_status
-✅ [MCP] Server initialized at tcp://127.0.0.1:49152 (shared)
-🔗 [MCP] Scheduler configured with server at tcp://127.0.0.1:49152
+🚀 [MCP] Starting server on http://127.0.0.1:49152/mcp
+✅ [MCP] Server ready at http://127.0.0.1:49152/mcp
+📋 [MCP] Available tools: 24 native tools (task, pomodoro, settings) (+ plugin tools if enabled)
 ```
 
-When a task is executed:
+When an agent connects to a task:
 
 ```
-🔗 [MCP] Using shared server at tcp://127.0.0.1:49152 for task {task_id}
-🔗 [MCP] Connecting agent to MCP server at tcp://127.0.0.1:49152
+🔗 [MCP] Connecting agent to MCP server at http://127.0.0.1:49152/mcp
 ```
 
 ## Agent Environment Variables
@@ -136,5 +180,8 @@ The following labels are used by agents:
 
 - `rmcp` - Official Rust MCP SDK from [modelcontextprotocol/rust-sdk](https://github.com/modelcontextprotocol/rust-sdk)
 - `peekoo-task-domain` / `peekoo-task-app` - Task domain types, DTOs, and service interfaces
+- `peekoo-pomodoro-app` - Pomodoro timer service and domain types
+- `peekoo-app-settings` - App settings (sprites, themes) service
+- `peekoo-plugin-host` - Plugin runtime (optional, behind `plugin-runtime` feature)
 - `tokio` - Async runtime
 - `schemars` - JSON Schema generation
