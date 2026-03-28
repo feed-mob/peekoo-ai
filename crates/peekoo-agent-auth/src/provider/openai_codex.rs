@@ -2,12 +2,22 @@ use crate::error::OAuthError;
 use crate::flow::{OAuthQueryParam, OAuthStartConfig, OAuthTokenExchangeConfig};
 use crate::url::build_url_with_query;
 use serde::Deserialize;
+use std::sync::OnceLock;
 
 pub const OPENAI_CODEX_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 pub const OPENAI_CODEX_OAUTH_AUTHORIZE_URL: &str = "https://auth.openai.com/oauth/authorize";
 pub const OPENAI_CODEX_OAUTH_TOKEN_URL: &str = "https://auth.openai.com/oauth/token";
 pub const OPENAI_CODEX_OAUTH_REDIRECT_URI: &str = "http://localhost:1455/auth/callback";
 pub const OPENAI_CODEX_OAUTH_SCOPES: &str = "openid profile email offline_access";
+
+/// Ensures the rustls crypto provider is installed exactly once.
+/// This must be called before making any HTTPS requests on Windows.
+fn ensure_rustls_provider() {
+    static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
+    RUSTLS_PROVIDER.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
 
 #[derive(Deserialize)]
 pub struct OpenAiCodexTokenResponse {
@@ -57,6 +67,10 @@ pub async fn exchange_token(
     authorization_code: &str,
     verifier: &str,
 ) -> Result<OpenAiCodexTokenResponse, OAuthError> {
+    // Ensure TLS provider is initialized before making HTTPS requests
+    // This prevents Windows error 10057 (socket not connected)
+    ensure_rustls_provider();
+
     let form_body = format!(
         "grant_type=authorization_code&client_id={}&code={}&code_verifier={}&redirect_uri={}",
         percent_encode_component(OPENAI_CODEX_OAUTH_CLIENT_ID),
@@ -65,7 +79,11 @@ pub async fn exchange_token(
         percent_encode_component(OPENAI_CODEX_OAUTH_REDIRECT_URI)
     );
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .connect_timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| OAuthError::TokenExchange(format!("Failed to create HTTP client: {e}")))?;
     let response = client
         .post(OPENAI_CODEX_OAUTH_TOKEN_URL)
         .header("Content-Type", "application/x-www-form-urlencoded")

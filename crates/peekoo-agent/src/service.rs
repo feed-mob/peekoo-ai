@@ -222,18 +222,16 @@ impl AgentService {
                 Ok(text)
             }
             Err(e) => {
+                // Check for Windows socket error 10057 and provide helpful guidance
+                if is_windows_socket_not_connected_error(&e) {
+                    tracing::error!(
+                        "Windows socket error 10057 detected! This usually means the TLS provider \
+                        was not initialized before the connection attempt. Ensure ensure_rustls_provider() \
+                        is called at application startup before any network operations."
+                    );
+                }
+                
                 tracing::error!("AgentService::prompt failed: {:?}", e);
-                // Log the error type for debugging
-                let error_str = format!("{:?}", e);
-                if error_str.contains("TLS") || error_str.contains("connect") {
-                    tracing::error!("Network/TLS error detected when calling provider={}", provider);
-                }
-                if error_str.contains("10057") {
-                    tracing::error!("Socket error 10057 - connection reset or refused");
-                }
-                if error_str.contains("Access") || error_str.contains("denied") {
-                    tracing::error!("Access denied error - check permissions");
-                }
                 Err(e)
             }
         }
@@ -336,6 +334,13 @@ pub fn ensure_rustls_provider() {
     RUSTLS_PROVIDER.get_or_init(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
+}
+
+/// Checks if an error is a Windows socket error 10057 (WSAENOTCONN).
+/// This error occurs when the socket is not connected during TLS handshake.
+fn is_windows_socket_not_connected_error(error: &pi::error::Error) -> bool {
+    let error_str = format!("{:?}", error);
+    error_str.contains("10057") || error_str.contains("WSAENOTCONN")
 }
 
 /// Extract the concatenated text from an assistant message's content blocks.
