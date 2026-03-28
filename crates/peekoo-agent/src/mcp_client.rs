@@ -49,11 +49,7 @@ pub async fn connect_http_mcp_tools(url: &str) -> Result<(Vec<Box<dyn Tool>>, Mc
     let peer = client.peer().clone();
     let mcp_tools = peer.list_all_tools().await?;
 
-    tracing::info!(
-        url,
-        tool_count = mcp_tools.len(),
-        "Connected to MCP server"
-    );
+    tracing::info!(url, tool_count = mcp_tools.len(), "Connected to MCP server");
 
     let tools: Vec<Box<dyn Tool>> = mcp_tools
         .into_iter()
@@ -132,8 +128,7 @@ impl Tool for McpToolAdapter {
             _ => serde_json::Map::new(),
         };
 
-        let request =
-            CallToolRequestParams::new(self.tool.name.clone()).with_arguments(arguments);
+        let request = CallToolRequestParams::new(self.tool.name.clone()).with_arguments(arguments);
 
         let result = self
             .peer

@@ -296,7 +296,10 @@ impl TaskMcpHandler {
         }
     }
 
-    #[tool(name = "task_assign", description = "Assign a task to a user or agent.")]
+    #[tool(
+        name = "task_assign",
+        description = "Assign a task to a user or agent."
+    )]
     async fn task_assign(
         &self,
         Parameters(params): Parameters<TaskAssignParams>,
@@ -364,9 +367,13 @@ impl TaskMcpHandler {
         }
 
         if errors.is_empty() {
-            Ok(CallToolResult::success(vec![Content::text("Labels updated")]))
+            Ok(CallToolResult::success(vec![Content::text(
+                "Labels updated",
+            )]))
         } else {
-            Ok(CallToolResult::error(vec![Content::text(errors.join("; "))]))
+            Ok(CallToolResult::error(vec![Content::text(
+                errors.join("; "),
+            )]))
         }
     }
 
@@ -395,7 +402,9 @@ impl TaskMcpHandler {
             .task_service
             .update_task_status(&params.task_id, task_status)
         {
-            Ok(_) => Ok(CallToolResult::success(vec![Content::text("Status updated")])),
+            Ok(_) => Ok(CallToolResult::success(vec![Content::text(
+                "Status updated",
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
@@ -406,9 +415,7 @@ impl TaskMcpHandler {
         name = "pomodoro_status",
         description = "Get the current pomodoro timer status including mode, time remaining, and daily stats."
     )]
-    async fn pomodoro_status(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn pomodoro_status(&self) -> Result<CallToolResult, McpError> {
         match self.pomodoro_service.get_status() {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -433,9 +440,7 @@ impl TaskMcpHandler {
         name = "pomodoro_pause",
         description = "Pause the currently active pomodoro timer."
     )]
-    async fn pomodoro_pause(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn pomodoro_pause(&self) -> Result<CallToolResult, McpError> {
         match self.pomodoro_service.pause() {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -446,9 +451,7 @@ impl TaskMcpHandler {
         name = "pomodoro_resume",
         description = "Resume a paused pomodoro timer."
     )]
-    async fn pomodoro_resume(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn pomodoro_resume(&self) -> Result<CallToolResult, McpError> {
         match self.pomodoro_service.resume() {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -459,9 +462,7 @@ impl TaskMcpHandler {
         name = "pomodoro_finish",
         description = "Finish or cancel the current pomodoro session."
     )]
-    async fn pomodoro_finish(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn pomodoro_finish(&self) -> Result<CallToolResult, McpError> {
         match self.pomodoro_service.finish() {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -490,7 +491,10 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<PomodoroSaveMemoParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self.pomodoro_service.save_pomodoro_memo(params.id, params.memo) {
+        match self
+            .pomodoro_service
+            .save_pomodoro_memo(params.id, params.memo)
+        {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -518,7 +522,11 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<PomodoroHistoryByDateRangeParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self.pomodoro_service.history_by_date_range(&params.start_date, &params.end_date, params.limit) {
+        match self.pomodoro_service.history_by_date_range(
+            &params.start_date,
+            &params.end_date,
+            params.limit,
+        ) {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -552,9 +560,7 @@ impl TaskMcpHandler {
         name = "settings_get_active_sprite",
         description = "Get the currently active character (sprite) ID."
     )]
-    async fn settings_get_active_sprite(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn settings_get_active_sprite(&self) -> Result<CallToolResult, McpError> {
         match self.settings_service.get_active_sprite_id() {
             Ok(id) => json_success(serde_json::json!({ "sprite_id": id })),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -569,8 +575,13 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<SetActiveSpriteParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self.settings_service.set_active_sprite_id(&params.sprite_id) {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Sprite updated")])),
+        match self
+            .settings_service
+            .set_active_sprite_id(&params.sprite_id)
+        {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+                "Sprite updated",
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }
@@ -579,9 +590,7 @@ impl TaskMcpHandler {
         name = "settings_list_sprites",
         description = "List all available characters (sprites) with their IDs and descriptions."
     )]
-    async fn settings_list_sprites(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn settings_list_sprites(&self) -> Result<CallToolResult, McpError> {
         let sprites = self.settings_service.list_sprites();
         json_success(sprites)
     }
@@ -590,9 +599,7 @@ impl TaskMcpHandler {
         name = "settings_get_theme",
         description = "Get the current theme mode: 'light', 'dark', or 'system'."
     )]
-    async fn settings_get_theme(
-        &self,
-    ) -> Result<CallToolResult, McpError> {
+    async fn settings_get_theme(&self) -> Result<CallToolResult, McpError> {
         match self.settings_service.get_theme_mode() {
             Ok(mode) => json_success(serde_json::json!({ "mode": mode })),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
@@ -608,7 +615,9 @@ impl TaskMcpHandler {
         Parameters(params): Parameters<SetThemeParams>,
     ) -> Result<CallToolResult, McpError> {
         match self.settings_service.set_theme_mode(&params.mode) {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Theme updated")])),
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+                "Theme updated",
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }

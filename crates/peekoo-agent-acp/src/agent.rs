@@ -202,11 +202,7 @@ impl acp::Agent for PeekooAgent {
                         _mcp_handles.push(handle);
                     }
                     Err(e) => {
-                        tracing::error!(
-                            "Failed to connect MCP server {}: {}",
-                            url,
-                            e
-                        );
+                        tracing::error!("Failed to connect MCP server {}: {}", url, e);
                     }
                 }
             }

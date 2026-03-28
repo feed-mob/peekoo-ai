@@ -91,9 +91,7 @@ pub fn summarize_agent_event(event: &AgentEvent) -> Option<String> {
     match event {
         AgentEvent::ToolExecutionStart {
             tool_name, args, ..
-        } => Some(format!(
-            "Running tool `{tool_name}` with args `{args}`..."
-        )),
+        } => Some(format!("Running tool `{tool_name}` with args `{args}`...")),
         AgentEvent::ToolExecutionEnd {
             tool_name,
             result,
@@ -118,7 +116,11 @@ fn tool_output_summary(output: &pi::tools::ToolOutput) -> String {
         .filter_map(|block| {
             if let ContentBlock::Text(text) = block {
                 let trimmed = text.text.trim();
-                if !trimmed.is_empty() { Some(trimmed) } else { None }
+                if !trimmed.is_empty() {
+                    Some(trimmed)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -126,7 +128,11 @@ fn tool_output_summary(output: &pi::tools::ToolOutput) -> String {
         .collect();
 
     if parts.is_empty() {
-        if output.is_error { "tool failed without details".to_string() } else { "ok".to_string() }
+        if output.is_error {
+            "tool failed without details".to_string()
+        } else {
+            "ok".to_string()
+        }
     } else {
         parts.join(" | ")
     }
@@ -152,7 +158,10 @@ mod tests {
         fn new(name: &str) -> (Self, Arc<Mutex<Option<serde_json::Value>>>) {
             let last = Arc::new(Mutex::new(None));
             (
-                Self { name: name.to_string(), last_input: Arc::clone(&last) },
+                Self {
+                    name: name.to_string(),
+                    last_input: Arc::clone(&last),
+                },
                 last,
             )
         }
@@ -160,9 +169,15 @@ mod tests {
 
     #[async_trait]
     impl Tool for EchoTool {
-        fn name(&self) -> &str { &self.name }
-        fn label(&self) -> &str { &self.name }
-        fn description(&self) -> &str { "echo" }
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn label(&self) -> &str {
+            &self.name
+        }
+        fn description(&self) -> &str {
+            "echo"
+        }
         fn parameters(&self) -> serde_json::Value {
             serde_json::json!({
                 "type": "object",

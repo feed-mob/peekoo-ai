@@ -3,12 +3,12 @@
 //! Provides a simplified API for creating sessions, sending prompts,
 //! and switching models at runtime.
 
-use std::path::Path;
 use pi::error::Result;
 use pi::sdk::{
     AgentEvent, AgentSessionHandle, AssistantMessage, ContentBlock, SessionOptions, SubscriptionId,
     create_agent_session,
 };
+use std::path::Path;
 
 use crate::config::AgentServiceConfig;
 
@@ -176,7 +176,10 @@ impl AgentService {
 
         let handle = create_agent_session(options).await?;
 
-        Ok(Self { handle, _mcp_handles: Vec::new() })
+        Ok(Self {
+            handle,
+            _mcp_handles: Vec::new(),
+        })
     }
 
     /// Send a user prompt through the agent loop.

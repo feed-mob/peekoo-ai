@@ -7,16 +7,15 @@
 pub mod plugin_handler {
     use peekoo_plugin_host::PluginRegistry;
     use rmcp::{
-        ErrorData as McpError,
+        ErrorData as McpError, RoleServer, ServerHandler,
         model::{
             CallToolRequestParams, CallToolResult, Content, ListToolsResult, ServerCapabilities,
             ServerInfo, Tool,
         },
         service::RequestContext,
-        RoleServer, ServerHandler,
     };
-    use std::sync::Arc;
     use serde_json::Map;
+    use std::sync::Arc;
 
     const PLUGIN_PREFIX: &str = "plugin__";
 
@@ -82,10 +81,7 @@ pub mod plugin_handler {
         ) -> Result<CallToolResult, McpError> {
             let (plugin_key, tool_name) =
                 parse_namespaced_name(&request.name).ok_or_else(|| {
-                    McpError::invalid_params(
-                        format!("Unknown tool: {}", request.name),
-                        None,
-                    )
+                    McpError::invalid_params(format!("Unknown tool: {}", request.name), None)
                 })?;
 
             let args_json = request

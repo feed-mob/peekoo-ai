@@ -65,17 +65,16 @@ pub async fn start_tcp_server(
         mcp_url_for(local_addr)
     );
 
-    let app = build_router(
-        task_service,
-        pomodoro_service,
-        app_settings_service,
+    let app = build_router(task_service, pomodoro_service, app_settings_service, {
+        #[cfg(feature = "plugin-runtime")]
         {
-            #[cfg(feature = "plugin-runtime")]
-            { plugin_registry }
-            #[cfg(not(feature = "plugin-runtime"))]
-            { None::<()> }
-        },
-    );
+            plugin_registry
+        }
+        #[cfg(not(feature = "plugin-runtime"))]
+        {
+            None::<()>
+        }
+    });
 
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
@@ -98,11 +97,13 @@ fn build_router(
     let settings_service_clone = Arc::clone(&app_settings_service);
     let unified_mcp: StreamableHttpService<TaskMcpHandler, LocalSessionManager> =
         StreamableHttpService::new(
-            move || Ok(TaskMcpHandler::new(
-                Arc::clone(&task_service_clone),
-                Arc::clone(&pomodoro_service_clone),
-                Arc::clone(&settings_service_clone),
-            )),
+            move || {
+                Ok(TaskMcpHandler::new(
+                    Arc::clone(&task_service_clone),
+                    Arc::clone(&pomodoro_service_clone),
+                    Arc::clone(&settings_service_clone),
+                ))
+            },
             LocalSessionManager::default().into(),
             StreamableHttpServerConfig::default(),
         );
@@ -153,38 +154,40 @@ mod tests {
 
         // Create mock services for testing
         let conn = Arc::new(std::sync::Mutex::new(
-            peekoo_persistence_sqlite::setup_test_db()
+            peekoo_persistence_sqlite::setup_test_db(),
         ));
-        
+
         let (notifications, _receiver) = peekoo_notifications::NotificationService::new();
         let badges = peekoo_notifications::PeekBadgeService::new();
         let mood = peekoo_notifications::MoodReactionService::new();
-        
+
         let pomodoro_service = Arc::new(
             peekoo_pomodoro_app::PomodoroAppService::new(
                 conn.clone(),
                 Arc::new(notifications),
                 Arc::new(badges),
                 Arc::new(mood),
-            ).expect("create pomodoro service")
+            )
+            .expect("create pomodoro service"),
         );
-        
+
         let settings_service = Arc::new(
-            peekoo_app_settings::AppSettingsService::with_conn(conn).expect("create settings service")
+            peekoo_app_settings::AppSettingsService::with_conn(conn)
+                .expect("create settings service"),
         );
 
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
             .expect("bind listener");
         let addr = start_tcp_server(
-            Arc::new(NoopTaskService), 
+            Arc::new(NoopTaskService),
             pomodoro_service,
             settings_service,
-            None, 
-            listener
+            None,
+            listener,
         )
-            .await
-            .expect("start server");
+        .await
+        .expect("start server");
 
         let transport = StreamableHttpClientTransport::from_uri(mcp_url_for(addr));
         let client: rmcp::service::RunningService<rmcp::service::RoleClient, ()> =
@@ -204,11 +207,17 @@ mod tests {
                 "missing task tool: {expected}"
             );
         }
-        
+
         // Check pomodoro tools exist
-        assert!(tool_names.iter().any(|n| n == "pomodoro_status"), "missing pomodoro tools");
-        
+        assert!(
+            tool_names.iter().any(|n| n == "pomodoro_status"),
+            "missing pomodoro tools"
+        );
+
         // Check settings tools exist
-        assert!(tool_names.iter().any(|n| n == "settings_get_theme"), "missing settings tools");
+        assert!(
+            tool_names.iter().any(|n| n == "settings_get_theme"),
+            "missing settings tools"
+        );
     }
 }

@@ -89,7 +89,7 @@ pub fn start_sync(
                 plugin_registry,
                 token_for_thread.clone(),
             )
-                .await
+            .await
             {
                 Ok(manager) => {
                     let addr = manager.address();
@@ -167,8 +167,8 @@ impl McpServerManager {
             plugin_registry,
             listener,
         )
-            .await
-            .map_err(|e| format!("Failed to start MCP server: {}", e))?;
+        .await
+        .map_err(|e| format!("Failed to start MCP server: {}", e))?;
 
         tracing::info!(
             "✅ [MCP] Server listening at {}",

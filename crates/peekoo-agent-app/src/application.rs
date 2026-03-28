@@ -942,7 +942,9 @@ impl AgentApplication {
 
         // Connect to plugin tools endpoint (if plugins are enabled)
         if let Some(plugins_url) = crate::mcp_server::get_mcp_plugins_url() {
-            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&plugins_url)) {
+            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(
+                &plugins_url,
+            )) {
                 Ok((tools, handle)) => {
                     tracing::info!(
                         tool_count = tools.len(),
