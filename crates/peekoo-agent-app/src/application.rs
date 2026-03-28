@@ -946,8 +946,9 @@ impl AgentApplication {
         // Connect to the shared MCP server and register all Peekoo-owned tools
         // (task + pomodoro + settings) via the shared HTTP MCP adapter.
         // Native tools are at /mcp, plugin tools are at /mcp/plugins.
+        // Uses 10-second timeout to prevent hanging on connection issues.
         if let Some(mcp_url) = crate::mcp_server::get_mcp_url() {
-            // Connect to native tools endpoint
+            tracing::debug!(url = mcp_url, "Connecting to native MCP endpoint");
             match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&mcp_url)) {
                 Ok((tools, handle)) => {
                     tracing::info!(
@@ -968,6 +969,7 @@ impl AgentApplication {
 
         // Connect to plugin tools endpoint (if plugins are enabled)
         if let Some(plugins_url) = crate::mcp_server::get_mcp_plugins_url() {
+            tracing::debug!(url = plugins_url, "Connecting to plugin MCP endpoint");
             match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(
                 &plugins_url,
             )) {

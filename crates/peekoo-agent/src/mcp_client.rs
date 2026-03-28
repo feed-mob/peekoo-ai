@@ -17,8 +17,9 @@
 //! ```
 
 use std::sync::Arc;
+use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use async_trait::async_trait;
 use pi::error::Result as PiResult;
 use pi::model::{ContentBlock, TextContent};
@@ -39,15 +40,23 @@ type McpPeer = Peer<rmcp::service::RoleClient>;
 ///
 /// The returned [`McpClientHandle`] must be kept alive for as long as the
 /// tools are in use — dropping it cancels the underlying connection.
+///
+/// # Timeouts
+///
+/// This function uses a 10-second timeout for both the initial connection
+/// and the tool listing operation to prevent indefinite hangs.
 pub async fn connect_http_mcp_tools(url: &str) -> Result<(Vec<Box<dyn Tool>>, McpClientHandle)> {
     ensure_rustls_provider();
 
-    let transport = StreamableHttpClientTransport::from_uri(url.to_string());
-    let client: rmcp::service::RunningService<rmcp::service::RoleClient, ()> =
-        ().serve(transport).await?;
+    tracing::debug!(url, "Connecting to MCP server");
 
-    let peer = client.peer().clone();
-    let mcp_tools = peer.list_all_tools().await?;
+    // Wrap connection in timeout to prevent hanging
+    let connect_result = tokio::time::timeout(Duration::from_secs(10), connect_to_mcp_server(url))
+        .await
+        .context("MCP connection timed out after 10 seconds")?;
+
+    let (client, peer, mcp_tools) =
+        connect_result.with_context(|| format!("Failed to connect to MCP server at {url}"))?;
 
     tracing::info!(url, tool_count = mcp_tools.len(), "Connected to MCP server");
 
@@ -63,6 +72,32 @@ pub async fn connect_http_mcp_tools(url: &str) -> Result<(Vec<Box<dyn Tool>>, Mc
     };
 
     Ok((tools, handle))
+}
+
+async fn connect_to_mcp_server(
+    url: &str,
+) -> Result<(
+    rmcp::service::RunningService<rmcp::service::RoleClient, ()>,
+    McpPeer,
+    Vec<McpTool>,
+)> {
+    let transport = StreamableHttpClientTransport::from_uri(url.to_string());
+
+    tracing::debug!(url, "Creating MCP transport");
+    let client: rmcp::service::RunningService<rmcp::service::RoleClient, ()> = ()
+        .serve(transport)
+        .await
+        .context("Failed to establish MCP transport connection")?;
+
+    let peer = client.peer().clone();
+
+    tracing::debug!(url, "Listing MCP tools");
+    let mcp_tools = peer
+        .list_all_tools()
+        .await
+        .context("Failed to list MCP tools")?;
+
+    Ok((client, peer, mcp_tools))
 }
 
 // ── Handle ────────────────────────────────────────────────────────────────────
