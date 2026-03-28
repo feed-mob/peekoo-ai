@@ -60,7 +60,7 @@ fn format_error_chain(err: &dyn std::error::Error) -> String {
 }
 
 pub struct AgentApplication {
-    agent: Mutex<Option<AgentService>>,
+    agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
     app_settings: Arc<AppSettingsService>,
     task_service: SqliteTaskService,
@@ -150,7 +150,7 @@ impl AgentApplication {
             crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
 
         Ok(Self {
-            agent: Mutex::new(None),
+            agent: Arc::new(Mutex::new(None)),
             settings,
             app_settings,
             task_service: sqlite_task_service,
@@ -939,54 +939,13 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let mut service = runtime
+        let service = runtime
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
 
-        // Connect to the shared MCP server and register all Peekoo-owned tools
-        // (task + pomodoro + settings) via the shared HTTP MCP adapter.
-        // Native tools are at /mcp, plugin tools are at /mcp/plugins.
-        // Uses 10-second timeout to prevent hanging on connection issues.
-        if let Some(mcp_url) = crate::mcp_server::get_mcp_url() {
-            tracing::debug!(url = mcp_url, "Connecting to native MCP endpoint");
-            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&mcp_url)) {
-                Ok((tools, handle)) => {
-                    tracing::info!(
-                        tool_count = tools.len(),
-                        url = mcp_url,
-                        "Registered native MCP tools for chat session"
-                    );
-                    service.register_native_tools(tools);
-                    service.store_mcp_handle(handle);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to connect to native MCP server {mcp_url}: {e}");
-                }
-            }
-        } else {
-            tracing::warn!("MCP server not running — chat session has no Peekoo tools");
-        }
-
-        // Connect to plugin tools endpoint (if plugins are enabled)
-        if let Some(plugins_url) = crate::mcp_server::get_mcp_plugins_url() {
-            tracing::debug!(url = plugins_url, "Connecting to plugin MCP endpoint");
-            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(
-                &plugins_url,
-            )) {
-                Ok((tools, handle)) => {
-                    tracing::info!(
-                        tool_count = tools.len(),
-                        url = plugins_url,
-                        "Registered plugin MCP tools for chat session"
-                    );
-                    service.register_native_tools(tools);
-                    service.store_mcp_handle(handle);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to connect to plugin MCP server {plugins_url}: {e}");
-                }
-            }
-        }
+        // Spawn MCP connection in background to avoid blocking chat startup
+        // The agent will respond immediately, and tools will be added when ready
+        self.spawn_mcp_connection_task();
 
         Ok((service, settings_version))
     }
@@ -1064,6 +1023,88 @@ impl AgentApplication {
             follow_up_trigger,
             task_change_callback,
         )
+    }
+
+    /// Spawn a background task to connect to MCP servers and add tools asynchronously.
+    /// This prevents blocking the chat startup while waiting for MCP connections.
+    fn spawn_mcp_connection_task(&self) {
+        let agent_weak = Arc::downgrade(&self.agent);
+
+        // Get URLs - if None, no need to spawn task
+        let native_url = crate::mcp_server::get_mcp_url();
+        let plugins_url = crate::mcp_server::get_mcp_plugins_url();
+
+        if native_url.is_none() && plugins_url.is_none() {
+            return;
+        }
+
+        tokio::spawn(async move {
+            // Helper to connect and add tools
+            async fn try_connect_and_add_tools(
+                url: &str,
+                agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
+                endpoint_type: &str,
+            ) {
+                tracing::debug!(
+                    url = url,
+                    endpoint = endpoint_type,
+                    "Connecting to MCP endpoint"
+                );
+
+                match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
+                    Ok((tools, handle)) => {
+                        tracing::info!(
+                            tool_count = tools.len(),
+                            url = url,
+                            endpoint = endpoint_type,
+                            "MCP tools connected, registering with agent"
+                        );
+
+                        // Try to get the agent and add tools
+                        if let Some(agent_arc) = agent_weak.upgrade() {
+                            if let Ok(mut guard) = agent_arc.lock() {
+                                if let Some(ref mut service) = *guard {
+                                    service.register_native_tools(tools);
+                                    service.store_mcp_handle(handle);
+                                    tracing::info!(
+                                        endpoint = endpoint_type,
+                                        "MCP tools registered successfully"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        endpoint = endpoint_type,
+                                        "Agent service not available for tool registration"
+                                    );
+                                }
+                            } else {
+                                tracing::warn!(
+                                    endpoint = endpoint_type,
+                                    "Could not lock agent mutex to register tools"
+                                );
+                            }
+                        } else {
+                            tracing::warn!(
+                                endpoint = endpoint_type,
+                                "Agent dropped before MCP tools could be registered"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
+                    }
+                }
+            }
+
+            // Connect to native tools
+            if let Some(url) = native_url {
+                try_connect_and_add_tools(&url, &agent_weak, "native").await;
+            }
+
+            // Connect to plugin tools
+            if let Some(url) = plugins_url {
+                try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
+            }
+        });
     }
 }
 

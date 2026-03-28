@@ -25,19 +25,22 @@ The easiest way to explore the MCP tools is using [mcporter](https://github.com/
 # Install mcporter if you haven't already
 npm install -g mcporter
 
-# From this directory, use the provided config
-cd crates/peekoo-mcp-server
+# Add the MCP server to your mcporter config (when Peekoo app is running)
+mcporter config add peekoo-native http://127.0.0.1:49152/mcp --type http
+mcporter config add peekoo-plugins http://127.0.0.1:49152/mcp/plugins --type http
+
+# View tool documentation
 mcporter list peekoo-native --schema    # View native tool docs
 mcporter list peekoo-plugins --schema   # View plugin tool docs
 
-# Or call tools directly (when Peekoo app is running)
+# Call tools directly
 mcporter call peekoo-native.pomodoro_status
 mcporter call peekoo-native.task_list
 ```
 
-**Config file**: [`mcporter.json`](./mcporter.json) - Pre-configured server definitions for native and plugin tools.
+**Config file**: [`mcporter.json`](./mcporter.json) - Example server definitions for reference.
 
-**Note**: mcporter auto-discovers configs from `./config/mcporter.json` or the current directory. Copy/link this crate's `mcporter.json` to your project root or use `--config` flag.
+**Note**: mcporter auto-discovers configs from `./config/mcporter.json` in the current directory. To use the provided config, run mcporter commands from this crate's directory, or copy `mcporter.json` to your project's `config/mcporter.json`.
 
 ## Native Tools at `/mcp`
 

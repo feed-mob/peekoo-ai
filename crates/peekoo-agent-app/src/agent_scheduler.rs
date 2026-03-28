@@ -600,7 +600,7 @@ mod tests {
         let servers = build_session_mcp_servers(Some(([127, 0, 0, 1], 49152).into()));
         let serialized = serde_json::to_value(&servers).expect("serialize mcp servers");
         assert_eq!(serialized[0]["type"], "http");
-        assert_eq!(serialized[0]["name"], "peekoo-task-tools");
+        assert_eq!(serialized[0]["name"], "peekoo-native-tools");
         assert_eq!(serialized[0]["url"], "http://127.0.0.1:49152/mcp");
     }
 
