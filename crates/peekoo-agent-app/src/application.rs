@@ -271,7 +271,7 @@ impl AgentApplication {
             tracing::error!(
                 error = %err,
                 debug = ?err,
-                sources = %format_error_chain(err),
+                sources = %format_error_chain(err.as_ref()),
                 conversation_generation = generation,
                 message_len = message.chars().count(),
                 "Agent prompt failed"
@@ -823,13 +823,18 @@ impl AgentApplication {
                 }
                 return Ok(Some(LastSessionDto {
                     session_path: String::new(),
+                    last_message_timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64,
                     messages: dtos,
                 }));
             }
         }
 
         // Slow path: load from disk.
-        let result = conversation::load_last_session(&self.session_dir).await?;
+        let result = conversation::find_last_session(&self.session_dir)
+            .map_err(|e| format!("Failed to load last session: {e}"))?;
 
         // Stash the path so the next prompt resumes this session.
         if let Some(ref dto) = result
@@ -977,9 +982,7 @@ impl AgentApplication {
         if let Ok(config) = self.resolved_config()
             && let Ok((resolved, _)) = self.settings.to_agent_config(config)
         {
-            if let Some(provider) = resolved.provider {
-                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), provider));
-            }
+            env.push(("PEEKOO_AGENT_PROVIDER".to_string(), resolved.provider.id()));
             if let Some(model) = resolved.model {
                 env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
             }
@@ -1039,71 +1042,75 @@ impl AgentApplication {
         }
 
         tokio::spawn(async move {
+            // TODO: Re-enable MCP tool connection after migration
             // Helper to connect and add tools
-            async fn try_connect_and_add_tools(
-                url: &str,
-                agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
-                endpoint_type: &str,
-            ) {
-                tracing::debug!(
-                    url = url,
-                    endpoint = endpoint_type,
-                    "Connecting to MCP endpoint"
-                );
+            // async fn try_connect_and_add_tools(
+            //     url: &str,
+            //     agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
+            //     endpoint_type: &str,
+            // ) {
+            //     tracing::debug!(
+            //         url = url,
+            //         endpoint = endpoint_type,
+            //         "Connecting to MCP endpoint"
+            //     );
+            //
+            //     match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
+            //         Ok((tools, handle)) => {
+            //             tracing::info!(
+            //                 tool_count = tools.len(),
+            //                 url = url,
+            //                 endpoint = endpoint_type,
+            //                 "MCP tools connected, registering with agent"
+            //             );
+            //
+            //             // Try to get the agent and add tools
+            //             if let Some(agent_arc) = agent_weak.upgrade() {
+            //                 if let Ok(mut guard) = agent_arc.lock() {
+            //                     if let Some(ref mut service) = *guard {
+            //                         service.register_native_tools(tools);
+            //                         service.store_mcp_handle(handle);
+            //                         tracing::info!(
+            //                             endpoint = endpoint_type,
+            //                             "MCP tools registered successfully"
+            //                         );
+            //                     } else {
+            //                         tracing::warn!(
+            //                             endpoint = endpoint_type,
+            //                             "Agent service not available for tool registration"
+            //                         );
+            //                     }
+            //                 } else {
+            //                     tracing::warn!(
+            //                         endpoint = endpoint_type,
+            //                         "Could not lock agent mutex to register tools"
+            //                     );
+            //                 }
+            //             } else {
+            //                 tracing::warn!(
+            //                     endpoint = endpoint_type,
+            //                     "Agent dropped before MCP tools could be registered"
+            //                 );
+            //             }
+            //         }
+            //         Err(e) => {
+            //             tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
+            //         }
+            //     }
+            // }
+            //
+            // // Connect to native tools
+            // if let Some(url) = native_url {
+            //     try_connect_and_add_tools(&url, &agent_weak, "native").await;
+            // }
+            //
+            // // Connect to plugin tools
+            // if let Some(url) = plugins_url {
+            //     try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
+            // }
 
-                match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
-                    Ok((tools, handle)) => {
-                        tracing::info!(
-                            tool_count = tools.len(),
-                            url = url,
-                            endpoint = endpoint_type,
-                            "MCP tools connected, registering with agent"
-                        );
-
-                        // Try to get the agent and add tools
-                        if let Some(agent_arc) = agent_weak.upgrade() {
-                            if let Ok(mut guard) = agent_arc.lock() {
-                                if let Some(ref mut service) = *guard {
-                                    service.register_native_tools(tools);
-                                    service.store_mcp_handle(handle);
-                                    tracing::info!(
-                                        endpoint = endpoint_type,
-                                        "MCP tools registered successfully"
-                                    );
-                                } else {
-                                    tracing::warn!(
-                                        endpoint = endpoint_type,
-                                        "Agent service not available for tool registration"
-                                    );
-                                }
-                            } else {
-                                tracing::warn!(
-                                    endpoint = endpoint_type,
-                                    "Could not lock agent mutex to register tools"
-                                );
-                            }
-                        } else {
-                            tracing::warn!(
-                                endpoint = endpoint_type,
-                                "Agent dropped before MCP tools could be registered"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
-                    }
-                }
-            }
-
-            // Connect to native tools
-            if let Some(url) = native_url {
-                try_connect_and_add_tools(&url, &agent_weak, "native").await;
-            }
-
-            // Connect to plugin tools
-            if let Some(url) = plugins_url {
-                try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
-            }
+            tracing::info!("MCP tool registration temporarily disabled during pi migration");
+            let _ = (native_url, plugins_url, agent_weak); // Silence unused warnings
         });
     }
 }

@@ -1,3 +1,5 @@
+pub mod agent_provider_commands;
+pub mod agent_provider_service;
 pub mod agent_scheduler;
 pub mod application;
 pub mod conversation;
@@ -10,6 +12,12 @@ pub mod task_parser;
 mod task_runtime_service;
 mod workspace_bootstrap;
 
+pub use agent_provider_commands::*;
+pub use agent_provider_service::{
+    AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallationMethod,
+    InstallationMethodInfo, PrerequisitesCheck, ProviderConfig, ProviderInfo, ProviderStatus,
+    TestConnectionResult,
+};
 pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};
 pub use peekoo_app_settings::{AppSettingsService, SpriteInfo};

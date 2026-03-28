@@ -3,11 +3,13 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
-    OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, ProviderAuthDto,
-    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto, TaskEventDto,
+    InstallProviderRequest, InstallProviderResponse, InstallationMethod, LastSessionDto,
+    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
+    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
+    PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
+    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
+    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
+    TestConnectionResult,
 };
 use serde::Serialize;
 use std::env;
@@ -296,6 +298,188 @@ async fn agent_provider_config_set(
     state: State<'_, AgentState>,
 ) -> Result<ProviderConfigDto, String> {
     state.app.set_provider_config(req)
+}
+
+// ============================================================================
+// Agent Provider Management Commands
+// ============================================================================
+
+#[tauri::command]
+async fn list_agent_providers(
+    _state: State<'_, AgentState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    // TODO: Integrate with AgentProviderService from peekoo-agent-app
+    // For now, return mock data
+    Ok(vec![
+        serde_json::json!({
+            "id": "provider_pi_acp",
+            "providerId": "pi-acp",
+            "displayName": "Peekoo Agent (pi-acp)",
+            "description": "Built-in ACP agent with full tool support",
+            "isBundled": true,
+            "installationMethod": "bundled",
+            "isInstalled": true,
+            "isDefault": true,
+            "status": "ready",
+            "availableMethods": [{"id": "bundled", "name": "Bundled", "description": "Pre-installed", "isAvailable": true, "requiresSetup": false}],
+            "config": {}
+        }),
+        serde_json::json!({
+            "id": "provider_opencode",
+            "providerId": "opencode",
+            "displayName": "OpenCode",
+            "description": "Zed's OpenAI-compatible agent",
+            "isBundled": false,
+            "installationMethod": "npx",
+            "isInstalled": false,
+            "isDefault": false,
+            "status": "not_installed",
+            "availableMethods": [
+                {"id": "npx", "name": "npx", "description": "Install via npx", "isAvailable": true, "requiresSetup": false},
+                {"id": "binary", "name": "Binary", "description": "Download binary", "isAvailable": true, "requiresSetup": false, "sizeMb": 25.0}
+            ],
+            "config": {}
+        }),
+    ])
+}
+
+#[tauri::command]
+async fn install_agent_provider(
+    _req: InstallProviderRequest,
+    _state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(InstallProviderResponse {
+        success: true,
+        message: "Provider installed successfully".to_string(),
+        requires_restart: false,
+    })
+}
+
+#[tauri::command]
+async fn uninstall_agent_provider(
+    _provider_id: String,
+    _state: State<'_, AgentState>,
+) -> Result<(), String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_default_provider(
+    _provider_id: String,
+    _state: State<'_, AgentState>,
+) -> Result<(), String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_provider_config(
+    _provider_id: String,
+    _state: State<'_, AgentState>,
+) -> Result<ProviderConfigDto, String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(ProviderConfigDto {
+        provider_id: "pi-acp".to_string(),
+        base_url: "".to_string(),
+        api: "".to_string(),
+        auth_header: false,
+    })
+}
+
+#[tauri::command]
+async fn update_provider_config(
+    _provider_id: String,
+    _config: ProviderConfigDto,
+    _state: State<'_, AgentState>,
+) -> Result<(), String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(())
+}
+
+#[tauri::command]
+async fn test_provider_connection(
+    _provider_id: String,
+    _state: State<'_, AgentState>,
+) -> Result<TestConnectionResult, String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(TestConnectionResult {
+        success: true,
+        message: "Connection successful".to_string(),
+        available_models: vec!["claude-3.5-sonnet".to_string()],
+        provider_version: Some("1.0.0".to_string()),
+    })
+}
+
+#[tauri::command]
+async fn check_installation_prerequisites(
+    method: String,
+    _state: State<'_, AgentState>,
+) -> Result<PrerequisitesCheck, String> {
+    // Check if Node.js is installed for npx method
+    let check = if method == "npx" {
+        let has_node = std::process::Command::new("node")
+            .arg("--version")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+        if has_node {
+            PrerequisitesCheck {
+                available: true,
+                missing_components: vec![],
+                instructions: None,
+            }
+        } else {
+            PrerequisitesCheck {
+                available: false,
+                missing_components: vec!["Node.js".to_string()],
+                instructions: Some("Please install Node.js from https://nodejs.org/".to_string()),
+            }
+        }
+    } else {
+        PrerequisitesCheck {
+            available: true,
+            missing_components: vec![],
+            instructions: None,
+        }
+    };
+
+    Ok(check)
+}
+
+#[tauri::command]
+async fn add_custom_provider(
+    _name: String,
+    _description: Option<String>,
+    _command: String,
+    _args: Vec<String>,
+    _working_dir: Option<String>,
+    _state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(serde_json::json!({
+        "id": "provider_custom_test",
+        "providerId": "provider_custom_test",
+        "displayName": "Custom Provider",
+        "description": "Custom ACP agent",
+        "isBundled": false,
+        "installationMethod": "custom",
+        "isInstalled": true,
+        "isDefault": false,
+        "status": "ready",
+        "config": {}
+    }))
+}
+
+#[tauri::command]
+async fn remove_custom_provider(
+    _provider_id: String,
+    _state: State<'_, AgentState>,
+) -> Result<(), String> {
+    // TODO: Integrate with AgentProviderService
+    Ok(())
 }
 
 #[tauri::command]
@@ -1119,6 +1303,17 @@ pub fn run() {
             agent_provider_auth_set_api_key,
             agent_provider_auth_clear,
             agent_provider_config_set,
+            // Agent Provider Management
+            list_agent_providers,
+            install_agent_provider,
+            uninstall_agent_provider,
+            set_default_provider,
+            get_provider_config,
+            update_provider_config,
+            test_provider_connection,
+            check_installation_prerequisites,
+            add_custom_provider,
+            remove_custom_provider,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,
