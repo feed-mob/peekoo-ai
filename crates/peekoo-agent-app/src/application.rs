@@ -87,84 +87,21 @@ impl ManagedAgent {
         self.service.messages_json()
     }
 
-    fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
-        self.service.extend_plugin_tools(provider);
-    }
-
     fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
         self.service.register_native_tools(tools);
     }
 
-    fn session_path(&self) -> Option<PathBuf> {
-        self.service.session_path()
-    }
-}
-
-    if chain.is_empty() {
-        "<none>".to_string()
-    } else {
-        chain.join(" -> ")
-||||||| parent of a8e03e9 (fix(agent): stabilize windows tls runtime)
-=======
-pub fn initialize_process_tls() {
-    peekoo_agent::ensure_rustls_provider();
-}
-
-struct ManagedAgent {
-    runtime: asupersync::runtime::Runtime,
-    service: AgentService,
-}
-
-impl ManagedAgent {
-    fn new(config: AgentServiceConfig) -> Result<Self, String> {
-        let reactor = asupersync::runtime::reactor::create_reactor()
-            .map_err(|e| format!("Reactor error: {e}"))?;
-        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-            .with_reactor(reactor)
-            .build()
-            .map_err(|e| format!("Runtime error: {e}"))?;
-        let service = runtime
-            .block_on(AgentService::new(config))
-            .map_err(|e| format!("Agent init error: {e}"))?;
-
-        Ok(Self { runtime, service })
-    }
-
-    fn prompt<F>(&mut self, message: &str, on_event: F) -> pi::error::Result<String>
-    where
-        F: Fn(AgentEvent) + Send + Sync + 'static,
-    {
-        self.runtime.block_on(self.service.prompt(message, on_event))
-    }
-
-    fn set_model(&mut self, provider: &str, model: &str) -> pi::error::Result<()> {
-        self.runtime.block_on(self.service.set_model(provider, model))
-    }
-
-    fn model(&self) -> (String, String) {
-        self.service.model()
-    }
-
-    fn messages_json(&self) -> Vec<serde_json::Value> {
-        self.service.messages_json()
-    }
-
-    fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
-        self.service.extend_plugin_tools(provider);
-    }
-
-    fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
-        self.service.register_native_tools(tools);
+    fn store_mcp_handle(&mut self, handle: peekoo_agent::mcp_client::McpClientHandle) {
+        self.service.store_mcp_handle(handle);
     }
 
     fn session_path(&self) -> Option<PathBuf> {
         self.service.session_path()
->>>>>>> a8e03e9 (fix(agent): stabilize windows tls runtime)
     }
 }
 
 pub struct AgentApplication {
-    agent: Mutex<Option<ManagedAgent>>,
+    agent: Arc<Mutex<Option<ManagedAgent>>>,
     settings: SettingsService,
     app_settings: Arc<AppSettingsService>,
     task_service: SqliteTaskService,
@@ -254,7 +191,7 @@ impl AgentApplication {
             crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
 
         Ok(Self {
-            agent: Mutex::new(None),
+            agent: Arc::new(Mutex::new(None)),
             settings,
             app_settings,
             task_service: sqlite_task_service,
@@ -1050,7 +987,7 @@ impl AgentApplication {
             config.session_path = guard.take();
         }
 
-        let mut service = ManagedAgent::new(config)?;
+        let service = ManagedAgent::new(config)?;
 
         // Spawn MCP connection in background to avoid blocking chat startup
         // The agent will respond immediately, and tools will be added when ready
@@ -1151,7 +1088,7 @@ impl AgentApplication {
             // Helper to connect and add tools
             async fn try_connect_and_add_tools(
                 url: &str,
-                agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
+                agent_weak: &std::sync::Weak<Mutex<Option<ManagedAgent>>>,
                 endpoint_type: &str,
             ) {
                 tracing::debug!(

@@ -5887,11 +5887,7 @@ dependencies = [
  "async-trait",
  "peekoo-paths",
  "pi_agent_rust",
-<<<<<<< HEAD
  "rmcp",
-||||||| parent of a8e03e9 (fix(agent): stabilize windows tls runtime)
-=======
->>>>>>> a8e03e9 (fix(agent): stabilize windows tls runtime)
  "rustls",
  "serde_json",
  "tokio",

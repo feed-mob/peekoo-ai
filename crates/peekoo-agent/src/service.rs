@@ -4,7 +4,6 @@
 //! and switching models at runtime.
 
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::OnceLock;
 
 use pi::error::Result;
