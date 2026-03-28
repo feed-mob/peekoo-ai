@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -26,6 +27,10 @@ use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
+};
+use crate::plugin_localization::{
+    PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, localize_config_field,
+    load_plugin_locale_json, localize_panel_title, localize_plugin_summary, localize_store_plugin,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
 use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
@@ -519,6 +524,7 @@ impl AgentApplication {
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
+        let app_language = self.get_app_language_or_en();
         let plugins = self
             .plugin_registry
             .discover()
@@ -532,7 +538,11 @@ impl AgentApplication {
                         .plugin_registry
                         .is_plugin_enabled(&manifest.plugin.key)
                         .map_err(|e| e.to_string())?;
-                    Ok(manifest_to_summary(&manifest, plugin_dir, enabled))
+                    let mut summary = manifest_to_summary(&manifest, plugin_dir.clone(), enabled);
+                    if let Some(locale) = load_plugin_locale(&plugin_dir, &app_language) {
+                        localize_plugin_summary(&mut summary, &locale);
+                    }
+                    Ok(summary)
                 },
             )
             .collect::<Result<Vec<_>, String>>()?;
@@ -540,11 +550,27 @@ impl AgentApplication {
     }
 
     pub fn list_plugin_panels(&self) -> Result<Vec<PluginPanelDto>, String> {
+        let app_language = self.get_app_language_or_en();
+        let discovered = self.plugin_registry.discover();
+        let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
+        let mut locale_cache: HashMap<String, Option<PluginLocaleBundle>> = HashMap::new();
+
         Ok(self
             .plugin_registry
             .all_ui_panels()
             .into_iter()
-            .map(|(plugin_key, panel)| PluginPanelDto::from_panel(plugin_key, panel))
+            .map(|(plugin_key, panel)| {
+                let mut dto = PluginPanelDto::from_panel(plugin_key.clone(), panel);
+                if let Some(plugin_dir) = plugin_dirs.get(&plugin_key) {
+                    let locale = locale_cache
+                        .entry(plugin_key.clone())
+                        .or_insert_with(|| load_plugin_locale(plugin_dir, &app_language));
+                    if let Some(locale) = locale.as_ref() {
+                        localize_panel_title(&mut dto, locale);
+                    }
+                }
+                dto
+            })
             .collect())
     }
 
@@ -629,14 +655,25 @@ impl AgentApplication {
         &self,
         plugin_key: &str,
     ) -> Result<Vec<PluginConfigFieldDto>, String> {
+        let app_language = self.get_app_language_or_en();
+        let plugin_dir = self.plugin_dir_for_key(plugin_key);
+        let locale = plugin_dir
+            .as_ref()
+            .and_then(|dir| load_plugin_locale(dir, &app_language));
+
         self.plugin_registry
             .config_schema(plugin_key)
             .map(|fields| {
                 fields
                     .into_iter()
-                    .map(|field| PluginConfigFieldDto {
-                        plugin_key: plugin_key.to_string(),
-                        field,
+                    .map(|mut field| {
+                        if let Some(locale) = locale.as_ref() {
+                            localize_config_field(&mut field, locale);
+                        }
+                        PluginConfigFieldDto {
+                            plugin_key: plugin_key.to_string(),
+                            field,
+                        }
                     })
                     .collect()
             })
@@ -714,6 +751,18 @@ impl AgentApplication {
                     &format!("<script>{js}</script>"),
                 );
             }
+        }
+
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_root) = Self::plugin_root_for_panel_entry(&path)
+            && let Some(locale_json) = load_plugin_locale_json(&plugin_root, &app_language)
+        {
+            let locale_literal = serde_json::to_string(&locale_json)
+                .map_err(|e| format!("Serialize plugin locale json error: {e}"))?;
+            let lang_literal = serde_json::to_string(&app_language)
+                .map_err(|e| format!("Serialize plugin language error: {e}"))?;
+            let script = Self::plugin_locale_bootstrap_script(&locale_literal, &lang_literal);
+            html = Self::inject_panel_bootstrap_script(&html, &script);
         }
 
         Ok(html)
@@ -807,21 +856,49 @@ impl AgentApplication {
     }
 
     pub fn store_catalog(&self) -> Result<Vec<StorePluginDto>, String> {
-        self.plugin_store.fetch_catalog(&self.plugin_registry)
+        let app_language = self.get_app_language_or_en();
+        let mut catalog = self.plugin_store.fetch_catalog(&self.plugin_registry)?;
+        let discovered = self.plugin_registry.discover();
+        let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
+
+        for plugin in &mut catalog {
+            if !plugin.installed {
+                continue;
+            }
+            if let Some(plugin_dir) = plugin_dirs.get(&plugin.plugin_key)
+                && let Some(locale) = load_plugin_locale(plugin_dir, &app_language)
+            {
+                localize_store_plugin(plugin, &locale);
+            }
+        }
+
+        Ok(catalog)
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        let result = self
+        let mut result = self
             .plugin_store
             .install_plugin(plugin_key, &self.plugin_registry)?;
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
+            && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
+        {
+            localize_store_plugin(&mut result, &locale);
+        }
         self.invalidate_agent_for_plugin_change();
         Ok(result)
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        let result = self
+        let mut result = self
             .plugin_store
             .update_plugin(plugin_key, &self.plugin_registry)?;
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
+            && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
+        {
+            localize_store_plugin(&mut result, &locale);
+        }
         self.invalidate_agent_for_plugin_change();
         Ok(result)
     }
@@ -890,6 +967,79 @@ impl AgentApplication {
         service.register_native_tools(task_tools);
 
         Ok((service, settings_version))
+    }
+
+    fn get_app_language_or_en(&self) -> String {
+        self.get_app_language().unwrap_or_else(|_| "en".to_string())
+    }
+
+    fn plugin_dir_for_key(&self, plugin_key: &str) -> Option<PathBuf> {
+        self.plugin_registry
+            .discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
+    }
+
+    fn plugin_root_for_panel_entry(entry_path: &Path) -> Option<PathBuf> {
+        let mut cursor = entry_path.parent();
+        while let Some(dir) = cursor {
+            if dir.join("peekoo-plugin.toml").is_file() {
+                return Some(dir.to_path_buf());
+            }
+            cursor = dir.parent();
+        }
+        None
+    }
+
+    fn plugin_locale_bootstrap_script(locale_literal: &str, lang_literal: &str) -> String {
+        format!(
+            r#"<script>(function() {{
+  const locale = {locale_literal};
+  const language = {lang_literal};
+  const hasOwn = Object.prototype.hasOwnProperty;
+  const getByPath = (obj, path) => path.split(".").reduce((acc, key) => (
+    acc && hasOwn.call(acc, key) ? acc[key] : undefined
+  ), obj);
+  const t = (key, fallback = "") => {{
+    const value = getByPath(locale, key);
+    return typeof value === "string" ? value : (fallback || key);
+  }};
+  window.__PEEKOO_PLUGIN_LOCALE__ = locale;
+  window.__PEEKOO_PLUGIN_LANG__ = language;
+  window.peekooPluginT = t;
+  const apply = (attr, setter) => {{
+    document.querySelectorAll(`[${{attr}}]`).forEach((el) => {{
+      const key = el.getAttribute(attr);
+      if (!key) return;
+      const value = t(key, "");
+      if (!value) return;
+      setter(el, value);
+    }});
+  }};
+  const bootstrap = () => {{
+    apply("data-i18n", (el, value) => {{ el.textContent = value; }});
+    apply("data-i18n-placeholder", (el, value) => {{ el.setAttribute("placeholder", value); }});
+    apply("data-i18n-title", (el, value) => {{ el.setAttribute("title", value); }});
+  }};
+  if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", bootstrap, {{ once: true }});
+  }} else {{
+    bootstrap();
+  }}
+}})();</script>"#
+        )
+    }
+
+    fn inject_panel_bootstrap_script(html: &str, script: &str) -> String {
+        if html.contains("</head>") {
+            return html.replacen("</head>", &format!("{script}</head>"), 1);
+        }
+        if html.contains("</body>") {
+            return html.replacen("</body>", &format!("{script}</body>"), 1);
+        }
+        format!("{script}{html}")
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {

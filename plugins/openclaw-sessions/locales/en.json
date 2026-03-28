@@ -1,0 +1,103 @@
+{
+  "plugin": {
+    "name": "OpenClaw Sessions",
+    "description": "Manage OpenClaw sessions with configuration and session list view"
+  },
+  "panels": {
+    "panel-openclaw-sessions": {
+      "title": "OpenClaw Sessions"
+    }
+  },
+  "config": {
+    "fields": {
+      "default_page_size": {
+        "label": "Default Page Size",
+        "description": "Number of sessions to show per page",
+        "options": {
+          "5": "5",
+          "10": "10",
+          "20": "20"
+        }
+      }
+    }
+  },
+  "ui": {
+    "status": {
+      "connected": "Connected",
+      "disconnected": "Disconnected"
+    },
+    "actions": {
+      "refreshSessions": "Refresh Sessions",
+      "connectionSettings": "Connection Settings",
+      "viewChat": "View Chat",
+      "send": "Send",
+      "cancel": "Cancel",
+      "saveConfiguration": "Save Configuration",
+      "saving": "Saving..."
+    },
+    "search": {
+      "placeholder": "Search sessions..."
+    },
+    "table": {
+      "kind": "Kind",
+      "key": "Key",
+      "age": "Age",
+      "model": "Model",
+      "tokens": "Tokens (ctx%)",
+      "session": "Session",
+      "noSessionsFound": "No sessions found"
+    },
+    "pagination": {
+      "showing": "Showing {{start}}-{{end}} of {{total}}",
+      "pageOf": "Page {{page}} of {{pages}}",
+      "first": "First",
+      "prev": "Prev",
+      "next": "Next",
+      "last": "Last"
+    },
+    "chat": {
+      "title": "OpenClaw Session Chat",
+      "close": "Close",
+      "inputPlaceholder": "Type a message and press Enter",
+      "empty": "No messages in this session yet.",
+      "loading": "Loading...",
+      "you": "You",
+      "assistant": "Assistant",
+      "typing": "Typing..."
+    },
+    "configModal": {
+      "title": "Connection Settings",
+      "websocketUrl": "WebSocket URL",
+      "websocketHint": "WebSocket address of your OpenClaw server",
+      "authentication": "Authentication",
+      "token": "Token",
+      "tokenPlaceholder": "Enter API token",
+      "password": "Password",
+      "passwordPlaceholder": "Enter password",
+      "tokenOrPasswordHint": "Provide at least one of Token or Password"
+    },
+    "messages": {
+      "tauriUnavailable": "Tauri IPC not available",
+      "wsRequired": "WebSocket URL is required.",
+      "tokenOrPasswordRequired": "Provide at least a Token or Password.",
+      "configurationSaved": "Configuration saved.",
+      "failedToSave": "Failed to save: {{error}}",
+      "noConfigurationFound": "No configuration found. Please set up your connection.",
+      "cannotConnect": "Cannot connect to OpenClaw server. Is it running?",
+      "authFailed": "Authentication failed. Check your token or password.",
+      "connectionTimedOut": "Connection timed out.",
+      "errorPrefix": "Error: {{error}}"
+    },
+    "time": {
+      "justNow": "just now",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    },
+    "kind": {
+      "direct": "direct",
+      "proxy": "proxy",
+      "unknown": "unknown"
+    }
+  }
+}

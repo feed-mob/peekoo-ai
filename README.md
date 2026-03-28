@@ -113,6 +113,19 @@ desktop-ui  ->  desktop-tauri  ->  peekoo-agent-app  ->  peekoo-agent
 
 `desktop-tauri` is a transport layer only. All business logic, persistence, and auth orchestration live in the Rust crates behind `peekoo-agent-app`.
 
+## Plugin I18n Convention
+
+For store-installed plugins, localization is now standardized:
+
+1. Plugin ships locale files in `locales/*.json` (at least `en.json`).
+2. Host loads `locales/<app_language>.json`, falls back to `locales/en.json`.
+3. If no locale file exists, manifest defaults are used.
+
+Recommended references for plugin authors:
+
+- [`docs/plugin-authoring.md`](docs/plugin-authoring.md) (`Plugin locales` section)
+- [`plugins/openclaw-sessions/`](plugins/openclaw-sessions) as a complete example (`locales/` + panel i18n usage)
+
 ## License
 
 MIT
