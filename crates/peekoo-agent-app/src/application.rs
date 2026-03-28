@@ -44,6 +44,21 @@ use crate::workspace_bootstrap::ensure_agent_workspace;
 
 type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
 
+fn format_error_chain(err: &dyn std::error::Error) -> String {
+    let mut chain = Vec::new();
+    let mut current = err.source();
+    while let Some(source) = current {
+        chain.push(source.to_string());
+        current = source.source();
+    }
+
+    if chain.is_empty() {
+        "<none>".to_string()
+    } else {
+        chain.join(" -> ")
+    }
+}
+
 pub struct AgentApplication {
     agent: Mutex<Option<AgentService>>,
     settings: SettingsService,
@@ -251,6 +266,17 @@ impl AgentApplication {
             .map_err(|e| format!("Runtime error: {e}"))?;
 
         let result = runtime.block_on(agent.prompt(message, on_event));
+
+        if let Err(err) = &result {
+            tracing::error!(
+                error = %err,
+                debug = ?err,
+                sources = %format_error_chain(err),
+                conversation_generation = generation,
+                message_len = message.chars().count(),
+                "Agent prompt failed"
+            );
+        }
 
         {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -1127,7 +1153,29 @@ mod tests {
     use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
-    use super::{install_discovered_plugins, should_restore_agent};
+    use super::{format_error_chain, install_discovered_plugins, should_restore_agent};
+    use std::error::Error as StdError;
+    use std::fmt;
+
+    #[derive(Debug)]
+    struct TestError {
+        message: &'static str,
+        source: Option<Box<dyn StdError + Send + Sync>>,
+    }
+
+    impl fmt::Display for TestError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.message)
+        }
+    }
+
+    impl StdError for TestError {
+        fn source(&self) -> Option<&(dyn StdError + 'static)> {
+            self.source
+                .as_deref()
+                .map(|err| err as &(dyn StdError + 'static))
+        }
+    }
 
     struct NoopTaskService;
 
@@ -1267,6 +1315,32 @@ mod tests {
             Arc::new(MoodReactionService::new()),
             Arc::new(NoopTaskService),
         ))
+    }
+
+    #[test]
+    fn format_error_chain_returns_none_for_error_without_sources() {
+        let err = TestError {
+            message: "top",
+            source: None,
+        };
+
+        assert_eq!(format_error_chain(&err), "<none>");
+    }
+
+    #[test]
+    fn format_error_chain_flattens_nested_sources() {
+        let err = TestError {
+            message: "top",
+            source: Some(Box::new(TestError {
+                message: "middle",
+                source: Some(Box::new(TestError {
+                    message: "root",
+                    source: None,
+                })),
+            })),
+        };
+
+        assert_eq!(format_error_chain(&err), "middle -> root");
     }
 
     #[test]
