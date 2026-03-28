@@ -17,6 +17,28 @@ This crate provides an MCP server that runs embedded in the Peekoo application a
 
 **Design Rationale**: Native Peekoo tools are unified at a single endpoint. Plugin tools remain separate as they require a different runtime (WASM) and are third-party extensions.
 
+## Quick Start with mcporter
+
+The easiest way to explore the MCP tools is using [mcporter](https://github.com/feed-mob/mcporter):
+
+```bash
+# Install mcporter if you haven't already
+npm install -g mcporter
+
+# From this directory, use the provided config
+cd crates/peekoo-mcp-server
+mcporter list peekoo-native --schema    # View native tool docs
+mcporter list peekoo-plugins --schema   # View plugin tool docs
+
+# Or call tools directly (when Peekoo app is running)
+mcporter call peekoo-native.pomodoro_status
+mcporter call peekoo-native.task_list
+```
+
+**Config file**: [`mcporter.json`](./mcporter.json) - Pre-configured server definitions for native and plugin tools.
+
+**Note**: mcporter auto-discovers configs from `./config/mcporter.json` or the current directory. Copy/link this crate's `mcporter.json` to your project root or use `--config` flag.
+
 ## Native Tools at `/mcp`
 
 ### Task Tools (9)
