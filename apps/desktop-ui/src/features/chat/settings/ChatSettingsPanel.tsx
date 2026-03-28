@@ -6,6 +6,7 @@ import { ModelSelector } from "./ModelSelector";
 import { ProviderSelector } from "./ProviderSelector";
 import { SkillToggleList } from "./SkillToggleList";
 import { useChatSettings } from "./useChatSettings";
+import { useAgentProviders } from "@/hooks/useAgentProviders";
 
 interface ChatSettingsPanelProps {
   onClose: () => void;
@@ -24,16 +25,17 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     refresh,
     updateSettings,
     saveApiKey,
-    setProviderConfig,
     clearAuth,
     startOauth,
     pollOauthStatus,
   } = useChatSettings();
+  const { getRuntimeDefaults } = useAgentProviders();
 
   const [apiKey, setApiKey] = useState("");
   const [maxIterationsInput, setMaxIterationsInput] = useState("50");
-  const [compatBaseUrl, setCompatBaseUrl] = useState("");
   const [customModelInput, setCustomModelInput] = useState("");
+  const [runtimeProviderSummary, setRuntimeProviderSummary] = useState<string | null>(null);
+  const [runtimeModelSummary, setRuntimeModelSummary] = useState<string | null>(null);
 
   useEffect(() => {
     void refresh();
@@ -48,15 +50,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     if (!settings) return undefined;
     return settings.providerAuth.find((item) => item.providerId === settings.activeProviderId);
   }, [settings]);
-
-  const activeProviderConfig = useMemo(() => {
-    if (!settings) return undefined;
-    return settings.providerConfigs.find((item) => item.providerId === settings.activeProviderId);
-  }, [settings]);
-
-  const isCompatibleProvider =
-    settings?.activeProviderId === "openai-compatible" ||
-    settings?.activeProviderId === "anthropic-compatible";
+  const supportsAuth = (selectedProvider?.authModes.length ?? 0) > 0;
 
   const effectiveSkills = useMemo(() => {
     if (!settings || !catalog) return [];
@@ -78,9 +72,36 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
 
   useEffect(() => {
     if (!settings) return;
-    setCompatBaseUrl(activeProviderConfig?.baseUrl ?? "");
     setCustomModelInput(settings.activeModelId);
-  }, [activeProviderConfig?.baseUrl, settings?.activeModelId, settings?.activeProviderId]);
+  }, [settings?.activeModelId, settings?.activeProviderId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!settings?.activeProviderId) {
+      setRuntimeProviderSummary(null);
+      setRuntimeModelSummary(null);
+      return;
+    }
+
+    void getRuntimeDefaults(settings.activeProviderId)
+      .then(({ provider, model }) => {
+        if (!cancelled) {
+          setRuntimeProviderSummary(provider?.displayName ?? provider?.providerId ?? null);
+          setRuntimeModelSummary(model?.displayName ?? model?.modelId ?? null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeProviderSummary(null);
+          setRuntimeModelSummary(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getRuntimeDefaults, settings?.activeProviderId]);
 
   if (isLoading && !settings) {
     return <div className="text-sm text-text-muted">Loading settings...</div>;
@@ -101,13 +122,22 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   return (
     <div className="max-h-[56vh] space-y-4 overflow-y-auto rounded-lg border border-glass-border bg-glass/50 p-3 pr-2">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-text-primary">Agent Settings</h3>
+        <h3 className="text-sm font-semibold text-text-primary">Runtime Settings</h3>
         <Button size="sm" variant="ghost" onClick={onClose}>
           Close
         </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-3">
+        {(runtimeProviderSummary || runtimeModelSummary) && (
+          <div className="rounded-md border border-glass-border bg-space-surface/40 px-3 py-2 text-xs text-text-muted">
+            <div>
+              Runtime default LLM provider: {runtimeProviderSummary ?? "Not configured"}
+            </div>
+            <div>Runtime default model: {runtimeModelSummary ?? "Not configured"}</div>
+          </div>
+        )}
+
         <ProviderSelector
           providers={catalog.providers}
           value={settings.activeProviderId}
@@ -145,23 +175,6 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
           </label>
         )}
 
-        {isCompatibleProvider && (
-          <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            Base URL
-            <Input
-              type="text"
-              value={compatBaseUrl}
-              onChange={(event) => setCompatBaseUrl(event.target.value)}
-              onBlur={() => {
-                if (!compatBaseUrl.trim()) return;
-                void setProviderConfig(settings.activeProviderId, compatBaseUrl.trim());
-              }}
-              placeholder="https://your-provider.example/v1"
-              className="bg-space-deep border-glass-border"
-            />
-          </label>
-        )}
-
         <label className="flex flex-col gap-1 text-sm text-text-secondary">
           Max Tool Iterations
           <Input
@@ -185,32 +198,34 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
         </label>
       </div>
 
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-text-primary">Provider Authentication</p>
-        <AuthSection
-          provider={selectedProvider}
-          auth={authState}
-          apiKey={apiKey}
-          setApiKey={setApiKey}
-          oauthFlowRunning={oauthFlowId !== null}
-          oauthStatus={oauthStatus}
-          oauthError={oauthError}
-          onSaveApiKey={async () => {
-            if (!apiKey.trim()) return;
-            await saveApiKey(settings.activeProviderId, apiKey.trim());
-            setApiKey("");
-          }}
-          onClearAuth={async () => {
-            await clearAuth(settings.activeProviderId);
-          }}
-          onStartOauth={async () => {
-            await startOauth(settings.activeProviderId);
-          }}
-          onCheckOauth={async () => {
-            await pollOauthStatus();
-          }}
-        />
-      </div>
+      {supportsAuth && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-text-primary">Runtime Authentication</p>
+          <AuthSection
+            provider={selectedProvider}
+            auth={authState}
+            apiKey={apiKey}
+            setApiKey={setApiKey}
+            oauthFlowRunning={oauthFlowId !== null}
+            oauthStatus={oauthStatus}
+            oauthError={oauthError}
+            onSaveApiKey={async () => {
+              if (!apiKey.trim()) return;
+              await saveApiKey(settings.activeProviderId, apiKey.trim());
+              setApiKey("");
+            }}
+            onClearAuth={async () => {
+              await clearAuth(settings.activeProviderId);
+            }}
+            onStartOauth={async () => {
+              await startOauth(settings.activeProviderId);
+            }}
+            onCheckOauth={async () => {
+              await pollOauthStatus();
+            }}
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-text-primary">Skills</p>

@@ -6,8 +6,9 @@ import { Plus, AlertCircle, RefreshCw, Sparkles } from "lucide-react";
 import { ProviderCard } from "./ProviderCard";
 import { InstallProviderDialog } from "./InstallProviderDialog";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
+import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
-import { type ProviderInfo, type InstallationMethod } from "@/types/agent-provider";
+import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
 
 export function AgentProviderPanel() {
   const {
@@ -21,28 +22,33 @@ export function AgentProviderPanel() {
     installProvider,
     setAsDefault,
     uninstallProvider,
-    getConfig,
     updateConfig,
     testConnection,
     checkPrerequisites,
+    getRuntimeDefaults,
+    listRuntimeProviders,
+    saveRuntimeProvider,
+    listRuntimeModels,
+    saveRuntimeModel,
     addCustomProvider,
   } = useAgentProviders();
 
-  const [selectedProvider, setSelectedProvider] = useState<ProviderInfo | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<RuntimeInfo | null>(null);
   const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
   const [isConfigureDialogOpen, setIsConfigureDialogOpen] = useState(false);
+  const [isAddCustomDialogOpen, setIsAddCustomDialogOpen] = useState(false);
 
   // Load providers on mount
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const handleInstall = (provider: ProviderInfo) => {
+  const handleInstall = (provider: RuntimeInfo) => {
     setSelectedProvider(provider);
     setIsInstallDialogOpen(true);
   };
 
-  const handleConfigure = (provider: ProviderInfo) => {
+  const handleConfigure = (provider: RuntimeInfo) => {
     setSelectedProvider(provider);
     setIsConfigureDialogOpen(true);
   };
@@ -64,8 +70,8 @@ export function AgentProviderPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary">Agent Providers</h2>
-          <p className="text-sm text-text-muted">Manage AI agent providers for your tasks</p>
+          <h2 className="text-lg font-semibold text-text-primary">ACP Runtimes</h2>
+          <p className="text-sm text-text-muted">Manage ACP agents and their LLM settings</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
@@ -74,12 +80,10 @@ export function AgentProviderPanel() {
           </Button>
           <Button
             size="sm"
-            onClick={() => {
-              // TODO: Add custom provider dialog
-            }}
+            onClick={() => setIsAddCustomDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Custom
+            Add Runtime
           </Button>
         </div>
       </div>
@@ -92,15 +96,15 @@ export function AgentProviderPanel() {
         </Alert>
       )}
 
-      {/* Active Provider */}
+      {/* Active Runtime */}
       {defaultProvider && (
         <Card className="border-primary/50 bg-primary/5">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4 text-primary" />
-              Active Provider
+              Active Runtime
             </CardTitle>
-            <CardDescription>The provider currently used for new conversations</CardDescription>
+            <CardDescription>The ACP runtime currently used for new conversations</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
@@ -118,12 +122,12 @@ export function AgentProviderPanel() {
         </Card>
       )}
 
-      {/* Installed Providers */}
+      {/* Installed Runtimes */}
       <div>
-        <h3 className="mb-3 text-sm font-medium text-text-secondary">Installed Providers</h3>
+        <h3 className="mb-3 text-sm font-medium text-text-secondary">Installed Runtimes</h3>
         {installedProviders.length === 0 ? (
           <div className="rounded-lg border border-dashed border-glass-border p-8 text-center">
-            <p className="text-sm text-text-muted">No providers installed yet</p>
+            <p className="text-sm text-text-muted">No runtimes installed yet</p>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -132,6 +136,7 @@ export function AgentProviderPanel() {
                 key={provider.providerId}
                 provider={provider}
                 isInstalling={installingProvider === provider.providerId}
+                getRuntimeDefaults={getRuntimeDefaults}
                 onSetDefault={setAsDefault}
                 onInstall={handleInstall}
                 onConfigure={handleConfigure}
@@ -142,16 +147,17 @@ export function AgentProviderPanel() {
         )}
       </div>
 
-      {/* Available Providers */}
+      {/* Available Runtimes */}
       {availableProviders.length > 0 && (
         <div>
-          <h3 className="mb-3 text-sm font-medium text-text-secondary">Available Providers</h3>
+          <h3 className="mb-3 text-sm font-medium text-text-secondary">Available Runtimes</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             {availableProviders.map((provider) => (
               <ProviderCard
                 key={provider.providerId}
                 provider={provider}
                 isInstalling={installingProvider === provider.providerId}
+                getRuntimeDefaults={getRuntimeDefaults}
                 onSetDefault={setAsDefault}
                 onInstall={handleInstall}
                 onConfigure={handleConfigure}
@@ -182,7 +188,26 @@ export function AgentProviderPanel() {
           setSelectedProvider(null);
         }}
         onSave={updateConfig}
+        onListRuntimeProviders={listRuntimeProviders}
+        onSaveRuntimeProvider={saveRuntimeProvider}
+        onListRuntimeModels={listRuntimeModels}
+        onSaveRuntimeModel={saveRuntimeModel}
         onTest={testConnection}
+      />
+
+      <AddCustomRuntimeDialog
+        isOpen={isAddCustomDialogOpen}
+        onClose={() => setIsAddCustomDialogOpen(false)}
+        onSubmit={async ({ name, description, command, args, workingDir }) => {
+          await addCustomProvider({
+            name,
+            description,
+            command,
+            args,
+            workingDir,
+          });
+          await refresh();
+        }}
       />
     </div>
   );

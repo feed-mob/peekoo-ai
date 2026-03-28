@@ -8,8 +8,8 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Stdio;
-use tokio::process::Command;
+use std::process::Command;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 /// Provider installation method
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,8 +41,9 @@ pub enum ProviderStatus {
     NeedsSetup,
 }
 
-/// Provider information DTO
+/// ACP runtime information DTO.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderInfo {
     pub id: String,
     pub provider_id: String,
@@ -58,8 +59,11 @@ pub struct ProviderInfo {
     pub config: ProviderConfig,
 }
 
+pub type RuntimeInfo = ProviderInfo;
+
 /// Installation method information
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallationMethodInfo {
     pub id: InstallationMethod,
     pub name: String,
@@ -71,30 +75,40 @@ pub struct InstallationMethodInfo {
 
 /// Provider configuration
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderConfig {
     pub default_model: Option<String>,
     pub env_vars: HashMap<String, String>,
     pub custom_args: Vec<String>,
 }
 
+pub type RuntimeConfig = ProviderConfig;
+
 /// Request to install a provider
 #[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallProviderRequest {
     pub provider_id: String,
     pub method: InstallationMethod,
     pub custom_path: Option<String>,
 }
 
+pub type InstallRuntimeRequest = InstallProviderRequest;
+
 /// Response from provider installation
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallProviderResponse {
     pub success: bool,
     pub message: String,
     pub requires_restart: bool,
 }
 
+pub type InstallRuntimeResponse = InstallProviderResponse;
+
 /// Test connection result
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestConnectionResult {
     pub success: bool,
     pub message: String,
@@ -104,15 +118,66 @@ pub struct TestConnectionResult {
 
 /// Prerequisites check result
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PrerequisitesCheck {
     pub available: bool,
     pub missing_components: Vec<String>,
     pub instructions: Option<String>,
 }
 
+pub type RuntimeStatus = ProviderStatus;
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeLlmProviderInfo {
+    pub id: String,
+    pub runtime_id: String,
+    pub provider_id: String,
+    pub display_name: Option<String>,
+    pub api_type: String,
+    pub base_url: Option<String>,
+    pub config: HashMap<String, String>,
+    pub is_enabled: bool,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeModelInfo {
+    pub id: String,
+    pub runtime_id: String,
+    pub provider_id: Option<String>,
+    pub model_id: String,
+    pub display_name: Option<String>,
+    pub is_enabled: bool,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeLlmProviderUpsert {
+    pub provider_id: String,
+    pub display_name: Option<String>,
+    pub api_type: String,
+    pub base_url: Option<String>,
+    pub config: HashMap<String, String>,
+    pub is_enabled: bool,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeModelUpsert {
+    pub provider_id: Option<String>,
+    pub model_id: String,
+    pub display_name: Option<String>,
+    pub is_enabled: bool,
+    pub is_default: bool,
+}
+
 /// Service for managing agent providers
 pub struct AgentProviderService {
-    conn: Connection,
+    conn: Arc<Mutex<Connection>>,
     data_dir: PathBuf,
 }
 
@@ -128,17 +193,26 @@ impl AgentProviderService {
         // Ensure built-in providers are registered
         Self::seed_builtin_providers(&conn)?;
 
-        Ok(Self { conn, data_dir })
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+            data_dir,
+        })
     }
 
     /// Get a reference to the connection for testing purposes
-    /// 
+    ///
     /// # Warning
     /// This is intended for testing only. Direct SQL access may bypass
     /// business logic and invariants.
     #[cfg(test)]
-    pub fn test_conn(&self) -> &Connection {
-        &self.conn
+    pub fn test_conn(&self) -> MutexGuard<'_, Connection> {
+        self.conn.lock().expect("provider test connection lock")
+    }
+
+    fn conn(&self) -> anyhow::Result<MutexGuard<'_, Connection>> {
+        self.conn
+            .lock()
+            .map_err(|e| anyhow::anyhow!("provider db lock poisoned: {e}"))
     }
 
     fn ensure_tables(conn: &Connection) -> anyhow::Result<()> {
@@ -164,6 +238,63 @@ impl AgentProviderService {
                 updated_at TEXT NOT NULL,
                 config_json TEXT,
                 env_vars_json TEXT
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS agent_runtimes (
+                id TEXT PRIMARY KEY,
+                runtime_type TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                description TEXT,
+                command TEXT NOT NULL,
+                args_json TEXT NOT NULL DEFAULT '[]',
+                installation_method TEXT NOT NULL,
+                is_bundled INTEGER NOT NULL DEFAULT 0,
+                is_installed INTEGER NOT NULL DEFAULT 0,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                status TEXT NOT NULL DEFAULT 'not_installed',
+                status_message TEXT,
+                install_hint TEXT,
+                config_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS runtime_llm_providers (
+                id TEXT PRIMARY KEY,
+                runtime_id TEXT NOT NULL,
+                provider_id TEXT NOT NULL,
+                display_name TEXT,
+                api_type TEXT NOT NULL,
+                base_url TEXT,
+                config_json TEXT NOT NULL DEFAULT '{}',
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (runtime_id) REFERENCES agent_runtimes(id) ON DELETE CASCADE
+            )",
+            [],
+        )?;
+
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS runtime_models (
+                id TEXT PRIMARY KEY,
+                runtime_id TEXT NOT NULL,
+                provider_id TEXT,
+                model_id TEXT NOT NULL,
+                display_name TEXT,
+                is_enabled INTEGER NOT NULL DEFAULT 1,
+                is_default INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (runtime_id) REFERENCES agent_runtimes(id) ON DELETE CASCADE
             )",
             [],
         )?;
@@ -196,6 +327,23 @@ impl AgentProviderService {
                 &now,
             ],
         )?;
+        Self::upsert_runtime_record(
+            conn,
+            "provider_pi_acp",
+            "pi-acp",
+            "Peekoo Agent (pi-acp)",
+            "Built-in ACP agent with full tool support",
+            "pi-acp",
+            "[]",
+            "bundled",
+            true,
+            true,
+            true,
+            "ready",
+            Some("Bundled with Peekoo"),
+            &ProviderConfig::default(),
+            &now,
+        )?;
 
         // Insert opencode as available provider
         conn.execute(
@@ -218,6 +366,23 @@ impl AgentProviderService {
                 "not_installed",
                 &now,
             ],
+        )?;
+        Self::upsert_runtime_record(
+            conn,
+            "provider_opencode",
+            "opencode",
+            "OpenCode",
+            "OpenAI-compatible agent from Zed",
+            "npx",
+            "[\"opencode-ai\"]",
+            "npx",
+            false,
+            false,
+            false,
+            "not_installed",
+            Some("npm i -g opencode-ai"),
+            &ProviderConfig::default(),
+            &now,
         )?;
 
         // Insert claude-code as available provider
@@ -242,6 +407,23 @@ impl AgentProviderService {
                 &now,
             ],
         )?;
+        Self::upsert_runtime_record(
+            conn,
+            "provider_claude_code",
+            "claude-code",
+            "Claude Code",
+            "Anthropic's Claude Code agent",
+            "npx",
+            "[\"@zed-industries/claude-code-acp\"]",
+            "npx",
+            false,
+            false,
+            false,
+            "not_installed",
+            Some("npm i -g @zed-industries/claude-code-acp"),
+            &ProviderConfig::default(),
+            &now,
+        )?;
 
         // Insert codex as available provider
         conn.execute(
@@ -265,13 +447,86 @@ impl AgentProviderService {
                 &now,
             ],
         )?;
+        Self::upsert_runtime_record(
+            conn,
+            "provider_codex",
+            "codex",
+            "Codex",
+            "Zed's Codex agent for GitHub integration",
+            "npx",
+            "[\"@zed-industries/codex-acp\"]",
+            "npx",
+            false,
+            false,
+            false,
+            "not_installed",
+            Some("npm i -g @zed-industries/codex-acp"),
+            &ProviderConfig::default(),
+            &now,
+        )?;
 
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn upsert_runtime_record(
+        conn: &Connection,
+        id: &str,
+        runtime_type: &str,
+        display_name: &str,
+        description: &str,
+        command: &str,
+        args_json: &str,
+        installation_method: &str,
+        is_bundled: bool,
+        is_installed: bool,
+        is_default: bool,
+        status: &str,
+        install_hint: Option<&str>,
+        config: &ProviderConfig,
+        now: &str,
+    ) -> anyhow::Result<()> {
+        conn.execute(
+            "INSERT OR REPLACE INTO agent_runtimes (
+                id, runtime_type, display_name, description, command, args_json,
+                installation_method, is_bundled, is_installed, is_default, is_enabled,
+                status, status_message, install_hint, config_json, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, NULL, ?12, ?13, ?14, ?14)",
+            params![
+                id,
+                runtime_type,
+                display_name,
+                description,
+                command,
+                args_json,
+                installation_method,
+                if is_bundled { 1 } else { 0 },
+                if is_installed { 1 } else { 0 },
+                if is_default { 1 } else { 0 },
+                status,
+                install_hint,
+                serde_json::to_string(config)?,
+                now,
+            ],
+        )?;
+
+        Ok(())
+    }
+
+    fn runtime_row_id(conn: &Connection, runtime_id: &str) -> anyhow::Result<String> {
+        conn.query_row(
+            "SELECT id FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1 LIMIT 1",
+            params![runtime_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow::anyhow!("Unknown runtime: {runtime_id}"))
+    }
+
     /// List all providers (installed + available)
     pub fn list_providers(&self) -> anyhow::Result<Vec<ProviderInfo>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
             "SELECT 
                 id, provider_id, display_name, description, is_bundled,
                 installation_method, is_installed, is_default, status,
@@ -324,8 +579,52 @@ impl AgentProviderService {
         Ok(providers)
     }
 
+    /// List all ACP runtimes (installed + available).
+    pub fn list_runtimes(&self) -> anyhow::Result<Vec<RuntimeInfo>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT 
+                id, runtime_type, display_name, description, is_bundled,
+                installation_method, is_installed, is_default, status,
+                status_message, command, args_json, config_json
+            FROM agent_runtimes
+            ORDER BY is_installed DESC, is_bundled DESC, display_name ASC",
+        )?;
+
+        let runtimes = stmt
+            .query_map([], |row| {
+                let runtime_type: String = row.get(1)?;
+                let is_bundled: i64 = row.get(4)?;
+                let is_installed: i64 = row.get(6)?;
+                let is_default: i64 = row.get(7)?;
+                let available_methods = Self::get_available_methods(&runtime_type, is_bundled != 0);
+                let config: ProviderConfig = row
+                    .get::<_, Option<String>>(12)?
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
+                Ok(RuntimeInfo {
+                    id: row.get(0)?,
+                    provider_id: runtime_type.clone(),
+                    display_name: row.get(2)?,
+                    description: row.get(3)?,
+                    is_bundled: is_bundled != 0,
+                    installation_method: Self::parse_installation_method(&row.get::<_, String>(5)?),
+                    is_installed: is_installed != 0,
+                    is_default: is_default != 0,
+                    status: Self::parse_provider_status(&row.get::<_, String>(8)?),
+                    status_message: row.get(9)?,
+                    available_methods,
+                    config,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(runtimes)
+    }
+
     /// Get available installation methods for a provider
-    fn get_available_methods(provider_id: &str, is_bundled: bool) -> Vec<InstallationMethodInfo> {
+    fn get_available_methods(_provider_id: &str, is_bundled: bool) -> Vec<InstallationMethodInfo> {
         let mut methods = Vec::new();
 
         if is_bundled {
@@ -374,7 +673,8 @@ impl AgentProviderService {
 
     /// Get the default provider
     pub fn get_default_provider(&self) -> anyhow::Result<Option<ProviderInfo>> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
             "SELECT 
                 id, provider_id, display_name, description, is_bundled,
                 installation_method, is_installed, is_default, status,
@@ -418,37 +718,109 @@ impl AgentProviderService {
         Ok(provider)
     }
 
+    /// Get the default ACP runtime.
+    pub fn get_default_runtime(&self) -> anyhow::Result<Option<RuntimeInfo>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT 
+                id, runtime_type, display_name, description, is_bundled,
+                installation_method, is_installed, is_default, status,
+                status_message, command, args_json, config_json
+            FROM agent_runtimes
+            WHERE is_default = 1
+            LIMIT 1",
+        )?;
+
+        let runtime = stmt
+            .query_row([], |row| {
+                let runtime_type: String = row.get(1)?;
+                let is_bundled: i64 = row.get(4)?;
+                let is_installed: i64 = row.get(6)?;
+                let is_default: i64 = row.get(7)?;
+                let available_methods = Self::get_available_methods(&runtime_type, is_bundled != 0);
+                let config: ProviderConfig = row
+                    .get::<_, Option<String>>(12)?
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
+                Ok(RuntimeInfo {
+                    id: row.get(0)?,
+                    provider_id: runtime_type,
+                    display_name: row.get(2)?,
+                    description: row.get(3)?,
+                    is_bundled: is_bundled != 0,
+                    installation_method: Self::parse_installation_method(&row.get::<_, String>(5)?),
+                    is_installed: is_installed != 0,
+                    is_default: is_default != 0,
+                    status: Self::parse_provider_status(&row.get::<_, String>(8)?),
+                    status_message: row.get(9)?,
+                    available_methods,
+                    config,
+                })
+            })
+            .optional()?;
+
+        Ok(runtime)
+    }
+
     /// Set the default provider
     pub fn set_default_provider(&self, provider_id: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
 
         // Clear existing default
-        self.conn.execute(
+        conn.execute(
             "UPDATE agent_providers SET is_default = 0, updated_at = ?1",
             params![&now],
         )?;
 
         // Set new default
-        self.conn.execute(
+        conn.execute(
             "UPDATE agent_providers SET is_default = 1, updated_at = ?1 WHERE provider_id = ?2",
+            params![&now, provider_id],
+        )?;
+        conn.execute(
+            "UPDATE agent_runtimes SET is_default = 0, updated_at = ?1",
+            params![&now],
+        )?;
+        conn.execute(
+            "UPDATE agent_runtimes SET is_default = 1, updated_at = ?1 WHERE runtime_type = ?2",
             params![&now, provider_id],
         )?;
 
         Ok(())
     }
 
+    /// Set the default ACP runtime.
+    pub fn set_default_runtime(&self, runtime_id: &str) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE agent_runtimes SET is_default = 0, updated_at = ?1",
+            params![&now],
+        )?;
+        conn.execute(
+            "UPDATE agent_runtimes SET is_default = 1, updated_at = ?1 WHERE runtime_type = ?2",
+            params![&now, runtime_id],
+        )?;
+        self.set_default_provider(runtime_id)
+    }
+
     /// Install a provider
-    pub async fn install_provider(
+    pub fn install_provider(
         &self,
         req: InstallProviderRequest,
     ) -> anyhow::Result<InstallProviderResponse> {
         let now = chrono::Utc::now().to_rfc3339();
 
         // Update provider to installing status
-        self.conn.execute(
-            "UPDATE agent_providers SET status = 'installing', updated_at = ?1 WHERE provider_id = ?2",
-            params![&now, &req.provider_id],
-        )?;
+        {
+            let conn = self.conn()?;
+            conn.execute(
+                "UPDATE agent_providers SET status = 'installing', updated_at = ?1 WHERE provider_id = ?2",
+                params![&now, &req.provider_id],
+            )?;
+        }
 
         // Perform installation based on method
         let result = match req.method {
@@ -459,11 +831,11 @@ impl AgentProviderService {
             InstallationMethod::Npx => {
                 // For npx, we just need to verify the package exists
                 // Actual installation happens on first use
-                Self::verify_npx_package(&req.provider_id).await
+                Self::verify_npx_package(&req.provider_id)
             }
             InstallationMethod::Binary => {
                 // Download binary
-                Self::download_provider_binary(&self.data_dir, &req.provider_id).await
+                Self::download_provider_binary(&self.data_dir, &req.provider_id)
             }
             InstallationMethod::Custom => {
                 // Validate custom path
@@ -483,7 +855,8 @@ impl AgentProviderService {
         // Update status based on result
         let (success, message, requires_restart) = match result {
             Ok(()) => {
-                self.conn.execute(
+                let conn = self.conn()?;
+                conn.execute(
                     "UPDATE agent_providers SET 
                         is_installed = 1, 
                         status = 'ready',
@@ -500,7 +873,8 @@ impl AgentProviderService {
                 )
             }
             Err(e) => {
-                self.conn.execute(
+                let conn = self.conn()?;
+                conn.execute(
                     "UPDATE agent_providers SET 
                         status = 'error',
                         status_message = ?1,
@@ -519,8 +893,35 @@ impl AgentProviderService {
         })
     }
 
+    /// Install an ACP runtime.
+    pub fn install_runtime(
+        &self,
+        req: InstallRuntimeRequest,
+    ) -> anyhow::Result<InstallRuntimeResponse> {
+        let response = self.install_provider(req.clone())?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE agent_runtimes
+             SET is_installed = ?1, status = ?2, status_message = ?3, updated_at = ?4
+             WHERE runtime_type = ?5",
+            params![
+                if response.success { 1 } else { 0 },
+                if response.success { "ready" } else { "error" },
+                if response.success {
+                    None::<String>
+                } else {
+                    Some(response.message.clone())
+                },
+                &now,
+                &req.provider_id,
+            ],
+        )?;
+        Ok(response)
+    }
+
     /// Verify npx package exists
-    async fn verify_npx_package(provider_id: &str) -> anyhow::Result<()> {
+    fn verify_npx_package(provider_id: &str) -> anyhow::Result<()> {
         // Map provider to npm package name
         let package = match provider_id {
             "pi-acp" => "pi-acp",
@@ -533,10 +934,7 @@ impl AgentProviderService {
         // Try to get package info from npm registry
         let output = Command::new("npm")
             .args(["view", package, "version"])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .output()
-            .await
             .map_err(|e| anyhow::anyhow!("Failed to run npm: {}", e))?;
 
         if !output.status.success() {
@@ -548,7 +946,7 @@ impl AgentProviderService {
     }
 
     /// Download provider binary
-    async fn download_provider_binary(data_dir: &PathBuf, provider_id: &str) -> anyhow::Result<()> {
+    fn download_provider_binary(data_dir: &PathBuf, provider_id: &str) -> anyhow::Result<()> {
         // In production, this would download from a release URL
         // For now, just verify the directory exists
         let provider_dir = data_dir.join("providers").join(provider_id);
@@ -565,9 +963,10 @@ impl AgentProviderService {
     /// Uninstall a provider
     pub fn uninstall_provider(&self, provider_id: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
 
         // Check if it's the default
-        let is_default: i64 = self.conn.query_row(
+        let is_default: i64 = conn.query_row(
             "SELECT is_default FROM agent_providers WHERE provider_id = ?1",
             params![provider_id],
             |row| row.get(0),
@@ -580,7 +979,7 @@ impl AgentProviderService {
         }
 
         // Update status
-        self.conn.execute(
+        conn.execute(
             "UPDATE agent_providers SET 
                 is_installed = 0,
                 status = 'not_installed',
@@ -593,9 +992,24 @@ impl AgentProviderService {
         Ok(())
     }
 
+    /// Uninstall an ACP runtime.
+    pub fn uninstall_runtime(&self, runtime_id: &str) -> anyhow::Result<()> {
+        self.uninstall_provider(runtime_id)?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE agent_runtimes
+             SET is_installed = 0, status = 'not_installed', status_message = NULL, updated_at = ?1
+             WHERE runtime_type = ?2",
+            params![&now, runtime_id],
+        )?;
+        Ok(())
+    }
+
     /// Get provider configuration
     pub fn get_provider_config(&self, provider_id: &str) -> anyhow::Result<ProviderConfig> {
-        let config_json: Option<String> = self.conn.query_row(
+        let conn = self.conn()?;
+        let config_json: Option<String> = conn.query_row(
             "SELECT config_json FROM agent_providers WHERE provider_id = ?1",
             params![provider_id],
             |row| row.get(0),
@@ -616,18 +1030,209 @@ impl AgentProviderService {
     ) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         let config_json = serde_json::to_string(config)?;
+        let conn = self.conn()?;
 
-        self.conn.execute(
+        conn.execute(
             "UPDATE agent_providers SET config_json = ?1, updated_at = ?2 WHERE provider_id = ?3",
             params![config_json, &now, provider_id],
+        )?;
+        conn.execute(
+            "UPDATE agent_runtimes SET config_json = ?1, updated_at = ?2 WHERE runtime_type = ?3",
+            params![serde_json::to_string(config)?, &now, provider_id],
         )?;
 
         Ok(())
     }
 
+    pub fn list_runtime_llm_providers(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<Vec<RuntimeLlmProviderInfo>> {
+        let conn = self.conn()?;
+        let runtime_row_id = Self::runtime_row_id(&conn, runtime_id)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, runtime_id, provider_id, display_name, api_type, base_url, config_json,
+                    is_enabled, is_default
+             FROM runtime_llm_providers
+             WHERE runtime_id = ?1
+             ORDER BY is_default DESC, provider_id ASC",
+        )?;
+
+        let items = stmt
+            .query_map(params![runtime_row_id], |row| {
+                let config_json: String = row.get(6)?;
+                Ok(RuntimeLlmProviderInfo {
+                    id: row.get(0)?,
+                    runtime_id: row.get(1)?,
+                    provider_id: row.get(2)?,
+                    display_name: row.get(3)?,
+                    api_type: row.get(4)?,
+                    base_url: row.get(5)?,
+                    config: serde_json::from_str(&config_json).unwrap_or_default(),
+                    is_enabled: row.get::<_, i64>(7)? != 0,
+                    is_default: row.get::<_, i64>(8)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(items)
+    }
+
+    pub fn upsert_runtime_llm_provider(
+        &self,
+        runtime_id: &str,
+        provider: RuntimeLlmProviderUpsert,
+    ) -> anyhow::Result<RuntimeLlmProviderInfo> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        let runtime_row_id = Self::runtime_row_id(&conn, runtime_id)?;
+        let row_id = format!("runtime-provider-{runtime_id}-{}", provider.provider_id);
+
+        if provider.is_default {
+            conn.execute(
+                "UPDATE runtime_llm_providers SET is_default = 0, updated_at = ?1 WHERE runtime_id = ?2",
+                params![&now, &runtime_row_id],
+            )?;
+        }
+
+        conn.execute(
+            "INSERT INTO runtime_llm_providers (
+                id, runtime_id, provider_id, display_name, api_type, base_url,
+                config_json, is_enabled, is_default, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)
+            ON CONFLICT(id) DO UPDATE SET
+                display_name = excluded.display_name,
+                api_type = excluded.api_type,
+                base_url = excluded.base_url,
+                config_json = excluded.config_json,
+                is_enabled = excluded.is_enabled,
+                is_default = excluded.is_default,
+                updated_at = excluded.updated_at",
+            params![
+                &row_id,
+                &runtime_row_id,
+                &provider.provider_id,
+                &provider.display_name,
+                &provider.api_type,
+                &provider.base_url,
+                serde_json::to_string(&provider.config)?,
+                if provider.is_enabled { 1 } else { 0 },
+                if provider.is_default { 1 } else { 0 },
+                &now,
+            ],
+        )?;
+
+        Ok(RuntimeLlmProviderInfo {
+            id: row_id,
+            runtime_id: runtime_row_id,
+            provider_id: provider.provider_id,
+            display_name: provider.display_name,
+            api_type: provider.api_type,
+            base_url: provider.base_url,
+            config: provider.config,
+            is_enabled: provider.is_enabled,
+            is_default: provider.is_default,
+        })
+    }
+
+    pub fn list_runtime_models(&self, runtime_id: &str) -> anyhow::Result<Vec<RuntimeModelInfo>> {
+        let conn = self.conn()?;
+        let runtime_row_id = Self::runtime_row_id(&conn, runtime_id)?;
+        let mut stmt = conn.prepare(
+            "SELECT id, runtime_id, provider_id, model_id, display_name, is_enabled, is_default
+             FROM runtime_models
+             WHERE runtime_id = ?1
+             ORDER BY is_default DESC, model_id ASC",
+        )?;
+
+        let items = stmt
+            .query_map(params![runtime_row_id], |row| {
+                Ok(RuntimeModelInfo {
+                    id: row.get(0)?,
+                    runtime_id: row.get(1)?,
+                    provider_id: row.get(2)?,
+                    model_id: row.get(3)?,
+                    display_name: row.get(4)?,
+                    is_enabled: row.get::<_, i64>(5)? != 0,
+                    is_default: row.get::<_, i64>(6)? != 0,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(items)
+    }
+
+    pub fn get_default_runtime_llm_provider(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<Option<RuntimeLlmProviderInfo>> {
+        let mut providers = self.list_runtime_llm_providers(runtime_id)?;
+        Ok(providers.drain(..).find(|provider| provider.is_default))
+    }
+
+    pub fn get_default_runtime_model(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<Option<RuntimeModelInfo>> {
+        let mut models = self.list_runtime_models(runtime_id)?;
+        Ok(models.drain(..).find(|model| model.is_default))
+    }
+
+    pub fn upsert_runtime_model(
+        &self,
+        runtime_id: &str,
+        model: RuntimeModelUpsert,
+    ) -> anyhow::Result<RuntimeModelInfo> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        let runtime_row_id = Self::runtime_row_id(&conn, runtime_id)?;
+        let row_id = format!("runtime-model-{runtime_id}-{}", model.model_id);
+
+        if model.is_default {
+            conn.execute(
+                "UPDATE runtime_models SET is_default = 0, updated_at = ?1 WHERE runtime_id = ?2",
+                params![&now, &runtime_row_id],
+            )?;
+        }
+
+        conn.execute(
+            "INSERT INTO runtime_models (
+                id, runtime_id, provider_id, model_id, display_name,
+                is_enabled, is_default, created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+            ON CONFLICT(id) DO UPDATE SET
+                provider_id = excluded.provider_id,
+                display_name = excluded.display_name,
+                is_enabled = excluded.is_enabled,
+                is_default = excluded.is_default,
+                updated_at = excluded.updated_at",
+            params![
+                &row_id,
+                &runtime_row_id,
+                &model.provider_id,
+                &model.model_id,
+                &model.display_name,
+                if model.is_enabled { 1 } else { 0 },
+                if model.is_default { 1 } else { 0 },
+                &now,
+            ],
+        )?;
+
+        Ok(RuntimeModelInfo {
+            id: row_id,
+            runtime_id: runtime_row_id,
+            provider_id: model.provider_id,
+            model_id: model.model_id,
+            display_name: model.display_name,
+            is_enabled: model.is_enabled,
+            is_default: model.is_default,
+        })
+    }
+
     /// Test provider connection
-    pub async fn test_connection(&self, provider_id: &str) -> anyhow::Result<TestConnectionResult> {
-        let provider = self.conn.query_row(
+    pub fn test_connection(&self, provider_id: &str) -> anyhow::Result<TestConnectionResult> {
+        let conn = self.conn()?;
+        let provider = conn.query_row(
             "SELECT command, args_json, is_installed, status FROM agent_providers WHERE provider_id = ?1",
             params![provider_id],
             |row| {
@@ -650,13 +1255,7 @@ impl AgentProviderService {
                 let args: Vec<String> = serde_json::from_str(&args_json)?;
 
                 // Try to spawn the agent and check version
-                let output = Command::new(&command)
-                    .args(&args)
-                    .arg("--version")
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .output()
-                    .await;
+                let output = Command::new(&command).args(&args).arg("--version").output();
 
                 match output {
                     Ok(output) if output.status.success() => {
@@ -686,7 +1285,7 @@ impl AgentProviderService {
     }
 
     /// Check installation prerequisites
-    pub async fn check_prerequisites(
+    pub fn check_prerequisites(
         &self,
         method: InstallationMethod,
     ) -> anyhow::Result<PrerequisitesCheck> {
@@ -752,12 +1351,14 @@ impl AgentProviderService {
         description: Option<&str>,
         command: &str,
         args: &[String],
-        working_dir: Option<&str>,
+        _working_dir: Option<&str>,
     ) -> anyhow::Result<ProviderInfo> {
         let id = format!("provider_custom_{}", uuid::Uuid::new_v4());
         let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        let args_json = serde_json::to_string(args)?;
 
-        self.conn.execute(
+        conn.execute(
             "INSERT INTO agent_providers (
                 id, provider_id, display_name, description, is_bundled,
                 installation_method, command, args_json, is_installed,
@@ -771,7 +1372,7 @@ impl AgentProviderService {
                 0, // is_bundled
                 "custom",
                 command,
-                &serde_json::to_string(args)?,
+                &args_json,
                 1, // is_installed (custom providers are always "installed" if path is valid)
                 0,
                 "ready",
@@ -779,8 +1380,26 @@ impl AgentProviderService {
             ],
         )?;
 
+        Self::upsert_runtime_record(
+            &conn,
+            &id,
+            &id,
+            name,
+            description.unwrap_or("Custom ACP agent"),
+            command,
+            &args_json,
+            "custom",
+            false,
+            true,
+            false,
+            "ready",
+            Some("Custom ACP runtime"),
+            &ProviderConfig::default(),
+            &now,
+        )?;
+
         // Return the new provider info
-        let mut stmt = self.conn.prepare(
+        let mut stmt = conn.prepare(
             "SELECT 
                 id, provider_id, display_name, description, is_bundled,
                 installation_method, is_installed, is_default, status,
@@ -830,8 +1449,10 @@ impl AgentProviderService {
 
     /// Remove a custom provider
     pub fn remove_custom_provider(&self, provider_id: &str) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+
         // Only allow removing custom providers
-        let is_bundled: i64 = self.conn.query_row(
+        let is_bundled: i64 = conn.query_row(
             "SELECT is_bundled FROM agent_providers WHERE provider_id = ?1",
             params![provider_id],
             |row| row.get(0),
@@ -842,7 +1463,7 @@ impl AgentProviderService {
         }
 
         // Check if it's the default
-        let is_default: i64 = self.conn.query_row(
+        let is_default: i64 = conn.query_row(
             "SELECT is_default FROM agent_providers WHERE provider_id = ?1",
             params![provider_id],
             |row| row.get(0),
@@ -854,8 +1475,12 @@ impl AgentProviderService {
             ));
         }
 
-        self.conn.execute(
+        conn.execute(
             "DELETE FROM agent_providers WHERE provider_id = ?1",
+            params![provider_id],
+        )?;
+        conn.execute(
+            "DELETE FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1",
             params![provider_id],
         )?;
 
@@ -931,6 +1556,23 @@ mod tests {
     }
 
     #[test]
+    fn test_list_runtimes_uses_runtime_table() {
+        let (service, _temp) = create_test_service();
+
+        let runtimes = service.list_runtimes().unwrap();
+
+        assert!(runtimes.len() >= 4);
+        let default = runtimes.iter().find(|runtime| runtime.is_default).unwrap();
+        assert_eq!(default.provider_id, "pi-acp");
+
+        let runtime_rows: i64 = service
+            .test_conn()
+            .query_row("SELECT COUNT(*) FROM agent_runtimes", [], |row| row.get(0))
+            .unwrap();
+        assert!(runtime_rows >= 4);
+    }
+
+    #[test]
     fn test_set_default_provider() {
         let (service, _temp) = create_test_service();
 
@@ -986,6 +1628,119 @@ mod tests {
         assert_eq!(config.custom_args, vec!["--verbose"]);
     }
 
+    #[test]
+    fn test_upsert_and_list_runtime_llm_providers() {
+        let (service, _temp) = create_test_service();
+
+        service
+            .upsert_runtime_llm_provider(
+                "pi-acp",
+                RuntimeLlmProviderUpsert {
+                    provider_id: "anthropic".to_string(),
+                    display_name: Some("Anthropic".to_string()),
+                    api_type: "anthropic".to_string(),
+                    base_url: Some("https://api.anthropic.com".to_string()),
+                    config: HashMap::from([(
+                        "ANTHROPIC_API_KEY".to_string(),
+                        "secret".to_string(),
+                    )]),
+                    is_enabled: true,
+                    is_default: true,
+                },
+            )
+            .unwrap();
+
+        let providers = service.list_runtime_llm_providers("pi-acp").unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(providers[0].provider_id, "anthropic");
+        assert_eq!(providers[0].api_type, "anthropic");
+        assert!(providers[0].is_default);
+    }
+
+    #[test]
+    fn test_upsert_runtime_model_resets_previous_default() {
+        let (service, _temp) = create_test_service();
+
+        service
+            .upsert_runtime_model(
+                "pi-acp",
+                RuntimeModelUpsert {
+                    provider_id: Some("anthropic".to_string()),
+                    model_id: "claude-sonnet-4-6".to_string(),
+                    display_name: Some("Claude Sonnet 4.6".to_string()),
+                    is_enabled: true,
+                    is_default: true,
+                },
+            )
+            .unwrap();
+
+        service
+            .upsert_runtime_model(
+                "pi-acp",
+                RuntimeModelUpsert {
+                    provider_id: Some("anthropic".to_string()),
+                    model_id: "claude-opus-4-5".to_string(),
+                    display_name: Some("Claude Opus 4.5".to_string()),
+                    is_enabled: true,
+                    is_default: true,
+                },
+            )
+            .unwrap();
+
+        let models = service.list_runtime_models("pi-acp").unwrap();
+        assert_eq!(models.len(), 2);
+        assert_eq!(models.iter().filter(|model| model.is_default).count(), 1);
+        assert!(
+            models
+                .iter()
+                .any(|model| model.model_id == "claude-opus-4-5" && model.is_default)
+        );
+    }
+
+    #[test]
+    fn test_get_default_runtime_provider_and_model() {
+        let (service, _temp) = create_test_service();
+
+        service
+            .upsert_runtime_llm_provider(
+                "pi-acp",
+                RuntimeLlmProviderUpsert {
+                    provider_id: "anthropic".to_string(),
+                    display_name: Some("Anthropic".to_string()),
+                    api_type: "anthropic".to_string(),
+                    base_url: Some("https://api.anthropic.com".to_string()),
+                    config: HashMap::new(),
+                    is_enabled: true,
+                    is_default: true,
+                },
+            )
+            .unwrap();
+        service
+            .upsert_runtime_model(
+                "pi-acp",
+                RuntimeModelUpsert {
+                    provider_id: Some("anthropic".to_string()),
+                    model_id: "claude-sonnet-4-6".to_string(),
+                    display_name: Some("Claude Sonnet".to_string()),
+                    is_enabled: true,
+                    is_default: true,
+                },
+            )
+            .unwrap();
+
+        let provider = service
+            .get_default_runtime_llm_provider("pi-acp")
+            .unwrap()
+            .unwrap();
+        let model = service
+            .get_default_runtime_model("pi-acp")
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(provider.provider_id, "anthropic");
+        assert_eq!(model.model_id, "claude-sonnet-4-6");
+    }
+
     #[tokio::test]
     async fn test_add_custom_provider() {
         let (service, _temp) = create_test_service();
@@ -1015,6 +1770,16 @@ mod tests {
                 .iter()
                 .any(|p| p.display_name == "My Custom Agent")
         );
+
+        let runtime_count: i64 = service
+            .test_conn()
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runtimes WHERE id = ?1",
+                params![&provider.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(runtime_count, 1);
     }
 
     #[tokio::test]
@@ -1034,6 +1799,16 @@ mod tests {
         // Should no longer be in list
         let providers = service.list_providers().unwrap();
         assert!(!providers.iter().any(|p| p.display_name == "To Be Removed"));
+
+        let runtime_count: i64 = service
+            .test_conn()
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runtimes WHERE id = ?1",
+                params![&provider.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(runtime_count, 0);
     }
 
     #[test]
@@ -1045,13 +1820,12 @@ mod tests {
         assert!(result.unwrap_err().to_string().contains("built-in"));
     }
 
-    #[tokio::test]
-    async fn test_check_prerequisites_npx() {
+    #[test]
+    fn test_check_prerequisites_npx() {
         let (service, _temp) = create_test_service();
 
         let check = service
             .check_prerequisites(InstallationMethod::Npx)
-            .await
             .unwrap();
 
         // May or may not have Node.js installed depending on environment

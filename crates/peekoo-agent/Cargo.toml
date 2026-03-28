@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 peekoo-paths = { path = "../peekoo-paths" }
+peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
 agent-client-protocol = "0.10"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt", "process", "io-std", "io-util"] }

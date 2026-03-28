@@ -5,7 +5,7 @@
 
 use crate::agent_provider_service::{
     AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallationMethod,
-    PrerequisitesCheck, ProviderConfig, ProviderInfo, ProviderStatus, TestConnectionResult,
+    PrerequisitesCheck, ProviderConfig, ProviderInfo, TestConnectionResult,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -32,7 +32,7 @@ pub async fn install_agent_provider(
     service: &AgentProviderService,
     req: InstallProviderRequest,
 ) -> anyhow::Result<InstallProviderResponse> {
-    service.install_provider(req).await
+    service.install_provider(req)
 }
 
 /// Set the default provider
@@ -65,7 +65,7 @@ pub async fn test_provider_connection(
     service: &AgentProviderService,
     provider_id: String,
 ) -> anyhow::Result<TestConnectionResult> {
-    service.test_connection(&provider_id).await
+    service.test_connection(&provider_id)
 }
 
 /// Check installation prerequisites
@@ -73,7 +73,7 @@ pub async fn check_installation_prerequisites(
     service: &AgentProviderService,
     method: InstallationMethod,
 ) -> anyhow::Result<PrerequisitesCheck> {
-    service.check_prerequisites(method).await
+    service.check_prerequisites(method)
 }
 
 /// Add a custom provider

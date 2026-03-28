@@ -10,11 +10,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, Star, AlertCircle } from "lucide-react";
-import { type ProviderInfo } from "@/types/agent-provider";
+import {
+  type RuntimeInfo,
+  type RuntimeLlmProviderInfo,
+  type RuntimeModelInfo,
+} from "@/types/agent-runtime";
 
 interface QuickProviderSwitcherProps {
-  providers: ProviderInfo[];
-  currentProvider: ProviderInfo | null;
+  providers: RuntimeInfo[];
+  currentProvider: RuntimeInfo | null;
+  currentLlmProvider?: RuntimeLlmProviderInfo | null;
+  currentModel?: RuntimeModelInfo | null;
   onSwitch: (providerId: string) => void;
   onOpenSettings: () => void;
 }
@@ -22,6 +28,8 @@ interface QuickProviderSwitcherProps {
 export function QuickProviderSwitcher({
   providers,
   currentProvider,
+  currentLlmProvider,
+  currentModel,
   onSwitch,
   onOpenSettings,
 }: QuickProviderSwitcherProps) {
@@ -43,14 +51,18 @@ export function QuickProviderSwitcher({
                 <Star className="h-3 w-3 fill-primary text-primary" />
               )}
               <span className="max-w-[120px] truncate">{currentProvider.displayName}</span>
-              {currentProvider.config.defaultModel && (
-                <span className="text-text-muted">• {currentProvider.config.defaultModel}</span>
+              {(currentLlmProvider || currentModel || currentProvider.config.defaultModel) && (
+                <span className="max-w-[180px] truncate text-text-muted">
+                  • {[currentLlmProvider?.displayName ?? currentLlmProvider?.providerId, currentModel?.displayName ?? currentModel?.modelId ?? currentProvider.config.defaultModel]
+                    .filter(Boolean)
+                    .join(" / ")}
+                </span>
               )}
             </>
           ) : (
             <>
               <AlertCircle className="h-3 w-3 text-yellow-500" />
-              <span>No provider</span>
+              <span>No runtime</span>
             </>
           )}
           <ChevronDown className="h-3 w-3" />
@@ -58,11 +70,11 @@ export function QuickProviderSwitcher({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Switch Provider</DropdownMenuLabel>
+        <DropdownMenuLabel>Switch Runtime</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {installedProviders.length === 0 ? (
-          <DropdownMenuItem disabled>No providers installed</DropdownMenuItem>
+          <DropdownMenuItem disabled>No runtimes installed</DropdownMenuItem>
         ) : (
           installedProviders.map((provider) => (
             <DropdownMenuItem
@@ -92,7 +104,7 @@ export function QuickProviderSwitcher({
 
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onOpenSettings} className="text-text-muted">
-          Manage Providers...
+          Manage Runtimes...
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

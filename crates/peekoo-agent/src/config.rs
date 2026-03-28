@@ -58,6 +58,9 @@ pub struct AgentServiceConfig {
     /// Model identifier (provider-specific)
     pub model: Option<String>,
 
+    /// LLM provider identifier selected for the current runtime.
+    pub llm_provider_id: Option<String>,
+
     /// API key (if needed, passed to provider via env)
     pub api_key: Option<String>,
 
@@ -100,6 +103,7 @@ impl Default for AgentServiceConfig {
         Self {
             provider: AgentProvider::PiAcp,
             model: None,
+            llm_provider_id: None,
             api_key: None,
             system_prompt: None,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -130,6 +134,12 @@ mod tests {
     fn default_config_has_no_model() {
         let config = AgentServiceConfig::default();
         assert!(config.model.is_none());
+    }
+
+    #[test]
+    fn default_config_has_no_llm_provider_id() {
+        let config = AgentServiceConfig::default();
+        assert!(config.llm_provider_id.is_none());
     }
 
     #[test]
@@ -209,6 +219,7 @@ mod tests {
         let config = AgentServiceConfig {
             provider: AgentProvider::Opencode,
             model: Some("gpt-4o".to_string()),
+            llm_provider_id: Some("openai".to_string()),
             api_key: Some("sk-test-key".to_string()),
             system_prompt: Some("You are a helpful assistant.".to_string()),
             working_directory: PathBuf::from("/tmp/test"),

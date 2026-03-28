@@ -14,8 +14,8 @@ export const providerStatusSchema = z.enum([
 
 // Provider configuration
 export const providerConfigSchema = z.object({
-  defaultModel: z.string().optional(),
-  envVars: z.record(z.string()).default({}),
+  defaultModel: z.string().nullish(),
+  envVars: z.record(z.string(), z.string()).default({}),
   customArgs: z.array(z.string()).default([]),
 });
 
@@ -26,7 +26,7 @@ export const installationMethodInfoSchema = z.object({
   description: z.string(),
   isAvailable: z.boolean(),
   requiresSetup: z.boolean(),
-  sizeMb: z.number().optional(),
+  sizeMb: z.number().nullish(),
 });
 
 // Provider info
@@ -40,7 +40,7 @@ export const providerInfoSchema = z.object({
   isInstalled: z.boolean(),
   isDefault: z.boolean(),
   status: providerStatusSchema,
-  statusMessage: z.string().optional(),
+  statusMessage: z.string().nullish(),
   availableMethods: z.array(installationMethodInfoSchema),
   config: providerConfigSchema,
 });
@@ -64,14 +64,14 @@ export const testConnectionResultSchema = z.object({
   success: z.boolean(),
   message: z.string(),
   availableModels: z.array(z.string()),
-  providerVersion: z.string().optional(),
+  providerVersion: z.string().nullish(),
 });
 
 // Prerequisites check
 export const prerequisitesCheckSchema = z.object({
   available: z.boolean(),
   missingComponents: z.array(z.string()),
-  instructions: z.string().optional(),
+  instructions: z.string().nullish(),
 });
 
 // Custom provider request
@@ -94,3 +94,15 @@ export type InstallProviderResponse = z.infer<typeof installProviderResponseSche
 export type TestConnectionResult = z.infer<typeof testConnectionResultSchema>;
 export type PrerequisitesCheck = z.infer<typeof prerequisitesCheckSchema>;
 export type CustomProviderRequest = z.infer<typeof customProviderRequestSchema>;
+
+// Runtime aliases - ACP agents like Codex/OpenCode/Claude Code are runtimes, not LLM providers.
+export const runtimeInfoSchema = providerInfoSchema;
+export const runtimeConfigSchema = providerConfigSchema;
+export const installRuntimeRequestSchema = installProviderRequestSchema;
+export const installRuntimeResponseSchema = installProviderResponseSchema;
+
+export type RuntimeStatus = ProviderStatus;
+export type RuntimeConfig = ProviderConfig;
+export type RuntimeInfo = ProviderInfo;
+export type InstallRuntimeRequest = InstallProviderRequest;
+export type InstallRuntimeResponse = InstallProviderResponse;

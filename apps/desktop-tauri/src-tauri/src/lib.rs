@@ -7,7 +7,8 @@ use peekoo_agent_app::{
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
-    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
+    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest, RuntimeInfo,
+    RuntimeLlmProviderInfo, RuntimeLlmProviderUpsert, RuntimeModelInfo, RuntimeModelUpsert,
     SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
     TestConnectionResult,
 };
@@ -301,185 +302,166 @@ async fn agent_provider_config_set(
 }
 
 // ============================================================================
-// Agent Provider Management Commands
+// ACP Runtime Management Commands
 // ============================================================================
 
 #[tauri::command]
-async fn list_agent_providers(
-    _state: State<'_, AgentState>,
-) -> Result<Vec<serde_json::Value>, String> {
-    // TODO: Integrate with AgentProviderService from peekoo-agent-app
-    // For now, return mock data
-    Ok(vec![
-        serde_json::json!({
-            "id": "provider_pi_acp",
-            "providerId": "pi-acp",
-            "displayName": "Peekoo Agent (pi-acp)",
-            "description": "Built-in ACP agent with full tool support",
-            "isBundled": true,
-            "installationMethod": "bundled",
-            "isInstalled": true,
-            "isDefault": true,
-            "status": "ready",
-            "availableMethods": [{"id": "bundled", "name": "Bundled", "description": "Pre-installed", "isAvailable": true, "requiresSetup": false}],
-            "config": {}
-        }),
-        serde_json::json!({
-            "id": "provider_opencode",
-            "providerId": "opencode",
-            "displayName": "OpenCode",
-            "description": "Zed's OpenAI-compatible agent",
-            "isBundled": false,
-            "installationMethod": "npx",
-            "isInstalled": false,
-            "isDefault": false,
-            "status": "not_installed",
-            "availableMethods": [
-                {"id": "npx", "name": "npx", "description": "Install via npx", "isAvailable": true, "requiresSetup": false},
-                {"id": "binary", "name": "Binary", "description": "Download binary", "isAvailable": true, "requiresSetup": false, "sizeMb": 25.0}
-            ],
-            "config": {}
-        }),
-    ])
+async fn list_agent_providers(state: State<'_, AgentState>) -> Result<Vec<ProviderInfo>, String> {
+    state.app.list_agent_providers()
 }
 
 #[tauri::command]
 async fn install_agent_provider(
-    _req: InstallProviderRequest,
-    _state: State<'_, AgentState>,
+    req: InstallProviderRequest,
+    state: State<'_, AgentState>,
 ) -> Result<InstallProviderResponse, String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(InstallProviderResponse {
-        success: true,
-        message: "Provider installed successfully".to_string(),
-        requires_restart: false,
-    })
+    state.app.install_agent_provider(req)
 }
 
 #[tauri::command]
 async fn uninstall_agent_provider(
-    _provider_id: String,
-    _state: State<'_, AgentState>,
+    provider_id: String,
+    state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(())
+    state.app.uninstall_agent_provider(&provider_id)
 }
 
 #[tauri::command]
 async fn set_default_provider(
-    _provider_id: String,
-    _state: State<'_, AgentState>,
+    provider_id: String,
+    state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(())
+    state.app.set_default_agent_provider(&provider_id)
 }
 
 #[tauri::command]
 async fn get_provider_config(
-    _provider_id: String,
-    _state: State<'_, AgentState>,
-) -> Result<ProviderConfigDto, String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(ProviderConfigDto {
-        provider_id: "pi-acp".to_string(),
-        base_url: "".to_string(),
-        api: "".to_string(),
-        auth_header: false,
-    })
+    provider_id: String,
+    state: State<'_, AgentState>,
+) -> Result<ProviderConfig, String> {
+    state.app.get_agent_provider_config(&provider_id)
 }
 
 #[tauri::command]
 async fn update_provider_config(
-    _provider_id: String,
-    _config: ProviderConfigDto,
-    _state: State<'_, AgentState>,
+    provider_id: String,
+    config: ProviderConfig,
+    state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(())
+    state
+        .app
+        .update_agent_provider_config(&provider_id, &config)
 }
 
 #[tauri::command]
 async fn test_provider_connection(
-    _provider_id: String,
-    _state: State<'_, AgentState>,
+    provider_id: String,
+    state: State<'_, AgentState>,
 ) -> Result<TestConnectionResult, String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(TestConnectionResult {
-        success: true,
-        message: "Connection successful".to_string(),
-        available_models: vec!["claude-3.5-sonnet".to_string()],
-        provider_version: Some("1.0.0".to_string()),
-    })
+    state.app.test_agent_provider_connection(&provider_id)
 }
 
 #[tauri::command]
 async fn check_installation_prerequisites(
     method: String,
-    _state: State<'_, AgentState>,
+    state: State<'_, AgentState>,
 ) -> Result<PrerequisitesCheck, String> {
-    // Check if Node.js is installed for npx method
-    let check = if method == "npx" {
-        let has_node = std::process::Command::new("node")
-            .arg("--version")
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false);
-
-        if has_node {
-            PrerequisitesCheck {
-                available: true,
-                missing_components: vec![],
-                instructions: None,
-            }
-        } else {
-            PrerequisitesCheck {
-                available: false,
-                missing_components: vec!["Node.js".to_string()],
-                instructions: Some("Please install Node.js from https://nodejs.org/".to_string()),
-            }
-        }
-    } else {
-        PrerequisitesCheck {
-            available: true,
-            missing_components: vec![],
-            instructions: None,
-        }
+    let method = match method.as_str() {
+        "bundled" => InstallationMethod::Bundled,
+        "npx" => InstallationMethod::Npx,
+        "binary" => InstallationMethod::Binary,
+        _ => InstallationMethod::Custom,
     };
-
-    Ok(check)
+    state.app.check_agent_provider_prerequisites(method)
 }
 
 #[tauri::command]
 async fn add_custom_provider(
-    _name: String,
-    _description: Option<String>,
-    _command: String,
-    _args: Vec<String>,
-    _working_dir: Option<String>,
-    _state: State<'_, AgentState>,
-) -> Result<serde_json::Value, String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(serde_json::json!({
-        "id": "provider_custom_test",
-        "providerId": "provider_custom_test",
-        "displayName": "Custom Provider",
-        "description": "Custom ACP agent",
-        "isBundled": false,
-        "installationMethod": "custom",
-        "isInstalled": true,
-        "isDefault": false,
-        "status": "ready",
-        "config": {}
-    }))
+    name: String,
+    description: Option<String>,
+    command: String,
+    args: Vec<String>,
+    working_dir: Option<String>,
+    state: State<'_, AgentState>,
+) -> Result<ProviderInfo, String> {
+    state.app.add_custom_agent_provider(
+        &name,
+        description.as_deref(),
+        &command,
+        &args,
+        working_dir.as_deref(),
+    )
 }
 
 #[tauri::command]
 async fn remove_custom_provider(
-    _provider_id: String,
-    _state: State<'_, AgentState>,
+    provider_id: String,
+    state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    // TODO: Integrate with AgentProviderService
-    Ok(())
+    state.app.remove_custom_agent_provider(&provider_id)
+}
+
+#[tauri::command]
+async fn list_agent_runtimes(state: State<'_, AgentState>) -> Result<Vec<RuntimeInfo>, String> {
+    state.app.list_agent_runtimes()
+}
+
+#[tauri::command]
+async fn install_agent_runtime(
+    req: InstallProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    state.app.install_agent_runtime(req)
+}
+
+#[tauri::command]
+async fn uninstall_agent_runtime(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.uninstall_agent_runtime(&runtime_id)
+}
+
+#[tauri::command]
+async fn set_default_agent_runtime(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_default_agent_runtime(&runtime_id)
+}
+
+#[tauri::command]
+async fn list_runtime_llm_providers(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<Vec<RuntimeLlmProviderInfo>, String> {
+    state.app.list_runtime_llm_providers(&runtime_id)
+}
+
+#[tauri::command]
+async fn upsert_runtime_llm_provider(
+    runtime_id: String,
+    provider: RuntimeLlmProviderUpsert,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeLlmProviderInfo, String> {
+    state.app.upsert_runtime_llm_provider(&runtime_id, provider)
+}
+
+#[tauri::command]
+async fn list_runtime_models(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<Vec<RuntimeModelInfo>, String> {
+    state.app.list_runtime_models(&runtime_id)
+}
+
+#[tauri::command]
+async fn upsert_runtime_model(
+    runtime_id: String,
+    model: RuntimeModelUpsert,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeModelInfo, String> {
+    state.app.upsert_runtime_model(&runtime_id, model)
 }
 
 #[tauri::command]
@@ -1314,6 +1296,14 @@ pub fn run() {
             check_installation_prerequisites,
             add_custom_provider,
             remove_custom_provider,
+            list_agent_runtimes,
+            install_agent_runtime,
+            uninstall_agent_runtime,
+            set_default_agent_runtime,
+            list_runtime_llm_providers,
+            upsert_runtime_llm_provider,
+            list_runtime_models,
+            upsert_runtime_model,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,

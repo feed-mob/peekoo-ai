@@ -10,7 +10,7 @@ interface ProviderSelectorProps {
 export function ProviderSelector({ providers, value, onChange }: ProviderSelectorProps) {
   return (
     <label className="flex flex-col gap-1 text-sm text-text-secondary">
-      Provider
+      ACP Runtime
       <div className="relative">
         <select
           value={value}

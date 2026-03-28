@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -21,6 +22,11 @@ use peekoo_pomodoro_app::{
 };
 use peekoo_scheduler::Scheduler;
 
+use crate::agent_provider_service::{
+    AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallationMethod,
+    PrerequisitesCheck, ProviderConfig, ProviderInfo, RuntimeInfo, RuntimeLlmProviderInfo,
+    RuntimeLlmProviderUpsert, RuntimeModelInfo, RuntimeModelUpsert, TestConnectionResult,
+};
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
@@ -69,6 +75,7 @@ pub struct AgentApplication {
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
+    provider_service: Arc<AgentProviderService>,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
     task_notifications: Arc<TaskNotificationScheduler>,
@@ -143,6 +150,10 @@ impl AgentApplication {
             std::fs::create_dir_all(&session_dir)
                 .map_err(|e| format!("Create session dir error: {e}"))?;
         }
+        let provider_service = Arc::new(
+            AgentProviderService::new(&db_path, peekoo_paths::peekoo_global_data_dir()?)
+                .map_err(|e| format!("Create provider service error: {e}"))?,
+        );
         let workspace_dir = ensure_agent_workspace()?;
 
         // Create agent scheduler for task execution
@@ -159,6 +170,7 @@ impl AgentApplication {
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
+            provider_service,
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
             task_notifications,
@@ -336,7 +348,7 @@ impl AgentApplication {
     }
 
     pub fn settings_catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
-        self.settings.catalog()
+        self.settings.catalog_from_runtimes(&self.provider_service)
     }
 
     pub fn set_provider_api_key(&self, req: SetApiKeyRequest) -> Result<ProviderAuthDto, String> {
@@ -367,6 +379,190 @@ impl AgentApplication {
 
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
+    }
+
+    pub fn list_agent_providers(&self) -> Result<Vec<ProviderInfo>, String> {
+        self.provider_service
+            .list_providers()
+            .map_err(|e| format!("List providers error: {e}"))
+    }
+
+    pub fn list_agent_runtimes(&self) -> Result<Vec<RuntimeInfo>, String> {
+        self.provider_service
+            .list_runtimes()
+            .map_err(|e| format!("List runtimes error: {e}"))
+    }
+
+    pub fn install_agent_provider(
+        &self,
+        req: InstallProviderRequest,
+    ) -> Result<InstallProviderResponse, String> {
+        let response = self
+            .provider_service
+            .install_provider(req.clone())
+            .map_err(|e| format!("Install provider error: {e}"))?;
+
+        if response.success {
+            let provider = self
+                .provider_service
+                .get_default_provider()
+                .map_err(|e| format!("Get default provider error: {e}"))?;
+
+            if provider.is_none() {
+                self.provider_service
+                    .set_default_provider(&req.provider_id)
+                    .map_err(|e| format!("Set default provider error: {e}"))?;
+            }
+        }
+
+        Ok(response)
+    }
+
+    pub fn install_agent_runtime(
+        &self,
+        req: InstallProviderRequest,
+    ) -> Result<InstallProviderResponse, String> {
+        self.install_agent_provider(req)
+    }
+
+    pub fn uninstall_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .uninstall_provider(provider_id)
+            .map_err(|e| format!("Uninstall provider error: {e}"))
+    }
+
+    pub fn uninstall_agent_runtime(&self, runtime_id: &str) -> Result<(), String> {
+        self.provider_service
+            .uninstall_runtime(runtime_id)
+            .map_err(|e| format!("Uninstall runtime error: {e}"))
+    }
+
+    pub fn set_default_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .set_default_provider(provider_id)
+            .map_err(|e| format!("Set default provider error: {e}"))?;
+
+        let provider = self
+            .provider_service
+            .get_provider_config(provider_id)
+            .map_err(|e| format!("Get provider config error: {e}"))?;
+        let model = provider.default_model.unwrap_or_else(|| {
+            crate::settings::default_model_for_provider(provider_id).to_string()
+        });
+
+        self.settings
+            .update_settings(AgentSettingsPatchDto {
+                active_provider_id: Some(provider_id.to_string()),
+                active_model_id: Some(model),
+                system_prompt: None,
+                max_tool_iterations: None,
+                skills: None,
+            })
+            .map(|_| ())
+    }
+
+    pub fn set_default_agent_runtime(&self, runtime_id: &str) -> Result<(), String> {
+        self.set_default_agent_provider(runtime_id)
+    }
+
+    pub fn get_agent_provider_config(&self, provider_id: &str) -> Result<ProviderConfig, String> {
+        self.provider_service
+            .get_provider_config(provider_id)
+            .map_err(|e| format!("Get provider config error: {e}"))
+    }
+
+    pub fn update_agent_provider_config(
+        &self,
+        provider_id: &str,
+        config: &ProviderConfig,
+    ) -> Result<(), String> {
+        self.provider_service
+            .update_provider_config(provider_id, config)
+            .map_err(|e| format!("Update provider config error: {e}"))
+    }
+
+    pub fn test_agent_provider_connection(
+        &self,
+        provider_id: &str,
+    ) -> Result<TestConnectionResult, String> {
+        self.provider_service
+            .test_connection(provider_id)
+            .map_err(|e| format!("Test provider connection error: {e}"))
+    }
+
+    pub fn check_agent_provider_prerequisites(
+        &self,
+        method: InstallationMethod,
+    ) -> Result<PrerequisitesCheck, String> {
+        self.provider_service
+            .check_prerequisites(method)
+            .map_err(|e| format!("Check prerequisites error: {e}"))
+    }
+
+    pub fn add_custom_agent_provider(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        command: &str,
+        args: &[String],
+        working_dir: Option<&str>,
+    ) -> Result<ProviderInfo, String> {
+        self.provider_service
+            .add_custom_provider(name, description, command, args, working_dir)
+            .map_err(|e| format!("Add custom provider error: {e}"))
+    }
+
+    pub fn remove_custom_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .remove_custom_provider(provider_id)
+            .map_err(|e| format!("Remove custom provider error: {e}"))
+    }
+
+    pub fn default_agent_provider(&self) -> Result<Option<ProviderInfo>, String> {
+        self.provider_service
+            .get_default_provider()
+            .map_err(|e| format!("Get default provider error: {e}"))
+    }
+
+    pub fn default_agent_runtime(&self) -> Result<Option<RuntimeInfo>, String> {
+        self.provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))
+    }
+
+    pub fn list_runtime_llm_providers(
+        &self,
+        runtime_id: &str,
+    ) -> Result<Vec<RuntimeLlmProviderInfo>, String> {
+        self.provider_service
+            .list_runtime_llm_providers(runtime_id)
+            .map_err(|e| format!("List runtime providers error: {e}"))
+    }
+
+    pub fn upsert_runtime_llm_provider(
+        &self,
+        runtime_id: &str,
+        provider: RuntimeLlmProviderUpsert,
+    ) -> Result<RuntimeLlmProviderInfo, String> {
+        self.provider_service
+            .upsert_runtime_llm_provider(runtime_id, provider)
+            .map_err(|e| format!("Upsert runtime provider error: {e}"))
+    }
+
+    pub fn list_runtime_models(&self, runtime_id: &str) -> Result<Vec<RuntimeModelInfo>, String> {
+        self.provider_service
+            .list_runtime_models(runtime_id)
+            .map_err(|e| format!("List runtime models error: {e}"))
+    }
+
+    pub fn upsert_runtime_model(
+        &self,
+        runtime_id: &str,
+        model: RuntimeModelUpsert,
+    ) -> Result<RuntimeModelInfo, String> {
+        self.provider_service
+            .upsert_runtime_model(runtime_id, model)
+            .map_err(|e| format!("Upsert runtime model error: {e}"))
     }
 
     // ── Global app settings ────────────────────────────────────────────
@@ -833,7 +1029,7 @@ impl AgentApplication {
         }
 
         // Slow path: load from disk.
-        let result = conversation::find_last_session(&self.session_dir)
+        let result = conversation::find_last_session()
             .map_err(|e| format!("Failed to load last session: {e}"))?;
 
         // Stash the path so the next prompt resumes this session.
@@ -931,6 +1127,34 @@ impl AgentApplication {
         config.no_session = false;
         config.session_dir = Some(self.session_dir.clone());
 
+        let runtime_id = config.provider.id();
+        let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
+
+        // Apply runtime-scoped LLM provider config via adapter.
+        if let Ok(Some(runtime_provider)) = self
+            .provider_service
+            .get_default_runtime_llm_provider(&runtime_id)
+        {
+            config.llm_provider_id = Some(runtime_provider.provider_id.clone());
+            adapter.apply_llm_provider_env(&mut config.environment, &runtime_provider);
+        }
+
+        // Apply runtime-scoped model via adapter.
+        if let Ok(Some(runtime_model)) =
+            self.provider_service.get_default_runtime_model(&runtime_id)
+        {
+            config.model = Some(runtime_model.model_id.clone());
+            adapter.apply_model_env(&mut config.environment, &runtime_model.model_id);
+        }
+
+        // Apply adapter-specific launch env from the runtime's ProviderConfig.
+        if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
+            let adapter_env = adapter.build_launch_env(&runtime_config);
+            for (key, value) in adapter_env {
+                config.environment.entry(key).or_insert(value);
+            }
+        }
+
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
         if let Ok(mut guard) = self.resume_session_path.lock() {
@@ -982,8 +1206,37 @@ impl AgentApplication {
         if let Ok(config) = self.resolved_config()
             && let Ok((resolved, _)) = self.settings.to_agent_config(config)
         {
-            env.push(("PEEKOO_AGENT_PROVIDER".to_string(), resolved.provider.id()));
-            if let Some(model) = resolved.model {
+            let runtime_id = resolved.provider.id();
+            let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
+
+            env.push(("PEEKOO_AGENT_PROVIDER".to_string(), runtime_id.clone()));
+
+            // Apply runtime-scoped LLM provider env via adapter.
+            if let Ok(Some(runtime_provider)) = self
+                .provider_service
+                .get_default_runtime_llm_provider(&runtime_id)
+            {
+                env.push((
+                    "PEEKOO_AGENT_LLM_PROVIDER".to_string(),
+                    runtime_provider.provider_id.clone(),
+                ));
+                let mut llm_env = HashMap::new();
+                adapter.apply_llm_provider_env(&mut llm_env, &runtime_provider);
+                for (key, value) in llm_env {
+                    env.push((key, value));
+                }
+            }
+
+            // Apply runtime-scoped model via adapter.
+            let model = self
+                .provider_service
+                .get_default_runtime_model(&runtime_id)
+                .ok()
+                .flatten()
+                .map(|model| model.model_id)
+                .or(resolved.model);
+
+            if let Some(model) = model {
                 env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
             }
             if let Some(api_key) = resolved.api_key {

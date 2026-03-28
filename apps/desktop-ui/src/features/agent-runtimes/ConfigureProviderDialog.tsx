@@ -12,18 +12,32 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle, Check, Trash2 } from "lucide-react";
-import { type ProviderInfo, type ProviderConfig } from "@/types/agent-provider";
+import {
+  type RuntimeInfo,
+  type RuntimeConfig,
+  type RuntimeLlmProviderInfo,
+  type RuntimeLlmProviderUpsert,
+  type RuntimeModelInfo,
+  type RuntimeModelUpsert,
+} from "@/types/agent-runtime";
 
 interface ConfigureProviderDialogProps {
-  provider: ProviderInfo | null;
+  provider: RuntimeInfo | null;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (providerId: string, config: ProviderConfig) => Promise<void>;
+  onSave: (providerId: string, config: RuntimeConfig) => Promise<void>;
+  onListRuntimeProviders: (runtimeId: string) => Promise<RuntimeLlmProviderInfo[]>;
+  onSaveRuntimeProvider: (
+    runtimeId: string,
+    provider: RuntimeLlmProviderUpsert
+  ) => Promise<RuntimeLlmProviderInfo>;
+  onListRuntimeModels: (runtimeId: string) => Promise<RuntimeModelInfo[]>;
+  onSaveRuntimeModel: (runtimeId: string, model: RuntimeModelUpsert) => Promise<RuntimeModelInfo>;
   onTest: (providerId: string) => Promise<{
     success: boolean;
     message: string;
     availableModels: string[];
-    providerVersion?: string;
+    providerVersion?: string | null;
   }>;
 }
 
@@ -32,9 +46,13 @@ export function ConfigureProviderDialog({
   isOpen,
   onClose,
   onSave,
+  onListRuntimeProviders,
+  onSaveRuntimeProvider,
+  onListRuntimeModels,
+  onSaveRuntimeModel,
   onTest,
 }: ConfigureProviderDialogProps) {
-  const [config, setConfig] = useState<ProviderConfig>({
+  const [config, setConfig] = useState<RuntimeConfig>({
     defaultModel: "",
     envVars: {},
     customArgs: [],
@@ -44,11 +62,29 @@ export function ConfigureProviderDialog({
   const [testResult, setTestResult] = useState<{
     success: boolean;
     message: string;
-    providerVersion?: string;
+    providerVersion?: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvValue, setNewEnvValue] = useState("");
+  const [runtimeProviders, setRuntimeProviders] = useState<RuntimeLlmProviderInfo[]>([]);
+  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelInfo[]>([]);
+  const [providerForm, setProviderForm] = useState<RuntimeLlmProviderUpsert>({
+    providerId: "openai",
+    displayName: "",
+    apiType: "openai",
+    baseUrl: "",
+    config: {},
+    isEnabled: true,
+    isDefault: true,
+  });
+  const [modelForm, setModelForm] = useState<RuntimeModelUpsert>({
+    providerId: undefined,
+    modelId: "",
+    displayName: "",
+    isEnabled: true,
+    isDefault: true,
+  });
 
   // Load config when dialog opens
   useEffect(() => {
@@ -60,8 +96,10 @@ export function ConfigureProviderDialog({
       });
       setTestResult(null);
       setError(null);
+      void onListRuntimeProviders(provider.providerId).then(setRuntimeProviders).catch((err) => setError(String(err)));
+      void onListRuntimeModels(provider.providerId).then(setRuntimeModels).catch((err) => setError(String(err)));
     }
-  }, [isOpen, provider]);
+  }, [isOpen, onListRuntimeModels, onListRuntimeProviders, provider]);
 
   const handleSave = async () => {
     if (!provider) return;
@@ -91,6 +129,51 @@ export function ConfigureProviderDialog({
       setError(String(err));
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleSaveRuntimeProvider = async () => {
+    if (!provider || !providerForm.providerId.trim()) return;
+    setError(null);
+    try {
+      const saved = await onSaveRuntimeProvider(provider.providerId, {
+        ...providerForm,
+        displayName: providerForm.displayName || undefined,
+        baseUrl: providerForm.baseUrl || undefined,
+      });
+      setRuntimeProviders((prev) => {
+        const next = prev.filter((item) => item.id !== saved.id);
+        return [saved, ...next];
+      });
+      if (saved.isDefault) {
+        setRuntimeProviders((prev) =>
+          prev.map((item) => ({ ...item, isDefault: item.id === saved.id }))
+        );
+      }
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleSaveRuntimeModel = async () => {
+    if (!provider || !modelForm.modelId.trim()) return;
+    setError(null);
+    try {
+      const saved = await onSaveRuntimeModel(provider.providerId, {
+        ...modelForm,
+        displayName: modelForm.displayName || undefined,
+        providerId: modelForm.providerId || undefined,
+      });
+      setRuntimeModels((prev) => {
+        const next = prev.filter((item) => item.id !== saved.id);
+        return [saved, ...next];
+      });
+      if (saved.isDefault) {
+        setRuntimeModels((prev) => prev.map((item) => ({ ...item, isDefault: item.id === saved.id })));
+        setConfig((prev) => ({ ...prev, defaultModel: saved.modelId }));
+      }
+    } catch (err) {
+      setError(String(err));
     }
   };
 
@@ -143,12 +226,12 @@ export function ConfigureProviderDialog({
   if (!provider) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Configure {provider.displayName}</DialogTitle>
           <DialogDescription>
-            Customize the settings for this provider.
+            Customize runtime launch and model settings.
           </DialogDescription>
         </DialogHeader>
 
@@ -159,7 +242,7 @@ export function ConfigureProviderDialog({
             <Input
               id="default-model"
               placeholder="e.g., gpt-4, claude-3-5-sonnet"
-              value={config.defaultModel}
+              value={config.defaultModel ?? ""}
               onChange={(e) =>
                 setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
               }
@@ -243,6 +326,90 @@ export function ConfigureProviderDialog({
             ))}
             <Button size="sm" variant="outline" onClick={addCustomArg}>
               Add Argument
+            </Button>
+          </div>
+
+          <div className="space-y-3 border-t border-glass-border pt-4">
+            <Label>LLM Providers</Label>
+            <div className="space-y-2 rounded-md border border-glass-border p-3">
+              {runtimeProviders.length === 0 ? (
+                <p className="text-xs text-text-muted">No runtime-scoped LLM providers configured yet.</p>
+              ) : (
+                runtimeProviders.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-xs">
+                    <div>
+                      <div className="text-text-primary">{item.displayName ?? item.providerId}</div>
+                      <div className="text-text-muted">{item.apiType}{item.baseUrl ? ` • ${item.baseUrl}` : ""}</div>
+                    </div>
+                    {item.isDefault && <span className="text-primary">Default</span>}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                placeholder="Provider ID (e.g. anthropic)"
+                value={providerForm.providerId}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, providerId: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+              <Input
+                placeholder="API type (e.g. anthropic)"
+                value={providerForm.apiType}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, apiType: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+              <Input
+                placeholder="Display name"
+                value={providerForm.displayName ?? ""}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+              <Input
+                placeholder="Base URL"
+                value={providerForm.baseUrl ?? ""}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={handleSaveRuntimeProvider}>
+              Save LLM Provider
+            </Button>
+          </div>
+
+          <div className="space-y-3 border-t border-glass-border pt-4">
+            <Label>Models</Label>
+            <div className="space-y-2 rounded-md border border-glass-border p-3">
+              {runtimeModels.length === 0 ? (
+                <p className="text-xs text-text-muted">No models configured for this runtime yet.</p>
+              ) : (
+                runtimeModels.map((item) => (
+                  <div key={item.id} className="flex items-center justify-between text-xs">
+                    <div>
+                      <div className="text-text-primary">{item.displayName ?? item.modelId}</div>
+                      <div className="text-text-muted">{item.providerId ?? "No provider"}</div>
+                    </div>
+                    {item.isDefault && <span className="text-primary">Default</span>}
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Input
+                placeholder="Model ID"
+                value={modelForm.modelId}
+                onChange={(e) => setModelForm((prev) => ({ ...prev, modelId: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+              <Input
+                placeholder="Display name"
+                value={modelForm.displayName ?? ""}
+                onChange={(e) => setModelForm((prev) => ({ ...prev, displayName: e.target.value }))}
+                className="bg-space-deep border-glass-border"
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={handleSaveRuntimeModel}>
+              Save Model
             </Button>
           </div>
 

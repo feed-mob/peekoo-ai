@@ -1,17 +1,26 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { type ProviderInfo, type ProviderStatus } from "@/types/agent-provider";
+import {
+  type RuntimeInfo,
+  type RuntimeLlmProviderInfo,
+  type RuntimeModelInfo,
+  type RuntimeStatus,
+} from "@/types/agent-runtime";
 import { Star, Download, Settings, Trash2, Check, AlertCircle, Loader2 } from "lucide-react";
 
 interface ProviderCardProps {
-  provider: ProviderInfo;
+  provider: RuntimeInfo;
   isInstalling: boolean;
+  getRuntimeDefaults: (
+    runtimeId: string
+  ) => Promise<{ provider: RuntimeLlmProviderInfo | null; model: RuntimeModelInfo | null }>;
   onSetDefault: (providerId: string) => void;
-  onInstall: (provider: ProviderInfo) => void;
-  onConfigure: (provider: ProviderInfo) => void;
+  onInstall: (provider: RuntimeInfo) => void;
+  onConfigure: (provider: RuntimeInfo) => void;
   onUninstall: (providerId: string) => void;
 }
 
-function getStatusIcon(status: ProviderStatus) {
+function getStatusIcon(status: RuntimeStatus) {
   switch (status) {
     case "ready":
       return <Check className="h-4 w-4 text-green-500" />;
@@ -26,7 +35,7 @@ function getStatusIcon(status: ProviderStatus) {
   }
 }
 
-function getStatusText(status: ProviderStatus, statusMessage?: string) {
+function getStatusText(status: RuntimeStatus, statusMessage?: string | null) {
   switch (status) {
     case "ready":
       return "Ready";
@@ -44,6 +53,7 @@ function getStatusText(status: ProviderStatus, statusMessage?: string) {
 export function ProviderCard({
   provider,
   isInstalling,
+  getRuntimeDefaults,
   onSetDefault,
   onInstall,
   onConfigure,
@@ -51,6 +61,36 @@ export function ProviderCard({
 }: ProviderCardProps) {
   const statusIcon = getStatusIcon(provider.status);
   const statusText = getStatusText(provider.status, provider.statusMessage);
+  const [runtimeProvider, setRuntimeProvider] = useState<RuntimeLlmProviderInfo | null>(null);
+  const [runtimeModel, setRuntimeModel] = useState<RuntimeModelInfo | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!provider.isInstalled) {
+      setRuntimeProvider(null);
+      setRuntimeModel(null);
+      return;
+    }
+
+    void getRuntimeDefaults(provider.providerId)
+      .then(({ provider: llmProvider, model }) => {
+        if (!cancelled) {
+          setRuntimeProvider(llmProvider);
+          setRuntimeModel(model);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRuntimeProvider(null);
+          setRuntimeModel(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getRuntimeDefaults, provider.isInstalled, provider.providerId]);
 
   return (
     <div
@@ -67,7 +107,7 @@ export function ProviderCard({
         </div>
       )}
 
-      {/* Provider Icon & Info */}
+      {/* Runtime Icon & Info */}
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-space-deep text-lg">
@@ -144,10 +184,19 @@ export function ProviderCard({
         )}
       </div>
 
-      {/* Model Info (if configured) */}
-      {provider.config.defaultModel && provider.isInstalled && (
-        <div className="mt-3 border-t border-glass-border pt-3 text-xs text-text-muted">
-          Model: {provider.config.defaultModel}
+      {/* Runtime Defaults */}
+      {provider.isInstalled && (runtimeProvider || runtimeModel || provider.config.defaultModel) && (
+        <div className="mt-3 space-y-1 border-t border-glass-border pt-3 text-xs text-text-muted">
+          {runtimeProvider && (
+            <div>
+              LLM Provider: <span className="text-text-secondary">{runtimeProvider.displayName ?? runtimeProvider.providerId}</span>
+            </div>
+          )}
+          {(runtimeModel || provider.config.defaultModel) && (
+            <div>
+              Model: <span className="text-text-secondary">{runtimeModel?.displayName ?? runtimeModel?.modelId ?? provider.config.defaultModel}</span>
+            </div>
+          )}
         </div>
       )}
     </div>

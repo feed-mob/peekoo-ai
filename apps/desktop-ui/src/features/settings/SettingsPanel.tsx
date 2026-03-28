@@ -1,5 +1,6 @@
 import { useGlobalSettings } from "./useGlobalSettings";
 import { SpriteSelector } from "./SpriteSelector";
+import { AgentProviderPanel } from "@/features/agent-runtimes/AgentProviderPanel";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, Monitor } from "lucide-react";
 
@@ -72,7 +73,13 @@ export function SettingsPanel() {
           onSelect={setActiveSpriteId}
         />
       </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">
+          ACP Runtimes
+        </h3>
+        <AgentProviderPanel />
+      </section>
     </div>
   );
 }
-

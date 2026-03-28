@@ -14,13 +14,13 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle, Check, Download } from "lucide-react";
 import {
-  type ProviderInfo,
+  type RuntimeInfo,
   type InstallationMethod,
   type PrerequisitesCheck,
-} from "@/types/agent-provider";
+} from "@/types/agent-runtime";
 
 interface InstallProviderDialogProps {
-  provider: ProviderInfo | null;
+  provider: RuntimeInfo | null;
   isOpen: boolean;
   onClose: () => void;
   onInstall: (
@@ -107,12 +107,12 @@ export function InstallProviderDialog({
   if (!provider) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Install {provider.displayName}</DialogTitle>
           <DialogDescription>
-            Choose how you want to install this provider.
+            Choose how you want to install this ACP runtime.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,7 +145,7 @@ export function InstallProviderDialog({
           {/* Installation Methods */}
           <RadioGroup
             value={selectedMethod}
-            onValueChange={(v) => setSelectedMethod(v as InstallationMethod)}
+            onValueChange={(value: string) => setSelectedMethod(value as InstallationMethod)}
             className="space-y-2"
           >
             {provider.availableMethods.map((method) => (
@@ -210,7 +210,7 @@ export function InstallProviderDialog({
           </Button>
           <Button
             onClick={handleInstall}
-            disabled={isInstalling || isChecking || (prerequisites && !prerequisites.available)}
+            disabled={isInstalling || isChecking || Boolean(prerequisites && !prerequisites.available)}
           >
             {isInstalling ? (
               <>

@@ -4,8 +4,8 @@
 //! conversation history, supporting peekoo-managed persistence while
 //! allowing agent-specific state to be stored opaquely.
 
-use crate::backend::{ContentBlock, Message, MessageRole, ModelInfo, StopReason, TokenUsage};
-use rusqlite::{Connection, OptionalExtension, params};
+use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::PathBuf;
 
 /// Session metadata for listing
@@ -46,6 +46,11 @@ impl SessionStore {
     /// Open or create session store at the given path
     pub fn open(db_path: &PathBuf) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
+
+        // Run migrations to ensure tables exist
+        peekoo_persistence_sqlite::run_all_migrations(&conn)
+            .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
+
         Ok(Self {
             conn,
             db_path: db_path.clone(),
@@ -53,11 +58,12 @@ impl SessionStore {
     }
 
     /// Create an in-memory store (for testing)
+    #[cfg(test)]
     pub fn open_in_memory() -> anyhow::Result<Self> {
         let conn = Connection::open_in_memory()?;
-        // For in-memory testing, we need to run migrations manually
-        // In production, migrations are run by peekoo-persistence-sqlite
-        Self::create_test_tables(&conn)?;
+        // For in-memory testing, run all migrations
+        peekoo_persistence_sqlite::run_all_migrations(&conn)
+            .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
         Ok(Self {
             conn,
             db_path: PathBuf::from(":memory:"),
@@ -70,78 +76,9 @@ impl SessionStore {
     }
 
     /// Get a reference to the connection for testing purposes
-    ///
-    /// # Warning
-    /// This is intended for testing only. Direct SQL access may bypass
-    /// business logic and invariants.
+    #[cfg(test)]
     pub fn test_conn(&self) -> &Connection {
         &self.conn
-    }
-
-    /// Create test tables for in-memory testing
-    fn create_test_tables(conn: &Connection) -> anyhow::Result<()> {
-        // agent_sessions table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS agent_sessions (
-                id TEXT PRIMARY KEY,
-                title TEXT,
-                status TEXT NOT NULL DEFAULT 'active',
-                current_provider TEXT NOT NULL,
-                provider_command TEXT NOT NULL,
-                provider_args_json TEXT,
-                working_directory TEXT NOT NULL,
-                persona_dir TEXT,
-                system_prompt TEXT,
-                skills_json TEXT,
-                provider_state_json TEXT,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
-                last_activity_at TEXT,
-                closed_at TEXT
-            )",
-            [],
-        )?;
-
-        // session_messages table
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS session_messages (
-                id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL,
-                sequence_num INTEGER NOT NULL,
-                role TEXT NOT NULL,
-                content_type TEXT NOT NULL,
-                content_json TEXT NOT NULL,
-                tool_name TEXT,
-                tool_call_id TEXT,
-                provider TEXT,
-                model TEXT,
-                input_tokens INTEGER,
-                output_tokens INTEGER,
-                created_at TEXT NOT NULL,
-                FOREIGN KEY (session_id) REFERENCES agent_sessions(id) ON DELETE CASCADE
-            )",
-            [],
-        )?;
-
-        // Indexes
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_session_messages_session_id ON session_messages(session_id)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_session_messages_sequence ON session_messages(session_id, sequence_num)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agent_sessions_status ON agent_sessions(status)",
-            [],
-        )?;
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_agent_sessions_updated ON agent_sessions(updated_at)",
-            [],
-        )?;
-
-        Ok(())
     }
 
     /// Create a new session
@@ -162,8 +99,9 @@ impl SessionStore {
             "INSERT INTO agent_sessions (
                 id, title, status, current_provider, provider_command, 
                 provider_args_json, working_directory, system_prompt, 
-                skills_json, created_at, updated_at, last_activity_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?10)",
+                skills_json, runtime_id, llm_provider_id, model_id,
+                created_at, updated_at, last_activity_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?4, NULL, NULL, ?10, ?10, ?10)",
             params![
                 &session_id,
                 title,
@@ -372,6 +310,25 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Update runtime-scoped provider/model context for a session.
+    pub fn update_runtime_context(
+        &self,
+        session_id: &str,
+        llm_provider_id: Option<&str>,
+        model_id: Option<&str>,
+    ) -> anyhow::Result<()> {
+        let now = now_iso8601();
+
+        self.conn.execute(
+            "UPDATE agent_sessions
+             SET llm_provider_id = ?1, model_id = ?2, updated_at = ?3
+             WHERE id = ?4",
+            params![llm_provider_id, model_id, &now, session_id],
+        )?;
+
+        Ok(())
+    }
+
     /// Switch provider mid-session
     pub fn switch_provider(
         &self,
@@ -545,6 +502,55 @@ mod tests {
 
         assert!(!session_id.is_empty());
         assert!(session_id.starts_with("sess_"));
+
+        let (runtime_id, llm_provider_id, model_id): (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = store
+            .test_conn()
+            .query_row(
+                "SELECT runtime_id, llm_provider_id, model_id FROM agent_sessions WHERE id = ?1",
+                params![&session_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+
+        assert_eq!(runtime_id.as_deref(), Some("pi-acp"));
+        assert!(llm_provider_id.is_none());
+        assert!(model_id.is_none());
+    }
+
+    #[test]
+    fn test_update_runtime_context() {
+        let store = create_test_store();
+        let session_id = store
+            .create_session(
+                Some("Test Session"),
+                "pi-acp",
+                "npx",
+                &["pi-acp".to_string()],
+                &PathBuf::from("/tmp/test"),
+                None,
+                &[],
+            )
+            .unwrap();
+
+        store
+            .update_runtime_context(&session_id, Some("anthropic"), Some("claude-sonnet-4-6"))
+            .unwrap();
+
+        let (provider_id, model_id): (Option<String>, Option<String>) = store
+            .test_conn()
+            .query_row(
+                "SELECT llm_provider_id, model_id FROM agent_sessions WHERE id = ?1",
+                params![&session_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(provider_id.as_deref(), Some("anthropic"));
+        assert_eq!(model_id.as_deref(), Some("claude-sonnet-4-6"));
     }
 
     #[test]

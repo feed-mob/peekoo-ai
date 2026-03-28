@@ -4,11 +4,10 @@
 //! and switching providers/models at runtime via ACP-compatible agents.
 
 use crate::backend::{AgentBackend, AgentEvent, BackendConfig, Message, MessageRole};
-use crate::config::{AgentProvider, AgentServiceConfig};
+use crate::config::AgentServiceConfig;
 use crate::mcp_bridge::McpBridge;
 use crate::session_store::SessionStore;
 use anyhow::Result;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
@@ -41,16 +40,7 @@ impl AgentService {
 
         // Initialize session store if persistence is enabled
         let session_store = if !config.no_session {
-            let db_path = config
-                .session_dir
-                .as_ref()
-                .map(|dir| dir.join("agent_sessions.db"))
-                .unwrap_or_else(|| {
-                    std::env::current_dir()
-                        .unwrap_or_else(|_| PathBuf::from("."))
-                        .join(".peekoo")
-                        .join("agent_sessions.db")
-                });
+            let db_path = peekoo_paths::peekoo_settings_db_path().map_err(anyhow::Error::msg)?;
 
             // Ensure parent directory exists
             if let Some(parent) = db_path.parent() {
@@ -275,7 +265,7 @@ impl AgentService {
     }
 
     /// Close the session
-    pub async fn close(mut self) -> Result<()> {
+    pub async fn close(self) -> Result<()> {
         if let (Some(session_id), Some(store)) = (&self.session_id, &self.session_store) {
             store.update_session_status(session_id, "closed")?;
         }
@@ -366,7 +356,7 @@ impl AgentService {
     async fn create_new_session(
         config: &AgentServiceConfig,
         session_store: &Option<SessionStore>,
-        backend: &dyn AgentBackend,
+        _backend: &dyn AgentBackend,
     ) -> Result<String> {
         let (command, args) = config.provider.command();
 
@@ -377,7 +367,7 @@ impl AgentService {
             .collect();
 
         let session_id = if let Some(store) = session_store {
-            store.create_session(
+            let session_id = store.create_session(
                 None, // title
                 &config.provider.id(),
                 &command,
@@ -385,7 +375,13 @@ impl AgentService {
                 &config.working_directory,
                 config.system_prompt.as_deref(),
                 &skills,
-            )?
+            )?;
+            store.update_runtime_context(
+                &session_id,
+                config.llm_provider_id.as_deref(),
+                config.model.as_deref(),
+            )?;
+            session_id
         } else {
             generate_temp_session_id()
         };

@@ -80,33 +80,6 @@ export function useChatSettings() {
     return parsed;
   }, []);
 
-  const setProviderConfig = useCallback(
-    async (providerId: string, baseUrl: string, api?: string, authHeader?: boolean) => {
-      const rawConfig = await invoke("agent_provider_config_set", {
-        req: { providerId, baseUrl, api, authHeader },
-      });
-      const parsed = rawConfig as {
-        providerId: string;
-        baseUrl: string;
-        api: string;
-        authHeader: boolean;
-      };
-
-      setSettings((prev) => {
-        if (!prev) return prev;
-        const filtered = prev.providerConfigs.filter((item) => item.providerId !== providerId);
-        return {
-          ...prev,
-          providerConfigs: [...filtered, parsed],
-          version: prev.version + 1,
-        };
-      });
-
-      return parsed;
-    },
-    []
-  );
-
   const startOauth = useCallback(async (providerId: string) => {
     const response = (await invoke("agent_oauth_start", {
       req: { providerId },
@@ -180,7 +153,6 @@ export function useChatSettings() {
     refresh,
     updateSettings,
     saveApiKey,
-    setProviderConfig,
     clearAuth,
     startOauth,
     pollOauthStatus,

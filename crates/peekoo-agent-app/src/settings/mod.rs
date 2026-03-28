@@ -1,6 +1,5 @@
 mod catalog;
 mod dto;
-mod pi_models;
 mod skills;
 mod store;
 
@@ -16,13 +15,13 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::settings::catalog::{
-    default_api_for_provider, default_auth_header_for_provider, is_compatible_provider,
-    normalize_model_for_provider, provider_catalog,
+    default_api_for_provider, default_auth_header_for_provider, normalize_model_for_provider,
+    provider_catalog,
 };
-use crate::settings::pi_models::ensure_pi_models_provider;
 use crate::settings::skills::discover_skills;
 use crate::settings::store::SettingsStore;
 
+pub use catalog::default_model_for_provider;
 pub use dto::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -82,6 +81,53 @@ impl SettingsService {
     pub fn catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
         Ok(AgentSettingsCatalogDto {
             providers: provider_catalog(),
+            discovered_skills: discover_skills(),
+        })
+    }
+
+    /// Build catalog dynamically from installed ACP runtimes and their models.
+    pub fn catalog_from_runtimes(
+        &self,
+        provider_service: &crate::agent_provider_service::AgentProviderService,
+    ) -> Result<AgentSettingsCatalogDto, String> {
+        let runtimes = provider_service
+            .list_runtimes()
+            .map_err(|e| format!("List runtimes error: {e}"))?;
+
+        let providers: Vec<ProviderCatalogDto> = runtimes
+            .iter()
+            .map(|runtime| {
+                let models = provider_service
+                    .list_runtime_models(&runtime.provider_id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|m| m.is_enabled)
+                    .map(|m| m.model_id)
+                    .collect::<Vec<_>>();
+
+                // Fall back to hardcoded catalog models if no runtime models configured
+                let final_models = if models.is_empty() {
+                    let catalog = provider_catalog();
+                    catalog
+                        .into_iter()
+                        .find(|c| c.id == runtime.provider_id)
+                        .map(|c| c.models)
+                        .unwrap_or_default()
+                } else {
+                    models
+                };
+
+                ProviderCatalogDto {
+                    id: runtime.provider_id.clone(),
+                    name: runtime.display_name.clone(),
+                    auth_modes: Vec::new(),
+                    models: final_models,
+                }
+            })
+            .collect();
+
+        Ok(AgentSettingsCatalogDto {
+            providers,
             discovered_skills: discover_skills(),
         })
     }
@@ -232,18 +278,6 @@ impl SettingsService {
     ) -> Result<(AgentServiceConfig, i64), String> {
         let settings = self.store.load_settings()?;
         let provider_id = settings.active_provider_id.clone();
-        if is_compatible_provider(&provider_id) {
-            let provider_cfg = self
-                .store
-                .provider_config_for(&provider_id)
-                .ok_or_else(|| {
-                    format!(
-                        "Provider '{}' requires base URL configuration in settings",
-                        provider_id
-                    )
-                })?;
-            ensure_pi_models_provider(&provider_cfg, &settings.active_model_id)?;
-        }
         let model_id = normalize_model_for_provider(&provider_id, &settings.active_model_id);
         base.provider = provider_id_to_enum(&provider_id);
         base.model = Some(model_id);
@@ -372,7 +406,7 @@ mod tests {
 
         // Save an API key (puts it in both DB and secret store)
         svc.set_provider_api_key(SetApiKeyRequest {
-            provider_id: "anthropic".into(),
+            provider_id: "pi-acp".into(),
             api_key: "sk-test-123".into(),
         })
         .expect("save api key");
@@ -387,14 +421,14 @@ mod tests {
         let auth = settings
             .provider_auth
             .iter()
-            .find(|a| a.provider_id == "anthropic")
+            .find(|a| a.provider_id == "pi-acp")
             .expect("auth entry");
         assert!(auth.configured);
 
         // Read the ref from DB and delete it from the in-memory secret store
         let api_key_ref = svc
             .store
-            .active_api_key_ref("anthropic")
+            .active_api_key_ref("pi-acp")
             .unwrap()
             .expect("ref exists");
         secret_store.delete(&api_key_ref).expect("delete secret");
@@ -458,7 +492,7 @@ mod tests {
 
         let auth = svc
             .set_provider_api_key(SetApiKeyRequest {
-                provider_id: "anthropic".into(),
+                provider_id: "pi-acp".into(),
                 api_key: "sk-fallback".into(),
             })
             .expect("save through fallback");
@@ -484,7 +518,7 @@ mod tests {
             .expect("create settings service");
 
         svc.update_settings(AgentSettingsPatchDto {
-            active_provider_id: Some("openai-codex".into()),
+            active_provider_id: Some("codex".into()),
             active_model_id: Some("gpt-5.3-codex".into()),
             system_prompt: None,
             max_tool_iterations: None,
@@ -492,12 +526,12 @@ mod tests {
         })
         .expect("set provider/model");
 
-        let token_ref = "peekoo/auth/openai-codex/oauth/test-token".to_string();
+        let token_ref = "peekoo/auth/codex/oauth/test-token".to_string();
         fallback_mem
             .put(&token_ref, "oauth-fallback-token")
             .expect("seed fallback oauth token");
         svc.store
-            .set_provider_auth_refs("openai-codex", "oauth", None, Some(token_ref), None)
+            .set_provider_auth_refs("codex", "oauth", None, Some(token_ref), None)
             .expect("set oauth refs");
 
         let base = AgentServiceConfig::default();

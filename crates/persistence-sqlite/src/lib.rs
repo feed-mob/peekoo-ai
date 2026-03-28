@@ -238,6 +238,28 @@ mod tests {
     }
 
     #[test]
+    fn acp_runtime_tables_and_session_columns_exist() {
+        let conn = setup_test_db();
+
+        for table in ["agent_runtimes", "runtime_llm_providers", "runtime_models"] {
+            assert!(sqlite_table_exists(&conn, table).expect("query sqlite_master"));
+        }
+
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(agent_sessions)")
+            .expect("prepare table_info");
+        let columns: Vec<String> = stmt
+            .query_map([], |row| row.get(1))
+            .expect("query columns")
+            .collect::<Result<_, _>>()
+            .expect("collect columns");
+
+        assert!(columns.iter().any(|column| column == "runtime_id"));
+        assert!(columns.iter().any(|column| column == "llm_provider_id"));
+        assert!(columns.iter().any(|column| column == "model_id"));
+    }
+
+    #[test]
     fn known_migration_ids_present() {
         let ids: Vec<&str> = MIGRATIONS.iter().map(|m| m.id).collect();
         assert!(ids.contains(&"0001_init"), "missing 0001_init");

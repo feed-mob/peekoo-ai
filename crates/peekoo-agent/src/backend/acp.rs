@@ -177,7 +177,7 @@ impl AcpBackend {
 
     /// Check if the ACP agent process is still running
     fn is_process_alive(&self) -> bool {
-        if let Some(ref child) = self.child {
+        if let Some(ref _child) = self.child {
             // Try to get exit status - if it's None, process is still running
             // Note: try_wait() needs &mut self, but we're only checking existence
             // A process that has a handle is considered "alive" for our purposes

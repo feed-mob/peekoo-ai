@@ -4,16 +4,22 @@ import { MessageSquarePlus, Send, Settings2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { QuickProviderSwitcher } from "@/features/agent-runtimes/QuickProviderSwitcher";
+import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { useChatSession } from "./chat-session";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { type RuntimeLlmProviderInfo, type RuntimeModelInfo } from "@/types/agent-runtime";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [currentLlmProvider, setCurrentLlmProvider] = useState<RuntimeLlmProviderInfo | null>(null);
+  const [currentModel, setCurrentModel] = useState<RuntimeModelInfo | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { messages, isTyping, sendMessage, startNewChat } = useChatSession();
+  const { providers, defaultProvider, refresh, setAsDefault, getRuntimeDefaults } = useAgentProviders();
 
   const scrollToBottom = useCallback(() => {
     requestAnimationFrame(() => {
@@ -34,6 +40,38 @@ export function ChatPanel() {
       void unlistenPromise.then((fn) => fn());
     };
   }, [scrollToBottom]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!defaultProvider) {
+      setCurrentLlmProvider(null);
+      setCurrentModel(null);
+      return;
+    }
+
+    void getRuntimeDefaults(defaultProvider.providerId)
+      .then(({ provider, model }) => {
+        if (!cancelled) {
+          setCurrentLlmProvider(provider);
+          setCurrentModel(model);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCurrentLlmProvider(null);
+          setCurrentModel(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [defaultProvider, getRuntimeDefaults]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +95,19 @@ export function ChatPanel() {
   return (
     <div className="flex min-h-0 h-full flex-col">
       <div className="mb-3 shrink-0 space-y-3">
-        <div className="flex justify-end gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <QuickProviderSwitcher
+            providers={providers}
+            currentProvider={defaultProvider}
+            currentLlmProvider={currentLlmProvider}
+            currentModel={currentModel}
+            onSwitch={(providerId) => {
+              void setAsDefault(providerId);
+            }}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+
+          <div className="flex justify-end gap-2">
           <Button
             type="button"
             variant="glass"
@@ -77,6 +127,7 @@ export function ChatPanel() {
             <Settings2 size={14} />
             {showSettings ? "Hide Settings" : "Settings"}
           </Button>
+          </div>
         </div>
 
         {showSettings && (

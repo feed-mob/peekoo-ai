@@ -22,7 +22,6 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-pi = { git = "https://github.com/0xRichardH/pi_agent_rust", branch = "fix/windows-tempfile-persist-retry", package = "pi_agent_rust", default-features = false, features = ["image-resize", "clipboard", "sqlite-sessions"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 asupersync = "=0.2.9"
 
