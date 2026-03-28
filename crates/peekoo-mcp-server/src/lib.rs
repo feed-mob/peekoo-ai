@@ -1,8 +1,11 @@
-//! MCP Server for task management tools.
+//! MCP Server for task management and plugin tools.
 //!
-//! This crate exposes task tools over RMCP's streamable HTTP transport.
+//! This crate exposes Peekoo-owned tools over RMCP's streamable HTTP transport.
+//! Task tools are always available. Plugin tools are available when the
+//! `plugin-runtime` feature is enabled and a [`PluginRegistry`] is provided.
 
 pub mod handler;
+pub mod plugin;
 
 pub use handler::TaskMcpHandler;
 
@@ -15,16 +18,17 @@ use rmcp::transport::{
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
+#[cfg(feature = "plugin-runtime")]
+use peekoo_plugin_host::PluginRegistry;
+
 pub const MCP_PATH: &str = "/mcp";
 
 pub fn mcp_url_for(addr: std::net::SocketAddr) -> String {
     format!("http://{}{}", addr, MCP_PATH)
 }
 
-#[cfg(test)]
-fn ensure_rustls_provider() {
+pub fn ensure_rustls_provider() {
     static RUSTLS_PROVIDER: std::sync::OnceLock<()> = std::sync::OnceLock::new();
-
     RUSTLS_PROVIDER.get_or_init(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
@@ -32,10 +36,16 @@ fn ensure_rustls_provider() {
 
 /// Start the MCP server on a TCP listener.
 ///
-/// Returns the local address the HTTP server is listening on. The MCP endpoint is
-/// available at `http://{addr}/mcp`.
+/// - `task_service` — provides all task tools.
+/// - `plugin_registry` — when provided (requires `plugin-runtime` feature),
+///   plugin tools are also exposed under `plugin__{key}__{name}` names.
+///
+/// Returns the local address the HTTP server is listening on. The MCP endpoint
+/// is available at `http://{addr}/mcp`.
 pub async fn start_tcp_server(
     task_service: Arc<dyn TaskService>,
+    #[cfg(feature = "plugin-runtime")] plugin_registry: Option<Arc<PluginRegistry>>,
+    #[cfg(not(feature = "plugin-runtime"))] _plugin_registry: Option<()>,
     listener: TcpListener,
 ) -> Result<std::net::SocketAddr, Box<dyn std::error::Error + Send + Sync>> {
     let local_addr = listener.local_addr()?;
@@ -45,14 +55,12 @@ pub async fn start_tcp_server(
         mcp_url_for(local_addr)
     );
 
-    let mcp_service: StreamableHttpService<TaskMcpHandler, LocalSessionManager> =
-        StreamableHttpService::new(
-            move || Ok(TaskMcpHandler::new(Arc::clone(&task_service))),
-            LocalSessionManager::default().into(),
-            StreamableHttpServerConfig::default(),
-        );
-
-    let app = Router::new().nest_service(MCP_PATH, mcp_service);
+    let app = build_router(task_service, {
+        #[cfg(feature = "plugin-runtime")]
+        { plugin_registry }
+        #[cfg(not(feature = "plugin-runtime"))]
+        { None::<()> }
+    });
 
     tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, app).await {
@@ -63,6 +71,39 @@ pub async fn start_tcp_server(
     Ok(local_addr)
 }
 
+fn build_router(
+    task_service: Arc<dyn TaskService>,
+    #[cfg(feature = "plugin-runtime")] plugin_registry: Option<Arc<PluginRegistry>>,
+    #[cfg(not(feature = "plugin-runtime"))] _plugin_registry: Option<()>,
+) -> Router {
+    let task_service_clone = Arc::clone(&task_service);
+    let task_mcp: StreamableHttpService<TaskMcpHandler, LocalSessionManager> =
+        StreamableHttpService::new(
+            move || Ok(TaskMcpHandler::new(Arc::clone(&task_service_clone))),
+            LocalSessionManager::default().into(),
+            StreamableHttpServerConfig::default(),
+        );
+
+    let app = Router::new().nest_service(MCP_PATH, task_mcp);
+
+    #[cfg(feature = "plugin-runtime")]
+    let app = if let Some(registry) = plugin_registry {
+        use plugin::plugin_handler::PluginMcpHandler;
+        const PLUGIN_MCP_PATH: &str = "/mcp/plugins";
+        let plugin_mcp: StreamableHttpService<PluginMcpHandler, LocalSessionManager> =
+            StreamableHttpService::new(
+                move || Ok(PluginMcpHandler::new(Arc::clone(&registry))),
+                LocalSessionManager::default().into(),
+                StreamableHttpServerConfig::default(),
+            );
+        app.nest_service(PLUGIN_MCP_PATH, plugin_mcp)
+    } else {
+        app
+    };
+
+    app
+}
+
 #[cfg(test)]
 mod tests {
     use super::{mcp_url_for, start_tcp_server};
@@ -71,14 +112,26 @@ mod tests {
     use std::sync::Arc;
     use tokio::net::TcpListener;
 
+    const EXPECTED_TASK_TOOLS: &[&str] = &[
+        "task_create",
+        "task_list",
+        "task_update",
+        "task_delete",
+        "task_toggle",
+        "task_assign",
+        "task_comment",
+        "update_task_labels",
+        "update_task_status",
+    ];
+
     #[tokio::test]
-    async fn http_server_keeps_connection_alive_for_list_tools() {
+    async fn http_server_exposes_all_task_tools() {
         super::ensure_rustls_provider();
 
         let listener = TcpListener::bind(("127.0.0.1", 0))
             .await
             .expect("bind listener");
-        let addr = start_tcp_server(Arc::new(NoopTaskService), listener)
+        let addr = start_tcp_server(Arc::new(NoopTaskService), None, listener)
             .await
             .expect("start server");
 
@@ -87,18 +140,17 @@ mod tests {
             ().serve(transport).await.expect("complete handshake");
 
         let tools = client
-            .list_tools(Default::default())
+            .list_all_tools()
             .await
             .expect("list tools without transport closing");
 
-        let tool_names: Vec<String> = tools
-            .tools
-            .into_iter()
-            .map(|tool| tool.name.to_string())
-            .collect();
+        let tool_names: Vec<String> = tools.into_iter().map(|t| t.name.to_string()).collect();
 
-        assert!(tool_names.iter().any(|name| name == "task_comment"));
-        assert!(tool_names.iter().any(|name| name == "update_task_labels"));
-        assert!(tool_names.iter().any(|name| name == "update_task_status"));
+        for expected in EXPECTED_TASK_TOOLS {
+            assert!(
+                tool_names.iter().any(|n| n == expected),
+                "missing tool: {expected}"
+            );
+        }
     }
 }

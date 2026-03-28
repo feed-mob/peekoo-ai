@@ -7,7 +7,6 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_agent::AgentEvent;
-use peekoo_agent::PluginToolProvider;
 use peekoo_agent::config::AgentServiceConfig;
 use peekoo_agent::service::AgentService;
 use peekoo_app_settings::{AppSettingsService, SpriteInfo};
@@ -182,7 +181,8 @@ impl AgentApplication {
             Arc::new(self.task_runtime_service());
         let mcp_shutdown = self.shutdown_token.clone();
 
-        match crate::mcp_server::start_sync(task_service, mcp_shutdown) {
+        let plugin_registry = Some(Arc::clone(&self.plugin_registry));
+        match crate::mcp_server::start_sync(task_service, plugin_registry, mcp_shutdown) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);
                 eprintln!("[peekoo][mcp] server ready at {}", url);
@@ -883,7 +883,7 @@ impl AgentApplication {
         }
     }
 
-    /// Build a fresh `AgentService` from current settings + plugin tools.
+    /// Build a fresh `AgentService` from current settings + MCP-backed tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
         let (mut config, settings_version) = self.settings.to_agent_config(config)?;
@@ -909,16 +909,26 @@ impl AgentApplication {
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
 
-        // Register plugin tools natively in the agent's tool registry so the
-        // LLM can invoke them during the agent loop (tool call -> execute ->
-        // result -> next turn).
-        service.extend_plugin_tools(Arc::clone(&self.plugin_tools) as Arc<dyn PluginToolProvider>);
-
-        // Register native task tools so the LLM can manage tasks.
-        let task_service: Arc<dyn peekoo_task_app::TaskService> =
-            Arc::new(self.task_service.clone());
-        let task_tools = crate::task_tools::create_task_tools(task_service);
-        service.register_native_tools(task_tools);
+        // Connect to the shared MCP server and register all Peekoo-owned tools
+        // (task tools + plugin tools) via the shared HTTP MCP adapter.
+        if let Some(mcp_url) = crate::mcp_server::get_mcp_url() {
+            match runtime.block_on(peekoo_agent::mcp_client::connect_http_mcp_tools(&mcp_url)) {
+                Ok((tools, handle)) => {
+                    tracing::info!(
+                        tool_count = tools.len(),
+                        "Registered MCP tools for chat session"
+                    );
+                    service.register_native_tools(tools);
+                    // Keep the handle alive for the lifetime of the service.
+                    service.store_mcp_handle(handle);
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to connect to MCP server {mcp_url}: {e}");
+                }
+            }
+        } else {
+            tracing::warn!("MCP server not running — chat session has no task/plugin tools");
+        }
 
         Ok((service, settings_version))
     }

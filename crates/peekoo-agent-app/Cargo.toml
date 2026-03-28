@@ -22,7 +22,7 @@ peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-plugin-host = { path = "../peekoo-plugin-host" }
 peekoo-plugin-store = { path = "../peekoo-plugin-store" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
-peekoo-mcp-server = { path = "../peekoo-mcp-server" }
+peekoo-mcp-server = { path = "../peekoo-mcp-server", features = ["plugin-runtime"] }
 pi = { workspace = true }
 async-trait = "0.1"
 asupersync = { workspace = true }

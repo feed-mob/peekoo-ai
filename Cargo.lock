@@ -5882,12 +5882,16 @@ checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 name = "peekoo-agent"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "asupersync",
  "async-trait",
  "peekoo-paths",
  "pi_agent_rust",
+ "rmcp",
+ "rustls",
  "serde_json",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -6000,6 +6004,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
+ "peekoo-plugin-host",
  "peekoo-task-app",
  "peekoo-task-domain",
  "rmcp",
