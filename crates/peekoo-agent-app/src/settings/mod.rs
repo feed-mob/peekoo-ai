@@ -245,7 +245,7 @@ impl SettingsService {
             ensure_pi_models_provider(&provider_cfg, &settings.active_model_id)?;
         }
         let model_id = normalize_model_for_provider(&provider_id, &settings.active_model_id);
-        base.provider = Some(provider_id.clone());
+        base.provider = provider_id_to_enum(&provider_id);
         base.model = Some(model_id);
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
@@ -505,5 +505,16 @@ mod tests {
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);
+    }
+}
+
+/// Convert provider ID string to AgentProvider enum
+fn provider_id_to_enum(provider_id: &str) -> peekoo_agent::config::AgentProvider {
+    match provider_id {
+        "pi-acp" => peekoo_agent::config::AgentProvider::PiAcp,
+        "opencode" => peekoo_agent::config::AgentProvider::Opencode,
+        "claude-code" => peekoo_agent::config::AgentProvider::ClaudeCode,
+        "codex" => peekoo_agent::config::AgentProvider::Codex,
+        _ => peekoo_agent::config::AgentProvider::PiAcp, // Default fallback
     }
 }

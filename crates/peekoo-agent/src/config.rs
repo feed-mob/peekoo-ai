@@ -1,84 +1,104 @@
 //! Configuration for the agent service.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+/// Agent provider types (built-in + custom)
+#[derive(Debug, Clone, PartialEq)]
+pub enum AgentProvider {
+    /// pi-acp (default, preferred)
+    PiAcp,
+    /// Zed's opencode agent
+    Opencode,
+    /// Anthropic's Claude Code
+    ClaudeCode,
+    /// Zed's Codex agent
+    Codex,
+    /// Custom command
+    Custom { command: String, args: Vec<String> },
+}
+
+impl AgentProvider {
+    /// Get the command and arguments to spawn this provider
+    pub fn command(&self) -> (String, Vec<String>) {
+        match self {
+            AgentProvider::PiAcp => ("npx".to_string(), vec!["pi-acp".to_string()]),
+            AgentProvider::Opencode => ("npx".to_string(), vec!["opencode-ai".to_string()]),
+            AgentProvider::ClaudeCode => (
+                "npx".to_string(),
+                vec!["@anthropic-ai/claude-code".to_string()],
+            ),
+            AgentProvider::Codex => (
+                "npx".to_string(),
+                vec!["@zed-industries/codex-acp".to_string()],
+            ),
+            AgentProvider::Custom { command, args } => (command.clone(), args.clone()),
+        }
+    }
+
+    /// Provider identifier string
+    pub fn id(&self) -> String {
+        match self {
+            AgentProvider::PiAcp => "pi-acp".to_string(),
+            AgentProvider::Opencode => "opencode".to_string(),
+            AgentProvider::ClaudeCode => "claude-code".to_string(),
+            AgentProvider::Codex => "codex".to_string(),
+            AgentProvider::Custom { command, .. } => format!("custom:{}", command),
+        }
+    }
+}
 
 /// Configuration for creating an [`AgentService`](super::service::AgentService).
 ///
-/// Maps to pi's [`SessionOptions`](pi::sdk::SessionOptions) under the hood,
-/// but provides a simpler, peekoo-specific surface.
+/// Provides a peekoo-specific configuration surface for ACP-compatible agents.
 pub struct AgentServiceConfig {
-    /// LLM provider identifier (e.g. `"anthropic"`, `"openai"`, `"google"`).
-    ///
-    /// When `None`, the default provider from pi's config is used.
-    pub provider: Option<String>,
+    /// Provider to use (default: PiAcp)
+    pub provider: AgentProvider,
 
-    /// Model identifier within the provider (e.g. `"claude-sonnet-4-6"`, `"gpt-4o"`).
-    ///
-    /// When `None`, the default model is used.
+    /// Model identifier (provider-specific)
     pub model: Option<String>,
 
-    /// API key for the chosen provider.
-    ///
-    /// When `None`, pi resolves the key from environment variables or its
-    /// auth storage (`~/.pi/auth.json`).
+    /// API key (if needed, passed to provider via env)
     pub api_key: Option<String>,
 
-    /// System prompt prepended to every conversation.
+    /// System prompt
     pub system_prompt: Option<String>,
 
-    /// Working directory for file-system tools (read, write, bash, etc.).
-    ///
-    /// When using Peekoo's `.peekoo/` convention, this is typically the same
-    /// directory that contains the persona markdown files.
+    /// Working directory
     pub working_directory: PathBuf,
 
-    /// Path to a directory containing startup instruction files.
-    ///
-    /// Supported files (all optional):
-    /// - `AGENTS.md` — Operating instructions and memory usage guidelines
-    /// - `BOOTSTRAP.md` — One-time first-run onboarding instructions
-    /// - `SOUL.md` — Persona tone and behavioral boundaries
-    /// - `IDENTITY.md` — Agent name, vibe, and emoji
-    /// - `USER.md` — User profile and addressing preferences
-    /// - `memory.md` or `MEMORY.md` — Persistent facts, user preferences, project context
-    /// - `memories/*.md` — Additional topic-specific memory notes
-    ///
-    /// These are composed into the system prompt before any `system_prompt`
-    /// or `agent_skills` content, in this order:
-    /// `AGENTS` -> `BOOTSTRAP` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
+    /// Persona directory
     pub persona_dir: Option<PathBuf>,
 
-    /// List of paths to markdown files containing AgentSkills (from agentskills.io).
-    /// These are loaded, parsed, and injected into the system prompt as instructions.
+    /// Agent skills
     pub agent_skills: Vec<PathBuf>,
 
-    /// Automatically discover persona files and skills from a `.peekoo/` directory
-    /// in the `working_directory`, falling back to the platform global Peekoo
-    /// config directory (legacy `~/.peekoo/` is still checked for compatibility).
-    /// Discovered paths are used *only* if `persona_dir` and `agent_skills`
-    /// aren't explicitly provided.
+    /// Auto-discover configuration
     pub auto_discover: bool,
 
-    /// Maximum number of consecutive tool iterations before the agent stops.
+    /// Maximum tool iterations
     pub max_tool_iterations: usize,
 
-    /// Directory for session file storage. When set (and `no_session` is false),
-    /// pi organises session files under this directory by working directory.
+    /// Session directory for peekoo-managed persistence
     pub session_dir: Option<PathBuf>,
 
-    /// When `true`, sessions are ephemeral (in-memory only, no file persistence).
-    /// When `false`, pi automatically saves and restores conversation history.
+    /// Whether to disable session persistence
     pub no_session: bool,
 
-    /// Path to a specific session file to resume.
-    /// Takes precedence over `session_dir` when set.
+    /// Specific session to resume
+    pub resume_session_id: Option<String>,
+
+    /// Session file path to resume (for stashed sessions)
     pub session_path: Option<PathBuf>,
+
+    /// Environment variables to pass to ACP agent
+    pub environment: HashMap<String, String>,
 }
 
 impl Default for AgentServiceConfig {
     fn default() -> Self {
         Self {
-            provider: None,
+            provider: AgentProvider::PiAcp,
             model: None,
             api_key: None,
             system_prompt: None,
@@ -89,7 +109,9 @@ impl Default for AgentServiceConfig {
             max_tool_iterations: 50,
             session_dir: None,
             no_session: false,
+            resume_session_id: None,
             session_path: None,
+            environment: HashMap::new(),
         }
     }
 }
@@ -99,9 +121,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_has_no_provider() {
+    fn default_config_has_default_provider() {
         let config = AgentServiceConfig::default();
-        assert!(config.provider.is_none());
+        assert_eq!(config.provider, AgentProvider::PiAcp);
     }
 
     #[test]
@@ -142,12 +164,53 @@ mod tests {
     }
 
     #[test]
+    fn default_config_enables_session_persistence() {
+        let config = AgentServiceConfig::default();
+        assert!(!config.no_session);
+        assert!(config.session_dir.is_none());
+        assert!(config.resume_session_id.is_none());
+    }
+
+    #[test]
+    fn provider_id_returns_expected_values() {
+        assert_eq!(AgentProvider::PiAcp.id(), "pi-acp");
+        assert_eq!(AgentProvider::Opencode.id(), "opencode");
+        assert_eq!(AgentProvider::ClaudeCode.id(), "claude-code");
+        assert_eq!(AgentProvider::Codex.id(), "codex");
+
+        let custom = AgentProvider::Custom {
+            command: "/path/to/agent".to_string(),
+            args: vec!["--mode".to_string(), "acp".to_string()],
+        };
+        assert!(custom.id().starts_with("custom:"));
+    }
+
+    #[test]
+    fn provider_command_returns_expected_commands() {
+        let (cmd, args) = AgentProvider::PiAcp.command();
+        assert_eq!(cmd, "npx");
+        assert_eq!(args, vec!["pi-acp"]);
+
+        let (cmd, args) = AgentProvider::Opencode.command();
+        assert_eq!(cmd, "npx");
+        assert_eq!(args, vec!["opencode-ai"]);
+
+        let (cmd, args) = AgentProvider::Custom {
+            command: "/path/to/agent".to_string(),
+            args: vec!["arg1".to_string()],
+        }
+        .command();
+        assert_eq!(cmd, "/path/to/agent");
+        assert_eq!(args, vec!["arg1"]);
+    }
+
+    #[test]
     fn config_with_custom_values() {
         let config = AgentServiceConfig {
-            provider: Some("anthropic".into()),
-            model: Some("claude-sonnet-4-6".into()),
-            api_key: Some("sk-test-key".into()),
-            system_prompt: Some("You are a helpful assistant.".into()),
+            provider: AgentProvider::Opencode,
+            model: Some("gpt-4o".to_string()),
+            api_key: Some("sk-test-key".to_string()),
+            system_prompt: Some("You are a helpful assistant.".to_string()),
             working_directory: PathBuf::from("/tmp/test"),
             persona_dir: None,
             agent_skills: Vec::new(),
@@ -155,10 +218,12 @@ mod tests {
             max_tool_iterations: 25,
             session_dir: Some(PathBuf::from("/tmp/sessions")),
             no_session: false,
+            resume_session_id: None,
             session_path: None,
+            environment: HashMap::new(),
         };
-        assert_eq!(config.provider.as_deref(), Some("anthropic"));
-        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(config.provider.id(), "opencode");
+        assert_eq!(config.model.as_deref(), Some("gpt-4o"));
         assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
         assert_eq!(
             config.system_prompt.as_deref(),
@@ -171,10 +236,18 @@ mod tests {
     }
 
     #[test]
-    fn default_config_enables_session_persistence() {
-        let config = AgentServiceConfig::default();
-        assert!(!config.no_session);
-        assert!(config.session_dir.is_none());
-        assert!(config.session_path.is_none());
+    fn provider_equality() {
+        assert_eq!(AgentProvider::PiAcp, AgentProvider::PiAcp);
+        assert_ne!(AgentProvider::PiAcp, AgentProvider::Opencode);
+
+        let custom1 = AgentProvider::Custom {
+            command: "cmd".to_string(),
+            args: vec!["arg1".to_string()],
+        };
+        let custom2 = AgentProvider::Custom {
+            command: "cmd".to_string(),
+            args: vec!["arg1".to_string()],
+        };
+        assert_eq!(custom1, custom2);
     }
 }
