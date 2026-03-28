@@ -10,12 +10,16 @@ use agent_client_protocol::{
 use anyhow::Result;
 use async_trait::async_trait;
 use peekoo_agent::service::AgentService;
-use peekoo_agent::{AgentEvent, config::AgentServiceConfig};
+use peekoo_agent::{
+    AgentEvent,
+    config::{AgentProvider, AgentServiceConfig},
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::context::TaskContext;
-use crate::mcp_tools::{TaskScopedTool, summarize_agent_event};
+// TODO: Re-enable after MCP bridge migration
+// use crate::mcp_tools::{TaskScopedTool, summarize_agent_event};
 
 #[derive(Clone)]
 struct SessionContext {
@@ -168,50 +172,52 @@ impl acp::Agent for PeekooAgent {
                 acp::Error::internal_error()
             })?;
 
-        let mut _mcp_handles = Vec::new();
-        let tools_count = if let Some(session) = &session_context {
-            let mut all_tools = Vec::new();
-            for server in &session.mcp_servers {
-                let url = match server {
-                    acp::McpServer::Http(http) => http.url.clone(),
-                    _ => {
-                        tracing::warn!("Skipping non-HTTP MCP server: {:?}", server);
-                        continue;
-                    }
-                };
-                match peekoo_agent::mcp_client::connect_http_mcp_tools(&url).await {
-                    Ok((tools, handle)) => {
-                        tracing::info!(
-                            url = url.as_str(),
-                            tool_count = tools.len(),
-                            "Connected MCP server for task {}",
-                            task_context.task_id
-                        );
-                        let task_id = task_context.task_id.clone();
-                        let wrapped: Vec<Box<dyn pi::tools::Tool>> = tools
-                            .into_iter()
-                            .map(|t| -> Box<dyn pi::tools::Tool> {
-                                if TaskScopedTool::needs_scoping(t.name()) {
-                                    Box::new(TaskScopedTool::new(t, task_id.clone()))
-                                } else {
-                                    t
-                                }
-                            })
-                            .collect();
-                        all_tools.extend(wrapped);
-                        _mcp_handles.push(handle);
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to connect MCP server {}: {}", url, e);
-                    }
-                }
-            }
-            let count = all_tools.len();
-            agent.register_native_tools(all_tools);
-            count
-        } else {
-            0
-        };
+        // TODO: Re-enable MCP tool registration after migration
+        // let mut _mcp_handles = Vec::new();
+        // let tools_count = if let Some(session) = &session_context {
+        //     let mut all_tools = Vec::new();
+        //     for server in &session.mcp_servers {
+        //         let url = match server {
+        //             acp::McpServer::Http(http) => http.url.clone(),
+        //             _ => {
+        //                 tracing::warn!("Skipping non-HTTP MCP server: {:?}", server);
+        //                 continue;
+        //             }
+        //         };
+        //         match peekoo_agent::mcp_client::connect_http_mcp_tools(&url).await {
+        //             Ok((tools, handle)) => {
+        //                 tracing::info!(
+        //                     url = url.as_str(),
+        //                     tool_count = tools.len(),
+        //                     "Connected MCP server for task {}",
+        //                     task_context.task_id
+        //                 );
+        //                 let task_id = task_context.task_id.clone();
+        //                 let wrapped: Vec<Box<dyn pi::tools::Tool>> = tools
+        //                     .into_iter()
+        //                     .map(|t| -> Box<dyn pi::tools::Tool> {
+        //                         if TaskScopedTool::needs_scoping(t.name()) {
+        //                             Box::new(TaskScopedTool::new(t, task_id.clone()))
+        //                         } else {
+        //                             t
+        //                         }
+        //                     })
+        //                     .collect();
+        //                 all_tools.extend(wrapped);
+        //                 _mcp_handles.push(handle);
+        //             }
+        //             Err(e) => {
+        //                 tracing::error!("Failed to connect MCP server {}: {}", url, e);
+        //             }
+        //         }
+        //     }
+        //     let count = all_tools.len();
+        //     agent.register_native_tools(all_tools);
+        //     count
+        // } else {
+        //     0
+        // };
+        let tools_count = 0; // Temporary: no MCP tools during migration
 
         let startup_text = format!(
             "Task received: {}\n\nMCP tools available: {}\n\nRunning agent...",
@@ -235,16 +241,19 @@ impl acp::Agent for PeekooAgent {
         let session_tx = self.session_update_tx.clone();
         let final_text = agent
             .prompt(&task_prompt, move |event: AgentEvent| {
-                if let Some(summary) = summarize_agent_event(&event) {
-                    let (tx, _rx) = oneshot::channel();
-                    let _ = session_tx.send((
-                        SessionNotification::new(
-                            session_id.clone(),
-                            SessionUpdate::AgentMessageChunk(ContentChunk::new(summary.into())),
-                        ),
-                        tx,
-                    ));
-                }
+                // TODO: Re-enable after MCP bridge migration
+                // if let Some(summary) = summarize_agent_event(&event) {
+                //     let (tx, _rx) = oneshot::channel();
+                //     let _ = session_tx.send((
+                //         SessionNotification::new(
+                //             session_id.clone(),
+                //             SessionUpdate::AgentMessageChunk(ContentChunk::new(summary.into())),
+                //         ),
+                //         tx,
+                //     ));
+                // }
+                // For now, just emit the event without MCP summary
+                let _ = event; // Silence unused warning
             })
             .await
             .map_err(|error| {
@@ -346,12 +355,17 @@ async fn build_agent_service(
         auto_discover: true,
         no_session: session_storage.no_session,
         session_dir: session_storage.session_dir,
-        session_path: session_storage.session_path,
         ..Default::default()
     };
 
-    if let Ok(provider) = std::env::var("PEEKOO_AGENT_PROVIDER") {
-        config.provider = Some(provider);
+    if let Ok(provider_str) = std::env::var("PEEKOO_AGENT_PROVIDER") {
+        // Parse provider string to AgentProvider enum
+        config.provider = match provider_str.as_str() {
+            "opencode" => AgentProvider::Opencode,
+            "claude-code" => AgentProvider::ClaudeCode,
+            "codex" => AgentProvider::Codex,
+            _ => AgentProvider::PiAcp, // default
+        };
     }
     if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {
         config.model = Some(model);
