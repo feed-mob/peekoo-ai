@@ -44,23 +44,127 @@ use crate::workspace_bootstrap::ensure_agent_workspace;
 
 type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
 
-fn format_error_chain(err: &dyn std::error::Error) -> String {
-    let mut chain = Vec::new();
-    let mut current = err.source();
-    while let Some(source) = current {
-        chain.push(source.to_string());
-        current = source.source();
+pub fn initialize_process_tls() {
+    peekoo_agent::ensure_rustls_provider();
+}
+
+struct ManagedAgent {
+    runtime: asupersync::runtime::Runtime,
+    service: AgentService,
+}
+
+impl ManagedAgent {
+    fn new(config: AgentServiceConfig) -> Result<Self, String> {
+        let reactor = asupersync::runtime::reactor::create_reactor()
+            .map_err(|e| format!("Reactor error: {e}"))?;
+        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+            .with_reactor(reactor)
+            .build()
+            .map_err(|e| format!("Runtime error: {e}"))?;
+        let service = runtime
+            .block_on(AgentService::new(config))
+            .map_err(|e| format!("Agent init error: {e}"))?;
+
+        Ok(Self { runtime, service })
     }
+
+    fn prompt<F>(&mut self, message: &str, on_event: F) -> pi::error::Result<String>
+    where
+        F: Fn(AgentEvent) + Send + Sync + 'static,
+    {
+        self.runtime.block_on(self.service.prompt(message, on_event))
+    }
+
+    fn set_model(&mut self, provider: &str, model: &str) -> pi::error::Result<()> {
+        self.runtime.block_on(self.service.set_model(provider, model))
+    }
+
+    fn model(&self) -> (String, String) {
+        self.service.model()
+    }
+
+    fn messages_json(&self) -> Vec<serde_json::Value> {
+        self.service.messages_json()
+    }
+
+    fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
+        self.service.extend_plugin_tools(provider);
+    }
+
+    fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
+        self.service.register_native_tools(tools);
+    }
+
+    fn session_path(&self) -> Option<PathBuf> {
+        self.service.session_path()
+    }
+}
 
     if chain.is_empty() {
         "<none>".to_string()
     } else {
         chain.join(" -> ")
+||||||| parent of a8e03e9 (fix(agent): stabilize windows tls runtime)
+=======
+pub fn initialize_process_tls() {
+    peekoo_agent::ensure_rustls_provider();
+}
+
+struct ManagedAgent {
+    runtime: asupersync::runtime::Runtime,
+    service: AgentService,
+}
+
+impl ManagedAgent {
+    fn new(config: AgentServiceConfig) -> Result<Self, String> {
+        let reactor = asupersync::runtime::reactor::create_reactor()
+            .map_err(|e| format!("Reactor error: {e}"))?;
+        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+            .with_reactor(reactor)
+            .build()
+            .map_err(|e| format!("Runtime error: {e}"))?;
+        let service = runtime
+            .block_on(AgentService::new(config))
+            .map_err(|e| format!("Agent init error: {e}"))?;
+
+        Ok(Self { runtime, service })
+    }
+
+    fn prompt<F>(&mut self, message: &str, on_event: F) -> pi::error::Result<String>
+    where
+        F: Fn(AgentEvent) + Send + Sync + 'static,
+    {
+        self.runtime.block_on(self.service.prompt(message, on_event))
+    }
+
+    fn set_model(&mut self, provider: &str, model: &str) -> pi::error::Result<()> {
+        self.runtime.block_on(self.service.set_model(provider, model))
+    }
+
+    fn model(&self) -> (String, String) {
+        self.service.model()
+    }
+
+    fn messages_json(&self) -> Vec<serde_json::Value> {
+        self.service.messages_json()
+    }
+
+    fn extend_plugin_tools(&mut self, provider: Arc<dyn PluginToolProvider>) {
+        self.service.extend_plugin_tools(provider);
+    }
+
+    fn register_native_tools(&mut self, tools: Vec<Box<dyn pi::tools::Tool>>) {
+        self.service.register_native_tools(tools);
+    }
+
+    fn session_path(&self) -> Option<PathBuf> {
+        self.service.session_path()
+>>>>>>> a8e03e9 (fix(agent): stabilize windows tls runtime)
     }
 }
 
 pub struct AgentApplication {
-    agent: Arc<Mutex<Option<AgentService>>>,
+    agent: Mutex<Option<ManagedAgent>>,
     settings: SettingsService,
     app_settings: Arc<AppSettingsService>,
     task_service: SqliteTaskService,
@@ -150,7 +254,7 @@ impl AgentApplication {
             crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
 
         Ok(Self {
-            agent: Arc::new(Mutex::new(None)),
+            agent: Mutex::new(None),
             settings,
             app_settings,
             task_service: sqlite_task_service,
@@ -230,6 +334,9 @@ impl AgentApplication {
     where
         F: Fn(AgentEvent) + Send + Sync + 'static,
     {
+        tracing::info!("prompt_streaming called with {} chars", message.len());
+        tracing::debug!("prompt_streaming message: {}", message);
+
         let generation = self.conversation_generation.load(Ordering::SeqCst);
         let mut agent = {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -241,12 +348,14 @@ impl AgentApplication {
             let should_recreate = guard.is_none();
 
             if should_recreate {
+                tracing::info!("Creating new agent service");
                 let (service, settings_version) = self.create_agent_service()?;
                 *guard = Some(service);
                 *version_guard = Some(settings_version);
             } else {
                 let current_version = self.settings.get_settings()?.version;
                 if (*version_guard) != Some(current_version) {
+                    tracing::info!("Recreating agent service due to settings version change");
                     let (service, settings_version) = self.create_agent_service()?;
                     *guard = Some(service);
                     *version_guard = Some(settings_version);
@@ -258,20 +367,14 @@ impl AgentApplication {
                 .ok_or_else(|| "Agent not initialized after creation".to_string())?
         };
 
-        let reactor = asupersync::runtime::reactor::create_reactor()
-            .map_err(|e| format!("Reactor error: {e}"))?;
-        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-            .with_reactor(reactor)
-            .build()
-            .map_err(|e| format!("Runtime error: {e}"))?;
+        tracing::info!("Agent service ready, executing prompt");
 
-        let result = runtime.block_on(agent.prompt(message, on_event));
+        let result = agent.prompt(message, on_event);
 
         if let Err(err) = &result {
             tracing::error!(
                 error = %err,
                 debug = ?err,
-                sources = %format_error_chain(err),
                 conversation_generation = generation,
                 message_len = message.chars().count(),
                 "Agent prompt failed"
@@ -288,6 +391,28 @@ impl AgentApplication {
             }
         }
 
+        match &result {
+            Ok(reply) => {
+                tracing::info!("Agent prompt succeeded: {} chars", reply.len());
+            }
+            Err(e) => {
+                tracing::error!("Agent prompt failed with error: {}", e);
+                let error_str = e.to_string();
+
+                // Detailed error logging for common issues
+                if error_str.contains("TLS") || error_str.contains("connect") {
+                    tracing::error!("Network connectivity issue detected");
+                    tracing::debug!("Full error chain: {:?}", e);
+                }
+                if error_str.contains("Access is denied") || error_str.contains("error 5") {
+                    tracing::error!("Permission denied - check file/system access");
+                }
+                if error_str.contains("10057") {
+                    tracing::error!("Socket error 10057 - connection issue");
+                }
+            }
+        }
+
         result.map_err(|e| format!("Agent error: {e}"))
     }
 
@@ -299,14 +424,7 @@ impl AgentApplication {
                 .ok_or("Agent not initialized. Send a message first.")?
         };
 
-        let reactor = asupersync::runtime::reactor::create_reactor()
-            .map_err(|e| format!("Reactor error: {e}"))?;
-        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-            .with_reactor(reactor)
-            .build()
-            .map_err(|e| format!("Runtime error: {e}"))?;
-
-        let result = runtime.block_on(agent.set_model(provider, model));
+        let result = agent.set_model(provider, model);
 
         {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -917,8 +1035,8 @@ impl AgentApplication {
         }
     }
 
-    /// Build a fresh `AgentService` from current settings + MCP-backed tools.
-    fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
+    /// Build a fresh `AgentService` from current settings + plugin tools.
+    fn create_agent_service(&self) -> Result<(ManagedAgent, i64), String> {
         let config = self.resolved_config()?;
         let (mut config, settings_version) = self.settings.to_agent_config(config)?;
 
@@ -932,16 +1050,7 @@ impl AgentApplication {
             config.session_path = guard.take();
         }
 
-        let reactor = asupersync::runtime::reactor::create_reactor()
-            .map_err(|e| format!("Reactor error: {e}"))?;
-        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
-            .with_reactor(reactor)
-            .build()
-            .map_err(|e| format!("Runtime error: {e}"))?;
-
-        let service = runtime
-            .block_on(AgentService::new(config))
-            .map_err(|e| format!("Agent init error: {e}"))?;
+        let mut service = ManagedAgent::new(config)?;
 
         // Spawn MCP connection in background to avoid blocking chat startup
         // The agent will respond immediately, and tools will be added when ready
@@ -1196,29 +1305,7 @@ mod tests {
     use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
-    use super::{format_error_chain, install_discovered_plugins, should_restore_agent};
-    use std::error::Error as StdError;
-    use std::fmt;
-
-    #[derive(Debug)]
-    struct TestError {
-        message: &'static str,
-        source: Option<Box<dyn StdError + Send + Sync>>,
-    }
-
-    impl fmt::Display for TestError {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.message)
-        }
-    }
-
-    impl StdError for TestError {
-        fn source(&self) -> Option<&(dyn StdError + 'static)> {
-            self.source
-                .as_deref()
-                .map(|err| err as &(dyn StdError + 'static))
-        }
-    }
+    use super::{initialize_process_tls, install_discovered_plugins, should_restore_agent};
 
     struct NoopTaskService;
 
@@ -1361,32 +1448,6 @@ mod tests {
     }
 
     #[test]
-    fn format_error_chain_returns_none_for_error_without_sources() {
-        let err = TestError {
-            message: "top",
-            source: None,
-        };
-
-        assert_eq!(format_error_chain(&err), "<none>");
-    }
-
-    #[test]
-    fn format_error_chain_flattens_nested_sources() {
-        let err = TestError {
-            message: "top",
-            source: Some(Box::new(TestError {
-                message: "middle",
-                source: Some(Box::new(TestError {
-                    message: "root",
-                    source: None,
-                })),
-            })),
-        };
-
-        assert_eq!(format_error_chain(&err), "middle -> root");
-    }
-
-    #[test]
     fn startup_skips_loading_plugins_marked_disabled() {
         let registry = test_registry("health-reminders");
         let plugin_dir =
@@ -1409,5 +1470,11 @@ mod tests {
     fn agent_restore_is_blocked_after_generation_changes() {
         assert!(should_restore_agent(4, 4));
         assert!(!should_restore_agent(4, 5));
+    }
+
+    #[test]
+    fn process_tls_init_is_safe_to_call_multiple_times() {
+        initialize_process_tls();
+        initialize_process_tls();
     }
 }

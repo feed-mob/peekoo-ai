@@ -3,6 +3,12 @@
 ## Tauri Version (Current Focus)
 
 ### Completed
+- [x] Stabilize Windows agent runtime and TLS initialization
+  - Desktop agent prompts now keep `AgentService` on a single long-lived `asupersync` runtime via `ManagedAgent`
+  - Process startup now installs the Rustls provider before desktop agent networking begins
+  - Added focused prompt/session diagnostics for TLS and Winsock `10057` failures
+  - See changelog: `ai/memories/changelogs/202603280130-fix-windows-agent-runtime-tls.md`
+
 - [x] Agent Task Execution via ACP
   - Full ACP subprocess communication for agent task execution
   - AgentScheduler with 30-second polling for task execution
@@ -120,7 +126,7 @@
 
 ---
 
-**Last updated**: 2026-03-27
+**Last updated**: 2026-03-28
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring

@@ -3,12 +3,15 @@
 //! Provides a simplified API for creating sessions, sending prompts,
 //! and switching models at runtime.
 
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::OnceLock;
+
 use pi::error::Result;
 use pi::sdk::{
     AgentEvent, AgentSessionHandle, AssistantMessage, ContentBlock, SessionOptions, SubscriptionId,
     create_agent_session,
 };
-use std::path::Path;
 
 use crate::config::AgentServiceConfig;
 
@@ -44,6 +47,8 @@ impl AgentService {
     /// This initializes the LLM provider, loads tools (built-in + skills),
     /// and prepares the session for prompting.
     pub async fn new(mut config: AgentServiceConfig) -> Result<Self> {
+        ensure_rustls_provider();
+
         let default_config = pi::config::Config::load()?;
 
         // Resolve paths from auto-discovery if enabled
@@ -151,9 +156,13 @@ impl AgentService {
                 .unwrap_or_else(|| "claude-3-7-sonnet-latest".to_string())
         });
 
+        tracing::info!("Creating agent session with provider={}, model={}", provider_id, model_id);
+        tracing::debug!("API key present: {}", config.api_key.is_some());
+        tracing::debug!("Working directory: {:?}", config.working_directory);
+
         let options = SessionOptions {
-            provider: Some(provider_id),
-            model: Some(model_id),
+            provider: Some(provider_id.clone()),
+            model: Some(model_id.clone()),
             api_key: config.api_key.clone(),
             system_prompt: if final_system_prompt.is_empty() {
                 None
@@ -174,7 +183,17 @@ impl AgentService {
             ..Default::default()
         };
 
-        let handle = create_agent_session(options).await?;
+        let handle = match create_agent_session(options).await {
+            Ok(handle) => {
+                tracing::info!("Agent session created successfully");
+                handle
+            }
+            Err(e) => {
+                tracing::error!("Failed to create agent session: {:?}", e);
+                tracing::error!("Provider: {}, Model: {}", provider_id, model_id);
+                return Err(e);
+            }
+        };
 
         Ok(Self {
             handle,
@@ -193,8 +212,32 @@ impl AgentService {
         input: &str,
         on_event: impl Fn(AgentEvent) + Send + Sync + 'static,
     ) -> Result<String> {
-        let assistant_msg = self.handle.prompt(input, on_event).await?;
-        Ok(extract_text(&assistant_msg))
+        let (provider, model) = self.model();
+        tracing::info!("AgentService::prompt called with provider={}, model={}", provider, model);
+        tracing::debug!("AgentService::prompt input: {}", input);
+
+        match self.handle.prompt(input, on_event).await {
+            Ok(assistant_msg) => {
+                let text = extract_text(&assistant_msg);
+                tracing::info!("AgentService::prompt succeeded: {} chars", text.len());
+                Ok(text)
+            }
+            Err(e) => {
+                tracing::error!("AgentService::prompt failed: {:?}", e);
+                // Log the error type for debugging
+                let error_str = format!("{:?}", e);
+                if error_str.contains("TLS") || error_str.contains("connect") {
+                    tracing::error!("Network/TLS error detected when calling provider={}", provider);
+                }
+                if error_str.contains("10057") {
+                    tracing::error!("Socket error 10057 - connection reset or refused");
+                }
+                if error_str.contains("Access") || error_str.contains("denied") {
+                    tracing::error!("Access denied error - check permissions");
+                }
+                Err(e)
+            }
+        }
     }
 
     /// Send a user prompt and return the raw [`AssistantMessage`].
@@ -286,6 +329,14 @@ impl AgentService {
     pub fn handle_mut(&mut self) -> &mut AgentSessionHandle {
         &mut self.handle
     }
+}
+
+pub fn ensure_rustls_provider() {
+    static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
+
+    RUSTLS_PROVIDER.get_or_init(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
 }
 
 /// Extract the concatenated text from an assistant message's content blocks.

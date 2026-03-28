@@ -11,6 +11,7 @@ mod task_runtime_service;
 mod workspace_bootstrap;
 
 pub use application::AgentApplication;
+pub use application::initialize_process_tls;
 pub use conversation::{LastSessionDto, SessionMessageDto};
 pub use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 pub use peekoo_notifications::PeekBadgeItem;

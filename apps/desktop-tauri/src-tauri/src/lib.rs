@@ -240,18 +240,38 @@ async fn agent_prompt(
     window: Window,
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
-    let message_len = message.chars().count();
-    let reply = state
+    tracing::info!("Agent prompt received: {} chars", message.len());
+    tracing::debug!("Agent prompt message: {}", message);
+
+    let result = state
         .app
         .prompt_streaming(&message, move |event| {
             let _ = window.emit("agent-event", event);
         })
-        .await
-        .map_err(|err| {
-            tracing::error!(error = %err, message_len, "agent_prompt command failed");
-            err
-        })?;
-    Ok(AgentResponse { response: reply })
+        .await;
+
+    match &result {
+        Ok(reply) => {
+            tracing::info!("Agent prompt succeeded: {} chars", reply.len());
+        }
+        Err(e) => {
+            tracing::error!("Agent prompt failed: {}", e);
+            tracing::debug!("Agent prompt error details: {:?}", e);
+
+            // Log specific error patterns for debugging
+            if e.contains("TLS connect failed") {
+                tracing::error!("TLS connection failure detected - check network/proxy settings");
+            }
+            if e.contains("Access is denied") {
+                tracing::error!("Access denied error - check file permissions or firewall");
+            }
+            if e.contains("error 10057") {
+                tracing::error!("Socket error 10057 - network socket not connected");
+            }
+        }
+    }
+
+    result.map(|r| AgentResponse { response: r })
 }
 
 #[tauri::command]
@@ -926,6 +946,8 @@ fn webview2_candidate_dirs() -> Vec<(&'static str, PathBuf)> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    peekoo_agent_app::initialize_process_tls();
+
     #[cfg(target_os = "windows")]
     {
         if std::env::var("WEBVIEW2_USER_DATA_FOLDER").is_err() {
