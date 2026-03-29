@@ -63,12 +63,27 @@ struct AgentState {
 }
 
 impl AgentState {
-    fn new() -> Self {
+    fn new(app_handle: &AppHandle) -> Self {
+        let bundled_opencode_path = resolve_bundled_opencode_path(app_handle);
         Self {
-            app: AgentApplication::new()
+            app: AgentApplication::new_with_bundled_opencode(bundled_opencode_path)
                 .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
         }
     }
+}
+
+fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
+    let file_name = if cfg!(windows) {
+        "opencode.exe"
+    } else {
+        "opencode"
+    };
+
+    app.path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("opencode").join(file_name))
+        .filter(|path| path.exists() && path.is_file())
 }
 
 #[derive(Serialize)]
@@ -1148,11 +1163,9 @@ pub fn run() {
         Target::new(TargetKind::LogDir { file_name: None })
     };
 
-    let agent_state = AgentState::new();
-
     tauri::Builder::default()
-        .manage(agent_state)
         .setup(|app| {
+            app.manage(AgentState::new(&app.handle()));
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
                 .text(TRAY_SETTINGS_MENU_ID, "Settings")

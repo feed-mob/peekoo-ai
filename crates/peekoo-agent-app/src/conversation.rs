@@ -173,8 +173,8 @@ mod tests {
             .create_session(
                 Some("New Empty"),
                 "opencode",
-                "npx",
-                &["opencode-ai".to_string()],
+                "opencode",
+                &["acp".to_string()],
                 &std::env::temp_dir(),
                 None,
                 &[],

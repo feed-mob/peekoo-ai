@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallationMethod {
-    /// Bundled with the application (pi-acp only)
+    /// Bundled with the application
     Bundled,
     /// Installed via npx (requires Node.js)
     Npx,
@@ -63,12 +63,17 @@ pub type RuntimeInfo = ProviderInfo;
 
 impl RuntimeInfo {
     /// Returns true if this runtime should be visible in chat runtime selection.
-    /// Bundled/internal runtimes (like pi-acp) are excluded from chat.
     pub fn is_chat_visible(&self) -> bool {
-        // Bundled runtimes are internal-only (scheduler use)
-        // External and custom runtimes are chat-visible
-        !self.is_bundled
+        true
     }
+}
+
+fn is_builtin_runtime(provider_id: &str) -> bool {
+    matches!(provider_id, "pi-acp" | "opencode" | "claude-code" | "codex")
+}
+
+fn command_available(command: &str) -> bool {
+    which::which(command).is_ok()
 }
 
 /// Installation method information
@@ -208,28 +213,52 @@ fn test_connection_result_from_inspection(
 pub struct AgentProviderService {
     conn: Arc<Mutex<Connection>>,
     data_dir: PathBuf,
+    inspection_cache: Arc<Mutex<HashMap<String, RuntimeInspectionResult>>>,
+    bundled_opencode_path: Option<PathBuf>,
 }
 
 impl AgentProviderService {
     /// Create a new provider service
     pub fn new(db_path: &PathBuf, data_dir: PathBuf) -> anyhow::Result<Self> {
+        Self::new_with_bundled_opencode(db_path, data_dir, None)
+    }
+
+    pub fn new_with_bundled_opencode(
+        db_path: &PathBuf,
+        data_dir: PathBuf,
+        bundled_opencode_path: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
 
         // Tables should already exist from migrations
         // Tests use test_only_new() which calls ensure_tables
 
         // Ensure built-in providers are registered
-        Self::seed_builtin_providers(&conn)?;
+        let bundled_opencode_path =
+            bundled_opencode_path.filter(|path| path.exists() && path.is_file());
+
+        Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
+            inspection_cache: Arc::new(Mutex::new(HashMap::new())),
+            bundled_opencode_path,
         })
     }
 
     /// Create a new provider service for tests only
     #[cfg(test)]
     pub fn test_only_new(db_path: &PathBuf, data_dir: PathBuf) -> anyhow::Result<Self> {
+        Self::test_only_new_with_bundled_opencode(db_path, data_dir, None)
+    }
+
+    #[cfg(test)]
+    pub fn test_only_new_with_bundled_opencode(
+        db_path: &PathBuf,
+        data_dir: PathBuf,
+        bundled_opencode_path: Option<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
 
         // Run standard migrations for tests
@@ -237,11 +266,16 @@ impl AgentProviderService {
             .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
 
         // Ensure built-in providers are registered
-        Self::seed_builtin_providers(&conn)?;
+        let bundled_opencode_path =
+            bundled_opencode_path.filter(|path| path.exists() && path.is_file());
+
+        Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
+            inspection_cache: Arc::new(Mutex::new(HashMap::new())),
+            bundled_opencode_path,
         })
     }
 
@@ -261,43 +295,146 @@ impl AgentProviderService {
             .map_err(|e| anyhow::anyhow!("provider db lock poisoned: {e}"))
     }
 
-    fn seed_builtin_providers(conn: &Connection) -> anyhow::Result<()> {
-        let now = chrono::Utc::now().to_rfc3339();
+    fn cached_runtime_inspection(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<Option<RuntimeInspectionResult>> {
+        if let Some(cached) = self.cached_runtime_inspection_memory(runtime_id)? {
+            return Ok(Some(cached));
+        }
 
-        // Insert pi-acp as bundled provider
+        let conn = self.conn()?;
+        let inspection_json: Option<String> = conn
+            .query_row(
+                "SELECT inspection_json FROM agent_runtimes WHERE runtime_type = ?1",
+                params![runtime_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        let inspection = inspection_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str::<RuntimeInspectionResult>(json).ok());
+
+        if let Some(ref inspection) = inspection {
+            self.store_runtime_inspection_memory(inspection)?;
+        }
+
+        Ok(inspection)
+    }
+
+    fn cached_runtime_inspection_memory(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<Option<RuntimeInspectionResult>> {
+        let cache = self
+            .inspection_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("inspection cache lock poisoned: {e}"))?;
+        Ok(cache.get(runtime_id).cloned())
+    }
+
+    fn store_runtime_inspection(&self, inspection: &RuntimeInspectionResult) -> anyhow::Result<()> {
+        self.store_runtime_inspection_memory(inspection)?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let inspection_json = serde_json::to_string(inspection)?;
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE agent_runtimes
+             SET inspection_json = ?1, inspected_at = ?2, updated_at = ?2
+             WHERE runtime_type = ?3",
+            params![inspection_json, &now, &inspection.runtime_id],
+        )?;
+        Ok(())
+    }
+
+    fn store_runtime_inspection_memory(
+        &self,
+        inspection: &RuntimeInspectionResult,
+    ) -> anyhow::Result<()> {
+        let mut cache = self
+            .inspection_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("inspection cache lock poisoned: {e}"))?;
+        cache.insert(inspection.runtime_id.clone(), inspection.clone());
+        Ok(())
+    }
+
+    pub fn invalidate_runtime_inspection_cache(&self, runtime_id: &str) -> anyhow::Result<()> {
+        let mut cache = self
+            .inspection_cache
+            .lock()
+            .map_err(|e| anyhow::anyhow!("inspection cache lock poisoned: {e}"))?;
+        cache.remove(runtime_id);
+        drop(cache);
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE agent_runtimes
+             SET inspection_json = NULL, inspected_at = NULL, updated_at = ?1
+             WHERE runtime_type = ?2",
+            params![&now, runtime_id],
+        )?;
+        Ok(())
+    }
+
+    fn seed_builtin_providers(
+        conn: &Connection,
+        bundled_opencode_path: Option<&std::path::Path>,
+    ) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let opencode_bundled = bundled_opencode_path.is_some();
+        let opencode_installed = opencode_bundled || command_available("opencode");
+
+        // Insert pi-acp as an external runtime option
         Self::upsert_runtime_record(
             conn,
             "provider_pi_acp",
             "pi-acp",
-            "Peekoo Agent (pi-acp)",
-            "Built-in ACP agent with full tool support",
-            "pi-acp",
-            "[]",
-            "bundled",
-            true,
-            true,
-            true,
-            "ready",
-            Some("Bundled with Peekoo"),
+            "pi",
+            "ACP runtime powered by the pi-acp package",
+            "npx",
+            "[\"pi-acp\"]",
+            "npx",
+            false,
+            false,
+            false,
+            "not_installed",
+            Some("npm i -g pi-acp"),
             &ProviderConfig::default(),
             &now,
         )?;
 
-        // Insert opencode as available provider
+        // Insert opencode as the default runtime.
         Self::upsert_runtime_record(
             conn,
             "provider_opencode",
             "opencode",
             "OpenCode",
             "Open source AI coding agent with ACP support",
-            "npx",
-            "[\"opencode-ai\",\"acp\"]",
-            "npx",
-            false,
-            false,
-            false,
-            "not_installed",
-            Some("npm i -g opencode-ai"),
+            "opencode",
+            "[\"acp\"]",
+            if opencode_bundled {
+                "bundled"
+            } else {
+                "binary"
+            },
+            opencode_bundled,
+            opencode_installed,
+            true,
+            if opencode_installed {
+                "ready"
+            } else {
+                "not_installed"
+            },
+            Some(if opencode_bundled {
+                "Bundled with Peekoo."
+            } else {
+                "Install OpenCode and make the `opencode` command available on PATH."
+            }),
             &ProviderConfig::default(),
             &now,
         )?;
@@ -691,27 +828,39 @@ impl AgentProviderService {
         &self,
         runtime_id: &str,
     ) -> anyhow::Result<RuntimeInspectionResult> {
+        self.inspect_runtime_with_cache(runtime_id, true).await
+    }
+
+    pub async fn refresh_runtime_capabilities(
+        &self,
+        runtime_id: &str,
+    ) -> anyhow::Result<RuntimeInspectionResult> {
+        self.inspect_runtime_with_cache(runtime_id, false).await
+    }
+
+    async fn inspect_runtime_with_cache(
+        &self,
+        runtime_id: &str,
+        use_cache: bool,
+    ) -> anyhow::Result<RuntimeInspectionResult> {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
+
+        if use_cache {
+            if let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
+                return Ok(cached);
+            }
+        }
 
         // Get runtime info
         let runtime = self.get_runtime(runtime_id)?;
         let runtime =
             runtime.ok_or_else(|| anyhow::anyhow!("Runtime not found: {}", runtime_id))?;
 
-        // Only inspect chat-visible (external/custom) runtimes
-        if !runtime.is_chat_visible() {
-            return Err(anyhow::anyhow!(
-                "Cannot inspect internal runtime: {}",
-                runtime_id
-            ));
-        }
-
         // Get runtime configuration
         let config = self.get_provider_config(runtime_id)?;
 
-        // Build the command from runtime info
-        // For external runtimes, we need to construct the command
+        // Build the command from runtime info.
         let (command, args) = if runtime.is_installed {
             // Get the actual command from runtime metadata
             self.get_runtime_command(runtime_id).await?
@@ -779,7 +928,7 @@ impl AgentProviderService {
 
                 let _ = backend.shutdown().await;
 
-                Ok(RuntimeInspectionResult {
+                let inspection = RuntimeInspectionResult {
                     runtime_id: runtime_id.to_string(),
                     auth_methods,
                     auth_required,
@@ -788,7 +937,10 @@ impl AgentProviderService {
                     supports_model_selection,
                     supports_config_options,
                     error: None,
-                })
+                };
+
+                self.store_runtime_inspection(&inspection)?;
+                Ok(inspection)
             }
             Ok(Err(e)) => {
                 let _ = backend.shutdown().await;
@@ -804,7 +956,7 @@ impl AgentProviderService {
                     })
                     .collect();
 
-                Ok(RuntimeInspectionResult {
+                let inspection = RuntimeInspectionResult {
                     runtime_id: runtime_id.to_string(),
                     auth_methods,
                     auth_required,
@@ -813,7 +965,13 @@ impl AgentProviderService {
                     supports_model_selection: false,
                     supports_config_options: false,
                     error: Some(error_msg),
-                })
+                };
+
+                if inspection.auth_required {
+                    self.store_runtime_inspection(&inspection)?;
+                }
+
+                Ok(inspection)
             }
             Err(_) => {
                 let _ = backend.shutdown().await;
@@ -836,6 +994,15 @@ impl AgentProviderService {
         &self,
         runtime_id: &str,
     ) -> anyhow::Result<(String, Vec<String>)> {
+        if runtime_id == "opencode"
+            && let Some(path) = self
+                .bundled_opencode_path
+                .as_ref()
+                .filter(|path| path.exists() && path.is_file())
+        {
+            return Ok((path.to_string_lossy().into_owned(), vec!["acp".to_string()]));
+        }
+
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT command, args_json FROM agent_runtimes WHERE runtime_type = ?1 LIMIT 1",
@@ -916,7 +1083,7 @@ impl AgentProviderService {
         // Perform installation based on method
         let result = match req.method {
             InstallationMethod::Bundled => {
-                // Nothing to do for bundled
+                // Nothing to do for bundled installs.
                 Ok(())
             }
             InstallationMethod::Npx => {
@@ -975,6 +1142,8 @@ impl AgentProviderService {
                 (false, e.to_string(), false)
             }
         };
+
+        self.invalidate_runtime_inspection_cache(&req.provider_id)?;
 
         Ok(InstallProviderResponse {
             success,
@@ -1053,31 +1222,35 @@ impl AgentProviderService {
     /// Uninstall a provider
     pub fn uninstall_provider(&self, provider_id: &str) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn()?;
+        {
+            let conn = self.conn()?;
 
-        // Check if it's the default
-        let is_default: i64 = conn.query_row(
-            "SELECT is_default FROM agent_runtimes WHERE runtime_type = ?1",
-            params![provider_id],
-            |row| row.get(0),
-        )?;
+            // Check if it's the default
+            let is_default: i64 = conn.query_row(
+                "SELECT is_default FROM agent_runtimes WHERE runtime_type = ?1",
+                params![provider_id],
+                |row| row.get(0),
+            )?;
 
-        if is_default != 0 {
-            return Err(anyhow::anyhow!(
-                "Cannot uninstall the default runtime. Please set a different runtime as default first."
-            ));
+            if is_default != 0 {
+                return Err(anyhow::anyhow!(
+                    "Cannot uninstall the default runtime. Please set a different runtime as default first."
+                ));
+            }
+
+            // Update status
+            conn.execute(
+                "UPDATE agent_runtimes SET 
+                    is_installed = 0,
+                    status = 'not_installed',
+                    status_message = NULL,
+                    updated_at = ?1
+                WHERE runtime_type = ?2",
+                params![&now, provider_id],
+            )?;
         }
 
-        // Update status
-        conn.execute(
-            "UPDATE agent_runtimes SET 
-                is_installed = 0,
-                status = 'not_installed',
-                status_message = NULL,
-                updated_at = ?1
-            WHERE runtime_type = ?2",
-            params![&now, provider_id],
-        )?;
+        self.invalidate_runtime_inspection_cache(provider_id)?;
 
         Ok(())
     }
@@ -1120,12 +1293,15 @@ impl AgentProviderService {
     ) -> anyhow::Result<()> {
         let now = chrono::Utc::now().to_rfc3339();
         let config_json = serde_json::to_string(config)?;
-        let conn = self.conn()?;
+        {
+            let conn = self.conn()?;
+            conn.execute(
+                "UPDATE agent_runtimes SET config_json = ?1, updated_at = ?2 WHERE runtime_type = ?3",
+                params![config_json, &now, provider_id],
+            )?;
+        }
 
-        conn.execute(
-            "UPDATE agent_runtimes SET config_json = ?1, updated_at = ?2 WHERE runtime_type = ?3",
-            params![config_json, &now, provider_id],
-        )?;
+        self.invalidate_runtime_inspection_cache(provider_id)?;
 
         Ok(())
     }
@@ -1239,108 +1415,111 @@ impl AgentProviderService {
     ) -> anyhow::Result<ProviderInfo> {
         let id = format!("provider_custom_{}", uuid::Uuid::new_v4());
         let now = chrono::Utc::now().to_rfc3339();
-        let conn = self.conn()?;
         let args_json = serde_json::to_string(args)?;
 
-        Self::upsert_runtime_record(
-            &conn,
-            &id,
-            &id,
-            name,
-            description.unwrap_or("Custom ACP agent"),
-            command,
-            &args_json,
-            "custom",
-            false,
-            true,
-            false,
-            "ready",
-            Some("Custom ACP runtime"),
-            &ProviderConfig::default(),
-            &now,
-        )?;
+        let provider = {
+            let conn = self.conn()?;
 
-        // Return the new provider info
-        let mut stmt = conn.prepare(
-            "SELECT 
-                id, runtime_type, display_name, description, is_bundled,
-                installation_method, is_installed, is_default, status,
-                status_message, command, args_json, config_json
-            FROM agent_runtimes
-            WHERE id = ?1",
-        )?;
+            Self::upsert_runtime_record(
+                &conn,
+                &id,
+                &id,
+                name,
+                description.unwrap_or("Custom ACP agent"),
+                command,
+                &args_json,
+                "custom",
+                false,
+                true,
+                false,
+                "ready",
+                Some("Custom ACP runtime"),
+                &ProviderConfig::default(),
+                &now,
+            )?;
 
-        let provider = stmt.query_row(params![&id], |row| {
-            let provider_id: String = row.get(1)?;
-            let is_bundled: i64 = row.get(4)?;
-            let is_installed: i64 = row.get(6)?;
-            let is_default: i64 = row.get(7)?;
+            // Return the new provider info
+            let mut stmt = conn.prepare(
+                "SELECT 
+                    id, runtime_type, display_name, description, is_bundled,
+                    installation_method, is_installed, is_default, status,
+                    status_message, command, args_json, config_json
+                FROM agent_runtimes
+                WHERE id = ?1",
+            )?;
 
-            let available_methods = vec![InstallationMethodInfo {
-                id: InstallationMethod::Custom,
-                name: "Custom".to_string(),
-                description: "User-provided binary or command".to_string(),
-                is_available: true,
-                requires_setup: true,
-                size_mb: None,
-            }];
+            stmt.query_row(params![&id], |row| {
+                let provider_id: String = row.get(1)?;
+                let is_bundled: i64 = row.get(4)?;
+                let is_installed: i64 = row.get(6)?;
+                let is_default: i64 = row.get(7)?;
 
-            let config: ProviderConfig = row
-                .get::<_, Option<String>>(12)?
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or_default();
+                let available_methods = vec![InstallationMethodInfo {
+                    id: InstallationMethod::Custom,
+                    name: "Custom".to_string(),
+                    description: "User-provided binary or command".to_string(),
+                    is_available: true,
+                    requires_setup: true,
+                    size_mb: None,
+                }];
 
-            Ok(ProviderInfo {
-                id: row.get(0)?,
-                provider_id: provider_id.clone(),
-                display_name: row.get(2)?,
-                description: row.get(3)?,
-                is_bundled: is_bundled != 0,
-                installation_method: InstallationMethod::Custom,
-                is_installed: is_installed != 0,
-                is_default: is_default != 0,
-                status: ProviderStatus::Ready,
-                status_message: row.get(9)?,
-                available_methods,
-                config,
-            })
-        })?;
+                let config: ProviderConfig = row
+                    .get::<_, Option<String>>(12)?
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
+                Ok(ProviderInfo {
+                    id: row.get(0)?,
+                    provider_id: provider_id.clone(),
+                    display_name: row.get(2)?,
+                    description: row.get(3)?,
+                    is_bundled: is_bundled != 0,
+                    installation_method: InstallationMethod::Custom,
+                    is_installed: is_installed != 0,
+                    is_default: is_default != 0,
+                    status: ProviderStatus::Ready,
+                    status_message: row.get(9)?,
+                    available_methods,
+                    config,
+                })
+            })?
+        };
+
+        self.invalidate_runtime_inspection_cache(&id)?;
 
         Ok(provider)
     }
 
     /// Remove a custom provider
     pub fn remove_custom_provider(&self, provider_id: &str) -> anyhow::Result<()> {
-        let conn = self.conn()?;
+        {
+            let conn = self.conn()?;
 
-        // Only allow removing custom providers
-        let is_bundled: i64 = conn.query_row(
-            "SELECT is_bundled FROM agent_runtimes WHERE runtime_type = ?1",
-            params![provider_id],
-            |row| row.get(0),
-        )?;
+            // Only allow removing custom providers
+            if is_builtin_runtime(provider_id) {
+                return Err(anyhow::anyhow!("Cannot remove built-in providers"));
+            }
 
-        if is_bundled != 0 {
-            return Err(anyhow::anyhow!("Cannot remove built-in providers"));
+            // Check if it's the default
+            let is_default: i64 = conn.query_row(
+                "SELECT is_default FROM agent_runtimes WHERE runtime_type = ?1",
+                params![provider_id],
+                |row| row.get(0),
+            )?;
+
+            if is_default != 0 {
+                return Err(anyhow::anyhow!(
+                    "Cannot remove the default provider. Please set a different provider as default first."
+                ));
+            }
+
+            conn.execute(
+                "DELETE FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1",
+                params![provider_id],
+            )?;
         }
 
-        // Check if it's the default
-        let is_default: i64 = conn.query_row(
-            "SELECT is_default FROM agent_runtimes WHERE runtime_type = ?1",
-            params![provider_id],
-            |row| row.get(0),
-        )?;
-
-        if is_default != 0 {
-            return Err(anyhow::anyhow!(
-                "Cannot remove the default provider. Please set a different provider as default first."
-            ));
-        }
-
-        conn.execute(
-            "DELETE FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1",
-            params![provider_id],
-        )?;
+        self.invalidate_runtime_inspection_cache(provider_id)?;
 
         Ok(())
     }
@@ -1371,6 +1550,8 @@ impl AgentProviderService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {
@@ -1382,23 +1563,54 @@ mod tests {
         (service, temp_dir)
     }
 
+    fn create_test_service_with_bundled_opencode() -> (AgentProviderService, TempDir, PathBuf) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test_providers.db");
+        let data_dir = temp_dir.path().join("data");
+        let bundled_dir = temp_dir.path().join("opencode");
+        std::fs::create_dir_all(&bundled_dir).unwrap();
+        let bundled_bin = bundled_dir.join(if cfg!(windows) {
+            "opencode.exe"
+        } else {
+            "opencode"
+        });
+        std::fs::write(&bundled_bin, b"fake-opencode").unwrap();
+
+        let service = AgentProviderService::test_only_new_with_bundled_opencode(
+            &db_path,
+            data_dir,
+            Some(bundled_bin.clone()),
+        )
+        .unwrap();
+        (service, temp_dir, bundled_bin)
+    }
+
     #[test]
     fn test_list_providers() {
         let (service, _temp) = create_test_service();
+        let opencode_available = command_available("opencode");
 
         let providers = service.list_providers().unwrap();
 
         // Should have the 4 built-in providers seeded
         assert!(providers.len() >= 4);
 
-        // pi-acp should be installed by default
+        // opencode remains the default runtime, but installation follows actual PATH availability.
+        let opencode = providers
+            .iter()
+            .find(|p| p.provider_id == "opencode")
+            .unwrap();
+        assert_eq!(opencode.is_installed, opencode_available);
+        assert!(opencode.is_default);
+        assert!(!opencode.is_bundled);
+
         let pi_acp = providers
             .iter()
             .find(|p| p.provider_id == "pi-acp")
             .unwrap();
-        assert!(pi_acp.is_installed);
-        assert!(pi_acp.is_default);
-        assert!(pi_acp.is_bundled);
+        assert!(!pi_acp.is_installed);
+        assert!(!pi_acp.is_default);
+        assert!(!pi_acp.is_bundled);
     }
 
     #[test]
@@ -1409,7 +1621,7 @@ mod tests {
         assert!(default.is_some());
 
         let default = default.unwrap();
-        assert_eq!(default.provider_id, "pi-acp");
+        assert_eq!(default.provider_id, "opencode");
         assert!(default.is_default);
     }
 
@@ -1421,7 +1633,7 @@ mod tests {
 
         assert!(runtimes.len() >= 4);
         let default = runtimes.iter().find(|runtime| runtime.is_default).unwrap();
-        assert_eq!(default.provider_id, "pi-acp");
+        assert_eq!(default.provider_id, "opencode");
 
         let runtime_rows: i64 = service
             .test_conn()
@@ -1433,12 +1645,6 @@ mod tests {
     #[test]
     fn test_set_default_provider() {
         let (service, _temp) = create_test_service();
-
-        // First mark opencode as installed (normally would be done via install)
-        service.test_conn().execute(
-            "UPDATE agent_runtimes SET is_installed = 1, status = 'ready' WHERE runtime_type = 'opencode'",
-            [],
-        ).unwrap();
 
         // Set opencode as default
         service.set_default_provider("opencode").unwrap();
@@ -1484,6 +1690,24 @@ mod tests {
         assert_eq!(config.default_model, Some("claude-3.5-sonnet".to_string()));
         assert_eq!(config.env_vars.get("API_KEY"), Some(&"secret".to_string()));
         assert_eq!(config.custom_args, vec!["--verbose"]);
+    }
+
+    #[tokio::test]
+    async fn test_pi_acp_runtime_uses_external_npx_command() {
+        let (service, _temp) = create_test_service();
+
+        let (command, args) = service.get_runtime_command("pi-acp").await.unwrap();
+        assert_eq!(command, "npx");
+        assert_eq!(args, vec!["pi-acp"]);
+    }
+
+    #[tokio::test]
+    async fn test_pi_acp_runtime_reports_not_installed_by_default() {
+        let (service, _temp) = create_test_service();
+
+        let result = service.test_connection("pi-acp").await.unwrap();
+        assert!(!result.success);
+        assert_eq!(result.message, "Provider is not installed");
     }
 
     #[tokio::test]
@@ -1583,12 +1807,48 @@ mod tests {
     }
 
     #[test]
-    fn test_available_methods_for_bundled() {
-        let methods = AgentProviderService::get_available_methods("pi-acp", true);
+    fn test_available_methods_for_pi_acp_external_runtime() {
+        let methods = AgentProviderService::get_available_methods("pi-acp", false);
 
-        // Should have bundled as first method
-        assert!(methods.iter().any(|m| m.id == InstallationMethod::Bundled));
-        assert!(methods[0].is_available);
+        assert!(!methods.iter().any(|m| m.id == InstallationMethod::Bundled));
+        assert!(methods.iter().any(|m| m.id == InstallationMethod::Npx));
+    }
+
+    #[tokio::test]
+    async fn test_opencode_runtime_uses_cli_command_and_tracks_path_availability() {
+        let (service, _temp) = create_test_service();
+        let opencode_available = command_available("opencode");
+
+        let (command, args) = service.get_runtime_command("opencode").await.unwrap();
+        assert_eq!(command, "opencode");
+        assert_eq!(args, vec!["acp"]);
+
+        let provider = service
+            .list_providers()
+            .unwrap()
+            .into_iter()
+            .find(|provider| provider.provider_id == "opencode")
+            .unwrap();
+        assert_eq!(provider.is_installed, opencode_available);
+        assert!(provider.is_default);
+    }
+
+    #[tokio::test]
+    async fn test_opencode_runtime_prefers_bundled_binary_when_available() {
+        let (service, _temp, bundled_bin) = create_test_service_with_bundled_opencode();
+
+        let (command, args) = service.get_runtime_command("opencode").await.unwrap();
+        assert_eq!(command, bundled_bin.to_string_lossy());
+        assert_eq!(args, vec!["acp"]);
+
+        let provider = service
+            .list_providers()
+            .unwrap()
+            .into_iter()
+            .find(|provider| provider.provider_id == "opencode")
+            .unwrap();
+        assert!(provider.is_bundled);
+        assert!(provider.is_installed);
     }
 
     #[test]
@@ -1645,5 +1905,139 @@ mod tests {
 
         assert!(!result.success);
         assert_eq!(result.message, "Runtime inspection timed out");
+    }
+
+    #[test]
+    fn test_runtime_inspection_cache_round_trip() {
+        let (service, _temp) = create_test_service();
+        let inspection = RuntimeInspectionResult {
+            runtime_id: "opencode".to_string(),
+            auth_methods: vec![],
+            auth_required: false,
+            discovered_models: vec![DiscoveredModelInfo {
+                model_id: "opencode/big-pickle".to_string(),
+                name: "Big Pickle".to_string(),
+                description: None,
+            }],
+            current_model_id: Some("opencode/big-pickle".to_string()),
+            supports_model_selection: true,
+            supports_config_options: true,
+            error: None,
+        };
+
+        service.store_runtime_inspection(&inspection).unwrap();
+
+        let cached = service.cached_runtime_inspection("opencode").unwrap();
+        assert!(cached.is_some());
+        assert_eq!(
+            cached.unwrap().current_model_id.as_deref(),
+            Some("opencode/big-pickle")
+        );
+
+        let stored_json: Option<String> = service
+            .test_conn()
+            .query_row(
+                "SELECT inspection_json FROM agent_runtimes WHERE runtime_type = 'opencode'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored_json.is_some());
+    }
+
+    #[test]
+    fn test_update_provider_config_invalidates_runtime_inspection_cache() {
+        let (service, _temp) = create_test_service();
+        let inspection = RuntimeInspectionResult {
+            runtime_id: "opencode".to_string(),
+            auth_methods: vec![],
+            auth_required: false,
+            discovered_models: vec![DiscoveredModelInfo {
+                model_id: "opencode/big-pickle".to_string(),
+                name: "Big Pickle".to_string(),
+                description: None,
+            }],
+            current_model_id: Some("opencode/big-pickle".to_string()),
+            supports_model_selection: true,
+            supports_config_options: true,
+            error: None,
+        };
+
+        service.store_runtime_inspection(&inspection).unwrap();
+        assert!(
+            service
+                .cached_runtime_inspection("opencode")
+                .unwrap()
+                .is_some()
+        );
+
+        service
+            .update_provider_config(
+                "opencode",
+                &ProviderConfig {
+                    default_model: Some("opencode/other".to_string()),
+                    env_vars: HashMap::new(),
+                    custom_args: Vec::new(),
+                },
+            )
+            .unwrap();
+
+        assert!(
+            service
+                .cached_runtime_inspection("opencode")
+                .unwrap()
+                .is_none()
+        );
+
+        let stored_json: Option<String> = service
+            .test_conn()
+            .query_row(
+                "SELECT inspection_json FROM agent_runtimes WHERE runtime_type = 'opencode'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stored_json.is_none());
+    }
+
+    #[test]
+    fn test_cached_runtime_inspection_loads_from_database() {
+        let (service, _temp) = create_test_service();
+        let inspection = RuntimeInspectionResult {
+            runtime_id: "opencode".to_string(),
+            auth_methods: vec![],
+            auth_required: false,
+            discovered_models: vec![DiscoveredModelInfo {
+                model_id: "opencode/big-pickle".to_string(),
+                name: "Big Pickle".to_string(),
+                description: None,
+            }],
+            current_model_id: Some("opencode/big-pickle".to_string()),
+            supports_model_selection: true,
+            supports_config_options: true,
+            error: None,
+        };
+
+        let inspection_json = serde_json::to_string(&inspection).unwrap();
+        service
+            .test_conn()
+            .execute(
+                "UPDATE agent_runtimes SET inspection_json = ?1, inspected_at = ?2 WHERE runtime_type = 'opencode'",
+                params![inspection_json, chrono::Utc::now().to_rfc3339()],
+            )
+            .unwrap();
+
+        service
+            .inspection_cache
+            .lock()
+            .expect("inspection cache test lock")
+            .clear();
+
+        let cached = service.cached_runtime_inspection("opencode").unwrap();
+        assert!(cached.is_some());
+        assert_eq!(
+            cached.unwrap().current_model_id.as_deref(),
+            Some("opencode/big-pickle")
+        );
     }
 }

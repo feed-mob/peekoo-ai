@@ -1,6 +1,6 @@
 use crate::settings::dto::ProviderCatalogDto;
 
-pub const DEFAULT_PROVIDER: &str = "pi-acp";
+pub const DEFAULT_PROVIDER: &str = "opencode";
 pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 pub const OPENAI_COMPAT_PROVIDER_ID: &str = "openai-compatible";
 pub const ANTHROPIC_COMPAT_PROVIDER_ID: &str = "anthropic-compatible";
@@ -60,8 +60,8 @@ mod tests {
 
     #[test]
     fn normalize_model_falls_back_when_empty() {
-        let normalized = normalize_model_for_provider("pi-acp", "");
-        assert_eq!(normalized, default_model_for_provider("pi-acp"));
+        let normalized = normalize_model_for_provider("opencode", "");
+        assert_eq!(normalized, default_model_for_provider("opencode"));
     }
 
     #[test]

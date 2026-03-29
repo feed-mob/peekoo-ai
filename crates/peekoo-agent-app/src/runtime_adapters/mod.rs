@@ -70,7 +70,7 @@ impl RuntimeAdapter for PiAcpRuntimeAdapter {
     }
 
     fn install_hint(&self) -> Option<&'static str> {
-        Some("Bundled with Peekoo")
+        Some("npm i -g pi-acp")
     }
 
     fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
@@ -182,7 +182,7 @@ impl RuntimeAdapter for OpencodeRuntimeAdapter {
     }
 
     fn install_hint(&self) -> Option<&'static str> {
-        Some("npm i -g opencode-ai")
+        Some("Install OpenCode and make the `opencode` command available on PATH.")
     }
 
     fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {

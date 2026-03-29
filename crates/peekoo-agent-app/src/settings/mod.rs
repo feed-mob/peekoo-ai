@@ -86,7 +86,7 @@ impl SettingsService {
     }
 
     /// Build catalog dynamically from installed ACP runtimes and their models.
-    /// Excludes internal bundled runtimes (like pi-acp) - chat only shows external/custom.
+    /// Only chat-visible runtimes are included.
     /// Models are discovered fresh via ACP protocol (no caching).
     pub async fn catalog_from_runtimes(
         &self,
@@ -556,6 +556,6 @@ fn provider_id_to_enum(provider_id: &str) -> peekoo_agent::config::AgentProvider
         "opencode" => peekoo_agent::config::AgentProvider::Opencode,
         "claude-code" => peekoo_agent::config::AgentProvider::ClaudeCode,
         "codex" => peekoo_agent::config::AgentProvider::Codex,
-        _ => peekoo_agent::config::AgentProvider::PiAcp, // Default fallback
+        _ => peekoo_agent::config::AgentProvider::Opencode, // Default fallback
     }
 }

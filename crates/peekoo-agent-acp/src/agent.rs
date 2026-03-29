@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use peekoo_agent::service::AgentService;
 use peekoo_agent::{
     AgentEvent,
-    config::{AgentProvider, AgentServiceConfig},
+    config::{AgentProvider, AgentServiceConfig, PEEKOO_OPENCODE_BIN_ENV},
 };
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -364,7 +364,7 @@ async fn build_agent_service(
             "opencode" => AgentProvider::Opencode,
             "claude-code" => AgentProvider::ClaudeCode,
             "codex" => AgentProvider::Codex,
-            _ => AgentProvider::PiAcp, // default
+            _ => AgentProvider::Opencode, // default
         };
     }
     if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {
@@ -372,6 +372,13 @@ async fn build_agent_service(
     }
     if let Ok(api_key) = std::env::var("PEEKOO_AGENT_API_KEY") {
         config.api_key = Some(api_key);
+    }
+    if let Ok(opencode_bin) = std::env::var(PEEKOO_OPENCODE_BIN_ENV)
+        && !opencode_bin.trim().is_empty()
+    {
+        config
+            .environment
+            .insert(PEEKOO_OPENCODE_BIN_ENV.to_string(), opencode_bin);
     }
 
     AgentService::new(config).await.map_err(Into::into)

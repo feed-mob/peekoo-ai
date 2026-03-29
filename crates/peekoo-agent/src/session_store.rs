@@ -705,14 +705,14 @@ mod tests {
 
         // Switch provider
         store
-            .switch_provider(&session_id, "opencode", "npx", &["opencode-ai".to_string()])
+            .switch_provider(&session_id, "opencode", "opencode", &["acp".to_string()])
             .unwrap();
 
         // Check session updated
         let session = store.load_session(&session_id).unwrap().unwrap();
         assert_eq!(session.current_provider, "opencode");
-        assert_eq!(session.provider_command, "npx");
-        assert_eq!(session.provider_args, vec!["opencode-ai"]);
+        assert_eq!(session.provider_command, "opencode");
+        assert_eq!(session.provider_args, vec!["acp"]);
         assert!(session.provider_state.is_none()); // Should be reset
 
         // Check system message was added

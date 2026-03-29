@@ -4,12 +4,14 @@ use agent_client_protocol::McpServer;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+pub const PEEKOO_OPENCODE_BIN_ENV: &str = "PEEKOO_OPENCODE_BIN";
+
 /// Agent provider types (built-in + custom)
 #[derive(Debug, Clone, PartialEq)]
 pub enum AgentProvider {
-    /// pi-acp (default, preferred)
+    /// pi-acp runtime
     PiAcp,
-    /// Zed's opencode agent
+    /// OpenCode ACP runtime (default, preferred)
     Opencode,
     /// Anthropic's Claude Code
     ClaudeCode,
@@ -24,10 +26,7 @@ impl AgentProvider {
     pub fn command(&self) -> (String, Vec<String>) {
         match self {
             AgentProvider::PiAcp => ("npx".to_string(), vec!["pi-acp".to_string()]),
-            AgentProvider::Opencode => (
-                "npx".to_string(),
-                vec!["opencode-ai".to_string(), "acp".to_string()],
-            ),
+            AgentProvider::Opencode => ("opencode".to_string(), vec!["acp".to_string()]),
             AgentProvider::ClaudeCode => (
                 "npx".to_string(),
                 vec!["@anthropic-ai/claude-code".to_string()],
@@ -37,6 +36,32 @@ impl AgentProvider {
                 vec!["@zed-industries/codex-acp".to_string()],
             ),
             AgentProvider::Custom { command, args } => (command.clone(), args.clone()),
+        }
+    }
+
+    /// Get the command and arguments to spawn this provider, allowing environment overrides.
+    pub fn command_with_environment(
+        &self,
+        environment: &HashMap<String, String>,
+    ) -> (String, Vec<String>) {
+        match self {
+            AgentProvider::Opencode => {
+                if let Some(command) = environment
+                    .get(PEEKOO_OPENCODE_BIN_ENV)
+                    .filter(|value| !value.trim().is_empty())
+                    .cloned()
+                    .or_else(|| {
+                        std::env::var(PEEKOO_OPENCODE_BIN_ENV)
+                            .ok()
+                            .filter(|value| !value.trim().is_empty())
+                    })
+                {
+                    return (command, vec!["acp".to_string()]);
+                }
+
+                self.command()
+            }
+            _ => self.command(),
         }
     }
 
@@ -56,7 +81,7 @@ impl AgentProvider {
 ///
 /// Provides a peekoo-specific configuration surface for ACP-compatible agents.
 pub struct AgentServiceConfig {
-    /// Provider to use (default: PiAcp)
+    /// Provider to use (default: Opencode)
     pub provider: AgentProvider,
 
     /// Model identifier (provider-specific)
@@ -108,7 +133,7 @@ pub struct AgentServiceConfig {
 impl Default for AgentServiceConfig {
     fn default() -> Self {
         Self {
-            provider: AgentProvider::PiAcp,
+            provider: AgentProvider::Opencode,
             model: None,
             llm_provider_id: None,
             api_key: None,
@@ -135,7 +160,7 @@ mod tests {
     #[test]
     fn default_config_has_default_provider() {
         let config = AgentServiceConfig::default();
-        assert_eq!(config.provider, AgentProvider::PiAcp);
+        assert_eq!(config.provider, AgentProvider::Opencode);
     }
 
     #[test]
@@ -216,8 +241,8 @@ mod tests {
         assert_eq!(args, vec!["pi-acp"]);
 
         let (cmd, args) = AgentProvider::Opencode.command();
-        assert_eq!(cmd, "npx");
-        assert_eq!(args, vec!["opencode-ai", "acp"]);
+        assert_eq!(cmd, "opencode");
+        assert_eq!(args, vec!["acp"]);
 
         let (cmd, args) = AgentProvider::Custom {
             command: "/path/to/agent".to_string(),
@@ -226,6 +251,18 @@ mod tests {
         .command();
         assert_eq!(cmd, "/path/to/agent");
         assert_eq!(args, vec!["arg1"]);
+    }
+
+    #[test]
+    fn opencode_command_uses_environment_override() {
+        let env = HashMap::from([(
+            PEEKOO_OPENCODE_BIN_ENV.to_string(),
+            "/tmp/opencode".to_string(),
+        )]);
+
+        let (cmd, args) = AgentProvider::Opencode.command_with_environment(&env);
+        assert_eq!(cmd, "/tmp/opencode");
+        assert_eq!(args, vec!["acp"]);
     }
 
     #[test]

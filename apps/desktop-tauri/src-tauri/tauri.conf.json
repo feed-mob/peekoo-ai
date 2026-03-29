@@ -37,6 +37,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "resources": [
+      "resources/**/*"
+    ],
     "icon": [
       "icons/icon.ico",
       "icons/icon.icns",

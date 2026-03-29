@@ -183,6 +183,7 @@ pub async fn authenticate_runtime(
         Ok(()) => {
             // Already initialized, now authenticate
             backend.authenticate(&method_id).await?;
+            service.invalidate_runtime_inspection_cache(&runtime_id)?;
             tracing::info!(
                 "Runtime {} authenticated successfully with method {}",
                 runtime_id,
@@ -219,8 +220,7 @@ pub async fn refresh_runtime_capabilities(
     service: &AgentProviderService,
     runtime_id: String,
 ) -> anyhow::Result<RuntimeInspectionResult> {
-    // Re-inspect the runtime to get fresh capabilities
-    service.inspect_runtime(&runtime_id).await
+    service.refresh_runtime_capabilities(&runtime_id).await
 }
 
 #[cfg(test)]

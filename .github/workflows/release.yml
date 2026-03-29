@@ -106,10 +106,13 @@ jobs:
       matrix:
         include:
           - platform: macos-14
+            rust_target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin --bundles dmg,updater
           - platform: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
             args: --bundles appimage,deb
           - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
             args: --bundles nsis,msi
 
     runs-on: ${{ matrix.platform }}
@@ -144,6 +147,13 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+
+      - name: Stage bundled OpenCode
+        shell: bash
+        run: |
+          python scripts/fetch_opencode_bundle.py \
+            --target "${{ matrix.rust_target }}" \
+            --output apps/desktop-tauri/src-tauri/resources/opencode
 
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0

@@ -48,8 +48,7 @@ export function ProviderCard({
   const [inspection, setInspection] = useState<RuntimeInspectionResult | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
 
-  // Inspect runtime when installed to get current state
-  // Skip inspection for internal bundled runtimes (like pi-acp)
+  // Inspect installed runtimes to get current ACP state.
   useEffect(() => {
     let cancelled = false;
 

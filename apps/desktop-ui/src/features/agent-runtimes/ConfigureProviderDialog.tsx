@@ -102,7 +102,11 @@ export function ConfigureProviderDialog({
       setSelectedModel("");
       setShowAdvanced(false);
       setShowAuthMethods(false);
-      
+
+      if (provider.isBundled) {
+        return;
+      }
+
       // Inspect runtime to discover capabilities
       setIsInspecting(true);
       onInspect(provider.providerId)
@@ -347,7 +351,7 @@ export function ConfigureProviderDialog({
           )}
 
           {/* Models Section */}
-          {discoveredModels.length > 0 && (
+          {discoveredModels.length > 0 && !provider.isBundled && (
             <div className="space-y-3 border-t border-glass-border pt-4">
               <div className="flex items-center justify-between">
                 <Label>Model</Label>
@@ -386,7 +390,23 @@ export function ConfigureProviderDialog({
             </div>
           )}
 
-          {discoveredModels.length === 0 && !isInspecting && (
+          {provider.isBundled ? (
+            <div className="space-y-3 border-t border-glass-border pt-4">
+              <Label>Default Model</Label>
+              <Input
+                placeholder="e.g., claude-sonnet-4-6"
+                value={config.defaultModel ?? ""}
+                onChange={(e) =>
+                  setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
+                }
+                className="bg-space-deep border-glass-border"
+              />
+              <p className="text-xs text-text-muted">
+                This runtime does not use ACP model discovery. Enter a model ID manually if
+                needed.
+              </p>
+            </div>
+          ) : discoveredModels.length === 0 && !isInspecting && (
             <div className="space-y-3 border-t border-glass-border pt-4">
               <div className="flex items-center justify-between">
                 <Label>Default Model</Label>
@@ -418,48 +438,49 @@ export function ConfigureProviderDialog({
             </div>
           )}
 
-          {/* Test Connection */}
-          <div className="border-t border-glass-border pt-4">
-            <Button
-              variant="outline"
-              onClick={handleTest}
-              disabled={isTesting}
-              className="w-full"
-            >
-              {isTesting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Testing...
-                </>
-              ) : (
-                "Test Connection"
-              )}
-            </Button>
-
-            {testResult && (
-              <Alert
-                className={`mt-3 ${
-                  testResult.success
-                    ? "border-green-500/50 bg-green-500/10"
-                    : "border-red-500/50 bg-red-500/10"
-                }`}
+          {!provider.isBundled && (
+            <div className="border-t border-glass-border pt-4">
+              <Button
+                variant="outline"
+                onClick={handleTest}
+                disabled={isTesting}
+                className="w-full"
               >
-                {testResult.success ? (
-                  <Check className="h-4 w-4 text-green-500" />
+                {isTesting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Testing...
+                  </>
                 ) : (
-                  <AlertCircle className="h-4 w-4 text-red-500" />
+                  "Test Connection"
                 )}
-                <AlertDescription
-                  className={testResult.success ? "text-green-200" : "text-red-200"}
+              </Button>
+
+              {testResult && (
+                <Alert
+                  className={`mt-3 ${
+                    testResult.success
+                      ? "border-green-500/50 bg-green-500/10"
+                      : "border-red-500/50 bg-red-500/10"
+                  }`}
                 >
-                  {testResult.message}
-                  {testResult.providerVersion && (
-                    <div className="mt-1 text-xs">Version: {testResult.providerVersion}</div>
+                  {testResult.success ? (
+                    <Check className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-red-500" />
                   )}
-                </AlertDescription>
-              </Alert>
-            )}
-          </div>
+                  <AlertDescription
+                    className={testResult.success ? "text-green-200" : "text-red-200"}
+                  >
+                    {testResult.message}
+                    {testResult.providerVersion && (
+                      <div className="mt-1 text-xs">Version: {testResult.providerVersion}</div>
+                    )}
+                  </AlertDescription>
+                </Alert>
+              )}
+            </div>
+          )}
 
           {/* Advanced Section (Collapsible) */}
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>

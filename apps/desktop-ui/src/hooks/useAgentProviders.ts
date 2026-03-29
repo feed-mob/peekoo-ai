@@ -214,11 +214,11 @@ export function useAgentProviders() {
       provider: { providerId: string; displayName: string | null } | null; 
       model: { modelId: string; displayName: string | null } | null 
     }> => {
-      // Find the provider to check if it's bundled/internal
+      // Find the provider so we can avoid inspecting runtimes before metadata loads.
       const provider = providers.find(p => p.providerId === runtimeId);
-      
-      // Skip inspection for bundled/internal runtimes (like pi-acp)
-      if (provider?.isBundled) {
+
+      // Skip inspection until provider metadata is loaded.
+      if (!provider || provider.isBundled) {
         return { provider: null, model: null };
       }
       

@@ -62,7 +62,9 @@ impl AgentService {
         };
 
         // Create backend based on provider
-        let (command, args) = config.provider.command();
+        let (command, args) = config
+            .provider
+            .command_with_environment(&config.environment);
         let mut backend = crate::backend::AcpBackend::new(command, args);
 
         // Initialize backend
@@ -181,7 +183,7 @@ impl AgentService {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("No active session"))?;
 
-        let (command, args) = provider.command();
+        let (command, args) = provider.command_with_environment(&self.config.environment);
         let provider_id = provider.id();
 
         // Clone for storage before moving to backend
@@ -361,7 +363,9 @@ impl AgentService {
         session_store: &Option<SessionStore>,
         _backend: &dyn AgentBackend,
     ) -> Result<String> {
-        let (command, args) = config.provider.command();
+        let (command, args) = config
+            .provider
+            .command_with_environment(&config.environment);
 
         let skills: Vec<String> = config
             .agent_skills

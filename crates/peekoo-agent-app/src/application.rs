@@ -7,7 +7,7 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_agent::AgentEvent;
-use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent::config::{AgentServiceConfig, PEEKOO_OPENCODE_BIN_ENV};
 use peekoo_agent::service::AgentService;
 use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 use peekoo_notifications::{
@@ -92,10 +92,17 @@ pub struct AgentApplication {
     conversation_generation: AtomicU64,
     /// Scheduler for agent task execution.
     agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
+    bundled_opencode_path: Option<PathBuf>,
 }
 
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
+        Self::new_with_bundled_opencode(None)
+    }
+
+    pub fn new_with_bundled_opencode(
+        bundled_opencode_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
 
         // Open a single shared SQLite connection for the entire application.
@@ -150,8 +157,12 @@ impl AgentApplication {
                 .map_err(|e| format!("Create session dir error: {e}"))?;
         }
         let provider_service = Arc::new(
-            AgentProviderService::new(&db_path, peekoo_paths::peekoo_global_data_dir()?)
-                .map_err(|e| format!("Create provider service error: {e}"))?,
+            AgentProviderService::new_with_bundled_opencode(
+                &db_path,
+                peekoo_paths::peekoo_global_data_dir()?,
+                bundled_opencode_path.clone(),
+            )
+            .map_err(|e| format!("Create provider service error: {e}"))?,
         );
         let workspace_dir = ensure_agent_workspace()?;
 
@@ -182,6 +193,7 @@ impl AgentApplication {
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
+            bundled_opencode_path,
         })
     }
 
@@ -415,7 +427,7 @@ impl AgentApplication {
             .map_err(|e| format!("Install provider error: {e}"))?;
 
         if response.success {
-            // Only set as default if it's a chat-visible runtime (not bundled internal)
+            // Only auto-promote runtimes that are visible in chat/runtime selection.
             let runtime_info = self
                 .provider_service
                 .get_runtime(&req.provider_id)
@@ -554,7 +566,7 @@ impl AgentApplication {
             .map_err(|e| format!("Get default runtime error: {e}"))
     }
 
-    /// Get the default runtime for chat use (excludes internal bundled runtimes).
+    /// Get the default runtime for chat use.
     /// Returns None if no chat-visible runtime is set as default.
     pub fn default_chat_runtime(&self) -> Result<Option<RuntimeInfo>, String> {
         match self.default_agent_runtime()? {
@@ -1185,6 +1197,13 @@ impl AgentApplication {
             }
         }
 
+        if let Some(path) = &self.bundled_opencode_path {
+            config.environment.insert(
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            );
+        }
+
         config.mcp_servers =
             crate::agent_scheduler::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
 
@@ -1250,6 +1269,13 @@ impl AgentApplication {
             if let Some(api_key) = resolved.api_key {
                 env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
             }
+        }
+
+        if let Some(path) = &self.bundled_opencode_path {
+            env.push((
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            ));
         }
 
         if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
