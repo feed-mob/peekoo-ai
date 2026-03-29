@@ -1,4 +1,4 @@
-use crate::agent_provider_service::{ProviderConfig, RuntimeLlmProviderInfo};
+use crate::agent_provider_service::ProviderConfig;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,17 +29,6 @@ pub trait RuntimeAdapter {
         let mut args = base_args.to_vec();
         args.extend(provider_config.custom_args.clone());
         args
-    }
-
-    /// Merge runtime-scoped LLM provider config into the launch environment.
-    fn apply_llm_provider_env(
-        &self,
-        env: &mut HashMap<String, String>,
-        llm_provider: &RuntimeLlmProviderInfo,
-    ) {
-        for (key, value) in &llm_provider.config {
-            env.insert(key.clone(), value.clone());
-        }
     }
 
     /// Merge model selection into the launch environment.
@@ -157,11 +146,11 @@ impl RuntimeAdapter for ClaudeCodeRuntimeAdapter {
     }
 
     fn default_command(&self) -> &'static str {
-        "claude-code-acp"
+        "npx"
     }
 
     fn default_args(&self) -> Vec<String> {
-        Vec::new()
+        vec!["@anthropic-ai/claude-code".to_string()]
     }
 
     fn install_hint(&self) -> Option<&'static str> {
@@ -189,7 +178,7 @@ impl RuntimeAdapter for OpencodeRuntimeAdapter {
     }
 
     fn default_args(&self) -> Vec<String> {
-        vec!["agent".to_string()]
+        vec!["acp".to_string()]
     }
 
     fn install_hint(&self) -> Option<&'static str> {

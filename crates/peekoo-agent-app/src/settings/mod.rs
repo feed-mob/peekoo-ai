@@ -86,7 +86,9 @@ impl SettingsService {
     }
 
     /// Build catalog dynamically from installed ACP runtimes and their models.
-    pub fn catalog_from_runtimes(
+    /// Excludes internal bundled runtimes (like pi-acp) - chat only shows external/custom.
+    /// Models are discovered fresh via ACP protocol (no caching).
+    pub async fn catalog_from_runtimes(
         &self,
         provider_service: &crate::agent_provider_service::AgentProviderService,
     ) -> Result<AgentSettingsCatalogDto, String> {
@@ -94,37 +96,36 @@ impl SettingsService {
             .list_runtimes()
             .map_err(|e| format!("List runtimes error: {e}"))?;
 
-        let providers: Vec<ProviderCatalogDto> = runtimes
+        let mut providers: Vec<ProviderCatalogDto> = Vec::new();
+
+        for runtime in runtimes
             .iter()
-            .map(|runtime| {
-                let models = provider_service
-                    .list_runtime_models(&runtime.provider_id)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .filter(|m| m.is_enabled)
-                    .map(|m| m.model_id)
-                    .collect::<Vec<_>>();
+            .filter(|r| r.is_installed && r.is_chat_visible())
+        {
+            // Use ACP inspection to discover models fresh (no caching)
+            let inspection = provider_service
+                .inspect_runtime(&runtime.provider_id)
+                .await
+                .map_err(|e| format!("Inspect runtime {} error: {e}", runtime.provider_id))?;
 
-                // Fall back to hardcoded catalog models if no runtime models configured
-                let final_models = if models.is_empty() {
-                    let catalog = provider_catalog();
-                    catalog
-                        .into_iter()
-                        .find(|c| c.id == runtime.provider_id)
-                        .map(|c| c.models)
-                        .unwrap_or_default()
-                } else {
-                    models
-                };
+            // Extract model IDs from discovered models
+            let models: Vec<String> = inspection
+                .discovered_models
+                .into_iter()
+                .map(|m| m.model_id)
+                .collect();
 
-                ProviderCatalogDto {
-                    id: runtime.provider_id.clone(),
-                    name: runtime.display_name.clone(),
-                    auth_modes: Vec::new(),
-                    models: final_models,
-                }
-            })
-            .collect();
+            // Build auth modes from discovered auth methods
+            let auth_modes: Vec<String> =
+                inspection.auth_methods.into_iter().map(|m| m.id).collect();
+
+            providers.push(ProviderCatalogDto {
+                id: runtime.provider_id.clone(),
+                name: runtime.display_name.clone(),
+                auth_modes,
+                models,
+            });
+        }
 
         Ok(AgentSettingsCatalogDto {
             providers,
@@ -283,12 +284,18 @@ impl SettingsService {
         base.model = Some(model_id);
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
-        base.agent_skills = settings
+        let mut merged_skill_paths = base.agent_skills.clone();
+        for skill_path in settings
             .skills
             .iter()
             .filter(|skill| skill.enabled)
             .map(|skill| PathBuf::from(skill.path.clone()))
-            .collect();
+        {
+            if !merged_skill_paths.iter().any(|path| path == &skill_path) {
+                merged_skill_paths.push(skill_path);
+            }
+        }
+        base.agent_skills = merged_skill_paths;
 
         if let Some(api_key_ref) = self.store.active_api_key_ref(&provider_id)? {
             match self.secret_store.get(&api_key_ref) {

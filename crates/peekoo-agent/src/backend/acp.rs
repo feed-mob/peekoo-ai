@@ -1,16 +1,24 @@
-//! ACP-based backend implementation
+//! ACP-based backend implementation using the agent-client-protocol crate
 //!
 //! This module implements the `AgentBackend` trait for ACP-compatible agents
-//! such as pi-acp, opencode, claude-code, and codex.
+//! using the official agent-client-protocol crate.
+//!
+//! Implementation note: The ACP crate uses non-Send futures (#[async_trait(?Send)]).
+//! To satisfy the AgentBackend trait's Send requirement, we spawn a dedicated thread
+//! with a single-threaded tokio runtime that runs within a LocalSet.
 
 use super::*;
 use agent_client_protocol as acp;
+use std::collections::HashMap;
 use std::process::Stdio;
-use tokio::process::{Child, Command};
-use tokio::sync::{Mutex, mpsc};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use tokio::process::Command;
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-/// ACP-based backend implementation
+/// ACP-based backend implementation that wraps non-Send ACP operations
 pub struct AcpBackend {
     /// Command to spawn the ACP agent
     command: String,
@@ -21,29 +29,229 @@ pub struct AcpBackend {
     environment: HashMap<String, String>,
     /// System prompt
     system_prompt: Option<String>,
-    /// Active child process
-    child: Option<Child>,
-    /// ACP connection handle
-    connection: Option<AcpConnection>,
-    /// Current session ID (from ACP agent)
-    acp_session_id: Option<String>,
+    /// Command sender for the ACP task
+    cmd_tx: Option<mpsc::Sender<AcpCommand>>,
     /// Current model info
     model_info: ModelInfo,
     /// Whether the agent supports MCP natively
     supports_mcp: bool,
     /// Provider-specific state for persistence
     provider_state: Option<serde_json::Value>,
-    /// Cancel signal
-    cancel_tx: Option<mpsc::Sender<()>>,
+    /// Discovered auth methods from ACP initialize
+    auth_methods: Vec<acp::AuthMethod>,
+    /// Discovered models/config from ACP session
+    discovered_models: Vec<DiscoveredModel>,
+    /// Current model from ACP
+    current_model_id: Option<String>,
+    /// MCP servers to attach when creating ACP sessions.
+    mcp_servers: Vec<acp::McpServer>,
+    /// Whether the runtime has explicitly reported that authentication is required.
+    auth_required: AtomicBool,
+    /// Event callback for streaming
+    event_callback: Arc<Mutex<Option<EventCallback>>>,
 }
 
-struct AcpConnection {
-    /// Handle for sending ACP requests
-    #[allow(dead_code)]
-    request_tx: mpsc::UnboundedSender<acp::ClientRequest>,
-    /// Handle for receiving ACP responses
-    #[allow(dead_code)]
-    response_rx: Mutex<mpsc::UnboundedReceiver<acp::StreamMessage>>,
+/// Discovered model from ACP session
+#[derive(Debug, Clone)]
+pub struct DiscoveredModel {
+    pub model_id: String,
+    pub name: String,
+    pub description: Option<String>,
+}
+
+/// Commands sent to the ACP task
+#[derive(Debug)]
+enum AcpCommand {
+    Initialize {
+        config: BackendConfig,
+        resp: oneshot::Sender<anyhow::Result<InitializeResult>>,
+    },
+    CreateSession {
+        working_dir: std::path::PathBuf,
+        resp: oneshot::Sender<anyhow::Result<SessionResult>>,
+    },
+    SetModel {
+        model: String,
+        resp: oneshot::Sender<anyhow::Result<()>>,
+    },
+    Prompt {
+        input: String,
+        resp: oneshot::Sender<anyhow::Result<PromptResult>>,
+    },
+    Cancel {
+        resp: oneshot::Sender<anyhow::Result<()>>,
+    },
+    Authenticate {
+        method_id: String,
+        resp: oneshot::Sender<anyhow::Result<()>>,
+    },
+    Shutdown,
+}
+
+/// Internal result types
+#[derive(Debug)]
+struct InitializeResult {
+    supports_mcp: bool,
+    auth_methods: Vec<acp::AuthMethod>,
+}
+
+#[derive(Debug)]
+struct SessionResult {
+    session_id: acp::SessionId,
+    models: Vec<DiscoveredModel>,
+    current_model: Option<String>,
+}
+
+fn extract_models_from_session_response(
+    response: &acp::NewSessionResponse,
+) -> (Vec<DiscoveredModel>, Option<String>) {
+    if let Some(models) = &response.models {
+        let discovered_models = models
+            .available_models
+            .iter()
+            .map(|model| DiscoveredModel {
+                model_id: model.model_id.to_string(),
+                name: model.name.clone(),
+                description: model.description.clone(),
+            })
+            .collect();
+
+        return (discovered_models, Some(models.current_model_id.to_string()));
+    }
+
+    let mut models = Vec::new();
+    let mut current_model = None;
+
+    if let Some(config_options) = &response.config_options {
+        for option in config_options {
+            if let Some(acp::SessionConfigOptionCategory::Model) = option.category {
+                if let acp::SessionConfigKind::Select(select) = &option.kind {
+                    match &select.options {
+                        acp::SessionConfigSelectOptions::Ungrouped(opts) => {
+                            for opt in opts {
+                                models.push(DiscoveredModel {
+                                    model_id: opt.value.to_string(),
+                                    name: opt.name.to_string(),
+                                    description: opt.description.clone(),
+                                });
+                            }
+                        }
+                        acp::SessionConfigSelectOptions::Grouped(groups) => {
+                            for group in groups {
+                                for opt in &group.options {
+                                    models.push(DiscoveredModel {
+                                        model_id: opt.value.to_string(),
+                                        name: opt.name.to_string(),
+                                        description: opt.description.clone(),
+                                    });
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                    current_model = Some(select.current_value.to_string());
+                }
+            }
+        }
+    }
+
+    (models, current_model)
+}
+
+async fn collect_prompt_content(mut content_rx: mpsc::Receiver<String>) -> String {
+    let mut collected_content = String::new();
+    while let Some(chunk) = content_rx.recv().await {
+        collected_content.push_str(&chunk);
+    }
+    collected_content
+}
+
+/// Client handler for ACP - handles requests FROM the agent
+#[derive(Clone)]
+struct AcpClientHandler {
+    event_callback: Arc<Mutex<Option<EventCallback>>>,
+    content_sender: Arc<Mutex<Option<mpsc::Sender<String>>>>,
+}
+
+impl AcpClientHandler {
+    fn new(event_callback: Arc<Mutex<Option<EventCallback>>>) -> Self {
+        Self {
+            event_callback,
+            content_sender: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    async fn set_content_sender(&self, sender: mpsc::Sender<String>) {
+        let mut guard = self.content_sender.lock().await;
+        *guard = Some(sender);
+    }
+
+    async fn clear_content_sender(&self) {
+        let mut guard = self.content_sender.lock().await;
+        *guard = None;
+    }
+}
+
+#[async_trait::async_trait(?Send)]
+impl acp::Client for AcpClientHandler {
+    async fn request_permission(
+        &self,
+        _args: acp::RequestPermissionRequest,
+    ) -> acp::Result<acp::RequestPermissionResponse> {
+        // Auto-cancel for safety until we have proper UI integration
+        Ok(acp::RequestPermissionResponse::new(
+            acp::RequestPermissionOutcome::Cancelled,
+        ))
+    }
+
+    async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
+        use acp::SessionUpdate;
+        match args.update {
+            SessionUpdate::AgentMessageChunk(chunk) => {
+                if let acp::ContentBlock::Text(text_content) = &chunk.content {
+                    tracing::info!(
+                        session_id = %args.session_id,
+                        chunk_len = text_content.text.chars().count(),
+                        "ACP text chunk received"
+                    );
+                    // Send to content channel for collection
+                    let content_guard = self.content_sender.lock().await;
+                    if let Some(ref sender) = *content_guard {
+                        let _ = sender.try_send(text_content.text.clone());
+                    }
+
+                    // Emit to event callback for streaming UI
+                    let event_guard = self.event_callback.lock().await;
+                    if let Some(ref callback) = *event_guard {
+                        callback(AgentEvent::TextDelta(text_content.text.clone()));
+                    }
+                }
+            }
+            SessionUpdate::ToolCall(tool_call) => {
+                tracing::info!(
+                    session_id = %args.session_id,
+                    tool_call_id = %tool_call.tool_call_id,
+                    title = %tool_call.title,
+                    "ACP tool call notification received"
+                );
+                let guard = self.event_callback.lock().await;
+                if let Some(ref callback) = *guard {
+                    callback(AgentEvent::ToolCallStart {
+                        id: tool_call.tool_call_id.to_string(),
+                        name: tool_call.title.clone(),
+                    });
+                }
+            }
+            other => {
+                tracing::info!(
+                    session_id = %args.session_id,
+                    update = ?other,
+                    "ACP session update received"
+                );
+            }
+        }
+        Ok(())
+    }
 }
 
 impl AcpBackend {
@@ -56,9 +264,7 @@ impl AcpBackend {
                 .unwrap_or_else(|_| std::path::PathBuf::from(".")),
             environment: HashMap::new(),
             system_prompt: None,
-            child: None,
-            connection: None,
-            acp_session_id: None,
+            cmd_tx: None,
             model_info: ModelInfo {
                 provider: "unknown".to_string(),
                 model: "unknown".to_string(),
@@ -66,15 +272,76 @@ impl AcpBackend {
             },
             supports_mcp: false,
             provider_state: None,
-            cancel_tx: None,
+            auth_methods: Vec::new(),
+            discovered_models: Vec::new(),
+            current_model_id: None,
+            mcp_servers: Vec::new(),
+            auth_required: AtomicBool::new(false),
+            event_callback: Arc::new(Mutex::new(None)),
         }
     }
 
-    /// Spawn the ACP agent process and establish connection
+    /// Get discovered auth methods from the last initialize
+    pub fn auth_methods(&self) -> &[acp::AuthMethod] {
+        &self.auth_methods
+    }
+
+    /// Get discovered models from the last session
+    pub fn discovered_models(&self) -> &[DiscoveredModel] {
+        &self.discovered_models
+    }
+
+    /// Get current model ID from ACP
+    pub fn current_model_id(&self) -> Option<&str> {
+        self.current_model_id.as_deref()
+    }
+
+    /// Check if auth is required based on last operation
+    pub fn is_auth_required(&self) -> bool {
+        self.auth_required.load(Ordering::Relaxed)
+    }
+
+    /// Authenticate with the ACP runtime using the specified auth method
+    pub async fn authenticate(&self, method_id: &str) -> anyhow::Result<()> {
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::Authenticate {
+                method_id: method_id.to_string(),
+                resp: tx,
+            })
+            .await?;
+
+        match rx.await? {
+            Ok(()) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                return Err(error);
+            }
+        }
+        Ok(())
+    }
+
+    /// Gracefully shut down the ACP worker.
+    pub async fn shutdown(&mut self) -> anyhow::Result<()> {
+        if let Some(tx) = self.cmd_tx.take() {
+            let _ = tx.send(AcpCommand::Shutdown).await;
+        }
+        Ok(())
+    }
+
+    /// Spawn the ACP agent process and start the local task
     async fn spawn_and_connect(&mut self) -> anyhow::Result<()> {
-        // Kill any existing process
-        if let Some(mut child) = self.child.take() {
-            let _ = child.kill().await;
+        // Shutdown any existing task
+        if let Some(ref tx) = self.cmd_tx {
+            let _ = tx.send(AcpCommand::Shutdown).await;
         }
 
         tracing::info!("Spawning ACP agent: {} {:?}", self.command, self.args);
@@ -92,119 +359,357 @@ impl AcpBackend {
             cmd.env(key, value);
         }
 
-        // Set system prompt if provided
         if let Some(ref prompt) = self.system_prompt {
             cmd.env("ACP_SYSTEM_PROMPT", prompt);
         }
 
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .map_err(|e| anyhow::anyhow!("Failed to spawn ACP agent: {}", e))?;
 
-        self.child = Some(child);
-
-        // Establish ACP connection
-        self.establish_acp_connection().await?;
-
-        // Initialize ACP session
-        self.initialize_acp().await?;
-
-        // Create new ACP session
-        self.create_acp_session().await?;
-
-        Ok(())
-    }
-
-    /// Establish ACP connection over stdio
-    async fn establish_acp_connection(&mut self) -> anyhow::Result<()> {
-        let child = self
-            .child
-            .as_mut()
-            .ok_or_else(|| anyhow::anyhow!("No child process"))?;
-
+        // Take stdin/stdout and convert to futures-compatible streams
         let stdin = child
             .stdin
             .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get stdin"))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to get stdin"))?
+            .compat_write();
         let stdout = child
             .stdout
             .take()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get stdout"))?;
+            .ok_or_else(|| anyhow::anyhow!("Failed to get stdout"))?
+            .compat();
 
-        // Wrap in async-compat
-        let stdin_compat = TokioAsyncWriteCompatExt::compat_write(stdin);
-        let stdout_compat = TokioAsyncReadCompatExt::compat(stdout);
+        // Create command channel
+        let (cmd_tx, cmd_rx) = mpsc::channel::<AcpCommand>(32);
+        self.cmd_tx = Some(cmd_tx.clone());
 
-        // Create communication channels
-        let (request_tx, _request_rx) = mpsc::unbounded_channel::<acp::ClientRequest>();
-        let (response_tx, response_rx) = mpsc::unbounded_channel::<acp::StreamMessage>();
+        // Clone fields for the thread
+        let event_callback = self.event_callback.clone();
+        let mcp_servers = self.mcp_servers.clone();
 
-        // TODO: Implement actual ACP protocol handling
-        // For now, just store the channels
-        let _ = (stdin_compat, stdout_compat, response_tx);
+        // Spawn a dedicated thread for ACP operations with its own single-threaded runtime
+        // This is necessary because ACP uses !Send futures which require LocalSet
+        thread::spawn(move || {
+            // Create a single-threaded runtime for this thread
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create single-threaded runtime");
 
-        self.connection = Some(AcpConnection {
-            request_tx,
-            response_rx: Mutex::new(response_rx),
+            rt.block_on(async move {
+                let local_set = tokio::task::LocalSet::new();
+
+                local_set.run_until(async move {
+                    use agent_client_protocol::Agent;
+                    // Create client handler
+                    let client_handler = AcpClientHandler::new(event_callback.clone());
+
+                    // Create ACP connection
+                    let (connection, io_task) = acp::ClientSideConnection::new(
+                        client_handler.clone(),
+                        stdin,
+                        stdout,
+                        |fut| {
+                            tokio::task::spawn_local(async move {
+                                let _ = fut.await;
+                            });
+                        },
+                    );
+
+                    // Spawn the IO task
+                    let io_handle = tokio::task::spawn_local(io_task);
+                    let mut should_shutdown = false;
+
+                    // State maintained within the local task
+                    let mut acp_session_id: Option<acp::SessionId> = None;
+                    let mut current_model_id: Option<String> = None;
+
+                    // Command processing loop
+                    let mut cmd_rx = cmd_rx;
+                    while let Some(cmd) = cmd_rx.recv().await {
+                        match cmd {
+                            AcpCommand::Initialize { config: _, resp } => {
+                                let result = async {
+                                    let client_info = acp::Implementation::new(
+                                        "peekoo",
+                                        env!("CARGO_PKG_VERSION"),
+                                    );
+                                    let capabilities = acp::ClientCapabilities::new();
+                                    let request = acp::InitializeRequest::new(acp::ProtocolVersion::V1)
+                                        .client_capabilities(capabilities)
+                                        .client_info(client_info);
+
+                                    let response = connection.initialize(request).await?;
+
+                                    let mcp_caps = &response.agent_capabilities.mcp_capabilities;
+                                    let supports_mcp = mcp_caps.http || mcp_caps.sse;
+
+                                    tracing::info!(
+                                        auth_methods = response.auth_methods.len(),
+                                        supports_mcp,
+                                        agent_info = ?response.agent_info,
+                                        "ACP initialized"
+                                    );
+
+                                    Ok(InitializeResult {
+                                        supports_mcp,
+                                        auth_methods: response.auth_methods,
+                                    })
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::CreateSession { working_dir, resp } => {
+                                let result = async {
+                                    tracing::info!(
+                                        cwd = %working_dir.display(),
+                                        mcp_servers = mcp_servers.len(),
+                                        "ACP creating session"
+                                    );
+                                    let request = acp::NewSessionRequest::new(working_dir)
+                                        .mcp_servers(mcp_servers.clone());
+                                    let response = connection.new_session(request).await?;
+
+                                    let session_id = response.session_id.clone();
+                                    acp_session_id = Some(session_id.clone());
+
+                                    let (models, current_model) =
+                                        extract_models_from_session_response(&response);
+
+                                    // Do not treat ACP session modes as model choices.
+                                    // Some runtimes (like OpenCode) expose workflow modes such as
+                                    // `build` or `plan` here, which are not actual model IDs.
+
+                                    tracing::info!(
+                                        session_id = %session_id,
+                                        model_count = models.len(),
+                                        current_model = ?current_model,
+                                        has_config_options = response.config_options.as_ref().map(|v| v.len()).unwrap_or(0),
+                                        "ACP session created"
+                                    );
+
+                                    Ok(SessionResult {
+                                        session_id,
+                                        models,
+                                        current_model,
+                                    })
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::SetModel { model, resp } => {
+                                let result = async {
+                                    if let Some(ref session_id) = acp_session_id {
+                                        let request = acp::SetSessionConfigOptionRequest::new(
+                                            session_id.clone(),
+                                            acp::SessionConfigId::new("model"),
+                                            acp::SessionConfigValueId::new(model.as_str()),
+                                        );
+                                        connection.set_session_config_option(request).await?;
+                                        current_model_id = Some(model);
+                                        Ok(())
+                                    } else {
+                                        Err(anyhow::anyhow!("No active ACP session"))
+                                    }
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::Prompt { input, resp } => {
+                                let result = async {
+                                    let session_id = acp_session_id.clone()
+                                        .ok_or_else(|| anyhow::anyhow!("No active ACP session"))?;
+                                    tracing::info!(
+                                        session_id = %session_id,
+                                        input_len = input.chars().count(),
+                                        "ACP prompt starting"
+                                    );
+
+                                    // Set up content collection channel
+                                    let (content_tx, content_rx) = mpsc::channel::<String>(100);
+                                    client_handler.set_content_sender(content_tx.clone()).await;
+
+                                    let content = acp::TextContent::new(input);
+                                    let request =
+                                        acp::PromptRequest::new(session_id, vec![acp::ContentBlock::Text(content)]);
+
+                                    // Send the prompt - content streams via notifications
+                                    let response = connection.prompt(request).await?;
+                                    tracing::info!(
+                                        stop_reason = ?response.stop_reason,
+                                        "ACP prompt response received"
+                                    );
+
+                                    client_handler.clear_content_sender().await;
+                                    drop(content_tx);
+                                    let collected_content = collect_prompt_content(content_rx).await;
+                                    tracing::info!(
+                                        content_len = collected_content.chars().count(),
+                                        "ACP prompt content collected"
+                                    );
+
+                                    // Emit completion event
+                                    let guard = event_callback.lock().await;
+                                    if let Some(ref callback) = *guard {
+                                        callback(AgentEvent::Complete);
+                                    }
+
+                                    let stop_reason = match response.stop_reason {
+                                        acp::StopReason::EndTurn => StopReason::EndTurn,
+                                        acp::StopReason::MaxTokens => StopReason::MaxTokens,
+                                        _ => StopReason::EndTurn,
+                                    };
+
+                                    Ok(PromptResult {
+                                        content: collected_content,
+                                        stop_reason,
+                                        usage: None,
+                                        provider_state: None,
+                                    })
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::Cancel { resp } => {
+                                let result = async {
+                                    if let Some(ref session_id) = acp_session_id {
+                                        let notification = acp::CancelNotification::new(session_id.clone());
+                                        connection.cancel(notification).await?;
+                                    }
+                                    Ok(())
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::Authenticate { method_id, resp } => {
+                                let result = async {
+                                    let method_id = acp::AuthMethodId::new(method_id);
+                                    let request = acp::AuthenticateRequest::new(method_id);
+                                    let _response = connection.authenticate(request).await?;
+                                    tracing::info!("ACP authentication successful");
+                                    Ok(())
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::Shutdown => {
+                                should_shutdown = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if should_shutdown {
+                        drop(connection);
+                        let _ = tokio::time::timeout(
+                            std::time::Duration::from_secs(2),
+                            child.wait(),
+                        )
+                        .await;
+                        if !child.id().is_none() {
+                            let _ = child.kill().await;
+                        }
+                        io_handle.abort();
+                    }
+
+                    tracing::info!("ACP task shutdown complete");
+                }).await;
+            });
         });
 
+        tracing::info!("ACP agent spawned and connected via local task");
         Ok(())
     }
+}
 
-    /// Send initialize request to ACP agent
-    async fn initialize_acp(&mut self) -> anyhow::Result<()> {
-        tracing::info!("Initializing ACP session");
-
-        // TODO: Implement actual ACP initialize handshake
-        // For now, assume success and set basic capabilities
-        self.supports_mcp = true;
-
-        Ok(())
-    }
-
-    /// Create new ACP session
-    async fn create_acp_session(&mut self) -> anyhow::Result<()> {
-        tracing::info!("Creating ACP session");
-
-        // Generate a new session ID
-        let session_id = format!("acp_{}", uuid::Uuid::new_v4());
-        self.acp_session_id = Some(session_id);
-
-        // TODO: Send new_session request via ACP
-
-        Ok(())
-    }
-
-    /// Check if the ACP agent process is still running
-    fn is_process_alive(&self) -> bool {
-        if let Some(ref _child) = self.child {
-            // Try to get exit status - if it's None, process is still running
-            // Note: try_wait() needs &mut self, but we're only checking existence
-            // A process that has a handle is considered "alive" for our purposes
-            // The actual check would require interior mutability
-            true
-        } else {
-            false
-        }
-    }
+pub fn is_auth_required_error(error: &anyhow::Error) -> bool {
+    error
+        .downcast_ref::<acp::Error>()
+        .is_some_and(|acp_error| acp_error.code == acp::ErrorCode::AuthRequired)
 }
 
 #[async_trait]
 impl AgentBackend for AcpBackend {
     async fn initialize(&mut self, config: BackendConfig) -> anyhow::Result<()> {
-        self.working_directory = config.working_directory;
-        self.environment = config.environment;
-        self.system_prompt = config.system_prompt;
+        tracing::info!(
+            provider = ?config.provider,
+            model = ?config.model,
+            env_keys = ?config.environment.keys().collect::<Vec<_>>(),
+            cwd = %config.working_directory.display(),
+            "ACP backend initialize requested"
+        );
+        self.working_directory = config.working_directory.clone();
+        self.environment = config.environment.clone();
+        self.system_prompt = config.system_prompt.clone();
+        self.mcp_servers = config.mcp_servers.clone();
+        self.auth_required.store(false, Ordering::Relaxed);
 
-        if let Some(provider) = config.provider {
+        if let Some(provider) = config.provider.clone() {
             self.model_info.provider = provider;
         }
-        if let Some(model) = config.model {
+        if let Some(model) = config.model.clone() {
             self.model_info.model = model;
         }
 
-        // Spawn and connect to ACP agent
+        // Spawn the ACP process and start the local task
         self.spawn_and_connect().await?;
+
+        // Send initialize command
+        let (tx, rx) = oneshot::channel();
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+        cmd_tx
+            .send(AcpCommand::Initialize { config, resp: tx })
+            .await?;
+
+        let init_result = rx.await??;
+        self.supports_mcp = init_result.supports_mcp;
+        self.auth_methods = init_result.auth_methods;
+
+        // Create session
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::CreateSession {
+                working_dir: self.working_directory.clone(),
+                resp: tx,
+            })
+            .await?;
+
+        let session_result = match rx.await? {
+            Ok(result) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+                result
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                return Err(error);
+            }
+        };
+        self.discovered_models = session_result.models;
+        self.current_model_id = session_result.current_model;
+
+        if let Some(ref current) = self.current_model_id {
+            self.model_info.model = current.clone();
+        } else if let Some(first) = self.discovered_models.first() {
+            self.model_info.model = first.model_id.clone();
+        }
+
+        tracing::info!(
+            provider = %self.model_info.provider,
+            model = %self.model_info.model,
+            discovered_models = self.discovered_models.len(),
+            auth_required = self.is_auth_required(),
+            "ACP backend initialize complete"
+        );
 
         Ok(())
     }
@@ -212,71 +717,96 @@ impl AgentBackend for AcpBackend {
     async fn prompt(
         &self,
         input: &str,
-        conversation_history: Vec<Message>,
+        _conversation_history: Vec<Message>,
         on_event: EventCallback,
     ) -> anyhow::Result<PromptResult> {
-        // Ensure we have a connection
-        if self.connection.is_none() {
-            return Err(anyhow::anyhow!("ACP connection not established"));
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+        tracing::info!(
+            provider = %self.model_info.provider,
+            model = %self.model_info.model,
+            input_len = input.chars().count(),
+            "ACP backend prompt requested"
+        );
+
+        // Set up event callback
+        {
+            let mut guard = self.event_callback.lock().await;
+            *guard = Some(on_event);
         }
 
-        // Build prompt with conversation history
-        let full_prompt = build_prompt_with_history(input, &conversation_history);
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::Prompt {
+                input: input.to_string(),
+                resp: tx,
+            })
+            .await?;
 
-        // Setup cancel channel
-        let (cancel_tx, mut cancel_rx) = mpsc::channel(1);
-        // Store cancel_tx for later use - self is immutable here, so we can't store it directly
-        let _ = cancel_tx;
-
-        // TODO: Implement actual ACP prompt protocol
-        // For now, simulate a response
-        tracing::info!("Sending prompt to ACP agent: {} chars", full_prompt.len());
-
-        // Simulate streaming
-        on_event(AgentEvent::TextDelta("Response from ".to_string()));
-        on_event(AgentEvent::TextDelta(self.model_info.provider.clone()));
-        on_event(AgentEvent::TextDelta(" agent".to_string()));
-        on_event(AgentEvent::Complete);
-
-        // Check for cancel signal
-        if let Ok(()) = cancel_rx.try_recv() {
-            return Ok(PromptResult {
-                content: "Cancelled".to_string(),
-                stop_reason: StopReason::Cancelled,
-                usage: None,
-                provider_state: self.provider_state.clone(),
-            });
+        let result = match rx.await? {
+            Ok(result) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+                tracing::info!(
+                    output_len = result.content.chars().count(),
+                    stop_reason = ?result.stop_reason,
+                    "ACP backend prompt completed"
+                );
+                result
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                tracing::error!(
+                    error = %error,
+                    is_auth_required = is_auth_required_error(&error),
+                    "ACP backend prompt failed"
+                );
+                return Err(error);
+            }
+        };
+        {
+            let mut guard = self.event_callback.lock().await;
+            *guard = None;
         }
-
-        Ok(PromptResult {
-            content: format!("Response from {} agent", self.model_info.provider),
-            stop_reason: StopReason::EndTurn,
-            usage: Some(TokenUsage {
-                input_tokens: full_prompt.len() as u32 / 4, // Rough estimate
-                output_tokens: 20,
-            }),
-            provider_state: self.provider_state.clone(),
-        })
+        Ok(result)
     }
 
     async fn set_model(&mut self, provider: &str, model: &str) -> anyhow::Result<()> {
-        // Check if we need to switch agent processes
         if provider != self.model_info.provider {
-            // Different provider = different ACP agent command
+            // Provider change requires re-initialization
             self.model_info.provider = provider.to_string();
             self.model_info.model = model.to_string();
-
-            // Re-initialize with new provider
-            // This spawns a new process
-            // Note: Command/args would need to be updated based on provider
-            self.spawn_and_connect().await?;
-        } else {
-            // Same provider, different model
-            self.model_info.model = model.to_string();
-
-            // Try to set via ACP config if supported
-            // TODO: Send config update via ACP
+            // Would need to re-spawn with new provider config
+            // For now, just update the model ID
         }
+
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::SetModel {
+                model: model.to_string(),
+                resp: tx,
+            })
+            .await?;
+
+        match rx.await? {
+            Ok(()) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                return Err(error);
+            }
+        }
+        self.current_model_id = Some(model.to_string());
+        self.model_info.model = model.to_string();
 
         Ok(())
     }
@@ -286,9 +816,15 @@ impl AgentBackend for AcpBackend {
     }
 
     async fn cancel(&self) -> anyhow::Result<()> {
-        // Send cancel signal if we have a cancel channel
-        // Note: Since self is immutable, we'd need interior mutability for cancel_tx
-        tracing::info!("Cancelling ACP prompt");
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx.send(AcpCommand::Cancel { resp: tx }).await?;
+
+        rx.await??;
         Ok(())
     }
 
@@ -301,68 +837,35 @@ impl AgentBackend for AcpBackend {
     }
 
     fn provider_state(&self) -> Option<serde_json::Value> {
-        self.provider_state.clone()
+        let state = serde_json::json!({
+            "modelId": self.current_model_id,
+            "discoveredModels": self.discovered_models.iter().map(|m| {
+                serde_json::json!({
+                    "modelId": m.model_id,
+                    "name": m.name,
+                    "description": m.description
+                })
+            }).collect::<Vec<_>>()
+        });
+        Some(state)
     }
 
     async fn restore_provider_state(&mut self, state: serde_json::Value) -> anyhow::Result<()> {
-        self.provider_state = Some(state);
-
-        // If we have a connection, try to restore the session
-        if self.acp_session_id.is_some() {
-            // TODO: Send load_session request via ACP with the state
+        self.provider_state = Some(state.clone());
+        if let Some(model_id) = state.get("modelId").and_then(|m| m.as_str()) {
+            self.current_model_id = Some(model_id.to_string());
+            self.model_info.model = model_id.to_string();
         }
-
         Ok(())
     }
 }
 
 impl Drop for AcpBackend {
     fn drop(&mut self) {
-        // Clean up child process on drop
-        if let Some(mut child) = self.child.take() {
-            // Spawn a blocking task to kill the process
-            tokio::spawn(async move {
-                let _ = child.kill().await;
-            });
+        if let Some(ref tx) = self.cmd_tx {
+            let _ = tx.try_send(AcpCommand::Shutdown);
         }
     }
-}
-
-/// Build a prompt string including conversation history
-fn build_prompt_with_history(input: &str, history: &[Message]) -> String {
-    let mut parts = Vec::new();
-
-    // Add history
-    for message in history {
-        let role_prefix = match message.role {
-            MessageRole::System => "System:",
-            MessageRole::User => "User:",
-            MessageRole::Assistant => "Assistant:",
-            MessageRole::Tool => "Tool:",
-        };
-
-        let content = message
-            .content
-            .iter()
-            .map(|block| match block {
-                ContentBlock::Text { text } => text.clone(),
-                ContentBlock::ToolUse { name, input, .. } => {
-                    format!("[Tool: {}({})]", name, input)
-                }
-                ContentBlock::ToolResult { content, .. } => content.clone(),
-                _ => String::new(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        parts.push(format!("{} {}", role_prefix, content));
-    }
-
-    // Add current input
-    parts.push(format!("User: {}", input));
-    parts.push("Assistant:".to_string());
-
-    parts.join("\n\n")
 }
 
 #[cfg(test)]
@@ -370,110 +873,65 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_build_prompt_with_history() {
-        let history = vec![
-            Message {
-                role: MessageRole::User,
-                content: vec![ContentBlock::Text {
-                    text: "Hello".to_string(),
-                }],
-                tool_calls: None,
-                tool_call_id: None,
-            },
-            Message {
-                role: MessageRole::Assistant,
-                content: vec![ContentBlock::Text {
-                    text: "Hi there!".to_string(),
-                }],
-                tool_calls: None,
-                tool_call_id: None,
-            },
-        ];
+    fn auth_required_is_explicit_state_not_auth_method_presence() {
+        let mut backend = AcpBackend::new("test-agent", Vec::new());
+        backend.auth_methods = vec![acp::AuthMethod::Agent(acp::AuthMethodAgent::new(
+            "browser",
+            "Browser Login",
+        ))];
 
-        let prompt = build_prompt_with_history("How are you?", &history);
+        assert!(!backend.is_auth_required());
 
-        assert!(prompt.contains("User: Hello"));
-        assert!(prompt.contains("Assistant: Hi there!"));
-        assert!(prompt.contains("User: How are you?"));
-        assert!(prompt.contains("Assistant:"));
-    }
-
-    #[tokio::test]
-    async fn test_acp_backend_initialization() {
-        // This test will spawn a real process, so we use "echo" as a safe command
-        let mut backend = AcpBackend::new("echo", vec!["test".to_string()]);
-
-        let config = BackendConfig {
-            working_directory: std::env::current_dir().unwrap(),
-            system_prompt: Some("You are helpful.".to_string()),
-            model: Some("test-model".to_string()),
-            provider: Some("test-provider".to_string()),
-            api_key: None,
-            environment: HashMap::new(),
-        };
-
-        // Note: This will fail because "echo" doesn't speak ACP
-        // but it tests the initialization path
-        let result = backend.initialize(config).await;
-
-        // We expect this to succeed at spawning, but the ACP handshake will fail
-        // In a real implementation, we'd mock the ACP protocol
-        assert!(result.is_err() || backend.child.is_some());
+        backend.auth_required.store(true, Ordering::Relaxed);
+        assert!(backend.is_auth_required());
     }
 
     #[test]
-    fn test_acp_backend_new() {
-        let backend = AcpBackend::new("npx", vec!["pi-acp".to_string()]);
+    fn detects_typed_acp_auth_required_errors() {
+        let error = anyhow::Error::new(acp::Error::auth_required());
 
-        assert_eq!(backend.command, "npx");
-        assert_eq!(backend.args, vec!["pi-acp"]);
-        assert!(backend.child.is_none());
-        assert!(backend.connection.is_none());
+        assert!(is_auth_required_error(&error));
     }
 
     #[test]
-    fn test_acp_backend_provider_id() {
-        let backend = AcpBackend::new("test", vec![]);
-        assert_eq!(backend.provider_id(), "acp");
-    }
+    fn ignores_non_auth_acp_errors() {
+        let error = anyhow::Error::new(acp::Error::internal_error());
 
-    #[tokio::test]
-    async fn test_acp_backend_model_switching() {
-        let mut backend = AcpBackend::new("npx", vec!["pi-acp".to_string()]);
-
-        // Start with one provider
-        backend.model_info.provider = "pi-acp".to_string();
-        backend.model_info.model = "claude-3.5".to_string();
-        backend.child = None; // Ensure no child process
-
-        // When switching providers, it tries to spawn a new process
-        // This may succeed or fail depending on environment
-        let result = backend.set_model("opencode", "gpt-4").await;
-
-        // The model info should always be updated before attempting spawn
-        assert_eq!(backend.model_info.provider, "opencode");
-        assert_eq!(backend.model_info.model, "gpt-4");
-
-        // Result depends on whether npx is available in test environment
-        // Either success (if npx available) or error (if not)
-        // We just verify the method completes without panic
-        let _ = result;
+        assert!(!is_auth_required_error(&error));
     }
 
     #[test]
-    fn test_acp_backend_provider_state() {
-        let mut backend = AcpBackend::new("test", vec![]);
+    fn extracts_models_from_unstable_session_model_state() {
+        let response =
+            acp::NewSessionResponse::new("session-1").models(acp::SessionModelState::new(
+                "gpt-5.4",
+                vec![
+                    acp::ModelInfo::new("gpt-5.4", "GPT-5.4").description("Latest frontier model"),
+                    acp::ModelInfo::new("gpt-5.3", "GPT-5.3"),
+                ],
+            ));
 
-        // Initially no state
-        assert!(backend.provider_state().is_none());
+        let (models, current_model) = extract_models_from_session_response(&response);
 
-        // Set state manually (simulating restore)
-        backend.provider_state = Some(serde_json::json!({ "session_id": "test-123" }));
-
-        // Should return the state
+        assert_eq!(current_model.as_deref(), Some("gpt-5.4"));
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].model_id, "gpt-5.4");
+        assert_eq!(models[0].name, "GPT-5.4");
         assert_eq!(
-            backend.provider_state(),
-            Some(serde_json::json!({ "session_id": "test-123" }))
+            models[0].description.as_deref(),
+            Some("Latest frontier model")
         );
+    }
+
+    #[tokio::test]
+    async fn collects_prompt_content_after_sender_is_dropped() {
+        let (tx, rx) = mpsc::channel::<String>(4);
+        tx.send("Hello".to_string()).await.unwrap();
+        tx.send(", world".to_string()).await.unwrap();
+        drop(tx);
+
+        let content = collect_prompt_content(rx).await;
+
+        assert_eq!(content, "Hello, world");
     }
 }

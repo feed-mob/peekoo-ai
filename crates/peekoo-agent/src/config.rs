@@ -1,5 +1,6 @@
 //! Configuration for the agent service.
 
+use agent_client_protocol::McpServer;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -23,7 +24,10 @@ impl AgentProvider {
     pub fn command(&self) -> (String, Vec<String>) {
         match self {
             AgentProvider::PiAcp => ("npx".to_string(), vec!["pi-acp".to_string()]),
-            AgentProvider::Opencode => ("npx".to_string(), vec!["opencode-ai".to_string()]),
+            AgentProvider::Opencode => (
+                "npx".to_string(),
+                vec!["opencode-ai".to_string(), "acp".to_string()],
+            ),
             AgentProvider::ClaudeCode => (
                 "npx".to_string(),
                 vec!["@anthropic-ai/claude-code".to_string()],
@@ -96,6 +100,9 @@ pub struct AgentServiceConfig {
 
     /// Environment variables to pass to ACP agent
     pub environment: HashMap<String, String>,
+
+    /// MCP servers to attach to ACP sessions.
+    pub mcp_servers: Vec<McpServer>,
 }
 
 impl Default for AgentServiceConfig {
@@ -116,6 +123,7 @@ impl Default for AgentServiceConfig {
             resume_session_id: None,
             session_path: None,
             environment: HashMap::new(),
+            mcp_servers: Vec::new(),
         }
     }
 }
@@ -161,6 +169,12 @@ mod tests {
     }
 
     #[test]
+    fn default_config_has_no_mcp_servers() {
+        let config = AgentServiceConfig::default();
+        assert!(config.mcp_servers.is_empty());
+    }
+
+    #[test]
     fn default_config_max_iterations_is_50() {
         let config = AgentServiceConfig::default();
         assert_eq!(config.max_tool_iterations, 50);
@@ -203,7 +217,7 @@ mod tests {
 
         let (cmd, args) = AgentProvider::Opencode.command();
         assert_eq!(cmd, "npx");
-        assert_eq!(args, vec!["opencode-ai"]);
+        assert_eq!(args, vec!["opencode-ai", "acp"]);
 
         let (cmd, args) = AgentProvider::Custom {
             command: "/path/to/agent".to_string(),
@@ -232,6 +246,7 @@ mod tests {
             resume_session_id: None,
             session_path: None,
             environment: HashMap::new(),
+            mcp_servers: Vec::new(),
         };
         assert_eq!(config.provider.id(), "opencode");
         assert_eq!(config.model.as_deref(), Some("gpt-4o"));

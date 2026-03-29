@@ -241,9 +241,13 @@ mod tests {
     fn acp_runtime_tables_and_session_columns_exist() {
         let conn = setup_test_db();
 
-        for table in ["agent_runtimes", "runtime_llm_providers", "runtime_models"] {
-            assert!(sqlite_table_exists(&conn, table).expect("query sqlite_master"));
-        }
+        // Only check for agent_runtimes table (runtime_llm_providers and runtime_models
+        // were dropped in migration 0018_cleanup_runtime_tables as they are now discovered
+        // via ACP protocol instead of being stored in the database)
+        assert!(
+            sqlite_table_exists(&conn, "agent_runtimes").expect("query sqlite_master"),
+            "agent_runtimes table should exist"
+        );
 
         let mut stmt = conn
             .prepare("PRAGMA table_info(agent_sessions)")

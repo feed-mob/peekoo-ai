@@ -3,6 +3,7 @@
 //! This module defines the `AgentBackend` trait for abstracting over
 //! different LLM agent implementations, and provides an ACP-based implementation.
 
+use agent_client_protocol::McpServer;
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -55,6 +56,7 @@ pub struct BackendConfig {
     pub provider: Option<String>,
     pub api_key: Option<String>,
     pub environment: HashMap<String, String>,
+    pub mcp_servers: Vec<McpServer>,
 }
 
 /// Conversation message (provider-agnostic)
@@ -271,6 +273,7 @@ mod tests {
             provider: Some("new-provider".to_string()),
             api_key: None,
             environment: HashMap::new(),
+            mcp_servers: Vec::new(),
         };
 
         backend.initialize(config).await.unwrap();

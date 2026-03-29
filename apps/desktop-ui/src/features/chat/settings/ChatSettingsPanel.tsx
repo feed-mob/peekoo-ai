@@ -85,9 +85,10 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     }
 
     void getRuntimeDefaults(settings.activeProviderId)
-      .then(({ provider, model }) => {
+      .then(({ model }) => {
         if (!cancelled) {
-          setRuntimeProviderSummary(provider?.displayName ?? provider?.providerId ?? null);
+          // LLM provider is now discovered via ACP, not stored separately
+          setRuntimeProviderSummary(null);
           setRuntimeModelSummary(model?.displayName ?? model?.modelId ?? null);
         }
       })
@@ -107,13 +108,52 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     return <div className="text-sm text-text-muted">Loading settings...</div>;
   }
 
-  if (!settings || !catalog || !selectedProvider) {
+  if (error) {
     return (
       <div className="space-y-2">
         <p className="text-sm text-danger">Failed to load settings.</p>
-        {error ? <p className="text-xs text-text-muted">{error}</p> : null}
+        <p className="text-xs text-text-muted">{error}</p>
         <Button size="sm" onClick={() => void refresh()}>
           Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!settings || !catalog) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-danger">Failed to load settings.</p>
+        <Button size="sm" onClick={() => void refresh()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (catalog.providers.length === 0) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-muted">No ACP runtimes installed.</p>
+        <p className="text-xs text-text-secondary">
+          Install a runtime from the Settings panel to get started.
+        </p>
+        <Button size="sm" onClick={() => void refresh()}>
+          Refresh
+        </Button>
+      </div>
+    );
+  }
+
+  if (!selectedProvider) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-muted">Selected runtime not found.</p>
+        <p className="text-xs text-text-secondary">
+          The previously selected runtime is no longer available.
+        </p>
+        <Button size="sm" onClick={() => void refresh()}>
+          Refresh
         </Button>
       </div>
     );

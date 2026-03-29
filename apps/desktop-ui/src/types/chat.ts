@@ -49,11 +49,46 @@ export interface AgentEventGeneric {
   [key: string]: unknown;
 }
 
+export interface AgentEventTextDelta {
+  TextDelta: string;
+}
+
+export interface AgentEventThinkingDelta {
+  ThinkingDelta: string;
+}
+
+export interface AgentEventToolCallStartRust {
+  ToolCallStart: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface AgentEventToolCallCompleteRust {
+  ToolCallComplete: {
+    id: string;
+  };
+}
+
+export interface AgentEventCompleteRust {
+  Complete: null | Record<string, never>;
+}
+
+export interface AgentEventErrorRust {
+  Error: string;
+}
+
 export type AgentEvent =
   | AgentEventToolStart
   | AgentEventToolEnd
   | AgentEventMessageUpdate
   | AgentEventMessageEnd
+  | AgentEventTextDelta
+  | AgentEventThinkingDelta
+  | AgentEventToolCallStartRust
+  | AgentEventToolCallCompleteRust
+  | AgentEventCompleteRust
+  | AgentEventErrorRust
   | AgentEventGeneric;
 
 // Sub-types from pi_agent_rust serialization

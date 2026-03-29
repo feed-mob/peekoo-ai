@@ -44,6 +44,39 @@ function buildStreamingText(
   return text + streamingText;
 }
 
+function isRustTextDeltaEvent(event: AgentEvent): event is { TextDelta: string } {
+  return typeof (event as { TextDelta?: unknown }).TextDelta === "string";
+}
+
+function isRustThinkingDeltaEvent(
+  event: AgentEvent,
+): event is { ThinkingDelta: string } {
+  return typeof (event as { ThinkingDelta?: unknown }).ThinkingDelta === "string";
+}
+
+function isRustToolCallStartEvent(
+  event: AgentEvent,
+): event is { ToolCallStart: { id: string; name: string } } {
+  const payload = (event as { ToolCallStart?: unknown }).ToolCallStart;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string" &&
+    typeof (payload as { name?: unknown }).name === "string"
+  );
+}
+
+function isRustToolCallCompleteEvent(
+  event: AgentEvent,
+): event is { ToolCallComplete: { id: string } } {
+  const payload = (event as { ToolCallComplete?: unknown }).ToolCallComplete;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string"
+  );
+}
+
 export function mapSessionMessagesToMessages(
   sessionMessages: SessionMessageLike[],
 ): Message[] {
@@ -217,6 +250,41 @@ export function useChatSession() {
 
     const unlisten = await listen<AgentEvent>("agent-event", (ev) => {
       const event = ev.payload;
+
+      if (isRustTextDeltaEvent(event)) {
+        streamingTextRef.current += event.TextDelta;
+        flushStreaming();
+        return;
+      }
+
+      if (isRustThinkingDeltaEvent(event)) {
+        return;
+      }
+
+      if (isRustToolCallStartEvent(event)) {
+        toolStatusRef.current.set(event.ToolCallStart.id, {
+          name: event.ToolCallStart.name,
+          done: false,
+        });
+        flushStreaming();
+        return;
+      }
+
+      if (isRustToolCallCompleteEvent(event)) {
+        const existing = toolStatusRef.current.get(event.ToolCallComplete.id);
+        if (existing) {
+          toolStatusRef.current.set(event.ToolCallComplete.id, {
+            ...existing,
+            done: true,
+          });
+          flushStreaming();
+        }
+        return;
+      }
+
+      if (!("type" in event) || typeof event.type !== "string") {
+        return;
+      }
 
       switch (event.type) {
         case "tool_execution_start": {

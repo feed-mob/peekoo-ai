@@ -17,11 +17,10 @@ mod workspace_bootstrap;
 
 pub use agent_provider_commands::*;
 pub use agent_provider_service::{
-    AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallRuntimeRequest,
-    InstallRuntimeResponse, InstallationMethod, InstallationMethodInfo, PrerequisitesCheck,
-    ProviderConfig, ProviderInfo, ProviderStatus, RuntimeConfig, RuntimeInfo,
-    RuntimeLlmProviderInfo, RuntimeLlmProviderUpsert, RuntimeModelInfo, RuntimeModelUpsert,
-    RuntimeStatus, TestConnectionResult,
+    AgentProviderService, AuthMethodInfo, DiscoveredModelInfo, InstallProviderRequest,
+    InstallProviderResponse, InstallRuntimeRequest, InstallRuntimeResponse, InstallationMethod,
+    InstallationMethodInfo, PrerequisitesCheck, ProviderConfig, ProviderInfo, ProviderStatus,
+    RuntimeConfig, RuntimeInfo, RuntimeInspectionResult, RuntimeStatus, TestConnectionResult,
 };
 pub use agent_runtime_service::AgentRuntimeService;
 pub use application::AgentApplication;

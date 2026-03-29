@@ -5,7 +5,8 @@
 
 use crate::agent_provider_service::{
     AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallationMethod,
-    PrerequisitesCheck, ProviderConfig, ProviderInfo, TestConnectionResult,
+    PrerequisitesCheck, ProviderConfig, ProviderInfo, RuntimeInspectionResult,
+    TestConnectionResult,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -65,7 +66,7 @@ pub async fn test_provider_connection(
     service: &AgentProviderService,
     provider_id: String,
 ) -> anyhow::Result<TestConnectionResult> {
-    service.test_connection(&provider_id)
+    service.test_connection(&provider_id).await
 }
 
 /// Check installation prerequisites
@@ -117,6 +118,111 @@ pub fn uninstall_agent_provider(
     service.uninstall_provider(&provider_id)
 }
 
+/// Inspect a runtime to discover its capabilities
+pub async fn inspect_runtime(
+    service: &AgentProviderService,
+    runtime_id: String,
+) -> anyhow::Result<RuntimeInspectionResult> {
+    service.inspect_runtime(&runtime_id).await
+}
+
+/// Authenticate with a runtime using the specified auth method
+pub async fn authenticate_runtime(
+    service: &AgentProviderService,
+    runtime_id: String,
+    method_id: String,
+) -> anyhow::Result<()> {
+    use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
+
+    if runtime_id == "opencode" {
+        return Err(anyhow::anyhow!(
+            "OpenCode login is managed by the CLI. Run `opencode auth login` in a terminal, then refresh runtime capabilities."
+        ));
+    }
+
+    // Get runtime info
+    let runtime = service
+        .get_runtime(&runtime_id)?
+        .ok_or_else(|| anyhow::anyhow!("Runtime not found: {}", runtime_id))?;
+
+    // Only authenticate with chat-visible (external/custom) runtimes
+    if !runtime.is_chat_visible() {
+        return Err(anyhow::anyhow!(
+            "Cannot authenticate internal runtime: {}",
+            runtime_id
+        ));
+    }
+
+    // Get runtime configuration
+    let config = service.get_provider_config(&runtime_id)?;
+
+    // Get the command and args
+    let (command, args) = if runtime.is_installed {
+        service.get_runtime_command(&runtime_id).await?
+    } else {
+        return Err(anyhow::anyhow!("Runtime not installed: {}", runtime_id));
+    };
+
+    // Create ACP backend
+    let mut backend = AcpBackend::new(command, args);
+
+    // Initialize the backend
+    let backend_config = BackendConfig {
+        working_directory: std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        system_prompt: None,
+        model: config.default_model.clone(),
+        provider: Some(runtime_id.clone()),
+        api_key: None,
+        environment: config.env_vars.clone(),
+        mcp_servers: Vec::new(),
+    };
+
+    // Try to initialize - this may fail if auth is required
+    match backend.initialize(backend_config).await {
+        Ok(()) => {
+            // Already initialized, now authenticate
+            backend.authenticate(&method_id).await?;
+            tracing::info!(
+                "Runtime {} authenticated successfully with method {}",
+                runtime_id,
+                method_id
+            );
+            Ok(())
+        }
+        Err(e) => {
+            let error_msg = e.to_string();
+            // Check if it's an auth error
+            if error_msg.contains("auth") || error_msg.contains("Auth") {
+                // Auth is required but we couldn't initialize
+                // In a real implementation, we might need to handle different auth methods
+                // For now, try to re-initialize after setting up auth
+                tracing::info!(
+                    "Auth required for runtime {}, attempting authentication",
+                    runtime_id
+                );
+                // Note: In Phase 4 full implementation, we would handle different auth method types
+                // For now, we just return an error indicating auth is needed
+                Err(anyhow::anyhow!(
+                    "Authentication required for runtime {}. Please configure authentication.",
+                    runtime_id
+                ))
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Refresh runtime capabilities (re-inspect)
+pub async fn refresh_runtime_capabilities(
+    service: &AgentProviderService,
+    runtime_id: String,
+) -> anyhow::Result<RuntimeInspectionResult> {
+    // Re-inspect the runtime to get fresh capabilities
+    service.inspect_runtime(&runtime_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,7 +233,7 @@ mod tests {
         let db_path = temp_dir.path().join("test.db");
         let data_dir = temp_dir.path().join("data");
 
-        let service = AgentProviderService::new(&db_path, data_dir).unwrap();
+        let service = AgentProviderService::test_only_new(&db_path, data_dir).unwrap();
         (service, temp_dir)
     }
 
@@ -145,7 +251,7 @@ mod tests {
 
         // First mark opencode as installed
         service.test_conn().execute(
-            "UPDATE agent_providers SET is_installed = 1, status = 'ready' WHERE provider_id = 'opencode'",
+            "UPDATE agent_runtimes SET is_installed = 1, status = 'ready' WHERE runtime_type = 'opencode'",
             [],
         ).unwrap();
 

@@ -5,7 +5,7 @@
 //! allowing agent-specific state to be stored opaquely.
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::PathBuf;
 
 /// Session metadata for listing

@@ -25,12 +25,10 @@ export function AgentProviderPanel() {
     updateConfig,
     testConnection,
     checkPrerequisites,
-    getRuntimeDefaults,
-    listRuntimeProviders,
-    saveRuntimeProvider,
-    listRuntimeModels,
-    saveRuntimeModel,
     addCustomProvider,
+    inspectRuntime,
+    authenticateRuntime,
+    refreshRuntimeCapabilities,
   } = useAgentProviders();
 
   const [selectedProvider, setSelectedProvider] = useState<RuntimeInfo | null>(null);
@@ -136,7 +134,7 @@ export function AgentProviderPanel() {
                 key={provider.providerId}
                 provider={provider}
                 isInstalling={installingProvider === provider.providerId}
-                getRuntimeDefaults={getRuntimeDefaults}
+                onInspect={inspectRuntime}
                 onSetDefault={setAsDefault}
                 onInstall={handleInstall}
                 onConfigure={handleConfigure}
@@ -157,7 +155,7 @@ export function AgentProviderPanel() {
                 key={provider.providerId}
                 provider={provider}
                 isInstalling={installingProvider === provider.providerId}
-                getRuntimeDefaults={getRuntimeDefaults}
+                onInspect={inspectRuntime}
                 onSetDefault={setAsDefault}
                 onInstall={handleInstall}
                 onConfigure={handleConfigure}
@@ -188,10 +186,9 @@ export function AgentProviderPanel() {
           setSelectedProvider(null);
         }}
         onSave={updateConfig}
-        onListRuntimeProviders={listRuntimeProviders}
-        onSaveRuntimeProvider={saveRuntimeProvider}
-        onListRuntimeModels={listRuntimeModels}
-        onSaveRuntimeModel={saveRuntimeModel}
+        onInspect={inspectRuntime}
+        onAuthenticate={authenticateRuntime}
+        onRefreshCapabilities={refreshRuntimeCapabilities}
         onTest={testConnection}
       />
 

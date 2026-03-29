@@ -5,13 +5,9 @@ import {
   type RuntimeConfig,
   type InstallRuntimeRequest,
   type CustomRuntimeRequest,
-  type RuntimeLlmProviderInfo,
-  type RuntimeLlmProviderUpsert,
-  type RuntimeModelInfo,
-  type RuntimeModelUpsert,
+  type RuntimeInspectionResult,
   runtimeInfoSchema,
-  runtimeLlmProviderInfoSchema,
-  runtimeModelInfoSchema,
+  runtimeInspectionResultSchema,
   prerequisitesCheckSchema,
   testConnectionResultSchema,
   installRuntimeResponseSchema,
@@ -179,67 +175,73 @@ export function useAgentProviders() {
   // Get available providers (not installed)
   const availableProviders = providers.filter((p) => !p.isInstalled);
 
-  const listRuntimeProviders = useCallback(async (runtimeId: string) => {
+  // Inspect runtime capabilities via ACP protocol
+  const inspectRuntime = useCallback(async (runtimeId: string): Promise<RuntimeInspectionResult> => {
     try {
-      const raw = await invoke<unknown[]>("list_runtime_llm_providers", { runtimeId });
-      return raw.map((item) => runtimeLlmProviderInfoSchema.parse(item));
+      const raw = await invoke<unknown>("inspect_runtime", { runtimeId });
+      return runtimeInspectionResultSchema.parse(raw);
     } catch (err) {
       setError(String(err));
       throw err;
     }
   }, []);
 
-  const saveRuntimeProvider = useCallback(
-    async (runtimeId: string, provider: RuntimeLlmProviderUpsert): Promise<RuntimeLlmProviderInfo> => {
-      try {
-        const raw = await invoke<unknown>("upsert_runtime_llm_provider", { runtimeId, provider });
-        await refresh();
-        return runtimeLlmProviderInfoSchema.parse(raw);
-      } catch (err) {
-        setError(String(err));
-        throw err;
-      }
-    },
-    [refresh]
-  );
-
-  const listRuntimeModels = useCallback(async (runtimeId: string) => {
+  // Authenticate with a runtime using the specified auth method
+  const authenticateRuntime = useCallback(async (runtimeId: string, methodId: string): Promise<void> => {
     try {
-      const raw = await invoke<unknown[]>("list_runtime_models", { runtimeId });
-      return raw.map((item) => runtimeModelInfoSchema.parse(item));
+      await invoke("authenticate_runtime", { runtimeId, methodId });
     } catch (err) {
       setError(String(err));
       throw err;
     }
   }, []);
 
-  const saveRuntimeModel = useCallback(
-    async (runtimeId: string, model: RuntimeModelUpsert): Promise<RuntimeModelInfo> => {
-      try {
-        const raw = await invoke<unknown>("upsert_runtime_model", { runtimeId, model });
-        await refresh();
-        return runtimeModelInfoSchema.parse(raw);
-      } catch (err) {
-        setError(String(err));
-        throw err;
-      }
-    },
-    [refresh]
-  );
+  // Refresh runtime capabilities (re-inspect)
+  const refreshRuntimeCapabilities = useCallback(async (runtimeId: string): Promise<RuntimeInspectionResult> => {
+    try {
+      const raw = await invoke<unknown>("refresh_runtime_capabilities", { runtimeId });
+      return runtimeInspectionResultSchema.parse(raw);
+    } catch (err) {
+      setError(String(err));
+      throw err;
+    }
+  }, []);
 
+  // Legacy: Get runtime defaults (now derived from inspection)
+  // This maintains backward compatibility with components that expect the old API
   const getRuntimeDefaults = useCallback(
-    async (runtimeId: string) => {
-      const [providers, models] = await Promise.all([
-        listRuntimeProviders(runtimeId),
-        listRuntimeModels(runtimeId),
-      ]);
-
-      return {
-        provider: providers.find((item) => item.isDefault) ?? null,
-        model: models.find((item) => item.isDefault) ?? null,
-      };
+    async (runtimeId: string): Promise<{ 
+      provider: { providerId: string; displayName: string | null } | null; 
+      model: { modelId: string; displayName: string | null } | null 
+    }> => {
+      // Find the provider to check if it's bundled/internal
+      const provider = providers.find(p => p.providerId === runtimeId);
+      
+      // Skip inspection for bundled/internal runtimes (like pi-acp)
+      if (provider?.isBundled) {
+        return { provider: null, model: null };
+      }
+      
+      try {
+        const inspection = await inspectRuntime(runtimeId);
+        
+        // Map discovered models to legacy format
+        const model = inspection.discoveredModels.find(
+          m => m.modelId === inspection.currentModelId
+        ) || inspection.discoveredModels[0];
+        
+        return {
+          provider: null, // No longer storing LLM providers separately
+          model: model ? {
+            modelId: model.modelId,
+            displayName: model.name,
+          } : null,
+        };
+      } catch {
+        return { provider: null, model: null };
+      }
     },
-    [listRuntimeModels, listRuntimeProviders]
+    [inspectRuntime, providers]
   );
 
   return {
@@ -260,10 +262,9 @@ export function useAgentProviders() {
     checkPrerequisites,
     addCustomProvider,
     removeCustomProvider,
-    listRuntimeProviders,
-    saveRuntimeProvider,
-    listRuntimeModels,
-    saveRuntimeModel,
+    inspectRuntime,
+    authenticateRuntime,
+    refreshRuntimeCapabilities,
     getRuntimeDefaults,
   };
 }

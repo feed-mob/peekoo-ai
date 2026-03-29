@@ -554,7 +554,9 @@ async fn execute_task_acp(
     Ok(())
 }
 
-fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<McpServer> {
+pub(crate) fn build_session_mcp_servers(
+    mcp_address: Option<std::net::SocketAddr>,
+) -> Vec<McpServer> {
     mcp_address
         .map(|addr| {
             let base_url = peekoo_mcp_server::mcp_url_for(addr);

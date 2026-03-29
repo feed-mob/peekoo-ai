@@ -22,49 +22,41 @@ export type {
   TestConnectionResult,
 } from "./agent-provider";
 
+// Legacy types for backward compatibility during transition
+// These are re-exported from agent-runtime-legacy and will be removed in Phase 8
+export type {
+  RuntimeLlmProviderInfo,
+  RuntimeLlmProviderUpsert,
+  RuntimeModelInfo,
+  RuntimeModelUpsert,
+} from "./agent-runtime-legacy";
+
 import { z } from "zod";
 
-export const runtimeLlmProviderInfoSchema = z.object({
-  id: z.string(),
-  runtimeId: z.string(),
-  providerId: z.string(),
-  displayName: z.string().nullish(),
-  apiType: z.string(),
-  baseUrl: z.string().nullish(),
-  config: z.record(z.string(), z.string()),
-  isEnabled: z.boolean(),
-  isDefault: z.boolean(),
-});
-
-export const runtimeModelInfoSchema = z.object({
-  id: z.string(),
-  runtimeId: z.string(),
-  providerId: z.string().nullish(),
+// New ACP inspection types - models discovered from ACP protocol
+export const discoveredModelSchema = z.object({
   modelId: z.string(),
-  displayName: z.string().nullish(),
-  isEnabled: z.boolean(),
-  isDefault: z.boolean(),
+  name: z.string(),
+  description: z.string().nullish(),
 });
 
-export const runtimeLlmProviderUpsertSchema = z.object({
-  providerId: z.string(),
-  displayName: z.string().nullish(),
-  apiType: z.string(),
-  baseUrl: z.string().nullish(),
-  config: z.record(z.string(), z.string()),
-  isEnabled: z.boolean(),
-  isDefault: z.boolean(),
+export const authMethodSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  description: z.string().nullish(),
 });
 
-export const runtimeModelUpsertSchema = z.object({
-  providerId: z.string().nullish(),
-  modelId: z.string(),
-  displayName: z.string().nullish(),
-  isEnabled: z.boolean(),
-  isDefault: z.boolean(),
+export const runtimeInspectionResultSchema = z.object({
+  runtimeId: z.string(),
+  authMethods: z.array(authMethodSchema),
+  authRequired: z.boolean(),
+  discoveredModels: z.array(discoveredModelSchema),
+  currentModelId: z.string().nullish(),
+  supportsModelSelection: z.boolean(),
+  supportsConfigOptions: z.boolean(),
+  error: z.string().nullish(),
 });
 
-export type RuntimeLlmProviderInfo = z.infer<typeof runtimeLlmProviderInfoSchema>;
-export type RuntimeModelInfo = z.infer<typeof runtimeModelInfoSchema>;
-export type RuntimeLlmProviderUpsert = z.infer<typeof runtimeLlmProviderUpsertSchema>;
-export type RuntimeModelUpsert = z.infer<typeof runtimeModelUpsertSchema>;
+export type DiscoveredModel = z.infer<typeof discoveredModelSchema>;
+export type AuthMethod = z.infer<typeof authMethodSchema>;
+export type RuntimeInspectionResult = z.infer<typeof runtimeInspectionResultSchema>;

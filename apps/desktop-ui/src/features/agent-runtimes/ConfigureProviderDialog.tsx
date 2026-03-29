@@ -11,28 +11,43 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, AlertCircle, Check, Trash2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
+  Loader2,
+  AlertCircle,
+  Check,
+  Trash2,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Lock,
+} from "lucide-react";
 import {
   type RuntimeInfo,
   type RuntimeConfig,
-  type RuntimeLlmProviderInfo,
-  type RuntimeLlmProviderUpsert,
-  type RuntimeModelInfo,
-  type RuntimeModelUpsert,
+  type RuntimeInspectionResult,
 } from "@/types/agent-runtime";
+import { getProviderAuthState } from "./provider-auth-state";
 
 interface ConfigureProviderDialogProps {
   provider: RuntimeInfo | null;
   isOpen: boolean;
   onClose: () => void;
   onSave: (providerId: string, config: RuntimeConfig) => Promise<void>;
-  onListRuntimeProviders: (runtimeId: string) => Promise<RuntimeLlmProviderInfo[]>;
-  onSaveRuntimeProvider: (
-    runtimeId: string,
-    provider: RuntimeLlmProviderUpsert
-  ) => Promise<RuntimeLlmProviderInfo>;
-  onListRuntimeModels: (runtimeId: string) => Promise<RuntimeModelInfo[]>;
-  onSaveRuntimeModel: (runtimeId: string, model: RuntimeModelUpsert) => Promise<RuntimeModelInfo>;
+  onInspect: (runtimeId: string) => Promise<RuntimeInspectionResult>;
+  onAuthenticate: (runtimeId: string, methodId: string) => Promise<void>;
+  onRefreshCapabilities: (runtimeId: string) => Promise<RuntimeInspectionResult>;
   onTest: (providerId: string) => Promise<{
     success: boolean;
     message: string;
@@ -46,10 +61,9 @@ export function ConfigureProviderDialog({
   isOpen,
   onClose,
   onSave,
-  onListRuntimeProviders,
-  onSaveRuntimeProvider,
-  onListRuntimeModels,
-  onSaveRuntimeModel,
+  onInspect,
+  onAuthenticate,
+  onRefreshCapabilities,
   onTest,
 }: ConfigureProviderDialogProps) {
   const [config, setConfig] = useState<RuntimeConfig>({
@@ -58,6 +72,8 @@ export function ConfigureProviderDialog({
     customArgs: [],
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isInspecting, setIsInspecting] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     success: boolean;
@@ -67,26 +83,12 @@ export function ConfigureProviderDialog({
   const [error, setError] = useState<string | null>(null);
   const [newEnvKey, setNewEnvKey] = useState("");
   const [newEnvValue, setNewEnvValue] = useState("");
-  const [runtimeProviders, setRuntimeProviders] = useState<RuntimeLlmProviderInfo[]>([]);
-  const [runtimeModels, setRuntimeModels] = useState<RuntimeModelInfo[]>([]);
-  const [providerForm, setProviderForm] = useState<RuntimeLlmProviderUpsert>({
-    providerId: "openai",
-    displayName: "",
-    apiType: "openai",
-    baseUrl: "",
-    config: {},
-    isEnabled: true,
-    isDefault: true,
-  });
-  const [modelForm, setModelForm] = useState<RuntimeModelUpsert>({
-    providerId: undefined,
-    modelId: "",
-    displayName: "",
-    isEnabled: true,
-    isDefault: true,
-  });
+  const [inspection, setInspection] = useState<RuntimeInspectionResult | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showAuthMethods, setShowAuthMethods] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string>("");
 
-  // Load config when dialog opens
+  // Load config and inspect runtime when dialog opens
   useEffect(() => {
     if (isOpen && provider) {
       setConfig({
@@ -96,10 +98,27 @@ export function ConfigureProviderDialog({
       });
       setTestResult(null);
       setError(null);
-      void onListRuntimeProviders(provider.providerId).then(setRuntimeProviders).catch((err) => setError(String(err)));
-      void onListRuntimeModels(provider.providerId).then(setRuntimeModels).catch((err) => setError(String(err)));
+      setInspection(null);
+      setSelectedModel("");
+      setShowAdvanced(false);
+      setShowAuthMethods(false);
+      
+      // Inspect runtime to discover capabilities
+      setIsInspecting(true);
+      onInspect(provider.providerId)
+        .then((result) => {
+          setInspection(result);
+          setShowAuthMethods(result.authRequired);
+          // Set selected model to current or first available
+          const modelToSelect = result.currentModelId || 
+            (result.discoveredModels.length > 0 ? result.discoveredModels[0].modelId : "");
+          setSelectedModel(modelToSelect);
+          setConfig((prev) => ({ ...prev, defaultModel: modelToSelect }));
+        })
+        .catch((err) => setError(String(err)))
+        .finally(() => setIsInspecting(false));
     }
-  }, [isOpen, onListRuntimeModels, onListRuntimeProviders, provider]);
+  }, [isOpen, onInspect, provider]);
 
   const handleSave = async () => {
     if (!provider) return;
@@ -132,49 +151,46 @@ export function ConfigureProviderDialog({
     }
   };
 
-  const handleSaveRuntimeProvider = async () => {
-    if (!provider || !providerForm.providerId.trim()) return;
+  const handleRefreshCapabilities = async () => {
+    if (!provider) return;
+
+    setIsInspecting(true);
     setError(null);
     try {
-      const saved = await onSaveRuntimeProvider(provider.providerId, {
-        ...providerForm,
-        displayName: providerForm.displayName || undefined,
-        baseUrl: providerForm.baseUrl || undefined,
-      });
-      setRuntimeProviders((prev) => {
-        const next = prev.filter((item) => item.id !== saved.id);
-        return [saved, ...next];
-      });
-      if (saved.isDefault) {
-        setRuntimeProviders((prev) =>
-          prev.map((item) => ({ ...item, isDefault: item.id === saved.id }))
-        );
+      const result = await onRefreshCapabilities(provider.providerId);
+      setInspection(result);
+      setShowAuthMethods((current) => result.authRequired || current);
+      // Update selected model if needed
+      if (result.currentModelId && result.currentModelId !== selectedModel) {
+        setSelectedModel(result.currentModelId);
+        setConfig((prev) => ({ ...prev, defaultModel: result.currentModelId! }));
       }
     } catch (err) {
       setError(String(err));
+    } finally {
+      setIsInspecting(false);
     }
   };
 
-  const handleSaveRuntimeModel = async () => {
-    if (!provider || !modelForm.modelId.trim()) return;
+  const handleAuthenticate = async (methodId: string) => {
+    if (!provider) return;
+
+    setIsAuthenticating(true);
     setError(null);
     try {
-      const saved = await onSaveRuntimeModel(provider.providerId, {
-        ...modelForm,
-        displayName: modelForm.displayName || undefined,
-        providerId: modelForm.providerId || undefined,
-      });
-      setRuntimeModels((prev) => {
-        const next = prev.filter((item) => item.id !== saved.id);
-        return [saved, ...next];
-      });
-      if (saved.isDefault) {
-        setRuntimeModels((prev) => prev.map((item) => ({ ...item, isDefault: item.id === saved.id })));
-        setConfig((prev) => ({ ...prev, defaultModel: saved.modelId }));
-      }
+      await onAuthenticate(provider.providerId, methodId);
+      // Re-inspect after authentication
+      await handleRefreshCapabilities();
     } catch (err) {
       setError(String(err));
+    } finally {
+      setIsAuthenticating(false);
     }
+  };
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    setConfig((prev) => ({ ...prev, defaultModel: modelId }));
   };
 
   const addEnvVar = () => {
@@ -225,193 +241,182 @@ export function ConfigureProviderDialog({
 
   if (!provider) return null;
 
+  const hasAuthMethods = (inspection?.authMethods.length ?? 0) > 0;
+  const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
+  const authMethodsVisible = requiresAuth || showAuthMethods;
+  const discoveredModels = inspection?.discoveredModels || [];
+
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Configure {provider.displayName}</DialogTitle>
           <DialogDescription>
-            Customize runtime launch and model settings.
+            Manage runtime settings and authentication.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
-          {/* Default Model */}
-          <div className="space-y-2">
-            <Label htmlFor="default-model">Default Model</Label>
-            <Input
-              id="default-model"
-              placeholder="e.g., gpt-4, claude-3-5-sonnet"
-              value={config.defaultModel ?? ""}
-              onChange={(e) =>
-                setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
-              }
-              className="bg-space-deep border-glass-border"
-            />
-            <p className="text-xs text-text-muted">
-              Leave empty to use the provider&apos;s default model
-            </p>
+          {/* Status Section */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label>Status</Label>
+              <div className="flex items-center gap-2">
+                {provider.status === "ready" && (
+                  <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400">
+                    <Check className="mr-1 h-3 w-3" />
+                    Ready
+                  </span>
+                )}
+                {provider.status === "needs_setup" && (
+                  <span className="inline-flex items-center rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">
+                    <AlertCircle className="mr-1 h-3 w-3" />
+                    Needs Setup
+                  </span>
+                )}
+                {provider.status === "error" && (
+                  <span className="inline-flex items-center rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400">
+                    <AlertCircle className="mr-1 h-3 w-3" />
+                    Error
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {isInspecting && (
+              <div className="flex items-center gap-2 text-sm text-text-muted">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Discovering capabilities...
+              </div>
+            )}
           </div>
 
-          {/* Environment Variables */}
-          <div className="space-y-3">
-            <Label>Environment Variables</Label>
+          {/* Auth Section */}
+          {hasAuthMethods && (
+            <div className="space-y-3 border-t border-glass-border pt-4">
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  Authentication
+                </Label>
+                {requiresAuth && (
+                  <span className="text-xs text-yellow-400">Login required</span>
+                )}
+                {loginAvailable && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto px-2 py-1 text-xs text-text-muted hover:text-text-primary"
+                    onClick={() => setShowAuthMethods((current) => !current)}
+                  >
+                    {authMethodsVisible ? "Hide login options" : "Login available"}
+                  </Button>
+                )}
+              </div>
+              
+              {authMethodsVisible ? (
+                <div className="space-y-2">
+                  {inspection?.authMethods.map((method) => (
+                    <div key={method.id} className="flex items-center justify-between rounded-md border border-glass-border p-3">
+                      <div>
+                        <div className="text-sm font-medium text-text-primary">{method.name}</div>
+                        {method.description && (
+                          <div className="text-xs text-text-muted">{method.description}</div>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleAuthenticate(method.id)}
+                        disabled={isAuthenticating}
+                      >
+                        {isAuthenticating ? (
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                        ) : null}
+                        Login
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  This runtime has optional login methods available.
+                </p>
+              )}
+            </div>
+          )}
 
-            {/* Existing env vars */}
-            {Object.entries(config.envVars).map(([key, value]) => (
-              <div key={key} className="flex items-center gap-2">
-                <Input
-                  value={key}
-                  disabled
-                  className="flex-1 bg-space-surface/50 border-glass-border"
-                />
-                <Input
-                  type="password"
-                  value={value}
-                  disabled
-                  className="flex-1 bg-space-surface/50 border-glass-border"
-                />
+          {/* Models Section */}
+          {discoveredModels.length > 0 && (
+            <div className="space-y-3 border-t border-glass-border pt-4">
+              <div className="flex items-center justify-between">
+                <Label>Model</Label>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => removeEnvVar(key)}
-                  className="text-red-400 hover:bg-red-500/10"
+                  onClick={handleRefreshCapabilities}
+                  disabled={isInspecting}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  {isInspecting ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-3 w-3" />
+                  )}
+                  Refresh
                 </Button>
               </div>
-            ))}
-
-            {/* Add new env var */}
-            <div className="flex items-center gap-2">
-              <Input
-                placeholder="Variable name"
-                value={newEnvKey}
-                onChange={(e) => setNewEnvKey(e.target.value)}
-                className="flex-1 bg-space-deep border-glass-border"
-              />
-              <Input
-                type="password"
-                placeholder="Value"
-                value={newEnvValue}
-                onChange={(e) => setNewEnvValue(e.target.value)}
-                className="flex-1 bg-space-deep border-glass-border"
-              />
-              <Button size="sm" variant="outline" onClick={addEnvVar}>
-                Add
-              </Button>
+              
+              <Select value={selectedModel} onValueChange={handleModelChange}>
+                <SelectTrigger className="bg-space-deep border-glass-border">
+                  <SelectValue placeholder="Select a model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {discoveredModels.map((model) => (
+                    <SelectItem key={model.modelId} value={model.modelId}>
+                      {model.name}
+                      {model.description && (
+                        <span className="ml-2 text-xs text-text-muted">
+                          - {model.description}
+                        </span>
+                      )}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-          </div>
+          )}
 
-          {/* Custom Arguments */}
-          <div className="space-y-3">
-            <Label>Custom Arguments</Label>
-            {config.customArgs.map((arg, index) => (
-              <div key={index} className="flex items-center gap-2">
-                <Input
-                  placeholder="--flag or value"
-                  value={arg}
-                  onChange={(e) => updateCustomArg(index, e.target.value)}
-                  className="flex-1 bg-space-deep border-glass-border"
-                />
+          {discoveredModels.length === 0 && !isInspecting && (
+            <div className="space-y-3 border-t border-glass-border pt-4">
+              <div className="flex items-center justify-between">
+                <Label>Default Model</Label>
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={() => removeCustomArg(index)}
-                  className="text-red-400 hover:bg-red-500/10"
+                  onClick={handleRefreshCapabilities}
+                  disabled={isInspecting}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  {isInspecting ? (
+                    <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-3 w-3" />
+                  )}
+                  Discover Models
                 </Button>
               </div>
-            ))}
-            <Button size="sm" variant="outline" onClick={addCustomArg}>
-              Add Argument
-            </Button>
-          </div>
-
-          <div className="space-y-3 border-t border-glass-border pt-4">
-            <Label>LLM Providers</Label>
-            <div className="space-y-2 rounded-md border border-glass-border p-3">
-              {runtimeProviders.length === 0 ? (
-                <p className="text-xs text-text-muted">No runtime-scoped LLM providers configured yet.</p>
-              ) : (
-                runtimeProviders.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-xs">
-                    <div>
-                      <div className="text-text-primary">{item.displayName ?? item.providerId}</div>
-                      <div className="text-text-muted">{item.apiType}{item.baseUrl ? ` • ${item.baseUrl}` : ""}</div>
-                    </div>
-                    {item.isDefault && <span className="text-primary">Default</span>}
-                  </div>
-                ))
-              )}
+              <Input
+                placeholder="e.g., gpt-4, claude-3-5-sonnet"
+                value={config.defaultModel ?? ""}
+                onChange={(e) =>
+                  setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
+                }
+                className="bg-space-deep border-glass-border"
+              />
+              <p className="text-xs text-text-muted">
+                No models discovered. Enter a model ID manually or refresh to discover.
+              </p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                placeholder="Provider ID (e.g. anthropic)"
-                value={providerForm.providerId}
-                onChange={(e) => setProviderForm((prev) => ({ ...prev, providerId: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-              <Input
-                placeholder="API type (e.g. anthropic)"
-                value={providerForm.apiType}
-                onChange={(e) => setProviderForm((prev) => ({ ...prev, apiType: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-              <Input
-                placeholder="Display name"
-                value={providerForm.displayName ?? ""}
-                onChange={(e) => setProviderForm((prev) => ({ ...prev, displayName: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-              <Input
-                placeholder="Base URL"
-                value={providerForm.baseUrl ?? ""}
-                onChange={(e) => setProviderForm((prev) => ({ ...prev, baseUrl: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-            </div>
-            <Button size="sm" variant="outline" onClick={handleSaveRuntimeProvider}>
-              Save LLM Provider
-            </Button>
-          </div>
-
-          <div className="space-y-3 border-t border-glass-border pt-4">
-            <Label>Models</Label>
-            <div className="space-y-2 rounded-md border border-glass-border p-3">
-              {runtimeModels.length === 0 ? (
-                <p className="text-xs text-text-muted">No models configured for this runtime yet.</p>
-              ) : (
-                runtimeModels.map((item) => (
-                  <div key={item.id} className="flex items-center justify-between text-xs">
-                    <div>
-                      <div className="text-text-primary">{item.displayName ?? item.modelId}</div>
-                      <div className="text-text-muted">{item.providerId ?? "No provider"}</div>
-                    </div>
-                    {item.isDefault && <span className="text-primary">Default</span>}
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <Input
-                placeholder="Model ID"
-                value={modelForm.modelId}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, modelId: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-              <Input
-                placeholder="Display name"
-                value={modelForm.displayName ?? ""}
-                onChange={(e) => setModelForm((prev) => ({ ...prev, displayName: e.target.value }))}
-                className="bg-space-deep border-glass-border"
-              />
-            </div>
-            <Button size="sm" variant="outline" onClick={handleSaveRuntimeModel}>
-              Save Model
-            </Button>
-          </div>
+          )}
 
           {/* Test Connection */}
           <div className="border-t border-glass-border pt-4">
@@ -455,6 +460,97 @@ export function ConfigureProviderDialog({
               </Alert>
             )}
           </div>
+
+          {/* Advanced Section (Collapsible) */}
+          <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" className="w-full justify-between">
+                <span>Advanced Settings</span>
+                {showAdvanced ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="space-y-4 pt-2">
+              {/* Environment Variables */}
+              <div className="space-y-3">
+                <Label>Environment Variables</Label>
+
+                {/* Existing env vars */}
+                {Object.entries(config.envVars).map(([key, value]) => (
+                  <div key={key} className="flex items-center gap-2">
+                    <Input
+                      value={key}
+                      disabled
+                      className="flex-1 bg-space-surface/50 border-glass-border"
+                    />
+                    <Input
+                      type="password"
+                      value={value}
+                      disabled
+                      className="flex-1 bg-space-surface/50 border-glass-border"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeEnvVar(key)}
+                      className="text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+
+                {/* Add new env var */}
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="Variable name"
+                    value={newEnvKey}
+                    onChange={(e) => setNewEnvKey(e.target.value)}
+                    className="flex-1 bg-space-deep border-glass-border"
+                  />
+                  <Input
+                    type="password"
+                    placeholder="Value"
+                    value={newEnvValue}
+                    onChange={(e) => setNewEnvValue(e.target.value)}
+                    className="flex-1 bg-space-deep border-glass-border"
+                  />
+                  <Button size="sm" variant="outline" onClick={addEnvVar}>
+                    Add
+                  </Button>
+                </div>
+              </div>
+
+              {/* Custom Arguments */}
+              <div className="space-y-3">
+                <Label>Custom Arguments</Label>
+                {config.customArgs.map((arg, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="--flag or value"
+                      value={arg}
+                      onChange={(e) => updateCustomArg(index, e.target.value)}
+                      className="flex-1 bg-space-deep border-glass-border"
+                    />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => removeCustomArg(index)}
+                      className="text-red-400 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button size="sm" variant="outline" onClick={addCustomArg}>
+                  Add Argument
+                </Button>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
 
           {/* Error */}
           {error && (

@@ -2,25 +2,26 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   type RuntimeInfo,
-  type RuntimeLlmProviderInfo,
-  type RuntimeModelInfo,
   type RuntimeStatus,
+  type RuntimeInspectionResult,
 } from "@/types/agent-runtime";
-import { Star, Download, Settings, Trash2, Check, AlertCircle, Loader2 } from "lucide-react";
+import { getProviderAuthState, getProviderStatusText } from "./provider-auth-state";
+import { Star, Download, Settings, Trash2, Check, AlertCircle, Loader2, Lock, RefreshCw } from "lucide-react";
 
 interface ProviderCardProps {
   provider: RuntimeInfo;
   isInstalling: boolean;
-  getRuntimeDefaults: (
-    runtimeId: string
-  ) => Promise<{ provider: RuntimeLlmProviderInfo | null; model: RuntimeModelInfo | null }>;
+  onInspect: (runtimeId: string) => Promise<RuntimeInspectionResult>;
   onSetDefault: (providerId: string) => void;
   onInstall: (provider: RuntimeInfo) => void;
   onConfigure: (provider: RuntimeInfo) => void;
   onUninstall: (providerId: string) => void;
 }
 
-function getStatusIcon(status: RuntimeStatus) {
+function getStatusIcon(status: RuntimeStatus, requiresAuth?: boolean) {
+  if (requiresAuth) {
+    return <Lock className="h-4 w-4 text-yellow-500" />;
+  }
   switch (status) {
     case "ready":
       return <Check className="h-4 w-4 text-green-500" />;
@@ -35,62 +36,72 @@ function getStatusIcon(status: RuntimeStatus) {
   }
 }
 
-function getStatusText(status: RuntimeStatus, statusMessage?: string | null) {
-  switch (status) {
-    case "ready":
-      return "Ready";
-    case "installing":
-      return "Installing...";
-    case "error":
-      return statusMessage || "Error";
-    case "needs_setup":
-      return "Setup Required";
-    default:
-      return "Not Installed";
-  }
-}
-
 export function ProviderCard({
   provider,
   isInstalling,
-  getRuntimeDefaults,
+  onInspect,
   onSetDefault,
   onInstall,
   onConfigure,
   onUninstall,
 }: ProviderCardProps) {
-  const statusIcon = getStatusIcon(provider.status);
-  const statusText = getStatusText(provider.status, provider.statusMessage);
-  const [runtimeProvider, setRuntimeProvider] = useState<RuntimeLlmProviderInfo | null>(null);
-  const [runtimeModel, setRuntimeModel] = useState<RuntimeModelInfo | null>(null);
+  const [inspection, setInspection] = useState<RuntimeInspectionResult | null>(null);
+  const [isInspecting, setIsInspecting] = useState(false);
 
+  // Inspect runtime when installed to get current state
+  // Skip inspection for internal bundled runtimes (like pi-acp)
   useEffect(() => {
     let cancelled = false;
 
-    if (!provider.isInstalled) {
-      setRuntimeProvider(null);
-      setRuntimeModel(null);
+    if (!provider.isInstalled || provider.isBundled) {
+      setInspection(null);
       return;
     }
 
-    void getRuntimeDefaults(provider.providerId)
-      .then(({ provider: llmProvider, model }) => {
+    setIsInspecting(true);
+    onInspect(provider.providerId)
+      .then((result) => {
         if (!cancelled) {
-          setRuntimeProvider(llmProvider);
-          setRuntimeModel(model);
+          setInspection(result);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setRuntimeProvider(null);
-          setRuntimeModel(null);
+          setInspection(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsInspecting(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [getRuntimeDefaults, provider.isInstalled, provider.providerId]);
+  }, [onInspect, provider.isInstalled, provider.providerId]);
+
+  const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
+  const statusIcon = getStatusIcon(provider.status, requiresAuth);
+  const statusText = getProviderStatusText(provider.status, inspection, provider.statusMessage);
+  const currentModel = inspection?.currentModelId || provider.config.defaultModel || "Default";
+
+  const handleQuickRefresh = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!provider.isInstalled) return;
+    
+    setIsInspecting(true);
+    try {
+      const result = await onInspect(provider.providerId);
+      setInspection(result);
+    } catch {
+      // Ignore errors
+    } finally {
+      setIsInspecting(false);
+    }
+  };
+
+  const isAuthStatusActionable = requiresAuth || loginAvailable;
 
   return (
     <div
@@ -120,19 +131,53 @@ export function ProviderCard({
         </div>
       </div>
 
-      {/* Status */}
-      <div className="mb-4 flex items-center gap-2 text-xs">
-        {statusIcon}
-        <span className={provider.status === "error" ? "text-red-400" : "text-text-secondary"}>
-          {statusText}
-        </span>
+      {/* Status & Model */}
+      <div className="mb-3 space-y-2">
+        <div className="flex items-center gap-2 text-xs">
+          {isInspecting ? (
+            <Loader2 className="h-4 w-4 animate-spin text-text-muted" />
+          ) : (
+            statusIcon
+          )}
+          {isAuthStatusActionable ? (
+            <button
+              type="button"
+              className="text-text-secondary underline-offset-2 hover:text-text-primary hover:underline"
+              onClick={() => onConfigure(provider)}
+            >
+              {statusText}
+            </button>
+          ) : (
+            <span className={provider.status === "error" ? "text-red-400" : "text-text-secondary"}>
+              {statusText}
+            </span>
+          )}
+        </div>
+        
+        {provider.isInstalled && (
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-text-muted">Model: </span>
+            <div className="flex items-center gap-2">
+              <span className="text-text-secondary truncate max-w-[150px]">{currentModel}</span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-5 w-5 p-0"
+                onClick={handleQuickRefresh}
+                disabled={isInspecting}
+              >
+                <RefreshCw className={`h-3 w-3 ${isInspecting ? "animate-spin" : ""}`} />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Actions */}
       <div className="flex gap-2">
         {provider.isInstalled ? (
           <>
-            {!provider.isDefault && provider.status === "ready" && (
+            {!provider.isDefault && provider.status === "ready" && !requiresAuth && (
               <Button
                 size="sm"
                 variant="outline"
@@ -140,6 +185,28 @@ export function ProviderCard({
                 onClick={() => onSetDefault(provider.providerId)}
               >
                 Set Default
+              </Button>
+            )}
+            {requiresAuth && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
+                onClick={() => onConfigure(provider)}
+              >
+                <Lock className="mr-1 h-3 w-3" />
+                Login
+              </Button>
+            )}
+            {loginAvailable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1"
+                onClick={() => onConfigure(provider)}
+              >
+                <Lock className="mr-1 h-3 w-3" />
+                Login
               </Button>
             )}
             <Button
@@ -183,22 +250,6 @@ export function ProviderCard({
           </Button>
         )}
       </div>
-
-      {/* Runtime Defaults */}
-      {provider.isInstalled && (runtimeProvider || runtimeModel || provider.config.defaultModel) && (
-        <div className="mt-3 space-y-1 border-t border-glass-border pt-3 text-xs text-text-muted">
-          {runtimeProvider && (
-            <div>
-              LLM Provider: <span className="text-text-secondary">{runtimeProvider.displayName ?? runtimeProvider.providerId}</span>
-            </div>
-          )}
-          {(runtimeModel || provider.config.defaultModel) && (
-            <div>
-              Model: <span className="text-text-secondary">{runtimeModel?.displayName ?? runtimeModel?.modelId ?? provider.config.defaultModel}</span>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

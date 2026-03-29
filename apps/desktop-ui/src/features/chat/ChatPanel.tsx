@@ -10,13 +10,11 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { useChatSession } from "./chat-session";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { type RuntimeLlmProviderInfo, type RuntimeModelInfo } from "@/types/agent-runtime";
 
 export function ChatPanel() {
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
-  const [currentLlmProvider, setCurrentLlmProvider] = useState<RuntimeLlmProviderInfo | null>(null);
-  const [currentModel, setCurrentModel] = useState<RuntimeModelInfo | null>(null);
+  const [currentModelDisplay, setCurrentModelDisplay] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const { messages, isTyping, sendMessage, startNewChat } = useChatSession();
   const { providers, defaultProvider, refresh, setAsDefault, getRuntimeDefaults } = useAgentProviders();
@@ -49,22 +47,19 @@ export function ChatPanel() {
     let cancelled = false;
 
     if (!defaultProvider) {
-      setCurrentLlmProvider(null);
-      setCurrentModel(null);
+      setCurrentModelDisplay(null);
       return;
     }
 
     void getRuntimeDefaults(defaultProvider.providerId)
-      .then(({ provider, model }) => {
+      .then(({ model }) => {
         if (!cancelled) {
-          setCurrentLlmProvider(provider);
-          setCurrentModel(model);
+          setCurrentModelDisplay(model?.displayName ?? model?.modelId ?? null);
         }
       })
       .catch(() => {
         if (!cancelled) {
-          setCurrentLlmProvider(null);
-          setCurrentModel(null);
+          setCurrentModelDisplay(null);
         }
       });
 
@@ -99,8 +94,7 @@ export function ChatPanel() {
           <QuickProviderSwitcher
             providers={providers}
             currentProvider={defaultProvider}
-            currentLlmProvider={currentLlmProvider}
-            currentModel={currentModel}
+            currentModelDisplay={currentModelDisplay}
             onSwitch={(providerId) => {
               void setAsDefault(providerId);
             }}

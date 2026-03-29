@@ -10,17 +10,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, Star, AlertCircle } from "lucide-react";
-import {
-  type RuntimeInfo,
-  type RuntimeLlmProviderInfo,
-  type RuntimeModelInfo,
-} from "@/types/agent-runtime";
+import { type RuntimeInfo } from "@/types/agent-runtime";
 
 interface QuickProviderSwitcherProps {
   providers: RuntimeInfo[];
   currentProvider: RuntimeInfo | null;
-  currentLlmProvider?: RuntimeLlmProviderInfo | null;
-  currentModel?: RuntimeModelInfo | null;
+  currentModelDisplay?: string | null;
   onSwitch: (providerId: string) => void;
   onOpenSettings: () => void;
 }
@@ -28,8 +23,7 @@ interface QuickProviderSwitcherProps {
 export function QuickProviderSwitcher({
   providers,
   currentProvider,
-  currentLlmProvider,
-  currentModel,
+  currentModelDisplay,
   onSwitch,
   onOpenSettings,
 }: QuickProviderSwitcherProps) {
@@ -51,11 +45,9 @@ export function QuickProviderSwitcher({
                 <Star className="h-3 w-3 fill-primary text-primary" />
               )}
               <span className="max-w-[120px] truncate">{currentProvider.displayName}</span>
-              {(currentLlmProvider || currentModel || currentProvider.config.defaultModel) && (
+              {(currentModelDisplay || currentProvider.config.defaultModel) && (
                 <span className="max-w-[180px] truncate text-text-muted">
-                  • {[currentLlmProvider?.displayName ?? currentLlmProvider?.providerId, currentModel?.displayName ?? currentModel?.modelId ?? currentProvider.config.defaultModel]
-                    .filter(Boolean)
-                    .join(" / ")}
+                  • {currentModelDisplay ?? currentProvider.config.defaultModel}
                 </span>
               )}
             </>

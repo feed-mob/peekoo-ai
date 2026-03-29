@@ -8,9 +8,8 @@ use peekoo_agent_app::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
     ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest, RuntimeInfo,
-    RuntimeLlmProviderInfo, RuntimeLlmProviderUpsert, RuntimeModelInfo, RuntimeModelUpsert,
-    SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo, StorePluginDto, TaskDto, TaskEventDto,
-    TestConnectionResult,
+    RuntimeInspectionResult, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
+    StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
 use serde::Serialize;
 use std::env;
@@ -244,6 +243,7 @@ async fn agent_prompt(
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
     let message_len = message.chars().count();
+    tracing::info!(message_len, "agent_prompt command received");
     let reply = state
         .app
         .prompt_streaming(&message, move |event| {
@@ -254,6 +254,11 @@ async fn agent_prompt(
             tracing::error!(error = %err, message_len, "agent_prompt command failed");
             err
         })?;
+    tracing::info!(
+        message_len,
+        response_len = reply.chars().count(),
+        "agent_prompt command completed"
+    );
     Ok(AgentResponse { response: reply })
 }
 
@@ -274,7 +279,7 @@ async fn agent_settings_update(
 async fn agent_settings_catalog(
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsCatalogDto, String> {
-    state.app.settings_catalog()
+    state.app.settings_catalog().await
 }
 
 #[tauri::command]
@@ -358,7 +363,7 @@ async fn test_provider_connection(
     provider_id: String,
     state: State<'_, AgentState>,
 ) -> Result<TestConnectionResult, String> {
-    state.app.test_agent_provider_connection(&provider_id)
+    state.app.test_agent_provider_connection(&provider_id).await
 }
 
 #[tauri::command]
@@ -431,37 +436,31 @@ async fn set_default_agent_runtime(
 }
 
 #[tauri::command]
-async fn list_runtime_llm_providers(
+async fn inspect_runtime(
     runtime_id: String,
     state: State<'_, AgentState>,
-) -> Result<Vec<RuntimeLlmProviderInfo>, String> {
-    state.app.list_runtime_llm_providers(&runtime_id)
+) -> Result<RuntimeInspectionResult, String> {
+    state.app.inspect_runtime(&runtime_id).await
 }
 
 #[tauri::command]
-async fn upsert_runtime_llm_provider(
+async fn authenticate_runtime(
     runtime_id: String,
-    provider: RuntimeLlmProviderUpsert,
+    method_id: String,
     state: State<'_, AgentState>,
-) -> Result<RuntimeLlmProviderInfo, String> {
-    state.app.upsert_runtime_llm_provider(&runtime_id, provider)
+) -> Result<(), String> {
+    state
+        .app
+        .authenticate_runtime(&runtime_id, &method_id)
+        .await
 }
 
 #[tauri::command]
-async fn list_runtime_models(
+async fn refresh_runtime_capabilities(
     runtime_id: String,
     state: State<'_, AgentState>,
-) -> Result<Vec<RuntimeModelInfo>, String> {
-    state.app.list_runtime_models(&runtime_id)
-}
-
-#[tauri::command]
-async fn upsert_runtime_model(
-    runtime_id: String,
-    model: RuntimeModelUpsert,
-    state: State<'_, AgentState>,
-) -> Result<RuntimeModelInfo, String> {
-    state.app.upsert_runtime_model(&runtime_id, model)
+) -> Result<RuntimeInspectionResult, String> {
+    state.app.refresh_runtime_capabilities(&runtime_id).await
 }
 
 #[tauri::command]
@@ -1300,10 +1299,9 @@ pub fn run() {
             install_agent_runtime,
             uninstall_agent_runtime,
             set_default_agent_runtime,
-            list_runtime_llm_providers,
-            upsert_runtime_llm_provider,
-            list_runtime_models,
-            upsert_runtime_model,
+            inspect_runtime,
+            authenticate_runtime,
+            refresh_runtime_capabilities,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,

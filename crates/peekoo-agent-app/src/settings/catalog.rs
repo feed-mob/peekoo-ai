@@ -5,21 +5,17 @@ pub const DEFAULT_MODEL: &str = "claude-sonnet-4-6";
 pub const OPENAI_COMPAT_PROVIDER_ID: &str = "openai-compatible";
 pub const ANTHROPIC_COMPAT_PROVIDER_ID: &str = "anthropic-compatible";
 
-fn models_for_provider(provider_id: &str) -> &'static [&'static str] {
-    match provider_id {
-        "pi-acp" => &["claude-sonnet-4-6", "claude-opus-4-5"],
-        "opencode" => &["gpt-4.1", "gpt-4o"],
-        "claude-code" => &["claude-sonnet-4-6", "claude-opus-4-5"],
-        "codex" => &["gpt-5.3-codex"],
-        _ => &[],
-    }
+/// Returns an empty list - models are now discovered via ACP protocol
+/// rather than hardcoded. This function is kept for backward compatibility
+/// with custom runtimes that may need a fallback.
+pub fn models_for_provider(_provider_id: &str) -> &'static [&'static str] {
+    &[]
 }
 
 pub fn default_model_for_provider(provider_id: &str) -> &'static str {
-    models_for_provider(provider_id)
-        .first()
-        .copied()
-        .unwrap_or(DEFAULT_MODEL)
+    // Models are discovered via ACP protocol, not hardcoded.
+    // Return the global default for backward compatibility.
+    DEFAULT_MODEL
 }
 
 pub fn normalize_model_for_provider(provider_id: &str, model_id: &str) -> String {
@@ -30,45 +26,10 @@ pub fn normalize_model_for_provider(provider_id: &str, model_id: &str) -> String
     trimmed.to_string()
 }
 
+/// Returns empty provider catalog - providers are now discovered dynamically
+/// from installed ACP runtimes via `catalog_from_runtimes()`.
 pub fn provider_catalog() -> Vec<ProviderCatalogDto> {
-    vec![
-        ProviderCatalogDto {
-            id: "pi-acp".into(),
-            name: "Peekoo ACP".into(),
-            auth_modes: Vec::new(),
-            models: models_for_provider("pi-acp")
-                .iter()
-                .map(|model| (*model).to_string())
-                .collect(),
-        },
-        ProviderCatalogDto {
-            id: "opencode".into(),
-            name: "OpenCode".into(),
-            auth_modes: Vec::new(),
-            models: models_for_provider("opencode")
-                .iter()
-                .map(|model| (*model).to_string())
-                .collect(),
-        },
-        ProviderCatalogDto {
-            id: "claude-code".into(),
-            name: "Claude Code".into(),
-            auth_modes: Vec::new(),
-            models: models_for_provider("claude-code")
-                .iter()
-                .map(|model| (*model).to_string())
-                .collect(),
-        },
-        ProviderCatalogDto {
-            id: "codex".into(),
-            name: "Codex".into(),
-            auth_modes: Vec::new(),
-            models: models_for_provider("codex")
-                .iter()
-                .map(|model| (*model).to_string())
-                .collect(),
-        },
-    ]
+    vec![]
 }
 
 pub fn default_api_for_provider(provider_id: &str) -> &'static str {
@@ -104,14 +65,20 @@ mod tests {
     }
 
     #[test]
-    fn provider_catalog_lists_acp_providers() {
+    fn provider_catalog_returns_empty() {
+        // After removing hardcoded models, catalog should be empty
+        // Models are discovered via ACP protocol instead
         let providers = provider_catalog();
-        let ids: Vec<_> = providers.into_iter().map(|provider| provider.id).collect();
+        assert!(providers.is_empty());
+    }
 
-        assert_eq!(DEFAULT_PROVIDER, "pi-acp");
-        assert!(ids.contains(&"pi-acp".to_string()));
-        assert!(ids.contains(&"opencode".to_string()));
-        assert!(ids.contains(&"claude-code".to_string()));
-        assert!(ids.contains(&"codex".to_string()));
+    #[test]
+    fn models_for_provider_returns_empty() {
+        // Models should be discovered via ACP, not hardcoded
+        let models = models_for_provider("pi-acp");
+        assert!(models.is_empty());
+
+        let models = models_for_provider("opencode");
+        assert!(models.is_empty());
     }
 }
