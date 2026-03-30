@@ -8,8 +8,8 @@
 //! with a single-threaded tokio runtime that runs within a LocalSet.
 
 use super::*;
-use peekoo_utils::process::resolve_command;
 use agent_client_protocol as acp;
+use peekoo_utils::process::resolve_command;
 use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -347,7 +347,11 @@ impl AcpBackend {
 
         // Resolve command with Windows extensions if needed
         let resolved_command = resolve_command(&self.command);
-        tracing::debug!("Resolved command: {} -> {:?}", self.command, resolved_command);
+        tracing::debug!(
+            "Resolved command: {} -> {:?}",
+            self.command,
+            resolved_command
+        );
 
         // Spawn new process
         let mut cmd = Command::new(&resolved_command);
@@ -676,9 +680,7 @@ impl AgentBackend for AcpBackend {
             .cmd_tx
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
-        cmd_tx
-            .send(AcpCommand::Initialize { resp: tx })
-            .await?;
+        cmd_tx.send(AcpCommand::Initialize { resp: tx }).await?;
 
         let init_result = rx.await??;
         self.supports_mcp = init_result.supports_mcp;
@@ -938,7 +940,10 @@ mod tests {
     #[test]
     fn applies_configured_model_when_session_model_differs() {
         assert_eq!(
-            should_apply_configured_model(Some("opencode/mimo-v2-omni-free"), Some("opencode/big-pickle")),
+            should_apply_configured_model(
+                Some("opencode/mimo-v2-omni-free"),
+                Some("opencode/big-pickle")
+            ),
             Some("opencode/mimo-v2-omni-free")
         );
     }
@@ -946,16 +951,28 @@ mod tests {
     #[test]
     fn skips_configured_model_when_session_already_matches() {
         assert_eq!(
-            should_apply_configured_model(Some("opencode/mimo-v2-omni-free"), Some("opencode/mimo-v2-omni-free")),
+            should_apply_configured_model(
+                Some("opencode/mimo-v2-omni-free"),
+                Some("opencode/mimo-v2-omni-free")
+            ),
             None
         );
     }
 
     #[test]
     fn skips_empty_or_missing_configured_model() {
-        assert_eq!(should_apply_configured_model(None, Some("opencode/big-pickle")), None);
-        assert_eq!(should_apply_configured_model(Some(""), Some("opencode/big-pickle")), None);
-        assert_eq!(should_apply_configured_model(Some("   "), Some("opencode/big-pickle")), None);
+        assert_eq!(
+            should_apply_configured_model(None, Some("opencode/big-pickle")),
+            None
+        );
+        assert_eq!(
+            should_apply_configured_model(Some(""), Some("opencode/big-pickle")),
+            None
+        );
+        assert_eq!(
+            should_apply_configured_model(Some("   "), Some("opencode/big-pickle")),
+            None
+        );
     }
 
     #[test]
