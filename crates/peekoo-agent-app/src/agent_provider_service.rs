@@ -4,6 +4,7 @@
 //! ACP-compatible agent providers (pi-acp, opencode, claude-code, codex, custom).
 
 use anyhow;
+use peekoo_agent::process::{command_available, resolve_command};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -70,10 +71,6 @@ impl RuntimeInfo {
 
 fn is_builtin_runtime(provider_id: &str) -> bool {
     matches!(provider_id, "pi-acp" | "opencode" | "claude-code" | "codex")
-}
-
-fn command_available(command: &str) -> bool {
-    which::which(command).is_ok()
 }
 
 /// Installation method information
@@ -1191,7 +1188,8 @@ impl AgentProviderService {
         };
 
         // Try to get package info from npm registry
-        let output = Command::new("npm")
+        let resolved_npm = resolve_command("npm");
+        let output = Command::new(&resolved_npm)
             .args(["view", package, "version"])
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to run npm: {}", e))?;

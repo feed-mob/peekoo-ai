@@ -16,6 +16,7 @@ rmcp = { git = "https://github.com/modelcontextprotocol/rust-sdk", branch = "mai
 rusqlite = { version = "0.39", features = ["bundled"] }
 anyhow = "1"
 thiserror = "1"
+which = "7"
 rustls = { version = "0.23", features = ["ring"] }
 tracing = "0.1"
 futures = "0.3"

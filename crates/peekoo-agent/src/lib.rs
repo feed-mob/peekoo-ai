@@ -9,6 +9,7 @@
 pub mod backend;
 pub mod config;
 pub mod mcp_bridge;
+pub mod process;
 pub mod service;
 pub mod session_store;
 
@@ -41,3 +42,6 @@ pub use backend::{
     AgentEvent, BackendConfig, ContentBlock, Message, MessageRole, ModelInfo, PromptResult,
     StopReason, TokenUsage,
 };
+
+/// Re-export process utilities for cross-platform command execution
+pub use crate::process::{command_available, resolve_command};

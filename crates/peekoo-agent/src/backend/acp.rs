@@ -8,6 +8,7 @@
 //! with a single-threaded tokio runtime that runs within a LocalSet.
 
 use super::*;
+use crate::process::resolve_command;
 use agent_client_protocol as acp;
 use std::collections::HashMap;
 use std::process::Stdio;
@@ -346,8 +347,12 @@ impl AcpBackend {
 
         tracing::info!("Spawning ACP agent: {} {:?}", self.command, self.args);
 
+        // Resolve command with Windows extensions if needed
+        let resolved_command = resolve_command(&self.command);
+        tracing::debug!("Resolved command: {} -> {:?}", self.command, resolved_command);
+
         // Spawn new process
-        let mut cmd = Command::new(&self.command);
+        let mut cmd = Command::new(&resolved_command);
         cmd.args(&self.args)
             .current_dir(&self.working_directory)
             .stdin(Stdio::piped())
