@@ -16,7 +16,6 @@ use uuid::Uuid;
 
 use crate::settings::catalog::{
     default_api_for_provider, default_auth_header_for_provider, normalize_model_for_provider,
-    provider_catalog,
 };
 use crate::settings::skills::discover_skills;
 use crate::settings::store::SettingsStore;
@@ -76,13 +75,6 @@ impl SettingsService {
         patch: AgentSettingsPatchDto,
     ) -> Result<AgentSettingsDto, String> {
         self.store.apply_patch(patch)
-    }
-
-    pub fn catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
-        Ok(AgentSettingsCatalogDto {
-            providers: provider_catalog(),
-            discovered_skills: discover_skills(),
-        })
     }
 
     /// Build catalog dynamically from installed ACP runtimes and their models.

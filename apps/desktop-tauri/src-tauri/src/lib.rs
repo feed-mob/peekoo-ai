@@ -39,6 +39,7 @@ const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
+const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -285,9 +286,12 @@ async fn agent_settings_get(state: State<'_, AgentState>) -> Result<AgentSetting
 #[tauri::command]
 async fn agent_settings_update(
     patch: AgentSettingsPatchDto,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsDto, String> {
-    state.app.update_settings(patch)
+    let settings = state.app.update_settings(patch)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(settings)
 }
 
 #[tauri::command]
@@ -349,9 +353,12 @@ async fn uninstall_agent_provider(
 #[tauri::command]
 async fn set_default_provider(
     provider_id: String,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.set_default_agent_provider(&provider_id)
+    state.app.set_default_agent_provider(&provider_id)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -366,11 +373,14 @@ async fn get_provider_config(
 async fn update_provider_config(
     provider_id: String,
     config: ProviderConfig,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
     state
         .app
-        .update_agent_provider_config(&provider_id, &config)
+        .update_agent_provider_config(&provider_id, &config)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
 }
 
 #[tauri::command]
@@ -445,9 +455,12 @@ async fn uninstall_agent_runtime(
 #[tauri::command]
 async fn set_default_agent_runtime(
     runtime_id: String,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.set_default_agent_runtime(&runtime_id)
+    state.app.set_default_agent_runtime(&runtime_id)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
 }
 
 #[tauri::command]

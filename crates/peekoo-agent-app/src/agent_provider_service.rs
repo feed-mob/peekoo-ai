@@ -532,16 +532,6 @@ impl AgentProviderService {
         Ok(())
     }
 
-    fn runtime_row_id(conn: &Connection, runtime_id: &str) -> anyhow::Result<String> {
-        conn.query_row(
-            "SELECT id FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1 LIMIT 1",
-            params![runtime_id],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or_else(|| anyhow::anyhow!("Unknown runtime: {runtime_id}"))
-    }
-
     /// List all providers (installed + available)
     pub fn list_providers(&self) -> anyhow::Result<Vec<ProviderInfo>> {
         let conn = self.conn()?;

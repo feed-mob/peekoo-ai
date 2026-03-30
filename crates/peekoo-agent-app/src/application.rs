@@ -513,7 +513,28 @@ impl AgentApplication {
     ) -> Result<(), String> {
         self.provider_service
             .update_provider_config(provider_id, config)
-            .map_err(|e| format!("Update provider config error: {e}"))
+            .map_err(|e| format!("Update provider config error: {e}"))?;
+
+        let settings = self.settings.get_settings()?;
+        if settings.active_provider_id == provider_id {
+            let model = config
+                .default_model
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| crate::settings::default_model_for_provider(provider_id).to_string());
+
+            self.settings
+                .update_settings(AgentSettingsPatchDto {
+                    active_provider_id: None,
+                    active_model_id: Some(model),
+                    system_prompt: None,
+                    max_tool_iterations: None,
+                    skills: None,
+                })
+                .map(|_| ())?;
+        }
+
+        Ok(())
     }
 
     pub async fn test_agent_provider_connection(
@@ -1224,10 +1245,6 @@ impl AgentApplication {
             .block_on(AgentService::new(config))
             .map_err(|e| format!("Agent init error: {e}"))?;
 
-        // Spawn MCP connection in background to avoid blocking chat startup
-        // The agent will respond immediately, and tools will be added when ready
-        self.spawn_mcp_connection_task();
-
         Ok((service, settings_version))
     }
 
@@ -1315,91 +1332,6 @@ impl AgentApplication {
         )
     }
 
-    /// Spawn a background task to connect to MCP servers and add tools asynchronously.
-    /// This prevents blocking the chat startup while waiting for MCP connections.
-    fn spawn_mcp_connection_task(&self) {
-        let agent_weak = Arc::downgrade(&self.agent);
-
-        // Get URLs - if None, no need to spawn task
-        let native_url = crate::mcp_server::get_mcp_url();
-        let plugins_url = crate::mcp_server::get_mcp_plugins_url();
-
-        if native_url.is_none() && plugins_url.is_none() {
-            return;
-        }
-
-        tokio::spawn(async move {
-            // TODO: Re-enable MCP tool connection after migration
-            // Helper to connect and add tools
-            // async fn try_connect_and_add_tools(
-            //     url: &str,
-            //     agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
-            //     endpoint_type: &str,
-            // ) {
-            //     tracing::debug!(
-            //         url = url,
-            //         endpoint = endpoint_type,
-            //         "Connecting to MCP endpoint"
-            //     );
-            //
-            //     match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
-            //         Ok((tools, handle)) => {
-            //             tracing::info!(
-            //                 tool_count = tools.len(),
-            //                 url = url,
-            //                 endpoint = endpoint_type,
-            //                 "MCP tools connected, registering with agent"
-            //             );
-            //
-            //             // Try to get the agent and add tools
-            //             if let Some(agent_arc) = agent_weak.upgrade() {
-            //                 if let Ok(mut guard) = agent_arc.lock() {
-            //                     if let Some(ref mut service) = *guard {
-            //                         service.register_native_tools(tools);
-            //                         service.store_mcp_handle(handle);
-            //                         tracing::info!(
-            //                             endpoint = endpoint_type,
-            //                             "MCP tools registered successfully"
-            //                         );
-            //                     } else {
-            //                         tracing::warn!(
-            //                             endpoint = endpoint_type,
-            //                             "Agent service not available for tool registration"
-            //                         );
-            //                     }
-            //                 } else {
-            //                     tracing::warn!(
-            //                         endpoint = endpoint_type,
-            //                         "Could not lock agent mutex to register tools"
-            //                     );
-            //                 }
-            //             } else {
-            //                 tracing::warn!(
-            //                     endpoint = endpoint_type,
-            //                     "Agent dropped before MCP tools could be registered"
-            //                 );
-            //             }
-            //         }
-            //         Err(e) => {
-            //             tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
-            //         }
-            //     }
-            // }
-            //
-            // // Connect to native tools
-            // if let Some(url) = native_url {
-            //     try_connect_and_add_tools(&url, &agent_weak, "native").await;
-            // }
-            //
-            // // Connect to plugin tools
-            // if let Some(url) = plugins_url {
-            //     try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
-            // }
-
-            tracing::info!("MCP tool registration temporarily disabled during pi migration");
-            let _ = (native_url, plugins_url, agent_weak); // Silence unused warnings
-        });
-    }
 }
 
 fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {

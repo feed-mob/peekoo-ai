@@ -201,7 +201,7 @@ mod tests {
 
         async fn prompt(
             &self,
-            input: &str,
+            _input: &str,
             _conversation_history: Vec<Message>,
             on_event: EventCallback,
         ) -> anyhow::Result<PromptResult> {

@@ -99,7 +99,7 @@ export function ConfigureProviderDialog({
       setTestResult(null);
       setError(null);
       setInspection(null);
-      setSelectedModel("");
+      setSelectedModel(provider.config.defaultModel || "");
       setShowAdvanced(false);
       setShowAuthMethods(false);
 
@@ -113,11 +113,14 @@ export function ConfigureProviderDialog({
         .then((result) => {
           setInspection(result);
           setShowAuthMethods(result.authRequired);
-          // Set selected model to current or first available
-          const modelToSelect = result.currentModelId || 
+          // Prefer the saved default model; only fall back for the picker UI.
+          const savedModel = provider.config.defaultModel || "";
+          const discoveredIds = new Set(result.discoveredModels.map((model) => model.modelId));
+          const modelToSelect =
+            (savedModel && discoveredIds.has(savedModel) && savedModel) ||
+            result.currentModelId ||
             (result.discoveredModels.length > 0 ? result.discoveredModels[0].modelId : "");
           setSelectedModel(modelToSelect);
-          setConfig((prev) => ({ ...prev, defaultModel: modelToSelect }));
         })
         .catch((err) => setError(String(err)))
         .finally(() => setIsInspecting(false));
@@ -164,10 +167,13 @@ export function ConfigureProviderDialog({
       const result = await onRefreshCapabilities(provider.providerId);
       setInspection(result);
       setShowAuthMethods((current) => result.authRequired || current);
-      // Update selected model if needed
-      if (result.currentModelId && result.currentModelId !== selectedModel) {
-        setSelectedModel(result.currentModelId);
-        setConfig((prev) => ({ ...prev, defaultModel: result.currentModelId! }));
+      // Refresh the picker options without overwriting the saved default model.
+      const discoveredIds = new Set(result.discoveredModels.map((model) => model.modelId));
+      if (!selectedModel || !discoveredIds.has(selectedModel)) {
+        setSelectedModel(
+          result.currentModelId ||
+            (result.discoveredModels.length > 0 ? result.discoveredModels[0].modelId : "")
+        );
       }
     } catch (err) {
       setError(String(err));
