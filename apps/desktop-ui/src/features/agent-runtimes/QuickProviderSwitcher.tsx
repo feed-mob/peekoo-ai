@@ -29,7 +29,7 @@ export function QuickProviderSwitcher({
 }: QuickProviderSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false);
 
-  const installedProviders = providers.filter((p) => p.isInstalled && p.status === "ready");
+  const installedProviders = providers.filter((p) => p.isInstalled);
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>

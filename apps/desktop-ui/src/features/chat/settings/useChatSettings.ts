@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-shell";
 import {
   type AgentSettings,
@@ -12,8 +12,6 @@ import {
 } from "@/types/agent-settings";
 
 type SettingsPatch = {
-  activeProviderId?: string;
-  activeModelId?: string;
   systemPrompt?: string;
   maxToolIterations?: number;
   skills?: SkillSettings[];
@@ -139,10 +137,7 @@ export function useChatSettings() {
     return response;
   }, [oauthFlowId]);
 
-  const selectedProvider = useMemo(
-    () => catalog?.providers.find((provider) => provider.id === settings?.activeProviderId),
-    [catalog?.providers, settings?.activeProviderId]
-  );
+  const selectedProvider = null; // Derived from useAgentProviders().defaultProvider instead
 
   useEffect(() => {
     void refresh();

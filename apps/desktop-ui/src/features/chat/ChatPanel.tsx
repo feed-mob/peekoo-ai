@@ -64,11 +64,14 @@ export function ChatPanel() {
       return;
     }
 
+    // Show the configured model immediately — no async gap.
     if (defaultProvider.config.defaultModel) {
       setCurrentModelDisplay(defaultProvider.config.defaultModel);
       return;
     }
 
+    // No configured model — try to discover one via inspection.
+    setCurrentModelDisplay(null);
     void getRuntimeDefaults(defaultProvider.providerId)
       .then(({ model }) => {
         if (!cancelled) {

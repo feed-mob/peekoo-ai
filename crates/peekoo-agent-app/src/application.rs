@@ -39,8 +39,7 @@ use crate::settings::{
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
-};
-use crate::task_notification_scheduler::TaskNotificationScheduler;
+};use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 use peekoo_task_app::SqliteTaskService;
@@ -477,23 +476,7 @@ impl AgentApplication {
             .set_default_provider(provider_id)
             .map_err(|e| format!("Set default provider error: {e}"))?;
 
-        let provider = self
-            .provider_service
-            .get_provider_config(provider_id)
-            .map_err(|e| format!("Get provider config error: {e}"))?;
-        let model = provider.default_model.unwrap_or_else(|| {
-            crate::settings::default_model_for_provider(provider_id).to_string()
-        });
-
-        self.settings
-            .update_settings(AgentSettingsPatchDto {
-                active_provider_id: Some(provider_id.to_string()),
-                active_model_id: Some(model),
-                system_prompt: None,
-                max_tool_iterations: None,
-                skills: None,
-            })
-            .map(|_| ())
+        self.settings.bump_version()
     }
 
     pub fn set_default_agent_runtime(&self, runtime_id: &str) -> Result<(), String> {
@@ -515,25 +498,16 @@ impl AgentApplication {
             .update_provider_config(provider_id, config)
             .map_err(|e| format!("Update provider config error: {e}"))?;
 
-        let settings = self.settings.get_settings()?;
-        if settings.active_provider_id == provider_id {
-            let model = config
-                .default_model
-                .clone()
-                .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| {
-                    crate::settings::default_model_for_provider(provider_id).to_string()
-                });
+        // Bump version if this is the default runtime, so the agent recreates on next prompt.
+        let is_default = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .map(|r| r.provider_id == provider_id)
+            .unwrap_or(false);
 
-            self.settings
-                .update_settings(AgentSettingsPatchDto {
-                    active_provider_id: None,
-                    active_model_id: Some(model),
-                    system_prompt: None,
-                    max_tool_iterations: None,
-                    skills: None,
-                })
-                .map(|_| ())?;
+        if is_default {
+            self.settings.bump_version()?;
         }
 
         Ok(())
@@ -1203,7 +1177,18 @@ impl AgentApplication {
     /// Build a fresh `AgentService` from current settings + MCP-backed tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
-        let (mut config, settings_version) = self.settings.to_agent_config(config)?;
+
+        // Resolve provider and model from the default runtime (single source of truth).
+        let default_runtime = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .ok_or_else(|| "No default runtime configured".to_string())?;
+        let provider_id = default_runtime.provider_id.clone();
+        let model_id = default_runtime.config.default_model.as_deref();
+
+        let (mut config, settings_version) =
+            self.settings.to_agent_config(config, &provider_id, model_id)?;
 
         // Enable session persistence.
         config.no_session = false;
@@ -1281,7 +1266,12 @@ impl AgentApplication {
         let mut env = Vec::new();
 
         if let Ok(config) = self.resolved_config()
-            && let Ok((resolved, _)) = self.settings.to_agent_config(config)
+            && let Ok(Some(runtime)) = self.provider_service.get_default_runtime()
+            && let Ok((resolved, _)) = self.settings.to_agent_config(
+                config,
+                &runtime.provider_id,
+                runtime.config.default_model.as_deref(),
+            )
         {
             let runtime_id = resolved.provider.id();
 

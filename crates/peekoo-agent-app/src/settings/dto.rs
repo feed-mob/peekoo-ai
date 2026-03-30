@@ -30,8 +30,6 @@ pub struct ProviderConfigDto {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettingsDto {
-    pub active_provider_id: String,
-    pub active_model_id: String,
     pub system_prompt: Option<String>,
     pub max_tool_iterations: usize,
     pub version: i64,
@@ -43,8 +41,6 @@ pub struct AgentSettingsDto {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettingsPatchDto {
-    pub active_provider_id: Option<String>,
-    pub active_model_id: Option<String>,
     pub system_prompt: Option<String>,
     pub max_tool_iterations: Option<usize>,
     pub skills: Option<Vec<SkillDto>>,

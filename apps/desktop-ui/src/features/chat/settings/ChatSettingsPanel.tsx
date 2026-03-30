@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { SkillToggleList } from "./SkillToggleList";
 import { useChatSettings } from "./useChatSettings";
+import { useAgentProviders } from "@/hooks/useAgentProviders";
 
 interface ChatSettingsPanelProps {
   onClose: () => void;
@@ -17,12 +18,13 @@ export function ChatSettingsPanel({
   const {
     settings,
     catalog,
-    selectedProvider,
     isLoading,
     error,
     refresh,
     updateSettings,
   } = useChatSettings();
+
+  const { defaultProvider } = useAgentProviders();
 
   const effectiveSkills = useMemo(() => {
     if (!settings || !catalog) return [];
@@ -70,7 +72,7 @@ export function ChatSettingsPanel({
     );
   }
 
-  if (!selectedProvider) {
+  if (!defaultProvider) {
     return (
       <div className="space-y-2">
         <p className="text-sm text-text-muted">Selected runtime not found.</p>
@@ -95,7 +97,7 @@ export function ChatSettingsPanel({
 
       <div className="grid grid-cols-1 gap-3">
         <div className="rounded-md border border-glass-border bg-space-surface/40 px-3 py-2 text-xs text-text-muted">
-          <div>Active runtime: {activeRuntimeName ?? selectedProvider.name}</div>
+          <div>Active runtime: {activeRuntimeName ?? defaultProvider.displayName}</div>
         </div>
 
         <div className="rounded-md border border-glass-border bg-space-deep px-3 py-2">

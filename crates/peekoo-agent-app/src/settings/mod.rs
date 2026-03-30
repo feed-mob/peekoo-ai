@@ -15,12 +15,11 @@ use rusqlite::Connection;
 use uuid::Uuid;
 
 use crate::settings::catalog::{
-    default_api_for_provider, default_auth_header_for_provider, normalize_model_for_provider,
+    default_api_for_provider, default_auth_header_for_provider,
 };
 use crate::settings::skills::discover_skills;
 use crate::settings::store::SettingsStore;
 
-pub use catalog::default_model_for_provider;
 pub use dto::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
@@ -75,6 +74,11 @@ impl SettingsService {
         patch: AgentSettingsPatchDto,
     ) -> Result<AgentSettingsDto, String> {
         self.store.apply_patch(patch)
+    }
+
+    /// Bump the settings version so the cached AgentService recreates on next prompt.
+    pub fn bump_version(&self) -> Result<(), String> {
+        self.store.bump_version()
     }
 
     /// Build catalog dynamically from installed ACP runtimes and their models.
@@ -268,12 +272,12 @@ impl SettingsService {
     pub fn to_agent_config(
         &self,
         mut base: AgentServiceConfig,
+        provider_id: &str,
+        model_id: Option<&str>,
     ) -> Result<(AgentServiceConfig, i64), String> {
         let settings = self.store.load_settings()?;
-        let provider_id = settings.active_provider_id.clone();
-        let model_id = normalize_model_for_provider(&provider_id, &settings.active_model_id);
-        base.provider = provider_id_to_enum(&provider_id);
-        base.model = Some(model_id);
+        base.provider = provider_id_to_enum(provider_id);
+        base.model = model_id.map(|m| m.to_string());
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
         let mut merged_skill_paths = base.agent_skills.clone();
@@ -289,7 +293,7 @@ impl SettingsService {
         }
         base.agent_skills = merged_skill_paths;
 
-        if let Some(api_key_ref) = self.store.active_api_key_ref(&provider_id)? {
+        if let Some(api_key_ref) = self.store.active_api_key_ref(provider_id)? {
             match self.secret_store.get(&api_key_ref) {
                 Ok(api_key) => base.api_key = Some(api_key),
                 Err(e) => {
@@ -302,7 +306,7 @@ impl SettingsService {
         }
 
         if base.api_key.is_none()
-            && let Some(oauth_token_ref) = self.store.active_oauth_token_ref(&provider_id)?
+            && let Some(oauth_token_ref) = self.store.active_oauth_token_ref(provider_id)?
         {
             match self.secret_store.get(&oauth_token_ref) {
                 Ok(access_token) => base.api_key = Some(access_token),
@@ -412,7 +416,7 @@ mod tests {
 
         // Verify it works when the secret exists
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("config with key");
+        let (config, _version) = svc.to_agent_config(base, "pi-acp", None).expect("config with key");
         assert_eq!(config.api_key.as_deref(), Some("sk-test-123"));
 
         // Now remove the secret from the store (simulates keyring failure)
@@ -434,7 +438,7 @@ mod tests {
 
         // Now to_agent_config should return an error, not silently proceed
         let base = AgentServiceConfig::default();
-        let result = svc.to_agent_config(base);
+        let result = svc.to_agent_config(base, "pi-acp", None);
         match result {
             Ok(_) => panic!("Expected error when keyring secret is missing"),
             Err(err) => assert!(
@@ -499,7 +503,7 @@ mod tests {
         assert_eq!(auth.auth_mode, "api_key");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("resolve config");
+        let (config, _version) = svc.to_agent_config(base, "pi-acp", None).expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("sk-fallback"));
 
         let _ = std::fs::remove_file(&db_path);
@@ -516,15 +520,6 @@ mod tests {
         let svc = SettingsService::with_secret_store(&db_path, Box::new(composite))
             .expect("create settings service");
 
-        svc.update_settings(AgentSettingsPatchDto {
-            active_provider_id: Some("codex".into()),
-            active_model_id: Some("gpt-5.3-codex".into()),
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        })
-        .expect("set provider/model");
-
         let token_ref = "peekoo/auth/codex/oauth/test-token".to_string();
         fallback_mem
             .put(&token_ref, "oauth-fallback-token")
@@ -534,7 +529,7 @@ mod tests {
             .expect("set oauth refs");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("resolve config");
+        let (config, _version) = svc.to_agent_config(base, "codex", None).expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);
