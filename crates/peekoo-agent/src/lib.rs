@@ -3,19 +3,13 @@
 //! This crate provides a peekoo-specific API for:
 //! - Creating agent sessions with chosen LLM providers via ACP
 //! - Sending prompts and streaming responses
-//! - Registering custom domain-specific tools ("skills")
+//! - Forwarding ACP session MCP servers to compatible runtimes
 //! - Switching providers/models at runtime
 
 pub mod backend;
 pub mod config;
-pub mod mcp_bridge;
 pub mod service;
 pub mod session_store;
-
-// TODO: Re-enable after migration
-// pub mod mcp_client;
-// pub mod plugin_tool;
-// pub mod service;
 
 // Temporary compatibility types (replacing pi re-exports)
 // These will be removed once migration is complete

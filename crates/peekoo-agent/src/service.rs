@@ -5,7 +5,6 @@
 
 use crate::backend::{AgentBackend, AgentEvent, BackendConfig, Message, MessageRole};
 use crate::config::AgentServiceConfig;
-use crate::mcp_bridge::McpBridge;
 use crate::session_store::SessionStore;
 use anyhow::Result;
 use std::collections::HashSet;
@@ -19,8 +18,6 @@ pub struct AgentService {
     session_store: Option<SessionStore>,
     /// Current session ID
     session_id: Option<String>,
-    /// MCP bridge for tool execution
-    mcp_bridge: Option<McpBridge>,
     /// System prompt components
     system_prompt: String,
     /// Working directory
@@ -48,15 +45,6 @@ impl AgentService {
             }
 
             Some(SessionStore::open(&db_path)?)
-        } else {
-            None
-        };
-
-        // Initialize MCP bridge if configured
-        let mcp_bridge = if let Ok(mcp_url) = std::env::var("PEEKOO_MCP_URL") {
-            let mut bridge = McpBridge::new(mcp_url);
-            bridge.connect().await.ok(); // Best effort
-            Some(bridge)
         } else {
             None
         };
@@ -93,7 +81,6 @@ impl AgentService {
             backend: Box::new(backend),
             session_store,
             session_id: Some(session_id),
-            mcp_bridge,
             system_prompt,
             working_directory: config.working_directory.clone(),
             config,
