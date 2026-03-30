@@ -63,7 +63,6 @@ pub struct DiscoveredModel {
 #[derive(Debug)]
 enum AcpCommand {
     Initialize {
-        config: BackendConfig,
         resp: oneshot::Sender<anyhow::Result<InitializeResult>>,
     },
     CreateSession {
@@ -97,7 +96,6 @@ struct InitializeResult {
 
 #[derive(Debug)]
 struct SessionResult {
-    session_id: acp::SessionId,
     models: Vec<DiscoveredModel>,
     current_model: Option<String>,
 }
@@ -428,7 +426,7 @@ impl AcpBackend {
                     let mut cmd_rx = cmd_rx;
                     while let Some(cmd) = cmd_rx.recv().await {
                         match cmd {
-                            AcpCommand::Initialize { config: _, resp } => {
+                            AcpCommand::Initialize { resp } => {
                                 let result = async {
                                     let client_info = acp::Implementation::new(
                                         "peekoo",
@@ -489,11 +487,7 @@ impl AcpBackend {
                                         "ACP session created"
                                     );
 
-                                    Ok(SessionResult {
-                                        session_id,
-                                        models,
-                                        current_model,
-                                    })
+                                    Ok(SessionResult { models, current_model })
                                 }
                                 .await;
                                 let _ = resp.send(result);
@@ -678,7 +672,7 @@ impl AgentBackend for AcpBackend {
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
         cmd_tx
-            .send(AcpCommand::Initialize { config, resp: tx })
+            .send(AcpCommand::Initialize { resp: tx })
             .await?;
 
         let init_result = rx.await??;

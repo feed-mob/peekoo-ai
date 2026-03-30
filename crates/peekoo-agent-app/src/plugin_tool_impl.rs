@@ -15,14 +15,12 @@ use std::sync::Arc;
 /// TODO: Reimplement PluginToolProvider trait using new architecture
 pub struct PluginToolProviderImpl {
     bridge: PluginToolBridge,
-    registry: Arc<PluginRegistry>,
 }
 
 impl PluginToolProviderImpl {
     pub fn new(registry: Arc<PluginRegistry>) -> Self {
         Self {
             bridge: PluginToolBridge::new(Arc::clone(&registry)),
-            registry,
         }
     }
 
