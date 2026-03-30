@@ -833,10 +833,9 @@ impl AgentProviderService {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
 
-        if use_cache
-            && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
-                return Ok(cached);
-            }
+        if use_cache && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
+            return Ok(cached);
+        }
 
         // Get runtime info
         let runtime = self.get_runtime(runtime_id)?;
@@ -1538,7 +1537,7 @@ impl AgentProviderService {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {

@@ -124,10 +124,21 @@ fn extract_models_from_session_response(
     if let Some(config_options) = &response.config_options {
         for option in config_options {
             if let Some(acp::SessionConfigOptionCategory::Model) = option.category
-                && let acp::SessionConfigKind::Select(select) = &option.kind {
-                    match &select.options {
-                        acp::SessionConfigSelectOptions::Ungrouped(opts) => {
-                            for opt in opts {
+                && let acp::SessionConfigKind::Select(select) = &option.kind
+            {
+                match &select.options {
+                    acp::SessionConfigSelectOptions::Ungrouped(opts) => {
+                        for opt in opts {
+                            models.push(DiscoveredModel {
+                                model_id: opt.value.to_string(),
+                                name: opt.name.to_string(),
+                                description: opt.description.clone(),
+                            });
+                        }
+                    }
+                    acp::SessionConfigSelectOptions::Grouped(groups) => {
+                        for group in groups {
+                            for opt in &group.options {
                                 models.push(DiscoveredModel {
                                     model_id: opt.value.to_string(),
                                     name: opt.name.to_string(),
@@ -135,21 +146,11 @@ fn extract_models_from_session_response(
                                 });
                             }
                         }
-                        acp::SessionConfigSelectOptions::Grouped(groups) => {
-                            for group in groups {
-                                for opt in &group.options {
-                                    models.push(DiscoveredModel {
-                                        model_id: opt.value.to_string(),
-                                        name: opt.name.to_string(),
-                                        description: opt.description.clone(),
-                                    });
-                                }
-                            }
-                        }
-                        _ => {}
                     }
-                    current_model = Some(select.current_value.to_string());
+                    _ => {}
                 }
+                current_model = Some(select.current_value.to_string());
+            }
         }
     }
 
