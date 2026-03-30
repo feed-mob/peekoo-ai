@@ -123,8 +123,8 @@ fn extract_models_from_session_response(
 
     if let Some(config_options) = &response.config_options {
         for option in config_options {
-            if let Some(acp::SessionConfigOptionCategory::Model) = option.category {
-                if let acp::SessionConfigKind::Select(select) = &option.kind {
+            if let Some(acp::SessionConfigOptionCategory::Model) = option.category
+                && let acp::SessionConfigKind::Select(select) = &option.kind {
                     match &select.options {
                         acp::SessionConfigSelectOptions::Ungrouped(opts) => {
                             for opt in opts {
@@ -150,7 +150,6 @@ fn extract_models_from_session_response(
                     }
                     current_model = Some(select.current_value.to_string());
                 }
-            }
         }
     }
 
@@ -614,7 +613,7 @@ impl AcpBackend {
                             child.wait(),
                         )
                         .await;
-                        if !child.id().is_none() {
+                        if child.id().is_some() {
                             let _ = child.kill().await;
                         }
                         io_handle.abort();
