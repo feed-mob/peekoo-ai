@@ -46,6 +46,16 @@ export const authMethodSchema = z.object({
   description: z.string().nullish(),
 });
 
+export const runtimeAuthenticationStatusSchema = z.enum([
+  "authenticated",
+  "terminal_login_started",
+]);
+
+export const runtimeAuthenticationResultSchema = z.object({
+  status: runtimeAuthenticationStatusSchema,
+  message: z.string(),
+});
+
 export const runtimeInspectionResultSchema = z.object({
   runtimeId: z.string(),
   authMethods: z.array(authMethodSchema),
@@ -59,4 +69,6 @@ export const runtimeInspectionResultSchema = z.object({
 
 export type DiscoveredModel = z.infer<typeof discoveredModelSchema>;
 export type AuthMethod = z.infer<typeof authMethodSchema>;
+export type RuntimeAuthenticationStatus = z.infer<typeof runtimeAuthenticationStatusSchema>;
+export type RuntimeAuthenticationResult = z.infer<typeof runtimeAuthenticationResultSchema>;
 export type RuntimeInspectionResult = z.infer<typeof runtimeInspectionResultSchema>;

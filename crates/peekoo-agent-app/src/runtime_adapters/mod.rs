@@ -1,23 +1,50 @@
 use crate::agent_provider_service::ProviderConfig;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeAuthMode {
-    AgentLogin,
-    ApiKey,
-    None,
-}
-
-pub trait RuntimeAdapter {
+pub trait RuntimeAdapter: Send + Sync {
     fn runtime_id(&self) -> &'static str;
     fn display_name(&self) -> &'static str;
     fn default_command(&self) -> &'static str;
     fn default_args(&self) -> Vec<String>;
     fn install_hint(&self) -> Option<&'static str>;
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode>;
 
+    fn build_terminal_auth_launch(
+        &self,
+        command: &str,
+        base_args: &[String],
+        method_args: &[String],
+    ) -> Option<(String, Vec<String>)> {
+        let args = if command == "npx" || command.ends_with("/npx") {
+            let mut args = base_args.to_vec();
+            args.extend(method_args.to_vec());
+            args
+        } else {
+            method_args.to_vec()
+        };
+
+        Some((command.to_string(), args))
+    }
+
+    /// Build the environment for the spawned runtime process.
+    ///
+    /// Forwards critical OS path variables from the parent process so child
+    /// runtimes can locate config/credentials even when the Tauri app was
+    /// launched from a desktop entry with a stripped environment.
+    /// User-configured values in `provider_config.env_vars` take precedence.
     fn build_launch_env(&self, provider_config: &ProviderConfig) -> HashMap<String, String> {
-        provider_config.env_vars.clone()
+        let mut env = provider_config.env_vars.clone();
+
+        // Forward critical path vars so runtimes can find credentials/config
+        // regardless of how the Tauri app was launched.
+        for key in &["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "PATH"] {
+            if !env.contains_key(*key) {
+                if let Ok(val) = std::env::var(key) {
+                    env.insert((*key).to_string(), val);
+                }
+            }
+        }
+
+        env
     }
 
     fn build_launch_args(
@@ -72,10 +99,6 @@ impl RuntimeAdapter for PiAcpRuntimeAdapter {
     fn install_hint(&self) -> Option<&'static str> {
         Some("npm i -g pi-acp")
     }
-
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
-        vec![RuntimeAuthMode::ApiKey]
-    }
 }
 
 pub struct CustomRuntimeAdapter;
@@ -101,8 +124,13 @@ impl RuntimeAdapter for CustomRuntimeAdapter {
         None
     }
 
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
-        vec![RuntimeAuthMode::ApiKey, RuntimeAuthMode::None]
+    fn build_terminal_auth_launch(
+        &self,
+        _command: &str,
+        _base_args: &[String],
+        _method_args: &[String],
+    ) -> Option<(String, Vec<String>)> {
+        None
     }
 }
 
@@ -128,10 +156,6 @@ impl RuntimeAdapter for CodexRuntimeAdapter {
     fn install_hint(&self) -> Option<&'static str> {
         Some("npm i -g @zed-industries/codex-acp")
     }
-
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
-        vec![RuntimeAuthMode::AgentLogin, RuntimeAuthMode::ApiKey]
-    }
 }
 
 pub struct ClaudeCodeRuntimeAdapter;
@@ -155,10 +179,6 @@ impl RuntimeAdapter for ClaudeCodeRuntimeAdapter {
 
     fn install_hint(&self) -> Option<&'static str> {
         Some("npm i -g @zed-industries/claude-code-acp")
-    }
-
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
-        vec![RuntimeAuthMode::AgentLogin, RuntimeAuthMode::ApiKey]
     }
 }
 
@@ -184,10 +204,6 @@ impl RuntimeAdapter for OpencodeRuntimeAdapter {
     fn install_hint(&self) -> Option<&'static str> {
         Some("Install OpenCode and make the `opencode` command available on PATH.")
     }
-
-    fn supported_auth_modes(&self) -> Vec<RuntimeAuthMode> {
-        vec![RuntimeAuthMode::ApiKey]
-    }
 }
 
 #[cfg(test)]
@@ -197,6 +213,43 @@ mod tests {
     };
     use crate::agent_provider_service::ProviderConfig;
     use std::collections::HashMap;
+
+    #[test]
+    fn default_build_launch_env_forwards_home_when_absent() {
+        // Use PiAcpRuntimeAdapter as a representative of the default impl.
+        use super::PiAcpRuntimeAdapter;
+        let adapter = PiAcpRuntimeAdapter;
+        let config = ProviderConfig {
+            default_model: None,
+            env_vars: HashMap::new(),
+            custom_args: vec![],
+        };
+
+        let env = adapter.build_launch_env(&config);
+
+        // HOME should be forwarded from the parent process (always set in test env).
+        if let Ok(expected_home) = std::env::var("HOME") {
+            assert_eq!(
+                env.get("HOME").map(String::as_str),
+                Some(expected_home.as_str())
+            );
+        }
+    }
+
+    #[test]
+    fn default_build_launch_env_does_not_override_user_configured_home() {
+        use super::PiAcpRuntimeAdapter;
+        let adapter = PiAcpRuntimeAdapter;
+        let config = ProviderConfig {
+            default_model: None,
+            env_vars: HashMap::from([("HOME".to_string(), "/custom/home".to_string())]),
+            custom_args: vec![],
+        };
+
+        let env = adapter.build_launch_env(&config);
+
+        assert_eq!(env.get("HOME").map(String::as_str), Some("/custom/home"));
+    }
 
     #[test]
     fn codex_adapter_maps_openai_compatible_env() {
@@ -256,7 +309,6 @@ mod tests {
 
         assert_eq!(adapter.runtime_id(), "opencode");
         assert_eq!(adapter.default_command(), "opencode");
-        assert!(!adapter.supported_auth_modes().is_empty());
         assert!(adapter.install_hint().is_some());
     }
 }

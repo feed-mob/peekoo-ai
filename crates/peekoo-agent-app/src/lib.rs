@@ -22,6 +22,9 @@ pub use agent_provider_service::{
     InstallationMethodInfo, PrerequisitesCheck, ProviderConfig, ProviderInfo, ProviderStatus,
     RuntimeConfig, RuntimeInfo, RuntimeInspectionResult, RuntimeStatus, TestConnectionResult,
 };
+pub use agent_provider_commands::{
+    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeTerminalAuthLaunch,
+};
 pub use agent_runtime_service::AgentRuntimeService;
 pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};

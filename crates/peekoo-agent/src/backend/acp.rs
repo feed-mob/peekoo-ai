@@ -44,6 +44,8 @@ pub struct AcpBackend {
     discovered_models: Vec<DiscoveredModel>,
     /// Current model from ACP
     current_model_id: Option<String>,
+    /// Whether the session exposed configurable session options.
+    supports_config_options: bool,
     /// MCP servers to attach when creating ACP sessions.
     mcp_servers: Vec<acp::McpServer>,
     /// Whether the runtime has explicitly reported that authentication is required.
@@ -99,6 +101,7 @@ struct InitializeResult {
 struct SessionResult {
     models: Vec<DiscoveredModel>,
     current_model: Option<String>,
+    supports_config_options: bool,
 }
 
 fn extract_models_from_session_response(
@@ -274,6 +277,7 @@ impl AcpBackend {
             auth_methods: Vec::new(),
             discovered_models: Vec::new(),
             current_model_id: None,
+            supports_config_options: false,
             mcp_servers: Vec::new(),
             auth_required: AtomicBool::new(false),
             event_callback: Arc::new(Mutex::new(None)),
@@ -293,6 +297,11 @@ impl AcpBackend {
     /// Get current model ID from ACP
     pub fn current_model_id(&self) -> Option<&str> {
         self.current_model_id.as_deref()
+    }
+
+    /// Whether the runtime exposed session config options during the last inspection.
+    pub fn supports_config_options(&self) -> bool {
+        self.supports_config_options
     }
 
     /// Check if auth is required based on last operation
@@ -325,6 +334,46 @@ impl AcpBackend {
                 return Err(error);
             }
         }
+        Ok(())
+    }
+
+    /// Retry ACP session creation on the existing connection and refresh discovered capabilities.
+    pub async fn refresh_session_capabilities(&mut self) -> anyhow::Result<()> {
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::CreateSession {
+                working_dir: self.working_directory.clone(),
+                resp: tx,
+            })
+            .await?;
+
+        let session_result = match rx.await? {
+            Ok(result) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+                result
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                return Err(error);
+            }
+        };
+
+        self.discovered_models = session_result.models;
+        self.current_model_id = session_result.current_model;
+        self.supports_config_options = session_result.supports_config_options;
+
+        if let Some(ref current) = self.current_model_id {
+            self.model_info.model = current.clone();
+        } else if let Some(first) = self.discovered_models.first() {
+            self.model_info.model = first.model_id.clone();
+        }
+
         Ok(())
     }
 
@@ -369,6 +418,16 @@ impl AcpBackend {
         if let Some(ref prompt) = self.system_prompt {
             cmd.env("ACP_SYSTEM_PROMPT", prompt);
         }
+
+        // Log spawn environment for diagnosing credential/config discovery issues.
+        // Values are intentionally omitted to avoid leaking secrets.
+        tracing::debug!(
+            command = %resolved_command.display(),
+            home = ?self.environment.get("HOME").map(|_| "<set>").or_else(|| std::env::var("HOME").ok().map(|_| "<inherited>")),
+            xdg_config_home = ?self.environment.get("XDG_CONFIG_HOME").map(|_| "<set>"),
+            injected_env_keys = ?self.environment.keys().collect::<Vec<_>>(),
+            "ACP agent spawn environment"
+        );
 
         let mut child = cmd
             .spawn()
@@ -496,7 +555,14 @@ impl AcpBackend {
                                         "ACP session created"
                                     );
 
-                                    Ok(SessionResult { models, current_model })
+                                    Ok(SessionResult {
+                                        models,
+                                        current_model,
+                                        supports_config_options: response
+                                            .config_options
+                                            .as_ref()
+                                            .is_some_and(|options| !options.is_empty()),
+                                    })
                                 }
                                 .await;
                                 let _ = resp.send(result);
@@ -676,45 +742,26 @@ impl AgentBackend for AcpBackend {
 
         // Send initialize command
         let (tx, rx) = oneshot::channel();
-        let cmd_tx = self
-            .cmd_tx
+        self.cmd_tx
             .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
-        cmd_tx.send(AcpCommand::Initialize { resp: tx }).await?;
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?
+            .send(AcpCommand::Initialize { resp: tx })
+            .await?;
 
         let init_result = rx.await??;
         self.supports_mcp = init_result.supports_mcp;
         self.auth_methods = init_result.auth_methods;
 
-        // Create session
-        let (tx, rx) = oneshot::channel();
-        cmd_tx
-            .send(AcpCommand::CreateSession {
-                working_dir: self.working_directory.clone(),
-                resp: tx,
-            })
-            .await?;
-
-        let session_result = match rx.await? {
-            Ok(result) => {
-                self.auth_required.store(false, Ordering::Relaxed);
-                result
-            }
-            Err(error) => {
-                self.auth_required
-                    .store(is_auth_required_error(&error), Ordering::Relaxed);
-                return Err(error);
-            }
-        };
-        self.discovered_models = session_result.models;
-        self.current_model_id = session_result.current_model;
+        self.refresh_session_capabilities().await?;
 
         if let Some(model) = should_apply_configured_model(
             desired_model.as_deref(),
             self.current_model_id.as_deref(),
         ) {
             let (tx, rx) = oneshot::channel();
-            cmd_tx
+            self.cmd_tx
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?
                 .send(AcpCommand::SetModel {
                     model: model.to_string(),
                     resp: tx,

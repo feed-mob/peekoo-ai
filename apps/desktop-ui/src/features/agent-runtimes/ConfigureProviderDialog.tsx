@@ -37,6 +37,7 @@ import {
   type RuntimeInfo,
   type RuntimeConfig,
   type RuntimeInspectionResult,
+  type RuntimeAuthenticationResult,
 } from "@/types/agent-runtime";
 import { getProviderAuthState } from "./provider-auth-state";
 
@@ -46,7 +47,7 @@ interface ConfigureProviderDialogProps {
   onClose: () => void;
   onSave: (providerId: string, config: RuntimeConfig) => Promise<void>;
   onInspect: (runtimeId: string) => Promise<RuntimeInspectionResult>;
-  onAuthenticate: (runtimeId: string, methodId: string) => Promise<void>;
+  onAuthenticate: (runtimeId: string, methodId: string) => Promise<RuntimeAuthenticationResult>;
   onRefreshCapabilities: (runtimeId: string) => Promise<RuntimeInspectionResult>;
   onTest: (providerId: string) => Promise<{
     success: boolean;
@@ -187,15 +188,47 @@ export function ConfigureProviderDialog({
 
     setIsAuthenticating(true);
     setError(null);
+    setTestResult(null);
     try {
-      await onAuthenticate(provider.providerId, methodId);
-      // Re-inspect after authentication
-      await handleRefreshCapabilities();
+      const result = await onAuthenticate(provider.providerId, methodId);
+      setTestResult({
+        success: true,
+        message: result.message,
+      });
+      if (result.status === "authenticated") {
+        await handleRefreshCapabilities();
+      } else {
+        // Terminal login started — poll for auth completion so the user
+        // doesn't have to manually click Refresh after finishing in the terminal.
+        setShowAuthMethods(true);
+        pollForAuthCompletion(provider.providerId);
+      }
     } catch (err) {
       setError(String(err));
     } finally {
       setIsAuthenticating(false);
     }
+  };
+
+  const pollForAuthCompletion = (providerId: string) => {
+    let attempts = 0;
+    const maxAttempts = 24; // ~2 minutes at 5s intervals
+    const interval = setInterval(async () => {
+      attempts++;
+      try {
+        const result = await onRefreshCapabilities(providerId);
+        if (!result.authRequired) {
+          clearInterval(interval);
+          setShowAuthMethods(false);
+          setTestResult({ success: true, message: "Login successful." });
+        }
+      } catch {
+        // ignore transient errors during polling
+      }
+      if (attempts >= maxAttempts) {
+        clearInterval(interval);
+      }
+    }, 5000);
   };
 
   const handleModelChange = (modelId: string) => {

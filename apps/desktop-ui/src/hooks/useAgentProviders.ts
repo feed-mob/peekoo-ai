@@ -7,8 +7,10 @@ import {
   type InstallRuntimeRequest,
   type CustomRuntimeRequest,
   type RuntimeInspectionResult,
+  type RuntimeAuthenticationResult,
   runtimeInfoSchema,
   runtimeInspectionResultSchema,
+  runtimeAuthenticationResultSchema,
   prerequisitesCheckSchema,
   testConnectionResultSchema,
   installRuntimeResponseSchema,
@@ -200,14 +202,17 @@ export function useAgentProviders() {
   }, []);
 
   // Authenticate with a runtime using the specified auth method
-  const authenticateRuntime = useCallback(async (runtimeId: string, methodId: string): Promise<void> => {
+  const authenticateRuntime = useCallback(async (runtimeId: string, methodId: string): Promise<RuntimeAuthenticationResult> => {
     try {
-      await invoke("authenticate_runtime", { runtimeId, methodId });
+      const raw = await invoke<unknown>("authenticate_runtime", { runtimeId, methodId });
+      const result = runtimeAuthenticationResultSchema.parse(raw);
+      await refresh();
+      return result;
     } catch (err) {
       setError(String(err));
       throw err;
     }
-  }, []);
+  }, [refresh]);
 
   // Refresh runtime capabilities (re-inspect)
   const refreshRuntimeCapabilities = useCallback(async (runtimeId: string): Promise<RuntimeInspectionResult> => {

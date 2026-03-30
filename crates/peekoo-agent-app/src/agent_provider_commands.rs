@@ -8,9 +8,65 @@ use crate::agent_provider_service::{
     PrerequisitesCheck, ProviderConfig, ProviderInfo, RuntimeInspectionResult,
     TestConnectionResult,
 };
+use crate::runtime_adapters::adapter_for_runtime;
+use agent_client_protocol as acp;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+
+#[derive(Debug, Clone)]
+pub struct RuntimeTerminalAuthLaunch {
+    pub command: String,
+    pub args: Vec<String>,
+    pub env: std::collections::HashMap<String, String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum RuntimeAuthenticationAction {
+    Authenticated { message: String },
+    LaunchTerminal(RuntimeTerminalAuthLaunch),
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeAuthenticationStatus {
+    Authenticated,
+    TerminalLoginStarted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeAuthenticationResult {
+    pub status: RuntimeAuthenticationStatus,
+    pub message: String,
+}
+
+fn decorate_authenticate_runtime_error(
+    runtime_id: &str,
+    method_id: &str,
+    error: anyhow::Error,
+) -> anyhow::Error {
+    if let Some(acp_error) = error.downcast_ref::<acp::Error>() {
+        return match acp_error.code {
+            acp::ErrorCode::MethodNotFound => anyhow::anyhow!(
+                "Runtime {} advertised authentication method {}, but its ACP server does not implement ACP authenticate. Original error: {}",
+                runtime_id,
+                method_id,
+                acp_error
+            ),
+            _ => anyhow::anyhow!(
+                "Runtime {} authentication via {} failed: {}",
+                runtime_id,
+                method_id,
+                acp_error
+            ),
+        };
+    }
+
+    error
+}
 
 /// Initialize the provider service
 pub fn create_provider_service(
@@ -131,14 +187,9 @@ pub async fn authenticate_runtime(
     service: &AgentProviderService,
     runtime_id: String,
     method_id: String,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<RuntimeAuthenticationAction> {
+    use peekoo_agent::backend::acp::is_auth_required_error;
     use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
-
-    if runtime_id == "opencode" {
-        return Err(anyhow::anyhow!(
-            "OpenCode login is managed by the CLI. Run `opencode auth login` in a terminal, then refresh runtime capabilities."
-        ));
-    }
 
     // Get runtime info
     let runtime = service
@@ -164,7 +215,7 @@ pub async fn authenticate_runtime(
     };
 
     // Create ACP backend
-    let mut backend = AcpBackend::new(command, args);
+    let mut backend = AcpBackend::new(command.clone(), args.clone());
 
     // Initialize the backend
     let backend_config = BackendConfig {
@@ -174,45 +225,105 @@ pub async fn authenticate_runtime(
         model: config.default_model.clone(),
         provider: Some(runtime_id.clone()),
         api_key: None,
-        environment: config.env_vars.clone(),
+        environment: adapter_for_runtime(&runtime_id).build_launch_env(&config),
         mcp_servers: Vec::new(),
     };
 
-    // Try to initialize - this may fail if auth is required
     match backend.initialize(backend_config).await {
-        Ok(()) => {
-            // Already initialized, now authenticate
-            backend.authenticate(&method_id).await?;
-            service.invalidate_runtime_inspection_cache(&runtime_id)?;
+        Ok(()) => {}
+        Err(error) if is_auth_required_error(&error) => {
             tracing::info!(
-                "Runtime {} authenticated successfully with method {}",
                 runtime_id,
-                method_id
+                method_id,
+                "Runtime initialization reported ACP auth required; continuing with runtime auth handling"
             );
-            Ok(())
         }
-        Err(e) => {
-            let error_msg = e.to_string();
-            // Check if it's an auth error
-            if error_msg.contains("auth") || error_msg.contains("Auth") {
-                // Auth is required but we couldn't initialize
-                // In a real implementation, we might need to handle different auth methods
-                // For now, try to re-initialize after setting up auth
-                tracing::info!(
-                    "Auth required for runtime {}, attempting authentication",
-                    runtime_id
-                );
-                // Note: In Phase 4 full implementation, we would handle different auth method types
-                // For now, we just return an error indicating auth is needed
-                Err(anyhow::anyhow!(
-                    "Authentication required for runtime {}. Please configure authentication.",
-                    runtime_id
-                ))
-            } else {
-                Err(e)
-            }
-        }
+        Err(error) => return Err(error),
     }
+
+    let Some(auth_method) = backend
+        .auth_methods()
+        .iter()
+        .find(|method| method.id().to_string() == method_id)
+        .cloned()
+    else {
+        let _ = backend.shutdown().await;
+        return Err(anyhow::anyhow!(
+            "Runtime {} does not advertise authentication method {}",
+            runtime_id,
+            method_id
+        ));
+    };
+
+    if let acp::AuthMethod::Terminal(terminal_method) = auth_method {
+        let adapter = adapter_for_runtime(&runtime_id);
+        let Some((terminal_command, terminal_args)) =
+            adapter.build_terminal_auth_launch(&command, &args, &terminal_method.args)
+        else {
+            let _ = backend.shutdown().await;
+            return Err(anyhow::anyhow!(
+                "Runtime {} advertises terminal authentication, but Peekoo does not yet know how to launch its login command.",
+                runtime_id
+            ));
+        };
+
+        // Build terminal env: start with the same forwarded OS vars that
+        // build_launch_env provides, so the terminal session has HOME/PATH/etc.
+        let mut terminal_env = adapter.build_launch_env(&config);
+        terminal_env.extend(terminal_method.env);
+        let _ = backend.shutdown().await;
+
+        // Invalidate the cached inspection so the next inspect_runtime call
+        // re-runs instead of returning the stale auth_required: true result.
+        let _ = service.invalidate_runtime_inspection_cache(&runtime_id);
+
+        return Ok(RuntimeAuthenticationAction::LaunchTerminal(
+            RuntimeTerminalAuthLaunch {
+                command: terminal_command,
+                args: terminal_args,
+                env: terminal_env,
+                message: format!(
+                    "Terminal login started for {}. Complete the login in the terminal window, then click Refresh.",
+                    runtime.display_name
+                ),
+            },
+        ));
+    }
+
+    let auth_result = backend
+        .authenticate(&method_id)
+        .await
+        .map_err(|error| decorate_authenticate_runtime_error(&runtime_id, &method_id, error));
+
+    auth_result?;
+    backend
+        .refresh_session_capabilities()
+        .await
+        .map_err(|error| {
+            if is_auth_required_error(&error) {
+                anyhow::anyhow!(
+                    "Runtime {} started authentication with {}, but it still reports login is required. Finish the runtime login flow and refresh again.",
+                    runtime_id,
+                    method_id
+                )
+            } else {
+                decorate_authenticate_runtime_error(&runtime_id, &method_id, error)
+            }
+        })?;
+
+    backend.shutdown().await?;
+    service.invalidate_runtime_inspection_cache(&runtime_id)?;
+    tracing::info!(
+        "Runtime {} authenticated successfully with method {}",
+        runtime_id,
+        method_id
+    );
+    Ok(RuntimeAuthenticationAction::Authenticated {
+        message: format!(
+            "Runtime {} authenticated successfully with method {}",
+            runtime_id, method_id
+        ),
+    })
 }
 
 /// Refresh runtime capabilities (re-inspect)

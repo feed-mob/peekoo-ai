@@ -150,9 +150,31 @@ async function notifyChatSessionNew() {
   }
 }
 
+/** Parse a structured auth_required error from the backend. */
+function tryParseAuthRequired(error: unknown): { runtimeId: string } | null {
+  if (typeof error !== "string") return null;
+  try {
+    const parsed = JSON.parse(error) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "code" in parsed &&
+      (parsed as Record<string, unknown>).code === "auth_required" &&
+      "runtimeId" in parsed &&
+      typeof (parsed as Record<string, unknown>).runtimeId === "string"
+    ) {
+      return { runtimeId: (parsed as Record<string, unknown>).runtimeId as string };
+    }
+  } catch {
+    // Not JSON — not an auth error.
+  }
+  return null;
+}
+
 export function useChatSession() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [authRequired, setAuthRequired] = useState<{ runtimeId: string } | null>(null);
   const isTypingRef = useRef(false);
   const streamingTextRef = useRef("");
   const streamingIdRef = useRef<string | null>(null);
@@ -329,6 +351,8 @@ export function useChatSession() {
         message: input,
       });
 
+      setAuthRequired(null);
+
       const finalId = streamingIdRef.current ?? (Date.now() + 2).toString();
 
       setMessages((prev) => {
@@ -353,14 +377,20 @@ export function useChatSession() {
       void emitPetReaction("agent-result");
       return true;
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 3).toString(),
-          role: "error",
-          text: `Error: ${error}`,
-        },
-      ]);
+      // Check for structured auth_required error from the backend.
+      const authError = tryParseAuthRequired(error);
+      if (authError) {
+        setAuthRequired(authError);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 3).toString(),
+            role: "error",
+            text: `Error: ${error}`,
+          },
+        ]);
+      }
       void emitPetReaction("agent-result");
       return false;
     } finally {
@@ -391,6 +421,8 @@ export function useChatSession() {
   return {
     messages,
     isTyping,
+    authRequired,
+    clearAuthRequired: () => setAuthRequired(null),
     loadLastSession,
     sendMessage,
     startNewChat,

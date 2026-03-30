@@ -873,7 +873,8 @@ impl AgentProviderService {
             model: config.default_model.clone(),
             provider: Some(runtime_id.to_string()),
             api_key: None,
-            environment: config.env_vars.clone(),
+            environment: crate::runtime_adapters::adapter_for_runtime(runtime_id)
+                .build_launch_env(&config),
             mcp_servers: Vec::new(),
         };
 
@@ -1537,7 +1538,7 @@ impl AgentProviderService {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {

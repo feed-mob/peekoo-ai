@@ -624,7 +624,7 @@ impl AgentApplication {
         &self,
         runtime_id: &str,
         method_id: &str,
-    ) -> Result<(), String> {
+    ) -> Result<crate::agent_provider_commands::RuntimeAuthenticationAction, String> {
         crate::agent_provider_commands::authenticate_runtime(
             &self.provider_service,
             runtime_id.to_string(),
@@ -1243,9 +1243,15 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let service = runtime
-            .block_on(AgentService::new(config))
-            .map_err(|e| format!("Agent init error: {e}"))?;
+        let service = runtime.block_on(AgentService::new(config)).map_err(|e| {
+            if peekoo_agent::backend::acp::is_auth_required_error(&e) {
+                // Use a structured prefix so callers (e.g. Tauri command layer)
+                // can distinguish auth failures from generic init errors.
+                format!("AUTH_REQUIRED:{runtime_id}")
+            } else {
+                format!("Agent init error: {e}")
+            }
+        })?;
 
         Ok((service, settings_version))
     }

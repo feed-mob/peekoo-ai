@@ -8,13 +8,13 @@ use peekoo_agent_app::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
     ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest, RuntimeInfo,
-    RuntimeInspectionResult, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
+    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInspectionResult,
+    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
     StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
-#[cfg(target_os = "linux")]
 use std::process::Command;
 use std::time::Duration;
 use tauri::{
@@ -40,6 +40,161 @@ const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
 const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
+
+#[cfg(target_os = "macos")]
+fn quote_posix_shell(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(target_os = "windows")]
+fn quote_windows_cmd(arg: &str) -> String {
+    format!("\"{}\"", arg.replace('"', "\"\""))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn write_terminal_auth_script(
+    extension: &str,
+    command: &str,
+    args: &[String],
+    env_vars: &std::collections::HashMap<String, String>,
+) -> Result<PathBuf, String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("terminal auth clock error: {e}"))?
+        .as_millis();
+    let path = std::env::temp_dir().join(format!("peekoo-runtime-auth-{unique}.{extension}"));
+
+    #[cfg(target_os = "macos")]
+    let content = {
+        let mut lines = vec!["#!/bin/bash".to_string()];
+        for (key, value) in env_vars {
+            lines.push(format!("export {}={}", key, quote_posix_shell(value)));
+        }
+        let mut command_line = vec![quote_posix_shell(command)];
+        command_line.extend(args.iter().map(|arg| quote_posix_shell(arg)));
+        lines.push(command_line.join(" "));
+        lines.push("exit".to_string());
+        lines.join("\n")
+    };
+
+    #[cfg(target_os = "windows")]
+    let content = {
+        let mut lines = vec!["@echo off".to_string()];
+        for (key, value) in env_vars {
+            lines.push(format!("set \"{}={}\"", key, value));
+        }
+        let mut command_line = vec![quote_windows_cmd(command)];
+        command_line.extend(args.iter().map(|arg| quote_windows_cmd(arg)));
+        lines.push(command_line.join(" "));
+        lines.join("\r\n")
+    };
+
+    fs::write(&path, content).map_err(|e| format!("terminal auth script write error: {e}"))?;
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path)
+            .map_err(|e| format!("terminal auth script metadata error: {e}"))?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions)
+            .map_err(|e| format!("terminal auth script chmod error: {e}"))?;
+    }
+
+    Ok(path)
+}
+
+#[cfg(target_os = "linux")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let candidates: [(&str, fn(&RuntimeTerminalAuthLaunch) -> Vec<String>); 8] = [
+        ("x-terminal-emulator", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("gnome-terminal", |launch| {
+            let mut args = vec!["--wait".to_string(), "--".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("konsole", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("kitty", |launch| {
+            let mut args = vec![launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("ghostty", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("wezterm", |launch| {
+            let mut args = vec!["start".to_string(), "--".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("alacritty", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("xterm", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+    ];
+
+    let mut last_error = None;
+    for (terminal, build_args) in candidates {
+        match Command::new(terminal)
+            .args(build_args(launch))
+            .envs(&launch.env)
+            .spawn()
+        {
+            Ok(_) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                last_error = Some(format!("{terminal} launch error: {error}"));
+                break;
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        "No supported terminal emulator was found to launch runtime login.".to_string()
+    }))
+}
+
+#[cfg(target_os = "macos")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let script = write_terminal_auth_script("command", &launch.command, &launch.args, &launch.env)?;
+    Command::new("open")
+        .arg("-a")
+        .arg("Terminal")
+        .arg(script)
+        .spawn()
+        .map_err(|e| format!("Terminal launch error: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let script = write_terminal_auth_script("cmd", &launch.command, &launch.args, &launch.env)?;
+    Command::new("cmd")
+        .args(["/C", "start", "", script.to_string_lossy().as_ref()])
+        .spawn()
+        .map_err(|e| format!("Terminal launch error: {e}"))?;
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -268,6 +423,14 @@ async fn agent_prompt(
         .await
         .map_err(|err| {
             tracing::error!(error = %err, message_len, "agent_prompt command failed");
+            // Propagate structured auth_required errors so the frontend can
+            // show a targeted login prompt instead of a raw error string.
+            if let Some(runtime_id) = err.strip_prefix("AUTH_REQUIRED:") {
+                return format!(
+                    r#"{{"code":"auth_required","runtimeId":"{}"}}"#,
+                    runtime_id
+                );
+            }
             err
         })?;
     tracing::info!(
@@ -476,11 +639,28 @@ async fn authenticate_runtime(
     runtime_id: String,
     method_id: String,
     state: State<'_, AgentState>,
-) -> Result<(), String> {
-    state
+) -> Result<RuntimeAuthenticationResult, String> {
+    match state
         .app
         .authenticate_runtime(&runtime_id, &method_id)
-        .await
+        .await?
+    {
+        peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction::Authenticated {
+            message,
+        } => Ok(RuntimeAuthenticationResult {
+            status: RuntimeAuthenticationStatus::Authenticated,
+            message,
+        }),
+        peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction::LaunchTerminal(
+            launch,
+        ) => {
+            launch_terminal_auth(&launch)?;
+            Ok(RuntimeAuthenticationResult {
+                status: RuntimeAuthenticationStatus::TerminalLoginStarted,
+                message: launch.message,
+            })
+        }
+    }
 }
 
 #[tauri::command]
