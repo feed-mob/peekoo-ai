@@ -64,6 +64,32 @@ pub trait RuntimeAdapter: Send + Sync {
             env.insert("PEEKOO_AGENT_MODEL".to_string(), model.to_string());
         }
     }
+
+    /// Build a shell-escaped manual login command string for display in the UI.
+    fn build_manual_login_command(
+        &self,
+        command: &str,
+        base_args: &[String],
+        method_args: &[String],
+    ) -> Option<String> {
+        let (_, args) = self.build_terminal_auth_launch(command, base_args, method_args)?;
+
+        // Quote arguments containing spaces or shell metacharacters.
+        let shell_quote = |s: &str| -> String {
+            if s.contains(|c: char| !c.is_alphanumeric() && !"-_./:@".contains(c)) {
+                format!("'{}'", s.replace('\'', "'\\''"))
+            } else {
+                s.to_string()
+            }
+        };
+
+        let mut parts = vec![shell_quote(command)];
+        for arg in &args {
+            parts.push(shell_quote(arg));
+        }
+
+        Some(parts.join(" "))
+    }
 }
 
 /// Look up the adapter for a given runtime id.

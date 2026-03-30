@@ -44,6 +44,7 @@ export const authMethodSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string().nullish(),
+  manualLoginCommand: z.string().nullish(),
 });
 
 export const runtimeAuthenticationStatusSchema = z.enum([

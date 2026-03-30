@@ -32,6 +32,7 @@ import {
   ChevronDown,
   ChevronUp,
   Lock,
+  Copy,
 } from "lucide-react";
 import {
   type RuntimeInfo,
@@ -88,6 +89,7 @@ export function ConfigureProviderDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAuthMethods, setShowAuthMethods] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
+  const [copiedMethodId, setCopiedMethodId] = useState<string | null>(null);
 
   // Load config and inspect runtime when dialog opens
   useEffect(() => {
@@ -236,6 +238,16 @@ export function ConfigureProviderDialog({
     setConfig((prev) => ({ ...prev, defaultModel: modelId }));
   };
 
+  const handleCopyCommand = async (command: string, methodId: string) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      setCopiedMethodId(methodId);
+      setTimeout(() => setCopiedMethodId(null), 2000);
+    } catch {
+      // fallback: select the text
+    }
+  };
+
   const addEnvVar = () => {
     if (newEnvKey.trim()) {
       setConfig((prev) => ({
@@ -360,24 +372,45 @@ export function ConfigureProviderDialog({
               {authMethodsVisible ? (
                 <div className="space-y-2">
                   {inspection?.authMethods.map((method) => (
-                    <div key={method.id} className="flex items-center justify-between rounded-md border border-glass-border p-3">
-                      <div>
-                        <div className="text-sm font-medium text-text-primary">{method.name}</div>
-                        {method.description && (
-                          <div className="text-xs text-text-muted">{method.description}</div>
-                        )}
+                    <div key={method.id} className="rounded-md border border-glass-border p-3 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-text-primary">{method.name}</div>
+                          {method.description && (
+                            <div className="text-xs text-text-muted">{method.description}</div>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleAuthenticate(method.id)}
+                          disabled={isAuthenticating}
+                        >
+                          {isAuthenticating ? (
+                            <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                          ) : null}
+                          Login
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAuthenticate(method.id)}
-                        disabled={isAuthenticating}
-                      >
-                        {isAuthenticating ? (
-                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                        ) : null}
-                        Login
-                      </Button>
+                      {method.manualLoginCommand && (
+                        <div className="flex items-center gap-2 rounded-md bg-space-deep px-3 py-2">
+                          <code className="flex-1 text-xs text-text-secondary break-all font-mono">
+                            {method.manualLoginCommand}
+                          </code>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0 shrink-0"
+                            onClick={() => void handleCopyCommand(method.manualLoginCommand!, method.id)}
+                          >
+                            {copiedMethodId === method.id ? (
+                              <Check className="h-3.5 w-3.5 text-green-400" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

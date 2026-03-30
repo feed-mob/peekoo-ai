@@ -12,6 +12,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
 
+use agent_client_protocol as acp;
+
+use crate::runtime_adapters::adapter_for_runtime;
+
 /// Provider installation method
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -155,6 +159,8 @@ pub struct AuthMethodInfo {
     pub id: String,
     pub name: String,
     pub description: Option<String>,
+    /// Shell command the user can run to manually authenticate (for Terminal auth methods).
+    pub manual_login_command: Option<String>,
 }
 
 /// Result of runtime inspection via ACP protocol
@@ -863,6 +869,8 @@ impl AgentProviderService {
         };
 
         // Create ACP backend for temporary inspection
+        let manual_login_command = command.clone();
+        let manual_login_args = args.clone();
         let mut backend = AcpBackend::new(command, args);
 
         // Prepare backend config
@@ -886,14 +894,24 @@ impl AgentProviderService {
         .await
         {
             Ok(Ok(())) => {
+                let adapter = adapter_for_runtime(runtime_id);
+
                 // Extract discovered information
                 let auth_methods: Vec<AuthMethodInfo> = backend
                     .auth_methods()
                     .iter()
-                    .map(|m| AuthMethodInfo {
-                        id: m.id().to_string(),
-                        name: m.name().to_string(),
-                        description: m.description().map(|s| s.to_string()),
+                    .map(|m| {
+                        let manual_login_command = match m {
+                            acp::AuthMethod::Terminal(terminal) => adapter
+                                .build_manual_login_command(&manual_login_command, &manual_login_args, &terminal.args),
+                            _ => None,
+                        };
+                        AuthMethodInfo {
+                            id: m.id().to_string(),
+                            name: m.name().to_string(),
+                            description: m.description().map(|s| s.to_string()),
+                            manual_login_command,
+                        }
                     })
                     .collect();
 
@@ -932,13 +950,22 @@ impl AgentProviderService {
                 let _ = backend.shutdown().await;
                 let error_msg = e.to_string();
                 let auth_required = is_auth_required_error(&e);
+                let adapter = adapter_for_runtime(runtime_id);
                 let auth_methods: Vec<AuthMethodInfo> = backend
                     .auth_methods()
                     .iter()
-                    .map(|m| AuthMethodInfo {
-                        id: m.id().to_string(),
-                        name: m.name().to_string(),
-                        description: m.description().map(|s| s.to_string()),
+                    .map(|m| {
+                        let manual_login_command = match m {
+                            acp::AuthMethod::Terminal(terminal) => adapter
+                                .build_manual_login_command(&manual_login_command, &manual_login_args, &terminal.args),
+                            _ => None,
+                        };
+                        AuthMethodInfo {
+                            id: m.id().to_string(),
+                            name: m.name().to_string(),
+                            description: m.description().map(|s| s.to_string()),
+                            manual_login_command,
+                        }
                     })
                     .collect();
 
@@ -1859,6 +1886,7 @@ mod tests {
                 id: "chatgpt".to_string(),
                 name: "ChatGPT".to_string(),
                 description: None,
+                manual_login_command: None,
             }],
             auth_required: true,
             discovered_models: vec![DiscoveredModelInfo {
