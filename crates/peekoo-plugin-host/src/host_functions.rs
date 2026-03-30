@@ -1139,13 +1139,32 @@ fn host_websocket_connect(
         )));
     }
 
-    let parsed = Url::parse(url).map_err(|e| Error::msg(format!("Invalid websocket url: {e}")))?;
+    let parsed = match Url::parse(url) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Invalid websocket url: {e}")
+                })
+                .to_string(),
+            );
+        }
+    };
     match parsed.scheme() {
         "ws" | "wss" => {}
         scheme => {
-            return Err(Error::msg(format!(
-                "Unsupported websocket scheme: {scheme}"
-            )));
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Unsupported websocket scheme: {scheme}")
+                })
+                .to_string(),
+            );
         }
     }
 
@@ -1166,17 +1185,49 @@ fn host_websocket_connect(
     };
 
     tracing::debug!("WebSocket connection origin: {}", origin);
-    let mut request = url
-        .into_client_request()
-        .map_err(|e| Error::msg(e.to_string()))?;
-    request.headers_mut().insert(
-        "Origin",
-        origin
-            .parse()
-            .map_err(|e| Error::msg(format!("Invalid origin header '{}': {}", origin, e)))?,
-    );
-    let (socket, _) =
-        connect(request).map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
+    let mut request = match url.into_client_request() {
+        Ok(request) => request,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": e.to_string()
+                })
+                .to_string(),
+            );
+        }
+    };
+    let origin_header = match origin.parse() {
+        Ok(header) => header,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Invalid origin header '{}': {}", origin, e)
+                })
+                .to_string(),
+            );
+        }
+    };
+    request.headers_mut().insert("Origin", origin_header);
+    let (socket, _) = match connect(request) {
+        Ok(result) => result,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("WebSocket connect error: {e}")
+                })
+                .to_string(),
+            );
+        }
+    };
     let mut websockets = ctx
         .websockets
         .lock()
@@ -1211,13 +1262,30 @@ fn host_websocket_send(
         .websockets
         .lock()
         .map_err(|e| Error::msg(format!("{e}")))?;
-    let socket = websockets
-        .sockets
-        .get_mut(socket_id)
-        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
-    socket
-        .send(Message::Text(text.to_string().into()))
-        .map_err(|e| Error::msg(format!("WebSocket send error: {e}")))?;
+    let Some(socket) = websockets.sockets.get_mut(socket_id) else {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "ok": false,
+                "error": format!("Unknown websocket socketId: {socket_id}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    };
+    if let Err(e) = socket.send(Message::Text(text.to_string().into())) {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "ok": false,
+                "error": format!("WebSocket send error: {e}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    }
 
     write_output(plugin, outputs, r#"{"ok":true}"#)?;
     Ok(())
@@ -1240,10 +1308,18 @@ fn host_websocket_recv(
         .websockets
         .lock()
         .map_err(|e| Error::msg(format!("{e}")))?;
-    let socket = websockets
-        .sockets
-        .get_mut(socket_id)
-        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
+    let Some(socket) = websockets.sockets.get_mut(socket_id) else {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "text": "",
+                "error": format!("Unknown websocket socketId: {socket_id}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    };
 
     loop {
         match socket.read() {
@@ -1273,11 +1349,25 @@ fn host_websocket_recv(
             Ok(Message::Frame(_)) => {}
             Ok(Message::Close(_)) => {
                 websockets.sockets.remove(socket_id);
-                return Err(Error::msg("WebSocket closed by remote peer"));
+                write_output(
+                    plugin,
+                    outputs,
+                    r#"{"text":"","error":"WebSocket closed by remote peer"}"#,
+                )?;
+                return Ok(());
             }
             Err(e) => {
                 websockets.sockets.remove(socket_id);
-                return Err(Error::msg(format!("WebSocket receive error: {e}")));
+                write_output(
+                    plugin,
+                    outputs,
+                    &serde_json::json!({
+                        "text": "",
+                        "error": format!("WebSocket receive error: {e}")
+                    })
+                    .to_string(),
+                )?;
+                return Ok(());
             }
         }
     }
