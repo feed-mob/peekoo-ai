@@ -16,6 +16,7 @@ const CONFIG_DEFAULT_PAGE_SIZE = "default_page_size";
 const DEVICE_KEY_ALIAS = "openclaw-device-v2";
 const DEFAULT_WEBSOCKET_URL = "ws://127.0.0.1:18789";
 const DEFAULT_PAGE_SIZE: i32 = 10;
+const MAX_CACHE_PAYLOAD_CHARS: i32 = 200000;
 
 class OpenClawConfig {
   constructor(
@@ -152,10 +153,14 @@ export function tool_openclaw_chat_send(): i32 {
 function refreshSessions(page: i32, pageSize: i32): string {
   // Keep refresh payload small and stable. Large preview/title fields can make
   // gateway responses brittle for downstream parsing in constrained runtimes.
-  const params = '{"limit":100}';
+  const params = '{"limit":30}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
-    state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
+    if (payload.length <= MAX_CACHE_PAYLOAD_CHARS) {
+      state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
+    } else {
+      state.del(STATE_SESSIONS_CACHE);
+    }
     notify.send("OpenClaw Sessions", "Sessions refreshed successfully");
   }
   return payload;
