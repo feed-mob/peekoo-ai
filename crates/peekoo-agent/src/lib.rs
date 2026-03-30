@@ -8,7 +8,6 @@
 
 pub mod backend;
 pub mod config;
-pub mod process;
 pub mod service;
 pub mod session_store;
 
@@ -37,5 +36,5 @@ pub use backend::{
     StopReason, TokenUsage,
 };
 
-/// Re-export process utilities for cross-platform command execution
-pub use crate::process::{command_available, resolve_command};
+/// Re-export process utilities from peekoo-utils for cross-platform command execution
+pub use peekoo_utils::{command_available, resolve_command};

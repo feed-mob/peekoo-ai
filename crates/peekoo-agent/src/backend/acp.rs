@@ -8,7 +8,7 @@
 //! with a single-threaded tokio runtime that runs within a LocalSet.
 
 use super::*;
-use crate::process::resolve_command;
+use peekoo_utils::process::resolve_command;
 use agent_client_protocol as acp;
 use std::collections::HashMap;
 use std::process::Stdio;

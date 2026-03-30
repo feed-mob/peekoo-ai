@@ -4,7 +4,7 @@
 //! ACP-compatible agent providers (pi-acp, opencode, claude-code, codex, custom).
 
 use anyhow;
-use peekoo_agent::process::{command_available, resolve_command};
+use peekoo_utils::{command_available, resolve_command};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -638,7 +638,7 @@ impl AgentProviderService {
         }
 
         // Check if Node.js is available for npx
-        let has_node = which::which("node").is_ok() && which::which("npm").is_ok();
+        let has_node = command_available("node") && command_available("npm");
 
         methods.push(InstallationMethodInfo {
             id: InstallationMethod::Npx,
@@ -1339,8 +1339,8 @@ impl AgentProviderService {
     ) -> anyhow::Result<PrerequisitesCheck> {
         match method {
             InstallationMethod::Npx => {
-                let has_node = which::which("node").is_ok();
-                let has_npm = which::which("npm").is_ok();
+                let has_node = command_available("node");
+                let has_npm = command_available("npm");
 
                 if has_node && has_npm {
                     Ok(PrerequisitesCheck {

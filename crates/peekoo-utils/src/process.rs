@@ -46,9 +46,9 @@ pub fn resolve_command<S: AsRef<OsStr>>(command: S) -> std::path::PathBuf {
 ///
 /// # Example
 /// ```
-/// use peekoo_agent::process::Command;
+/// use peekoo_utils::process::command;
 ///
-/// let mut cmd = Command::new("npm"); // Will resolve to "npm.cmd" on Windows
+/// let mut cmd = command("npm"); // Will resolve to "npm.cmd" on Windows
 /// cmd.arg("--version");
 /// ```
 pub fn command<S: AsRef<OsStr>>(program: S) -> std::process::Command {
@@ -62,7 +62,7 @@ pub fn command<S: AsRef<OsStr>>(program: S) -> std::process::Command {
 ///
 /// # Example
 /// ```
-/// use peekoo_agent::process::tokio_command;
+/// use peekoo_utils::process::tokio_command;
 ///
 /// let mut cmd = tokio_command("npm"); // Will resolve to "npm.cmd" on Windows
 /// cmd.arg("--version");
@@ -77,7 +77,7 @@ pub fn tokio_command<S: AsRef<OsStr>>(program: S) -> tokio::process::Command {
 ///
 /// # Example
 /// ```
-/// use peekoo_agent::process::command_available;
+/// use peekoo_utils::process::command_available;
 ///
 /// if command_available("npm") {
 ///     println!("npm is available");

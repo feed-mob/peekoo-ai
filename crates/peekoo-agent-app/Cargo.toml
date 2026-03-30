@@ -10,6 +10,7 @@ plugin-runtime = ["peekoo-plugin-host/plugin-runtime"]
 [dependencies]
 agent-client-protocol = "0.10"
 peekoo-agent = { path = "../peekoo-agent" }
+peekoo-utils = { path = "../peekoo-utils" }
 peekoo-app-settings = { path = "../peekoo-app-settings" }
 peekoo-agent-auth = { path = "../peekoo-agent-auth" }
 peekoo-task-domain = { path = "../peekoo-task-domain" }
@@ -37,7 +38,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 regex = "1"
 lazy_static = "1"
-which = "6"
 anyhow = "1"
 
 [dev-dependencies]

@@ -170,9 +170,8 @@ pub enum AgentEvent {
 /// ACP-based backend implementation
 pub mod acp;
 
-// Re-export AcpBackend and process utilities for convenience
+// Re-export AcpBackend for convenience
 pub use acp::AcpBackend;
-pub use crate::process::resolve_command;
 
 #[cfg(test)]
 mod tests {
