@@ -8,7 +8,7 @@ use peekoo_utils::{command_available, resolve_command};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -833,11 +833,10 @@ impl AgentProviderService {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
 
-        if use_cache {
-            if let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
+        if use_cache
+            && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
                 return Ok(cached);
             }
-        }
 
         // Get runtime info
         let runtime = self.get_runtime(runtime_id)?;
@@ -1193,7 +1192,7 @@ impl AgentProviderService {
     }
 
     /// Download provider binary
-    fn download_provider_binary(data_dir: &PathBuf, provider_id: &str) -> anyhow::Result<()> {
+    fn download_provider_binary(data_dir: &Path, provider_id: &str) -> anyhow::Result<()> {
         // In production, this would download from a release URL
         // For now, just verify the directory exists
         let provider_dir = data_dir.join("providers").join(provider_id);
@@ -1539,7 +1538,7 @@ impl AgentProviderService {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::PathBuf;
+use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {
