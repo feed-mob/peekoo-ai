@@ -35,3 +35,6 @@ pub use backend::{
     AgentEvent, BackendConfig, ContentBlock, Message, MessageRole, ModelInfo, PromptResult,
     StopReason, TokenUsage,
 };
+
+/// Re-export process utilities from peekoo-utils for cross-platform command execution
+pub use peekoo_utils::{command_available, resolve_command};

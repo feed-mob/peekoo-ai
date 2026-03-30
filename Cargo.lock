@@ -1673,6 +1673,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_home"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7f84e12ccf0a7ddc17a6c41c93326024c42920d7ee630d04950e6926645c0fe"
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2508,15 +2514,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c49c37c09c17a53d937dfbb742eb3a961d65a994e6bcdcf37e7399d0cc8ab5e"
 dependencies = [
  "digest",
-]
-
-[[package]]
-name = "home"
-version = "0.5.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cc627f471c528ff0c4a49e1d5e60450c8f6461dd6d10ba9dcd3a61d3dff7728d"
-dependencies = [
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3773,6 +3770,7 @@ dependencies = [
  "futures",
  "peekoo-paths",
  "peekoo-persistence-sqlite",
+ "peekoo-utils",
  "rand 0.8.5",
  "rmcp",
  "rusqlite",
@@ -3832,6 +3830,7 @@ dependencies = [
  "peekoo-security",
  "peekoo-task-app",
  "peekoo-task-domain",
+ "peekoo-utils",
  "regex",
  "reqwest 0.12.28",
  "rusqlite",
@@ -3843,7 +3842,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "uuid",
- "which",
 ]
 
 [[package]]
@@ -4054,6 +4052,14 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 1.0.69",
+]
+
+[[package]]
+name = "peekoo-utils"
+version = "0.1.0"
+dependencies = [
+ "tokio",
+ "which",
 ]
 
 [[package]]
@@ -7848,13 +7854,13 @@ dependencies = [
 
 [[package]]
 name = "which"
-version = "6.0.3"
+version = "7.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
+checksum = "24d643ce3fd3e5b54854602a080f34fb10ab75e0b813ee32d00ca2b44fa74762"
 dependencies = [
  "either",
- "home",
- "rustix 0.38.44",
+ "env_home",
+ "rustix 1.1.4",
  "winsafe",
 ]
 

@@ -4,10 +4,11 @@
 //! ACP-compatible agent providers (pi-acp, opencode, claude-code, codex, custom).
 
 use anyhow;
+use peekoo_utils::{command_available, resolve_command};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -70,10 +71,6 @@ impl RuntimeInfo {
 
 fn is_builtin_runtime(provider_id: &str) -> bool {
     matches!(provider_id, "pi-acp" | "opencode" | "claude-code" | "codex")
-}
-
-fn command_available(command: &str) -> bool {
-    which::which(command).is_ok()
 }
 
 /// Installation method information
@@ -641,7 +638,7 @@ impl AgentProviderService {
         }
 
         // Check if Node.js is available for npx
-        let has_node = which::which("node").is_ok() && which::which("npm").is_ok();
+        let has_node = command_available("node") && command_available("npm");
 
         methods.push(InstallationMethodInfo {
             id: InstallationMethod::Npx,
@@ -836,10 +833,8 @@ impl AgentProviderService {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
 
-        if use_cache {
-            if let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
-                return Ok(cached);
-            }
+        if use_cache && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
+            return Ok(cached);
         }
 
         // Get runtime info
@@ -1181,7 +1176,8 @@ impl AgentProviderService {
         };
 
         // Try to get package info from npm registry
-        let output = Command::new("npm")
+        let resolved_npm = resolve_command("npm");
+        let output = Command::new(&resolved_npm)
             .args(["view", package, "version"])
             .output()
             .map_err(|e| anyhow::anyhow!("Failed to run npm: {}", e))?;
@@ -1195,7 +1191,7 @@ impl AgentProviderService {
     }
 
     /// Download provider binary
-    fn download_provider_binary(data_dir: &PathBuf, provider_id: &str) -> anyhow::Result<()> {
+    fn download_provider_binary(data_dir: &Path, provider_id: &str) -> anyhow::Result<()> {
         // In production, this would download from a release URL
         // For now, just verify the directory exists
         let provider_dir = data_dir.join("providers").join(provider_id);
@@ -1341,8 +1337,8 @@ impl AgentProviderService {
     ) -> anyhow::Result<PrerequisitesCheck> {
         match method {
             InstallationMethod::Npx => {
-                let has_node = which::which("node").is_ok();
-                let has_npm = which::which("npm").is_ok();
+                let has_node = command_available("node");
+                let has_npm = command_available("npm");
 
                 if has_node && has_npm {
                     Ok(PrerequisitesCheck {
@@ -1541,7 +1537,7 @@ impl AgentProviderService {
 mod tests {
     use super::*;
     use std::collections::HashMap;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {

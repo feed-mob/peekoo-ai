@@ -521,7 +521,9 @@ impl AgentApplication {
                 .default_model
                 .clone()
                 .filter(|value| !value.trim().is_empty())
-                .unwrap_or_else(|| crate::settings::default_model_for_provider(provider_id).to_string());
+                .unwrap_or_else(|| {
+                    crate::settings::default_model_for_provider(provider_id).to_string()
+                });
 
             self.settings
                 .update_settings(AgentSettingsPatchDto {
@@ -1331,7 +1333,6 @@ impl AgentApplication {
             task_change_callback,
         )
     }
-
 }
 
 fn should_restore_agent(captured_generation: u64, current_generation: u64) -> bool {
