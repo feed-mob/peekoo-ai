@@ -51,6 +51,11 @@ export function ChatPanel() {
       return;
     }
 
+    if (defaultProvider.config.defaultModel) {
+      setCurrentModelDisplay(defaultProvider.config.defaultModel);
+      return;
+    }
+
     void getRuntimeDefaults(defaultProvider.providerId)
       .then(({ model }) => {
         if (!cancelled) {
@@ -125,7 +130,11 @@ export function ChatPanel() {
         </div>
 
         {showSettings && (
-          <ChatSettingsPanel onClose={() => setShowSettings(false)} />
+          <ChatSettingsPanel
+            onClose={() => setShowSettings(false)}
+            activeRuntimeName={defaultProvider?.displayName ?? null}
+            configuredModelId={defaultProvider?.config.defaultModel ?? null}
+          />
         )}
       </div>
 

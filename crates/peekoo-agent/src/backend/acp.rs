@@ -502,12 +502,11 @@ impl AcpBackend {
                             AcpCommand::SetModel { model, resp } => {
                                 let result = async {
                                     if let Some(ref session_id) = acp_session_id {
-                                        let request = acp::SetSessionConfigOptionRequest::new(
+                                        let request = acp::SetSessionModelRequest::new(
                                             session_id.clone(),
-                                            acp::SessionConfigId::new("model"),
-                                            acp::SessionConfigValueId::new(model.as_str()),
+                                            acp::ModelId::new(model.as_str()),
                                         );
-                                        connection.set_session_config_option(request).await?;
+                                        connection.set_session_model(request).await?;
                                         current_model_id = Some(model);
                                         Ok(())
                                     } else {
@@ -634,6 +633,17 @@ pub fn is_auth_required_error(error: &anyhow::Error) -> bool {
         .is_some_and(|acp_error| acp_error.code == acp::ErrorCode::AuthRequired)
 }
 
+fn should_apply_configured_model<'a>(
+    configured_model: Option<&'a str>,
+    current_model: Option<&str>,
+) -> Option<&'a str> {
+    let configured_model = configured_model?.trim();
+    if configured_model.is_empty() || current_model == Some(configured_model) {
+        return None;
+    }
+    Some(configured_model)
+}
+
 #[async_trait]
 impl AgentBackend for AcpBackend {
     async fn initialize(&mut self, config: BackendConfig) -> anyhow::Result<()> {
@@ -649,6 +659,7 @@ impl AgentBackend for AcpBackend {
         self.system_prompt = config.system_prompt.clone();
         self.mcp_servers = config.mcp_servers.clone();
         self.auth_required.store(false, Ordering::Relaxed);
+        let desired_model = config.model.clone();
 
         if let Some(provider) = config.provider.clone() {
             self.model_info.provider = provider;
@@ -696,6 +707,31 @@ impl AgentBackend for AcpBackend {
         };
         self.discovered_models = session_result.models;
         self.current_model_id = session_result.current_model;
+
+        if let Some(model) = should_apply_configured_model(
+            desired_model.as_deref(),
+            self.current_model_id.as_deref(),
+        ) {
+            let (tx, rx) = oneshot::channel();
+            cmd_tx
+                .send(AcpCommand::SetModel {
+                    model: model.to_string(),
+                    resp: tx,
+                })
+                .await?;
+
+            match rx.await? {
+                Ok(()) => {
+                    self.auth_required.store(false, Ordering::Relaxed);
+                    self.current_model_id = Some(model.to_string());
+                }
+                Err(error) => {
+                    self.auth_required
+                        .store(is_auth_required_error(&error), Ordering::Relaxed);
+                    return Err(error);
+                }
+            }
+        }
 
         if let Some(ref current) = self.current_model_id {
             self.model_info.model = current.clone();
@@ -898,6 +934,29 @@ mod tests {
         let error = anyhow::Error::new(acp::Error::internal_error());
 
         assert!(!is_auth_required_error(&error));
+    }
+
+    #[test]
+    fn applies_configured_model_when_session_model_differs() {
+        assert_eq!(
+            should_apply_configured_model(Some("opencode/mimo-v2-omni-free"), Some("opencode/big-pickle")),
+            Some("opencode/mimo-v2-omni-free")
+        );
+    }
+
+    #[test]
+    fn skips_configured_model_when_session_already_matches() {
+        assert_eq!(
+            should_apply_configured_model(Some("opencode/mimo-v2-omni-free"), Some("opencode/mimo-v2-omni-free")),
+            None
+        );
+    }
+
+    #[test]
+    fn skips_empty_or_missing_configured_model() {
+        assert_eq!(should_apply_configured_model(None, Some("opencode/big-pickle")), None);
+        assert_eq!(should_apply_configured_model(Some(""), Some("opencode/big-pickle")), None);
+        assert_eq!(should_apply_configured_model(Some("   "), Some("opencode/big-pickle")), None);
     }
 
     #[test]

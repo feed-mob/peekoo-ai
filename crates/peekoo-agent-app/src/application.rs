@@ -513,7 +513,28 @@ impl AgentApplication {
     ) -> Result<(), String> {
         self.provider_service
             .update_provider_config(provider_id, config)
-            .map_err(|e| format!("Update provider config error: {e}"))
+            .map_err(|e| format!("Update provider config error: {e}"))?;
+
+        let settings = self.settings.get_settings()?;
+        if settings.active_provider_id == provider_id {
+            let model = config
+                .default_model
+                .clone()
+                .filter(|value| !value.trim().is_empty())
+                .unwrap_or_else(|| crate::settings::default_model_for_provider(provider_id).to_string());
+
+            self.settings
+                .update_settings(AgentSettingsPatchDto {
+                    active_provider_id: None,
+                    active_model_id: Some(model),
+                    system_prompt: None,
+                    max_tool_iterations: None,
+                    skills: None,
+                })
+                .map(|_| ())?;
+        }
+
+        Ok(())
     }
 
     pub async fn test_agent_provider_connection(

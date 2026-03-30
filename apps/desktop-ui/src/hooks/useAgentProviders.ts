@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
 import {
   type RuntimeInfo,
   type RuntimeConfig,
@@ -35,6 +36,18 @@ export function useAgentProviders() {
       setIsLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+
+    const unlisten = listen("agent-settings-changed", () => {
+      void refresh();
+    });
+
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [refresh]);
 
   // Install a provider
   const installProvider = useCallback(
