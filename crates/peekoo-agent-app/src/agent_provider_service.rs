@@ -2,8 +2,13 @@
 //!
 //! This service manages the installation, configuration, and lifecycle of
 //! ACP-compatible agent providers (pi-acp, opencode, claude-code, codex, custom).
+//!
+//! ## ACP Registry Integration
+//! The service now integrates with the ACP registry to support 40+ agents.
+//! See: crates/acp-registry-client for registry client implementation.
 
 use anyhow;
+use anyhow::Context;
 use peekoo_utils::{command_available, resolve_command};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
@@ -15,6 +20,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use agent_client_protocol as acp;
 
 use crate::runtime_adapters::adapter_for_runtime;
+
+// Re-export registry types for convenience
+pub use acp_registry_client::{RegistryClient, InstallMethod as RegistryInstallMethod};
+pub use acp_registry_client::types::{Agent as RegistryAgent, AvailableAgent};
+use acp_registry_client::platform::{is_supported_on, supported_methods_on, preferred_method_for};
 
 /// Provider installation method
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -75,6 +85,93 @@ impl RuntimeInfo {
 
 fn is_builtin_runtime(provider_id: &str) -> bool {
     matches!(provider_id, "pi-acp" | "opencode" | "claude-code" | "codex")
+}
+
+/// Registry agent info for displaying ACP registry agents in UI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RegistryAgentInfo {
+    /// The registry ID (e.g., "gemini", "cursor")
+    pub registry_id: String,
+    /// Display name from registry
+    pub name: String,
+    /// Version from registry
+    pub version: String,
+    /// Description from registry
+    pub description: String,
+    /// Authors from registry
+    pub authors: Vec<String>,
+    /// License from registry
+    pub license: String,
+    /// Website URL from registry
+    pub website: Option<String>,
+    /// Icon URL from registry
+    pub icon_url: Option<String>,
+    /// Platforms supported by this agent
+    pub supported_platforms: Vec<String>,
+    /// Installation methods available (as strings for frontend)
+    pub supported_methods: Vec<String>,
+    /// Whether this agent is supported on current platform
+    pub is_supported_on_current_platform: bool,
+    /// Preferred installation method (as string for frontend)
+    pub preferred_method: Option<String>,
+    /// Whether this agent is already installed
+    pub is_installed: bool,
+    /// Installed version (if installed)
+    pub installed_version: Option<String>,
+    /// Display order for custom sorting (built-ins first)
+    pub display_order: i32,
+}
+
+/// Filter options for fetching registry agents
+#[derive(Debug, Clone, Default)]
+pub struct RegistryFilterOptions {
+    /// Search query to filter agents by name/description
+    pub search_query: Option<String>,
+    /// Only show agents supported on current platform
+    pub platform_only: bool,
+    /// Filter by specific installation method (using registry method type)
+    pub method_filter: Option<acp_registry_client::InstallMethod>,
+    /// Sort order
+    pub sort_by: RegistrySortBy,
+    /// Page number (1-based)
+    pub page: usize,
+    /// Page size (default: 20)
+    pub page_size: usize,
+}
+
+/// Sort options for registry agents
+#[derive(Debug, Clone, Copy, Default)]
+pub enum RegistrySortBy {
+    /// Featured order: built-ins first, then by display_order
+    #[default]
+    Featured,
+    /// Alphabetical by name
+    Name,
+    /// Platform compatibility (supported first)
+    PlatformSupport,
+}
+
+/// Calculate display order for custom sorting
+/// Built-ins: 0-3, Popular: 4-10, Alphabetical: 100+
+pub fn calculate_display_order(registry_id: &str) -> i32 {
+    match registry_id {
+        "opencode" => 0,
+        "pi-acp" => 1,
+        "codex-acp" => 2,
+        "claude-acp" => 3,
+        "gemini" => 4,
+        "cursor" => 5,
+        "goose" => 6,
+        "kimi" => 7,
+        "qwen-code" => 8,
+        "cline" => 9,
+        "auggie" => 10,
+        _ => {
+            // Alphabetical order for rest
+            100 + registry_id.chars().next().map(|c| c as i32).unwrap_or(127)
+        }
+    }
 }
 
 /// Installation method information
@@ -218,6 +315,8 @@ pub struct AgentProviderService {
     data_dir: PathBuf,
     inspection_cache: Arc<Mutex<HashMap<String, RuntimeInspectionResult>>>,
     bundled_opencode_path: Option<PathBuf>,
+    /// ACP registry client for fetching and installing agents from registry
+    registry_client: Option<RegistryClient>,
 }
 
 impl AgentProviderService {
@@ -242,11 +341,15 @@ impl AgentProviderService {
 
         Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
 
+        // Initialize registry client (may fail if no network/cache, but service still works)
+        let registry_client = RegistryClient::new().ok();
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
             inspection_cache: Arc::new(Mutex::new(HashMap::new())),
             bundled_opencode_path,
+            registry_client,
         })
     }
 
@@ -274,11 +377,15 @@ impl AgentProviderService {
 
         Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
 
+        // Don't initialize registry client in tests to avoid network calls
+        let registry_client = None;
+
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
             inspection_cache: Arc::new(Mutex::new(HashMap::new())),
             bundled_opencode_path,
+            registry_client,
         })
     }
 
@@ -1542,6 +1649,351 @@ impl AgentProviderService {
         }
 
         self.invalidate_runtime_inspection_cache(provider_id)?;
+
+        Ok(())
+    }
+
+    // =========================================================================
+    // ACP Registry Integration Methods
+    // =========================================================================
+
+    /// Fetch agents from ACP registry with filtering and pagination
+    ///
+    /// Returns (agents, total_count) where total_count is the total number
+    /// of agents matching the filter (for pagination UI)
+    pub async fn fetch_registry_agents(
+        &self,
+        filter: &RegistryFilterOptions,
+    ) -> anyhow::Result<(Vec<RegistryAgentInfo>, usize)> {
+        // Check if registry client is available
+        let registry_client = match &self.registry_client {
+            Some(client) => client,
+            None => {
+                return Err(anyhow::anyhow!(
+                    "Registry client not available. Cannot fetch agents from ACP registry."
+                ));
+            }
+        };
+
+        // Fetch registry from CDN/cache
+        let registry = registry_client.fetch().await
+            .context("Failed to fetch ACP registry")?;
+
+        // Get current platform
+        let platform = acp_registry_client::current_platform();
+
+        // Convert registry agents to RegistryAgentInfo
+        let mut agents: Vec<RegistryAgentInfo> = registry.agents
+            .into_iter()
+            .filter_map(|agent| {
+                // Check platform support
+                let supported_methods = supported_methods_on(&agent, &platform);
+                let is_supported = is_supported_on(&agent, &platform);
+                let preferred_method = preferred_method_for(&agent, &platform);
+
+                // Filter by platform if requested
+                if filter.platform_only && !is_supported {
+                    return None;
+                }
+
+                // Filter by method if requested
+                if let Some(method_filter) = filter.method_filter {
+                    if !supported_methods.contains(&method_filter) {
+                        return None;
+                    }
+                }
+
+                // Search filter
+                if let Some(query) = &filter.search_query {
+                    let query_lower = query.to_lowercase();
+                    let matches_search = agent.name.to_lowercase().contains(&query_lower)
+                        || agent.id.to_lowercase().contains(&query_lower)
+                        || agent.description.to_lowercase().contains(&query_lower);
+                    if !matches_search {
+                        return None;
+                    }
+                }
+
+                // Get supported platforms
+                let supported_platforms = agent.distribution.binary.as_ref()
+                    .map(|b| b.keys().cloned().collect())
+                    .unwrap_or_default();
+
+                // Convert methods to strings
+                let supported_methods: Vec<String> = supported_methods.iter()
+                    .map(|m| format!("{:?}", m).to_lowercase())
+                    .collect();
+                let preferred_method = preferred_method.map(|m| format!("{:?}", m).to_lowercase());
+
+                // Check if already installed
+                let is_installed = self.is_registry_agent_installed(&agent.id).unwrap_or(false);
+                let installed_version = if is_installed {
+                    self.get_registry_agent_version(&agent.id).ok()
+                } else {
+                    None
+                };
+
+                // Calculate display order
+                let display_order = calculate_display_order(&agent.id);
+
+                Some(RegistryAgentInfo {
+                    registry_id: agent.id,
+                    name: agent.name,
+                    version: agent.version,
+                    description: agent.description,
+                    authors: agent.authors,
+                    license: agent.license,
+                    website: agent.website,
+                    icon_url: agent.icon,
+                    supported_platforms,
+                    supported_methods,
+                    is_supported_on_current_platform: is_supported,
+                    preferred_method,
+                    is_installed,
+                    installed_version,
+                    display_order,
+                })
+            })
+            .collect();
+
+        // Sort
+        match filter.sort_by {
+            RegistrySortBy::Featured => {
+                // Sort by display_order, then by name
+                agents.sort_by(|a, b| {
+                    a.display_order.cmp(&b.display_order)
+                        .then_with(|| a.name.cmp(&b.name))
+                });
+            }
+            RegistrySortBy::Name => {
+                agents.sort_by(|a, b| a.name.cmp(&b.name));
+            }
+            RegistrySortBy::PlatformSupport => {
+                // Supported agents first, then by display_order
+                agents.sort_by(|a, b| {
+                    let a_support = if a.is_supported_on_current_platform { 0 } else { 1 };
+                    let b_support = if b.is_supported_on_current_platform { 0 } else { 1 };
+                    a_support.cmp(&b_support)
+                        .then_with(|| a.display_order.cmp(&b.display_order))
+                });
+            }
+        }
+
+        // Get total count before pagination
+        let total_count = agents.len();
+
+        // Apply pagination
+        let start = (filter.page - 1) * filter.page_size;
+        let end = std::cmp::min(start + filter.page_size, agents.len());
+        let paginated: Vec<_> = if start < agents.len() {
+            agents[start..end].to_vec()
+        } else {
+            vec![]
+        };
+
+        Ok((paginated, total_count))
+    }
+
+    /// Search registry agents by query
+    pub async fn search_registry_agents(
+        &self,
+        query: &str,
+    ) -> anyhow::Result<Vec<RegistryAgentInfo>> {
+        let filter = RegistryFilterOptions {
+            search_query: Some(query.to_string()),
+            platform_only: false,
+            sort_by: RegistrySortBy::Featured,
+            page: 1,
+            page_size: 100, // Large page size for search results
+            ..Default::default()
+        };
+
+        let (agents, _) = self.fetch_registry_agents(&filter).await?;
+        Ok(agents)
+    }
+
+    /// Force refresh registry from CDN (ignores cache)
+    pub async fn refresh_registry(&self) -> anyhow::Result<()> {
+        let registry_client = match &self.registry_client {
+            Some(client) => client,
+            None => {
+                return Err(anyhow::anyhow!("Registry client not available"));
+            }
+        };
+
+        registry_client.refresh().await
+            .context("Failed to refresh registry from CDN")?;
+
+        Ok(())
+    }
+
+    /// Install an agent from ACP registry
+    pub async fn install_registry_agent(
+        &self,
+        registry_id: &str,
+        method: InstallationMethod,
+    ) -> anyhow::Result<InstallProviderResponse> {
+        // Fetch agent info from registry
+        let registry_client = match &self.registry_client {
+            Some(client) => client,
+            None => {
+                return Err(anyhow::anyhow!("Registry client not available"));
+            }
+        };
+
+        let registry = registry_client.fetch().await
+            .context("Failed to fetch registry")?;
+
+        let agent = registry.agents.iter()
+            .find(|a| a.id == registry_id)
+            .ok_or_else(|| anyhow::anyhow!("Agent {} not found in registry", registry_id))?;
+
+        // Check if agent is supported on current platform
+        let platform = acp_registry_client::current_platform();
+        if !is_supported_on(&agent, &platform) {
+            return Err(anyhow::anyhow!(
+                "Agent {} is not supported on platform {}",
+                registry_id, platform
+            ));
+        }
+
+        // Create install directory
+        let install_dir = peekoo_paths::peekoo_global_data_dir()
+            .map_err(|e| anyhow::anyhow!("Failed to get data dir: {}", e))?
+            .join("resources")
+            .join("agents")
+            .join(registry_id);
+
+        // Install based on method
+        match method {
+            InstallationMethod::Npx => {
+                // TODO: Implement NPX installation using peekoo-node-runtime
+                // This requires NodeRuntime to be available
+                unimplemented!("NPX installation from registry not yet implemented")
+            }
+            InstallationMethod::Binary => {
+                // Get binary platform info
+                let platform_info = agent.distribution.binary.as_ref()
+                    .and_then(|b| b.get(&platform))
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "No binary distribution for agent {} on platform {}",
+                        registry_id, platform
+                    ))?;
+
+                // Download and extract
+                let install_config = acp_registry_client::InstallConfig {
+                    agent: agent.clone(),
+                    method: Some(acp_registry_client::InstallMethod::Binary),
+                    install_dir,
+                };
+
+                let installation = acp_registry_client::install(install_config, None).await
+                    .context("Failed to install binary agent")?;
+
+                // Create runtime entry in database
+                self.create_runtime_from_registry(
+                    agent,
+                    method,
+                    &installation.executable_path,
+                    &installation.command,
+                )?;
+
+                Ok(InstallProviderResponse {
+                    success: true,
+                    message: format!(
+                        "Successfully installed {} ({})",
+                        agent.name, agent.version
+                    ),
+                    requires_restart: false,
+                })
+            }
+            _ => {
+                Err(anyhow::anyhow!("Installation method {:?} not supported for registry agents", method))
+            }
+        }
+    }
+
+    // Helper function to check if registry agent is installed
+    fn is_registry_agent_installed(&self, registry_id: &str) -> anyhow::Result<bool> {
+        let conn = self.conn()?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM agent_runtimes WHERE registry_id = ?1 AND is_installed = 1",
+            params![registry_id],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    // Helper function to get installed version
+    fn get_registry_agent_version(&self, registry_id: &str) -> anyhow::Result<String> {
+        let conn = self.conn()?;
+        let version: String = conn.query_row(
+            "SELECT registry_version FROM agent_runtimes WHERE registry_id = ?1",
+            params![registry_id],
+            |row| row.get(0),
+        )?;
+        Ok(version)
+    }
+
+    // Helper function to create runtime entry from registry
+    fn create_runtime_from_registry(
+        &self,
+        agent: &acp_registry_client::types::Agent,
+        method: InstallationMethod,
+        executable_path: &std::path::Path,
+        command: &[String],
+    ) -> anyhow::Result<()> {
+        let conn = self.conn()?;
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let runtime_id = format!("provider_{}", agent.id);
+        let command_str = command.first()
+            .map(|s| s.as_str())
+            .unwrap_or(executable_path.to_str().unwrap_or(""));
+        let args: Vec<String> = command.iter().skip(1).cloned().collect();
+
+        conn.execute(
+            "INSERT OR REPLACE INTO agent_runtimes (
+                id, runtime_type, display_name, description, command, args_json,
+                installation_method, is_bundled, is_installed, is_default, is_enabled,
+                status, status_message, install_hint, config_json,
+                registry_source, registry_id, registry_version, registry_metadata, last_registry_sync,
+                created_at, updated_at
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+            params![
+                runtime_id,
+                agent.id,
+                agent.name,
+                agent.description,
+                command_str,
+                serde_json::to_string(&args)?,
+                match method {
+                    InstallationMethod::Npx => "npx",
+                    InstallationMethod::Binary => "binary",
+                    _ => "custom",
+                },
+                0, // is_bundled
+                1, // is_installed
+                0, // is_default
+                1, // is_enabled
+                "ready",
+                None::<String>,
+                None::<String>,
+                "{}", // config_json
+                "acp_registry",
+                agent.id,
+                agent.version,
+                serde_json::to_string(&serde_json::json!({
+                    "authors": agent.authors,
+                    "license": agent.license,
+                    "website": agent.website,
+                    "repository": agent.repository,
+                }))?,
+                now.clone(),
+                now.clone(),
+                now,
+            ],
+        )?;
 
         Ok(())
     }

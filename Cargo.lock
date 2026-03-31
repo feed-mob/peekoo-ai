@@ -4016,6 +4016,7 @@ dependencies = [
 name = "peekoo-agent-app"
 version = "0.1.0"
 dependencies = [
+ "acp-registry-client",
  "agent-client-protocol",
  "anyhow",
  "asupersync",
@@ -4026,6 +4027,7 @@ dependencies = [
  "peekoo-agent-auth",
  "peekoo-app-settings",
  "peekoo-mcp-server",
+ "peekoo-node-runtime",
  "peekoo-notifications",
  "peekoo-paths",
  "peekoo-persistence-sqlite",
