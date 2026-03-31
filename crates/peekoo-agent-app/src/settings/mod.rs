@@ -14,9 +14,7 @@ use peekoo_security::{
 use rusqlite::Connection;
 use uuid::Uuid;
 
-use crate::settings::catalog::{
-    default_api_for_provider, default_auth_header_for_provider,
-};
+use crate::settings::catalog::{default_api_for_provider, default_auth_header_for_provider};
 use crate::settings::skills::discover_skills;
 use crate::settings::store::SettingsStore;
 
@@ -416,7 +414,9 @@ mod tests {
 
         // Verify it works when the secret exists
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base, "pi-acp", None).expect("config with key");
+        let (config, _version) = svc
+            .to_agent_config(base, "pi-acp", None)
+            .expect("config with key");
         assert_eq!(config.api_key.as_deref(), Some("sk-test-123"));
 
         // Now remove the secret from the store (simulates keyring failure)
@@ -503,7 +503,9 @@ mod tests {
         assert_eq!(auth.auth_mode, "api_key");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base, "pi-acp", None).expect("resolve config");
+        let (config, _version) = svc
+            .to_agent_config(base, "pi-acp", None)
+            .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("sk-fallback"));
 
         let _ = std::fs::remove_file(&db_path);
@@ -529,7 +531,9 @@ mod tests {
             .expect("set oauth refs");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base, "codex", None).expect("resolve config");
+        let (config, _version) = svc
+            .to_agent_config(base, "codex", None)
+            .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);

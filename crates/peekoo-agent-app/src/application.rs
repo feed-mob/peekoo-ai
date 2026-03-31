@@ -39,7 +39,8 @@ use crate::settings::{
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
     SettingsService,
-};use crate::task_notification_scheduler::TaskNotificationScheduler;
+};
+use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
 use peekoo_plugin_store::{PluginStoreService, StorePluginDto};
 use peekoo_task_app::SqliteTaskService;
@@ -1188,7 +1189,8 @@ impl AgentApplication {
         let model_id = default_runtime.config.default_model.as_deref();
 
         let (mut config, settings_version) =
-            self.settings.to_agent_config(config, &provider_id, model_id)?;
+            self.settings
+                .to_agent_config(config, &provider_id, model_id)?;
 
         // Enable session persistence.
         config.no_session = false;

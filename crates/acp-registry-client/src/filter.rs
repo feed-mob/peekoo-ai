@@ -7,11 +7,14 @@ use crate::types::{Agent, AvailableAgent, InstallMethod};
 pub fn filter_agents(agents: &[Agent], options: &FilterOptions) -> Vec<AvailableAgent> {
     let platform = current_platform();
 
-    agents
+    let mut filtered: Vec<_> = agents
         .iter()
         .filter(|agent| filter_single_agent(agent, options, &platform))
         .map(|agent| AvailableAgent::from_agent(agent.clone(), &platform))
-        .collect()
+        .collect();
+
+    sort_agents(&mut filtered, options.sort_by);
+    filtered
 }
 
 /// Filter options for agent list
@@ -235,6 +238,27 @@ mod tests {
         assert_eq!(available[0].agent.name, "Alpha");
         assert_eq!(available[1].agent.name, "Beta");
         assert_eq!(available[2].agent.name, "Zebra");
+    }
+
+    #[test]
+    fn test_filter_agents_applies_sort_order() {
+        let agents = vec![
+            create_test_agent("zebra", "Zebra"),
+            create_test_agent("alpha", "Alpha"),
+            create_test_agent("beta", "Beta"),
+        ];
+
+        let filtered = filter_agents(
+            &agents,
+            &FilterOptions {
+                sort_by: SortBy::Id,
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(filtered[0].agent.id, "alpha");
+        assert_eq!(filtered[1].agent.id, "beta");
+        assert_eq!(filtered[2].agent.id, "zebra");
     }
 
     #[test]

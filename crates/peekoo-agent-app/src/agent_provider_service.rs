@@ -903,7 +903,11 @@ impl AgentProviderService {
                     .map(|m| {
                         let manual_login_command = match m {
                             acp::AuthMethod::Terminal(terminal) => adapter
-                                .build_manual_login_command(&manual_login_command, &manual_login_args, &terminal.args),
+                                .build_manual_login_command(
+                                    &manual_login_command,
+                                    &manual_login_args,
+                                    &terminal.args,
+                                ),
                             _ => None,
                         };
                         AuthMethodInfo {
@@ -957,7 +961,11 @@ impl AgentProviderService {
                     .map(|m| {
                         let manual_login_command = match m {
                             acp::AuthMethod::Terminal(terminal) => adapter
-                                .build_manual_login_command(&manual_login_command, &manual_login_args, &terminal.args),
+                                .build_manual_login_command(
+                                    &manual_login_command,
+                                    &manual_login_args,
+                                    &terminal.args,
+                                ),
                             _ => None,
                         };
                         AuthMethodInfo {

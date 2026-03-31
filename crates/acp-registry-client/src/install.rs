@@ -6,7 +6,7 @@
 //! - UVX: Install Python packages via uvx (future)
 
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 use crate::platform::{current_platform, get_binary_platform_for, preferred_method_for};
@@ -152,21 +152,21 @@ async fn install_npx(
         .await
         .with_context(|| format!("Failed to install NPX package {}", package_spec))?;
 
-    // Build command: npx <package> <args>
-    let mut command = vec!["npx".to_string(), package_spec.to_string()];
-    command.extend(npx_dist.args.iter().cloned());
-
-    // Find npx executable path
-    let npx_path = find_npx_executable(node_runtime).await?;
+    let npm_command = build_npx_command(node_runtime, package_spec, &npx_dist.args).await?;
+    let mut env = npm_command.env;
+    env.extend(npx_dist.env.clone());
+    let executable_path = npm_command.path.clone();
+    let mut command = vec![executable_path.to_string_lossy().to_string()];
+    command.extend(npm_command.args);
 
     Ok(Installation {
         agent_id: config.agent.id.clone(),
         agent_name: config.agent.name.clone(),
         method: InstallMethod::Npx,
-        executable_path: npx_path,
+        executable_path,
         version: config.agent.version.clone(),
         command,
-        env: npx_dist.env.clone(),
+        env,
     })
 }
 
@@ -209,13 +209,15 @@ async fn install_binary(
         // Try to find it by walking the directory
         let found = find_executable_in_dir(&config.install_dir, &platform_info.cmd).await?;
         if let Some(path) = found {
+            let mut command = vec![path.to_string_lossy().to_string()];
+            command.extend(platform_info.args.iter().cloned());
             return Ok(Installation {
                 agent_id: config.agent.id.clone(),
                 agent_name: config.agent.name.clone(),
                 method: InstallMethod::Binary,
                 executable_path: path.clone(),
                 version: config.agent.version.clone(),
-                command: vec![path.to_string_lossy().to_string()],
+                command,
                 env: platform_info.env.clone(),
             });
         }
@@ -292,11 +294,35 @@ pub async fn load_installation_info(install_dir: &PathBuf) -> Result<Option<Inst
 
 fn parse_package_spec(spec: &str) -> (&str, &str) {
     // Parse "package@version" or just "package"
-    if let Some(idx) = spec.rfind('@') {
+    if let Some(idx) = spec
+        .char_indices()
+        .skip(1)
+        .filter_map(|(idx, ch)| (ch == '@').then_some(idx))
+        .last()
+    {
         (&spec[..idx], &spec[idx + 1..])
     } else {
         (spec, "latest")
     }
+}
+
+async fn build_npx_command(
+    node_runtime: &peekoo_node_runtime::NodeRuntime,
+    package_spec: &str,
+    package_args: &[String],
+) -> Result<peekoo_node_runtime::NpmCommand> {
+    let mut exec_args = Vec::with_capacity(package_args.len() + 2);
+    exec_args.push(package_spec.to_string());
+    if !package_args.is_empty() {
+        exec_args.push("--".to_string());
+        exec_args.extend(package_args.iter().cloned());
+    }
+    let exec_args_refs: Vec<_> = exec_args.iter().map(String::as_str).collect();
+
+    node_runtime
+        .npm_command("exec", &exec_args_refs)
+        .await
+        .context("Failed to build NPX command")
 }
 
 async fn download_file(url: &str) -> Result<bytes::Bytes> {
@@ -326,28 +352,37 @@ async fn download_file(url: &str) -> Result<bytes::Bytes> {
     Ok(bytes)
 }
 
-async fn find_npx_executable(_node_runtime: &peekoo_node_runtime::NodeRuntime) -> Result<PathBuf> {
-    // For now, just return "npx" from PATH
-    // In a more robust implementation, we could use the NodeRuntime
-    // to find the exact npx path from the managed Node.js installation
-    Ok(PathBuf::from("npx"))
-}
-
-async fn find_executable_in_dir(dir: &PathBuf, cmd: &str) -> Result<Option<PathBuf>> {
-    let cmd_name = std::path::Path::new(cmd)
+async fn find_executable_in_dir(dir: &Path, cmd: &str) -> Result<Option<PathBuf>> {
+    let cmd_name = Path::new(cmd)
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or(cmd);
 
-    let mut entries = fs::read_dir(dir)
-        .await
-        .context("Failed to read install directory")?;
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current_dir) = stack.pop() {
+        let mut entries = fs::read_dir(&current_dir).await.with_context(|| {
+            format!(
+                "Failed to read install directory: {}",
+                current_dir.display()
+            )
+        })?;
 
-    while let Some(entry) = entries.next_entry().await? {
-        let path = entry.path();
-        if path.is_file() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                if name == cmd_name || name == format!("{}.exe", cmd_name) {
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_type = entry.file_type().await?;
+
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if file_type.is_file() {
+                let matches = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .map(|name| name == cmd_name || name == format!("{}.exe", cmd_name))
+                    .unwrap_or(false);
+                if matches {
                     return Ok(Some(path));
                 }
             }
@@ -366,8 +401,27 @@ mod tests {
         assert_eq!(parse_package_spec("package@1.0.0"), ("package", "1.0.0"));
         assert_eq!(parse_package_spec("package"), ("package", "latest"));
         assert_eq!(
+            parse_package_spec("@scope/package"),
+            ("@scope/package", "latest")
+        );
+        assert_eq!(
             parse_package_spec("@scope/package@2.0.0"),
             ("@scope/package", "2.0.0")
         );
+    }
+
+    #[tokio::test]
+    async fn test_find_executable_in_nested_directory() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let nested_dir = temp_dir.path().join("agent").join("bin");
+        fs::create_dir_all(&nested_dir).await.unwrap();
+        let executable_path = nested_dir.join("agent-cli");
+        fs::write(&executable_path, b"#!/bin/sh").await.unwrap();
+
+        let found = find_executable_in_dir(temp_dir.path(), "agent-cli")
+            .await
+            .unwrap();
+
+        assert_eq!(found, Some(executable_path));
     }
 }

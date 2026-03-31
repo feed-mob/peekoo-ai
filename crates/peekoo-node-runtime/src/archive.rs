@@ -26,23 +26,81 @@ fn safe_zip_entry_path(dest: &Path, entry_name: &str) -> Result<PathBuf> {
     Ok(dest.join(relative))
 }
 
+fn safe_archive_entry_path(dest: &Path, entry_path: &Path) -> Result<PathBuf> {
+    let mut relative = PathBuf::new();
+
+    for component in entry_path.components() {
+        match component {
+            Component::Normal(part) => relative.push(part),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                anyhow::bail!(
+                    "archive entry contains an unsafe path: {}",
+                    entry_path.display()
+                );
+            }
+        }
+    }
+
+    if relative.as_os_str().is_empty() {
+        anyhow::bail!("archive entry resolved to an empty path");
+    }
+
+    Ok(dest.join(relative))
+}
+
 /// Extract a .tar.gz archive to the specified directory
 pub async fn extract_targz(archive: Bytes, dest: &Path) -> Result<()> {
     let dest = dest.to_path_buf();
 
-    // Use spawn_blocking for synchronous tar extraction
     tokio::task::spawn_blocking(move || {
         use flate2::read::GzDecoder;
+        use std::io;
         use std::io::Cursor;
         use tar::Archive;
+        use tar::EntryType;
 
         let cursor = Cursor::new(archive);
         let decoder = GzDecoder::new(cursor);
         let mut archive = Archive::new(decoder);
 
-        archive
-            .unpack(&dest)
-            .context("Failed to extract tar.gz archive")
+        for entry in archive
+            .entries()
+            .context("Failed to read tar.gz archive entries")?
+        {
+            let mut entry = entry.context("Failed to read tar.gz archive entry")?;
+            let entry_type = entry.header().entry_type();
+
+            if entry_type.is_symlink() || entry_type == EntryType::Link {
+                anyhow::bail!("tar archive contains unsupported link entry");
+            }
+
+            let entry_path = entry
+                .path()
+                .context("Failed to resolve tar.gz entry path")?;
+            let outpath = safe_archive_entry_path(&dest, &entry_path)?;
+
+            if entry_type.is_dir() {
+                std::fs::create_dir_all(&outpath)
+                    .context("Failed to create directory from tar.gz")?;
+                continue;
+            }
+
+            if !entry_type.is_file() {
+                anyhow::bail!("tar archive contains unsupported entry type");
+            }
+
+            if let Some(parent) = outpath.parent() {
+                std::fs::create_dir_all(parent)
+                    .context("Failed to create parent directory from tar.gz")?;
+            }
+
+            let mut outfile =
+                std::fs::File::create(&outpath).context("Failed to create file from tar.gz")?;
+            io::copy(&mut entry, &mut outfile).context("Failed to write tar.gz file content")?;
+        }
+
+        Ok(())
     })
     .await
     .context("Task panicked")??;
@@ -95,6 +153,7 @@ pub async fn extract_zip(archive: Bytes, dest: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use tar::Builder;
     use tempfile::tempdir;
     use zip::write::SimpleFileOptions;
 
@@ -120,6 +179,37 @@ mod tests {
         let temp = tempdir().expect("temp dir");
         let result =
             tokio_test::block_on(extract_zip(Bytes::from(buffer.into_inner()), temp.path()));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn safe_archive_entry_path_rejects_traversal() {
+        let root = Path::new("/tmp/root");
+        assert!(safe_archive_entry_path(root, Path::new("../evil.txt")).is_err());
+        assert!(safe_archive_entry_path(root, Path::new("/absolute.txt")).is_err());
+    }
+
+    #[test]
+    fn extract_targz_rejects_symlinks() {
+        let mut tar_buffer = Vec::new();
+        {
+            let encoder =
+                flate2::write::GzEncoder::new(&mut tar_buffer, flate2::Compression::default());
+            let mut builder = Builder::new(encoder);
+
+            let mut header = tar::Header::new_gnu();
+            header.set_entry_type(tar::EntryType::Symlink);
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_cksum();
+            builder
+                .append_link(&mut header, "agent", "../outside")
+                .expect("append symlink");
+            builder.finish().expect("finish tar");
+        }
+
+        let temp = tempdir().expect("temp dir");
+        let result = tokio_test::block_on(extract_targz(Bytes::from(tar_buffer), temp.path()));
         assert!(result.is_err());
     }
 }

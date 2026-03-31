@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::settings::dto::{
     AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,

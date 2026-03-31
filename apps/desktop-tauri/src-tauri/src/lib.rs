@@ -7,8 +7,8 @@ use peekoo_agent_app::{
     OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
-    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest, RuntimeInfo,
-    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInspectionResult,
+    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
+    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo, RuntimeInspectionResult,
     RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
     StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
@@ -117,7 +117,11 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
             args
         }),
         ("gnome-terminal", |launch| {
-            let mut args = vec!["--wait".to_string(), "--".to_string(), launch.command.clone()];
+            let mut args = vec![
+                "--wait".to_string(),
+                "--".to_string(),
+                launch.command.clone(),
+            ];
             args.extend(launch.args.clone());
             args
         }),
@@ -137,7 +141,11 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
             args
         }),
         ("wezterm", |launch| {
-            let mut args = vec!["start".to_string(), "--".to_string(), launch.command.clone()];
+            let mut args = vec![
+                "start".to_string(),
+                "--".to_string(),
+                launch.command.clone(),
+            ];
             args.extend(launch.args.clone());
             args
         }),
@@ -426,10 +434,7 @@ async fn agent_prompt(
             // Propagate structured auth_required errors so the frontend can
             // show a targeted login prompt instead of a raw error string.
             if let Some(runtime_id) = err.strip_prefix("AUTH_REQUIRED:") {
-                return format!(
-                    r#"{{"code":"auth_required","runtimeId":"{}"}}"#,
-                    runtime_id
-                );
+                return format!(r#"{{"code":"auth_required","runtimeId":"{}"}}"#, runtime_id);
             }
             err
         })?;
