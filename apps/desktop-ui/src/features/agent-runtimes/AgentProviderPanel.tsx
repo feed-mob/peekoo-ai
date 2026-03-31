@@ -184,6 +184,7 @@ export function AgentProviderPanel() {
         onClose={() => {
           setIsConfigureDialogOpen(false);
           setSelectedProvider(null);
+          refresh();
         }}
         onSave={updateConfig}
         onInspect={inspectRuntime}
