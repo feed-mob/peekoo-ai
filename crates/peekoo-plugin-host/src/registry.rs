@@ -174,6 +174,7 @@ impl PluginRegistry {
 
         let host_fns = host_functions::build_host_functions(
             &key,
+            plugin_dir,
             &self.state,
             &self.permissions,
             declared_capabilities,

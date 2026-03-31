@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -36,6 +37,7 @@ use crate::state::PluginStateStore;
 #[derive(Clone)]
 struct HostContext {
     plugin_key: String,
+    plugin_dir: PathBuf,
     state_store: PluginStateStore,
     permissions: PermissionStore,
     declared_capabilities: Vec<String>,
@@ -64,6 +66,7 @@ struct WebSocketStore {
 #[allow(clippy::too_many_arguments)]
 pub fn build_host_functions(
     plugin_key: &str,
+    plugin_dir: &Path,
     state_store: &PluginStateStore,
     permissions: &PermissionStore,
     declared_capabilities: Vec<String>,
@@ -86,6 +89,7 @@ pub fn build_host_functions(
     ));
     let ctx = HostContext {
         plugin_key: plugin_key.to_string(),
+        plugin_dir: plugin_dir.to_path_buf(),
         state_store: state_store.clone(),
         permissions: permissions.clone(),
         declared_capabilities,
@@ -243,6 +247,13 @@ pub fn build_host_functions(
             [ValType::I64],
             UserData::new(ctx.clone()),
             host_fs_read_dir,
+        ),
+        Function::new(
+            "peekoo_process_exec",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_process_exec,
         ),
         Function::new(
             "peekoo_websocket_connect",
@@ -863,6 +874,60 @@ fn host_fs_read_dir(
 
     let response = serde_json::json!({ "entries": entries }).to_string();
     write_output(plugin, outputs, &response)?;
+    Ok(())
+}
+
+fn host_process_exec(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_declared_capability(&ctx, "process:exec")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let program = req["program"].as_str().unwrap_or_default().trim();
+    if program.is_empty() {
+        return Err(Error::msg("process program is required"));
+    }
+
+    let args = req["args"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let cwd = req["cwd"].as_str().unwrap_or(".");
+    let resolved_cwd = resolve_process_cwd(&ctx, cwd)?;
+
+    let output = Command::new(program)
+        .args(&args)
+        .current_dir(&resolved_cwd)
+        .output()
+        .map_err(|e| Error::msg(format!("Process spawn failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let status_code = output.status.code().unwrap_or(-1);
+    let ok = output.status.success();
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({
+            "ok": ok,
+            "statusCode": status_code,
+            "stdout": stdout,
+            "stderr": stderr,
+        })
+        .to_string(),
+    )?;
     Ok(())
 }
 
@@ -1529,6 +1594,20 @@ fn require_capability(ctx: &HostContext, capability: &str) -> Result<(), Error> 
     Ok(())
 }
 
+fn require_declared_capability(ctx: &HostContext, capability: &str) -> Result<(), Error> {
+    if !ctx
+        .declared_capabilities
+        .iter()
+        .any(|declared| declared == capability)
+    {
+        return Err(Error::msg(format!(
+            "Plugin '{}' must declare permission '{}' in peekoo-plugin.toml",
+            ctx.plugin_key, capability
+        )));
+    }
+    Ok(())
+}
+
 fn can_log(_ctx: &HostContext) -> Result<(), Error> {
     Ok(())
 }
@@ -1570,6 +1649,44 @@ fn resolve_allowed_path(path: &str, allowed_paths: &[PathBuf]) -> Option<PathBuf
     }
 
     Some(requested_path)
+}
+
+fn resolve_process_cwd(ctx: &HostContext, cwd: &str) -> Result<PathBuf, Error> {
+    let plugin_root = fs::canonicalize(&ctx.plugin_dir).map_err(|e| {
+        Error::msg(format!(
+            "Plugin root path is not accessible: {} ({e})",
+            ctx.plugin_dir.display()
+        ))
+    })?;
+
+    let requested = cwd.trim();
+    let requested_path = if requested.is_empty() {
+        plugin_root.clone()
+    } else {
+        let expanded = expand_tilde_path(requested);
+        let path = PathBuf::from(expanded);
+        if path.is_absolute() {
+            path
+        } else {
+            plugin_root.join(path)
+        }
+    };
+
+    let canonical = fs::canonicalize(&requested_path).map_err(|e| {
+        Error::msg(format!(
+            "Process cwd is not accessible: {} ({e})",
+            requested_path.display()
+        ))
+    })?;
+
+    if !canonical.starts_with(&plugin_root) {
+        return Err(Error::msg(format!(
+            "Process cwd must stay under plugin directory: {}",
+            plugin_root.display()
+        )));
+    }
+
+    Ok(canonical)
 }
 
 pub(crate) fn expand_tilde_path(path: &str) -> String {
@@ -2134,6 +2251,7 @@ mod tests {
 
         HostContext {
             plugin_key: "openclaw-sessions".to_string(),
+            plugin_dir: std::env::temp_dir().join("openclaw-sessions"),
             state_store: PluginStateStore::new(conn),
             permissions,
             declared_capabilities: declared_capabilities
