@@ -1,19 +1,15 @@
 -- @migrate: alter
--- @id: 0019_consolidate_provider_config
+-- @id: 0015_provider_config_v2
 -- @tolerates: "no such column", "duplicate column name"
-
--- Consolidate provider/model config into agent_runtimes as single source of truth.
 --
--- Migration logic:
---   1. If agent_settings.active_provider_id matches a runtime → make that runtime default.
---   2. If no match → keep existing is_default=1 row (or opencode if none).
---   3. Bump agent_settings.version so the cached AgentService recreates on next prompt.
---   4. Recreate agent_settings without active_provider_id and active_model_id columns.
+-- Consolidated migration for provider config consolidation.
+-- Replaces: 0019_consolidate_provider_config
+--
+-- Move active provider tracking to agent_runtimes.is_default.
+-- Clean up agent_settings to remove redundant columns.
 
--- Step 1: Promote the runtime that matches active_provider_id (if any) to is_default.
-UPDATE agent_runtimes
-SET is_default = 0
-WHERE 1 = 1;
+-- Step 1: Promote the runtime matching active_provider_id (if any) to is_default.
+UPDATE agent_runtimes SET is_default = 0;
 
 UPDATE agent_runtimes
 SET is_default = 1
@@ -24,7 +20,7 @@ AND EXISTS (
     SELECT 1 FROM agent_settings WHERE id = 1
 );
 
--- Step 2: Fallback — if no runtime ended up as default, set opencode as default.
+-- Step 2: Fallback — if no runtime ended up as default, set opencode.
 UPDATE agent_runtimes
 SET is_default = 1
 WHERE runtime_type = 'opencode'
