@@ -1,0 +1,39 @@
+[package]
+name = "acp-registry-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "ACP (Agent Client Protocol) registry client for Peekoo AI"
+
+[dependencies]
+# Async
+tokio = { version = "1", features = ["fs", "process", "time"] }
+
+# HTTP
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Bytes
+bytes = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Version handling
+semver = "1"
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Project crates
+peekoo-node-runtime = { path = "../peekoo-node-runtime" }
+peekoo-paths = { path = "../peekoo-paths" }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3"
+wiremock = "0.6"

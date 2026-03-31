@@ -18,6 +18,7 @@ members = [
   "crates/peekoo-plugin-host",
   "crates/peekoo-plugin-store",
   "crates/peekoo-node-runtime",
+  "crates/acp-registry-client",
   "crates/peekoo-mcp-server",
   "apps/desktop-tauri/src-tauri",
 ]
