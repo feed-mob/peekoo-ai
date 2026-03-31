@@ -10,6 +10,7 @@ import type {
   AssistantMessageEvent,
   LastSessionDto,
   Message,
+  ToolCallState,
 } from "@/types/chat";
 
 export interface SessionMessageLike {
@@ -22,27 +23,6 @@ export type MiniChatReplyDisplayMode = "compact" | "expanded";
 const CHAT_SESSION_CHANGED_EVENT = "chat-session:changed";
 const CHAT_SESSION_NEW_EVENT = "chat-session:new";
 const MINI_CHAT_EXPANDED_TEXT_LENGTH = 72;
-
-function buildStreamingText(
-  streamingText: string,
-  tools: Map<string, { name: string; done: boolean }>,
-) {
-  let text = "";
-
-  if (tools.size > 0) {
-    for (const [, tool] of tools) {
-      if (tool.done) {
-        text += `> ✅ **${tool.name}** - done\n`;
-      } else {
-        text += `> 🔧 Running **${tool.name}**...\n`;
-      }
-    }
-
-    text += "\n";
-  }
-
-  return text + streamingText;
-}
 
 function isRustTextDeltaEvent(event: AgentEvent): event is { TextDelta: string } {
   return typeof (event as { TextDelta?: unknown }).TextDelta === "string";
@@ -63,6 +43,18 @@ function isRustToolCallStartEvent(
     payload !== null &&
     typeof (payload as { id?: unknown }).id === "string" &&
     typeof (payload as { name?: unknown }).name === "string"
+  );
+}
+
+function isRustToolCallDeltaEvent(
+  event: AgentEvent,
+): event is { ToolCallDelta: { id: string; arguments: string } } {
+  const payload = (event as { ToolCallDelta?: unknown }).ToolCallDelta;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string" &&
+    typeof (payload as { arguments?: unknown }).arguments === "string"
   );
 }
 
@@ -178,9 +170,8 @@ export function useChatSession() {
   const isTypingRef = useRef(false);
   const streamingTextRef = useRef("");
   const streamingIdRef = useRef<string | null>(null);
-  const toolStatusRef = useRef<Map<string, { name: string; done: boolean }>>(
-    new Map(),
-  );
+  const thinkingRef = useRef("");
+  const toolCallsRef = useRef<Map<string, ToolCallState>>(new Map());
 
   useEffect(() => {
     isTypingRef.current = isTyping;
@@ -221,7 +212,8 @@ export function useChatSession() {
       setMessages([]);
       streamingTextRef.current = "";
       streamingIdRef.current = null;
-      toolStatusRef.current = new Map();
+      thinkingRef.current = "";
+      toolCallsRef.current = new Map();
     });
 
     return () => {
@@ -235,16 +227,31 @@ export function useChatSession() {
       return;
     }
 
-    const text = buildStreamingText(streamingTextRef.current, toolStatusRef.current);
+    const text = streamingTextRef.current;
+    const thinking = thinkingRef.current || undefined;
+    const toolCalls = Array.from(toolCallsRef.current.values());
 
     setMessages((prev) => {
       const index = prev.findIndex((message) => message.id === id);
       if (index === -1) {
-        return [...prev, { id, role: "pet", text, streaming: true }];
+        return [...prev, { 
+          id, 
+          role: "pet", 
+          text, 
+          streaming: true,
+          thinking,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        }];
       }
 
       const updated = [...prev];
-      updated[index] = { ...updated[index], text, streaming: true };
+      updated[index] = { 
+        ...updated[index], 
+        text, 
+        streaming: true,
+        thinking,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      };
       return updated;
     });
   }, []);
@@ -266,7 +273,8 @@ export function useChatSession() {
 
     streamingTextRef.current = "";
     streamingIdRef.current = (Date.now() + 1).toString();
-    toolStatusRef.current = new Map();
+    thinkingRef.current = "";
+    toolCallsRef.current = new Map();
 
     void emitPetReaction("chat-message");
 
@@ -280,40 +288,74 @@ export function useChatSession() {
       }
 
       if (isRustThinkingDeltaEvent(event)) {
+        thinkingRef.current += event.ThinkingDelta;
+        flushStreaming();
         return;
       }
 
       if (isRustToolCallStartEvent(event)) {
-        toolStatusRef.current.set(event.ToolCallStart.id, {
+        toolCallsRef.current.set(event.ToolCallStart.id, {
+          id: event.ToolCallStart.id,
           name: event.ToolCallStart.name,
-          done: false,
+          status: 'running',
         });
         flushStreaming();
         return;
       }
 
-      if (isRustToolCallCompleteEvent(event)) {
-        const existing = toolStatusRef.current.get(event.ToolCallComplete.id);
-        if (existing) {
-          toolStatusRef.current.set(event.ToolCallComplete.id, {
-            ...existing,
-            done: true,
-          });
+      if (isRustToolCallDeltaEvent(event)) {
+        const tool = toolCallsRef.current.get(event.ToolCallDelta.id);
+        if (tool) {
+          tool.args = (tool.args || "") + event.ToolCallDelta.arguments;
           flushStreaming();
         }
         return;
       }
 
+      if (isRustToolCallCompleteEvent(event)) {
+        const tool = toolCallsRef.current.get(event.ToolCallComplete.id);
+        if (tool) {
+          tool.status = 'complete';
+          tool.result = 'success';
+        }
+        flushStreaming();
+        return;
+      }
+
+      // Handle the "Complete" string event (AgentEvent::Complete serializes as just "Complete")
+      if (typeof event === "string" && event === "Complete") {
+        // Streaming is complete, tool calls will be cleaned up in finally block
+        return;
+      }
+
+      // Defensive check for malformed events
+      if (!event || typeof event !== "object") {
+        console.warn("[chat-session] Received malformed event (not an object):", event);
+        return;
+      }
+
       if (!("type" in event) || typeof event.type !== "string") {
+        // Only warn if it's not one of our known Rust events (which have different structure)
+        const isKnownRustEvent = 
+          isRustTextDeltaEvent(event) || 
+          isRustThinkingDeltaEvent(event) || 
+          isRustToolCallStartEvent(event) || 
+          isRustToolCallCompleteEvent(event) ||
+          isRustToolCallDeltaEvent(event);
+        
+        if (!isKnownRustEvent) {
+          console.warn("[chat-session] Received event without valid type field:", event);
+        }
         return;
       }
 
       switch (event.type) {
         case "tool_execution_start": {
           const toolEvent = event as AgentEventToolStart;
-          toolStatusRef.current.set(toolEvent.toolCallId, {
+          toolCallsRef.current.set(toolEvent.toolCallId, {
+            id: toolEvent.toolCallId,
             name: toolEvent.toolName,
-            done: false,
+            status: 'running',
           });
           flushStreaming();
           break;
@@ -321,11 +363,10 @@ export function useChatSession() {
 
         case "tool_execution_end": {
           const toolEvent = event as AgentEventToolEnd;
-          if (toolStatusRef.current.has(toolEvent.toolCallId)) {
-            toolStatusRef.current.set(toolEvent.toolCallId, {
-              name: toolEvent.toolName,
-              done: true,
-            });
+          const tool = toolCallsRef.current.get(toolEvent.toolCallId);
+          if (tool) {
+            tool.status = toolEvent.isError ? 'error' : 'complete';
+            tool.result = toolEvent.isError ? 'failure' : 'success';
           }
           flushStreaming();
           break;
@@ -357,11 +398,15 @@ export function useChatSession() {
 
       setMessages((prev) => {
         const index = prev.findIndex((message) => message.id === finalId);
+        const existingMessage = index !== -1 ? prev[index] : null;
         const finalMessage: Message = {
           id: finalId,
           role: "pet",
           text: result.response,
           streaming: false,
+          // Preserve thinking content but remove tool calls after streaming completes
+          thinking: existingMessage?.thinking,
+          // toolCalls intentionally omitted - they disappear after streaming
         };
 
         if (index === -1) {
@@ -397,6 +442,14 @@ export function useChatSession() {
       unlisten();
       streamingIdRef.current = null;
       setIsTyping(false);
+      
+      // Clean up completed tools to prevent memory bloat
+      // Keep only running tools, remove completed/error ones
+      for (const [id, tool] of toolCallsRef.current) {
+        if (tool.status === 'complete' || tool.status === 'error') {
+          toolCallsRef.current.delete(id);
+        }
+      }
     }
   }, [flushStreaming]);
 
@@ -410,7 +463,8 @@ export function useChatSession() {
       setMessages([]);
       streamingTextRef.current = "";
       streamingIdRef.current = null;
-      toolStatusRef.current = new Map();
+      thinkingRef.current = "";
+      toolCallsRef.current = new Map();
       await notifyChatSessionNew();
       return true;
     } catch {

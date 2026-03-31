@@ -198,12 +198,28 @@ impl AcpClientHandler {
 impl acp::Client for AcpClientHandler {
     async fn request_permission(
         &self,
-        _args: acp::RequestPermissionRequest,
+        args: acp::RequestPermissionRequest,
     ) -> acp::Result<acp::RequestPermissionResponse> {
-        // Auto-cancel for safety until we have proper UI integration
-        Ok(acp::RequestPermissionResponse::new(
-            acp::RequestPermissionOutcome::Cancelled,
-        ))
+        tracing::debug!(
+            "AcpBackend: Agent requested permission - selecting first allow option if available"
+        );
+
+        if let Some(option) = args.options.iter().find(|option| {
+            matches!(
+                option.kind,
+                acp::PermissionOptionKind::AllowOnce | acp::PermissionOptionKind::AllowAlways
+            )
+        }) {
+            Ok(acp::RequestPermissionResponse::new(
+                acp::RequestPermissionOutcome::Selected(
+                    acp::SelectedPermissionOutcome::new(option.option_id.clone()),
+                ),
+            ))
+        } else {
+            Ok(acp::RequestPermissionResponse::new(
+                acp::RequestPermissionOutcome::Cancelled,
+            ))
+        }
     }
 
     async fn session_notification(&self, args: acp::SessionNotification) -> acp::Result<()> {
@@ -238,9 +254,16 @@ impl acp::Client for AcpClientHandler {
                 );
                 let guard = self.event_callback.lock().await;
                 if let Some(ref callback) = *guard {
+                    // Extract actual tool name from title (e.g., "MCP: tool_name" -> "tool_name")
+                    let tool_name = tool_call
+                        .title
+                        .split_once(": ")
+                        .map(|(_, name)| name.to_string())
+                        .unwrap_or_else(|| tool_call.title.clone());
+
                     callback(AgentEvent::ToolCallStart {
                         id: tool_call.tool_call_id.to_string(),
-                        name: tool_call.title.clone(),
+                        name: tool_name,
                     });
                 }
             }
