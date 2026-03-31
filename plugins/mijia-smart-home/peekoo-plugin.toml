@@ -22,4 +22,4 @@ label = "panel-mijia-smart-home"
 title = "Mijia Smart Home Manager"
 width = 980
 height = 700
-entry = "ui/panel-v2.html"
+entry = "ui/panel.html"
