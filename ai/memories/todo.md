@@ -52,13 +52,14 @@
 - [ ] ACP Registry Integration - Support all ACP registry agents
   - [x] Research Zed's ACP implementation and registry format
   - [x] Create peekoo-node-runtime crate for Node.js/NPX support
-  - [ ] Create acp-registry-client crate to fetch registry from CDN
-  - [ ] Parse ACP registry JSON (agents with npx/binary/uvx distribution)
-  - [ ] Add Tauri commands: `get_registry_agents()`, `install_registry_agent()`
-  - [ ] Update "Available Runtimes" UI to fetch from registry instead of hardcoded
+  - [x] Create acp-registry-client crate to fetch registry from CDN (✅ Complete)
+  - [x] Parse ACP registry JSON (agents with npx/binary/uvx distribution) (✅ Complete)
+  - [x] Platform-specific agent filtering (darwin/linux/windows, arch) (✅ Complete)
+  - [x] Cache registry with TTL (1 hour) (✅ Complete)
+  - [ ] Add Tauri commands: `get_registry_agents()`, `install_registry_agent()` (Next)
+  - [ ] Update "Available Runtimes" UI to fetch from registry instead of hardcoded (Next)
+  - [ ] Integrate acp-registry-client with peekoo-agent-app (Next)
   - [ ] Support binary agent download (Cursor, Kimi CLI, etc.)
-  - [ ] Platform-specific agent filtering (darwin/linux/windows, arch)
-  - [ ] Cache registry with TTL (1 hour)
   - [ ] Support NPX agents: Gemini, Qwen Code, Cline, Auggie, etc.
   - [ ] Support binary agents: Cursor, Kimi CLI, Goose, etc.
   - [ ] Future: UVX agents (crow-cli, fast-agent)
@@ -143,9 +144,15 @@
 
 ---
 
-**Last updated**: 2026-03-31
+**Last updated**: 2026-03-31 (16:45)
 
 ### Recent Major Changes (2026-03-31)
+- [x] acp-registry-client crate implementation (COMPLETE)
+  - Full registry client with fetch, cache, platform detection, installation
+  - 19 passing tests with mock HTTP server
+  - See changelog: `ai/memories/changelogs/202603311645-feat-acp-registry-client.md`
+  - Next: Integration with peekoo-agent-app and Tauri commands
+
 - [x] peekoo-node-runtime crate implementation
   - Full port of Zed's node_runtime to Tokio-based architecture
   - Foundation for ACP registry agent support (NPX and binary)

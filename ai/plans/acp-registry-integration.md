@@ -11,7 +11,8 @@ Implement full support for the ACP (Agent Client Protocol) registry to enable au
 - [ ] Support 40+ ACP registry agents
 
 ## Current State
-✅ **peekoo-node-runtime crate** - Node.js management for NPX agents
+✅ **peekoo-node-runtime crate** - Node.js management for NPX agents  
+✅ **acp-registry-client crate** - Registry fetch, caching, platform detection, installation
 
 ## Architecture
 
@@ -21,12 +22,12 @@ crates/acp-registry-client/
 ├── Cargo.toml
 └── src/
     ├── lib.rs              # Public API
-    ├── registry.rs         # Registry fetch & parse
-    ├── cache.rs            # Local caching with TTL
-    ├── install.rs          # Installation orchestration
-    ├── npx.rs              # NPX package installation
-    ├── binary.rs           # Binary download & extraction
-    └── platform.rs         # Platform detection & matching
+    ├── types.rs            # Registry data structures (✅ Complete)
+    ├── client.rs           # RegistryClient: fetch/cache/refresh (✅ Complete)
+    ├── cache.rs            # File-based caching with TTL (✅ Complete)
+    ├── platform.rs         # Platform detection & filtering (✅ Complete)
+    ├── install.rs          # Installation orchestration (✅ Complete)
+    └── filter.rs           # Agent filtering & sorting (✅ Complete)
 ```
 
 ### Data Structures
@@ -56,27 +57,37 @@ pub struct Distribution {
 
 ## Implementation Steps
 
-### Phase 1: Registry Client Foundation (2-3 days)
+### Phase 1: Registry Client Foundation ✅ COMPLETED
 
-**1.1 Create crate structure**
-- Add `acp-registry-client` to workspace
-- Setup dependencies: reqwest, serde, tokio, semver
+**1.1 Create crate structure** ✅
+- ✅ Add `acp-registry-client` to workspace
+- ✅ Setup dependencies: reqwest, serde, tokio, semver, chrono
 
-**1.2 Registry fetching**
-- Implement `RegistryClient::fetch()` 
-- Download from CDN with timeout
-- Handle offline/network errors gracefully
+**1.2 Registry fetching** ✅
+- ✅ Implement `RegistryClient::fetch()` with CDN download
+- ✅ Implement `RegistryClient::refresh()` for force refresh
+- ✅ Handle offline/network errors gracefully (uses cache)
 
-**1.3 Registry caching**
-- Cache to `~/.peekoo/cache/acp-registry.json`
-- 1-hour TTL with `cached_at` timestamp
-- Icon caching to `~/.peekoo/cache/icons/`
+**1.3 Registry caching** ✅
+- ✅ Cache to `~/.peekoo/cache/acp-registry.json`
+- ✅ 1-hour TTL with `cached_at` timestamp
+- ✅ Icon caching support to `~/.peekoo/cache/icons/`
+- ✅ Auto-refresh on startup if stale
 
-**1.4 Platform detection**
-- Detect current OS/arch: `darwin-aarch64`, `linux-x86_64`, etc.
-- Filter agents by platform support
+**1.4 Platform detection** ✅
+- ✅ Detect current OS/arch: `darwin-aarch64`, `linux-x86_64`, `windows-x86_64`, etc.
+- ✅ Filter agents by platform support
+- ✅ Preferred method selection (Binary > NPX > UVX)
 
-### Phase 2: Installation Support (3-4 days)
+**Deliverables:**
+- ✅ `crates/acp-registry-client/` with full implementation
+- ✅ 19 passing tests with mock HTTP server
+- ✅ Clean compilation with clippy
+- ✅ See changelog: `ai/memories/changelogs/202603311645-feat-acp-registry-client.md`
+
+### Phase 2: Integration with Existing System (Current Focus)
+
+**2.1 Backend Integration**
 
 **2.1 NPX installation** ✅ (leverage peekoo-node-runtime)
 ```rust
