@@ -1,13 +1,12 @@
 mod catalog;
 mod dto;
-mod pi_models;
 mod skills;
 mod store;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent::config::{AgentProvider, AgentServiceConfig};
 use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
@@ -15,11 +14,7 @@ use peekoo_security::{
 use rusqlite::Connection;
 use uuid::Uuid;
 
-use crate::settings::catalog::{
-    default_api_for_provider, default_auth_header_for_provider, is_compatible_provider,
-    normalize_model_for_provider, provider_catalog,
-};
-use crate::settings::pi_models::ensure_pi_models_provider;
+use crate::settings::catalog::{default_api_for_provider, default_auth_header_for_provider};
 use crate::settings::skills::discover_skills;
 use crate::settings::store::SettingsStore;
 
@@ -79,9 +74,55 @@ impl SettingsService {
         self.store.apply_patch(patch)
     }
 
-    pub fn catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
+    /// Bump the settings version so the cached AgentService recreates on next prompt.
+    pub fn bump_version(&self) -> Result<(), String> {
+        self.store.bump_version()
+    }
+
+    /// Build catalog dynamically from installed ACP runtimes and their models.
+    /// Only chat-visible runtimes are included.
+    /// Models are discovered fresh via ACP protocol (no caching).
+    pub async fn catalog_from_runtimes(
+        &self,
+        provider_service: &crate::agent_provider_service::AgentProviderService,
+    ) -> Result<AgentSettingsCatalogDto, String> {
+        let runtimes = provider_service
+            .list_runtimes()
+            .map_err(|e| format!("List runtimes error: {e}"))?;
+
+        let mut providers: Vec<ProviderCatalogDto> = Vec::new();
+
+        for runtime in runtimes
+            .iter()
+            .filter(|r| r.is_installed && r.is_chat_visible())
+        {
+            // Use ACP inspection to discover models fresh (no caching)
+            let inspection = provider_service
+                .inspect_runtime(&runtime.provider_id)
+                .await
+                .map_err(|e| format!("Inspect runtime {} error: {e}", runtime.provider_id))?;
+
+            // Extract model IDs from discovered models
+            let models: Vec<String> = inspection
+                .discovered_models
+                .into_iter()
+                .map(|m| m.model_id)
+                .collect();
+
+            // Build auth modes from discovered auth methods
+            let auth_modes: Vec<String> =
+                inspection.auth_methods.into_iter().map(|m| m.id).collect();
+
+            providers.push(ProviderCatalogDto {
+                id: runtime.provider_id.clone(),
+                name: runtime.display_name.clone(),
+                auth_modes,
+                models,
+            });
+        }
+
         Ok(AgentSettingsCatalogDto {
-            providers: provider_catalog(),
+            providers,
             discovered_skills: discover_skills(),
         })
     }
@@ -229,32 +270,28 @@ impl SettingsService {
     pub fn to_agent_config(
         &self,
         mut base: AgentServiceConfig,
+        provider: AgentProvider,
+        model_id: Option<&str>,
     ) -> Result<(AgentServiceConfig, i64), String> {
         let settings = self.store.load_settings()?;
-        let provider_id = settings.active_provider_id.clone();
-        if is_compatible_provider(&provider_id) {
-            let provider_cfg = self
-                .store
-                .provider_config_for(&provider_id)
-                .ok_or_else(|| {
-                    format!(
-                        "Provider '{}' requires base URL configuration in settings",
-                        provider_id
-                    )
-                })?;
-            ensure_pi_models_provider(&provider_cfg, &settings.active_model_id)?;
-        }
-        let model_id = normalize_model_for_provider(&provider_id, &settings.active_model_id);
-        base.provider = Some(provider_id.clone());
-        base.model = Some(model_id);
+        base.provider = provider;
+        base.model = model_id.map(|m| m.to_string());
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
-        base.agent_skills = settings
+        let mut merged_skill_paths = base.agent_skills.clone();
+        for skill_path in settings
             .skills
             .iter()
             .filter(|skill| skill.enabled)
             .map(|skill| PathBuf::from(skill.path.clone()))
-            .collect();
+        {
+            if !merged_skill_paths.iter().any(|path| path == &skill_path) {
+                merged_skill_paths.push(skill_path);
+            }
+        }
+        base.agent_skills = merged_skill_paths;
+
+        let provider_id = base.provider.id();
 
         if let Some(api_key_ref) = self.store.active_api_key_ref(&provider_id)? {
             match self.secret_store.get(&api_key_ref) {
@@ -372,14 +409,16 @@ mod tests {
 
         // Save an API key (puts it in both DB and secret store)
         svc.set_provider_api_key(SetApiKeyRequest {
-            provider_id: "anthropic".into(),
+            provider_id: "pi-acp".into(),
             api_key: "sk-test-123".into(),
         })
         .expect("save api key");
 
         // Verify it works when the secret exists
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("config with key");
+        let (config, _version) = svc
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
+            .expect("config with key");
         assert_eq!(config.api_key.as_deref(), Some("sk-test-123"));
 
         // Now remove the secret from the store (simulates keyring failure)
@@ -387,21 +426,21 @@ mod tests {
         let auth = settings
             .provider_auth
             .iter()
-            .find(|a| a.provider_id == "anthropic")
+            .find(|a| a.provider_id == "pi-acp")
             .expect("auth entry");
         assert!(auth.configured);
 
         // Read the ref from DB and delete it from the in-memory secret store
         let api_key_ref = svc
             .store
-            .active_api_key_ref("anthropic")
+            .active_api_key_ref("pi-acp")
             .unwrap()
             .expect("ref exists");
         secret_store.delete(&api_key_ref).expect("delete secret");
 
         // Now to_agent_config should return an error, not silently proceed
         let base = AgentServiceConfig::default();
-        let result = svc.to_agent_config(base);
+        let result = svc.to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None);
         match result {
             Ok(_) => panic!("Expected error when keyring secret is missing"),
             Err(err) => assert!(
@@ -458,7 +497,7 @@ mod tests {
 
         let auth = svc
             .set_provider_api_key(SetApiKeyRequest {
-                provider_id: "anthropic".into(),
+                provider_id: "pi-acp".into(),
                 api_key: "sk-fallback".into(),
             })
             .expect("save through fallback");
@@ -466,7 +505,9 @@ mod tests {
         assert_eq!(auth.auth_mode, "api_key");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("resolve config");
+        let (config, _version) = svc
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
+            .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("sk-fallback"));
 
         let _ = std::fs::remove_file(&db_path);
@@ -483,25 +524,18 @@ mod tests {
         let svc = SettingsService::with_secret_store(&db_path, Box::new(composite))
             .expect("create settings service");
 
-        svc.update_settings(AgentSettingsPatchDto {
-            active_provider_id: Some("openai-codex".into()),
-            active_model_id: Some("gpt-5.3-codex".into()),
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        })
-        .expect("set provider/model");
-
-        let token_ref = "peekoo/auth/openai-codex/oauth/test-token".to_string();
+        let token_ref = "peekoo/auth/codex/oauth/test-token".to_string();
         fallback_mem
             .put(&token_ref, "oauth-fallback-token")
             .expect("seed fallback oauth token");
         svc.store
-            .set_provider_auth_refs("openai-codex", "oauth", None, Some(token_ref), None)
+            .set_provider_auth_refs("codex", "oauth", None, Some(token_ref), None)
             .expect("set oauth refs");
 
         let base = AgentServiceConfig::default();
-        let (config, _version) = svc.to_agent_config(base).expect("resolve config");
+        let (config, _version) = svc
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::codex(), None)
+            .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);

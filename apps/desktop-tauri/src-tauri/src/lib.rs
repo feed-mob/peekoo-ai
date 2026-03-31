@@ -3,16 +3,18 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    LastSessionDto, OauthCancelResponse, OauthStartResponse, OauthStatusRequest,
-    OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto,
-    PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, ProviderAuthDto,
-    ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto, TaskEventDto,
+    InstallProviderRequest, InstallProviderResponse, InstallationMethod, LastSessionDto,
+    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
+    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
+    PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
+    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
+    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo, RuntimeInspectionResult,
+    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
+    StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
-#[cfg(target_os = "linux")]
 use std::process::Command;
 use std::time::Duration;
 use tauri::{
@@ -37,6 +39,172 @@ const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
+const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
+
+#[cfg(target_os = "macos")]
+fn quote_posix_shell(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\"'\"'"))
+}
+
+#[cfg(target_os = "windows")]
+fn quote_windows_cmd(arg: &str) -> String {
+    format!("\"{}\"", arg.replace('"', "\"\""))
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn write_terminal_auth_script(
+    extension: &str,
+    command: &str,
+    args: &[String],
+    env_vars: &std::collections::HashMap<String, String>,
+) -> Result<PathBuf, String> {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("terminal auth clock error: {e}"))?
+        .as_millis();
+    let path = std::env::temp_dir().join(format!("peekoo-runtime-auth-{unique}.{extension}"));
+
+    #[cfg(target_os = "macos")]
+    let content = {
+        let mut lines = vec!["#!/bin/bash".to_string()];
+        for (key, value) in env_vars {
+            lines.push(format!("export {}={}", key, quote_posix_shell(value)));
+        }
+        let mut command_line = vec![quote_posix_shell(command)];
+        command_line.extend(args.iter().map(|arg| quote_posix_shell(arg)));
+        lines.push(command_line.join(" "));
+        lines.push("exit".to_string());
+        lines.join("\n")
+    };
+
+    #[cfg(target_os = "windows")]
+    let content = {
+        let mut lines = vec!["@echo off".to_string()];
+        for (key, value) in env_vars {
+            lines.push(format!("set \"{}={}\"", key, value));
+        }
+        let mut command_line = vec![quote_windows_cmd(command)];
+        command_line.extend(args.iter().map(|arg| quote_windows_cmd(arg)));
+        lines.push(command_line.join(" "));
+        lines.join("\r\n")
+    };
+
+    fs::write(&path, content).map_err(|e| format!("terminal auth script write error: {e}"))?;
+
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut permissions = fs::metadata(&path)
+            .map_err(|e| format!("terminal auth script metadata error: {e}"))?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&path, permissions)
+            .map_err(|e| format!("terminal auth script chmod error: {e}"))?;
+    }
+
+    Ok(path)
+}
+
+type TerminalLauncher = fn(&RuntimeTerminalAuthLaunch) -> Vec<String>;
+
+#[cfg(target_os = "linux")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let candidates: [(&str, TerminalLauncher); 8] = [
+        ("x-terminal-emulator", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("gnome-terminal", |launch| {
+            let mut args = vec![
+                "--wait".to_string(),
+                "--".to_string(),
+                launch.command.clone(),
+            ];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("konsole", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("kitty", |launch| {
+            let mut args = vec![launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("ghostty", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("wezterm", |launch| {
+            let mut args = vec![
+                "start".to_string(),
+                "--".to_string(),
+                launch.command.clone(),
+            ];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("alacritty", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+        ("xterm", |launch| {
+            let mut args = vec!["-e".to_string(), launch.command.clone()];
+            args.extend(launch.args.clone());
+            args
+        }),
+    ];
+
+    let mut last_error = None;
+    for (terminal, build_args) in candidates {
+        match Command::new(terminal)
+            .args(build_args(launch))
+            .envs(&launch.env)
+            .spawn()
+        {
+            Ok(_) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => {
+                last_error = Some(format!("{terminal} launch error: {error}"));
+                break;
+            }
+        }
+    }
+
+    Err(last_error.unwrap_or_else(|| {
+        "No supported terminal emulator was found to launch runtime login.".to_string()
+    }))
+}
+
+#[cfg(target_os = "macos")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let script = write_terminal_auth_script("command", &launch.command, &launch.args, &launch.env)?;
+    Command::new("open")
+        .arg("-a")
+        .arg("Terminal")
+        .arg(script)
+        .spawn()
+        .map_err(|e| format!("Terminal launch error: {e}"))?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
+    let script = write_terminal_auth_script("cmd", &launch.command, &launch.args, &launch.env)?;
+    Command::new("cmd")
+        .args(["/C", "start", "", script.to_string_lossy().as_ref()])
+        .spawn()
+        .map_err(|e| format!("Terminal launch error: {e}"))?;
+    Ok(())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -61,12 +229,27 @@ struct AgentState {
 }
 
 impl AgentState {
-    fn new() -> Self {
+    fn new(app_handle: &AppHandle) -> Self {
+        let bundled_opencode_path = resolve_bundled_opencode_path(app_handle);
         Self {
-            app: AgentApplication::new()
+            app: AgentApplication::new_with_bundled_opencode(bundled_opencode_path)
                 .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
         }
     }
+}
+
+fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
+    let file_name = if cfg!(windows) {
+        "opencode.exe"
+    } else {
+        "opencode"
+    };
+
+    app.path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join("opencode").join(file_name))
+        .filter(|path| path.exists() && path.is_file())
 }
 
 #[derive(Serialize)]
@@ -241,6 +424,7 @@ async fn agent_prompt(
     state: State<'_, AgentState>,
 ) -> Result<AgentResponse, String> {
     let message_len = message.chars().count();
+    tracing::info!(message_len, "agent_prompt command received");
     let reply = state
         .app
         .prompt_streaming(&message, move |event| {
@@ -249,8 +433,18 @@ async fn agent_prompt(
         .await
         .map_err(|err| {
             tracing::error!(error = %err, message_len, "agent_prompt command failed");
+            // Propagate structured auth_required errors so the frontend can
+            // show a targeted login prompt instead of a raw error string.
+            if let Some(runtime_id) = err.strip_prefix("AUTH_REQUIRED:") {
+                return format!(r#"{{"code":"auth_required","runtimeId":"{}"}}"#, runtime_id);
+            }
             err
         })?;
+    tracing::info!(
+        message_len,
+        response_len = reply.chars().count(),
+        "agent_prompt command completed"
+    );
     Ok(AgentResponse { response: reply })
 }
 
@@ -262,16 +456,19 @@ async fn agent_settings_get(state: State<'_, AgentState>) -> Result<AgentSetting
 #[tauri::command]
 async fn agent_settings_update(
     patch: AgentSettingsPatchDto,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsDto, String> {
-    state.app.update_settings(patch)
+    let settings = state.app.update_settings(patch)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(settings)
 }
 
 #[tauri::command]
 async fn agent_settings_catalog(
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsCatalogDto, String> {
-    state.app.settings_catalog()
+    state.app.settings_catalog().await
 }
 
 #[tauri::command]
@@ -296,6 +493,274 @@ async fn agent_provider_config_set(
     state: State<'_, AgentState>,
 ) -> Result<ProviderConfigDto, String> {
     state.app.set_provider_config(req)
+}
+
+// ============================================================================
+// ACP Runtime Management Commands
+// ============================================================================
+
+#[tauri::command]
+async fn list_agent_providers(state: State<'_, AgentState>) -> Result<Vec<ProviderInfo>, String> {
+    state.app.list_agent_providers()
+}
+
+#[tauri::command]
+async fn install_agent_provider(
+    req: InstallProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    state.app.install_agent_provider(req)
+}
+
+#[tauri::command]
+async fn uninstall_agent_provider(
+    provider_id: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.uninstall_agent_provider(&provider_id)
+}
+
+#[tauri::command]
+async fn set_default_provider(
+    provider_id: String,
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_default_agent_provider(&provider_id)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_provider_config(
+    provider_id: String,
+    state: State<'_, AgentState>,
+) -> Result<ProviderConfig, String> {
+    state.app.get_agent_provider_config(&provider_id)
+}
+
+#[tauri::command]
+async fn update_provider_config(
+    provider_id: String,
+    config: ProviderConfig,
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state
+        .app
+        .update_agent_provider_config(&provider_id, &config)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn test_provider_connection(
+    provider_id: String,
+    state: State<'_, AgentState>,
+) -> Result<TestConnectionResult, String> {
+    state.app.test_agent_provider_connection(&provider_id).await
+}
+
+#[tauri::command]
+async fn check_installation_prerequisites(
+    method: String,
+    state: State<'_, AgentState>,
+) -> Result<PrerequisitesCheck, String> {
+    let method = match method.as_str() {
+        "bundled" => InstallationMethod::Bundled,
+        "npx" => InstallationMethod::Npx,
+        "binary" => InstallationMethod::Binary,
+        _ => InstallationMethod::Custom,
+    };
+    state.app.check_agent_provider_prerequisites(method)
+}
+
+#[tauri::command]
+async fn add_custom_provider(
+    name: String,
+    description: Option<String>,
+    command: String,
+    args: Vec<String>,
+    working_dir: Option<String>,
+    state: State<'_, AgentState>,
+) -> Result<ProviderInfo, String> {
+    state.app.add_custom_agent_provider(
+        &name,
+        description.as_deref(),
+        &command,
+        &args,
+        working_dir.as_deref(),
+    )
+}
+
+#[tauri::command]
+async fn remove_custom_provider(
+    provider_id: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.remove_custom_agent_provider(&provider_id)
+}
+
+#[tauri::command]
+async fn list_agent_runtimes(state: State<'_, AgentState>) -> Result<Vec<RuntimeInfo>, String> {
+    state.app.list_agent_runtimes()
+}
+
+#[tauri::command]
+async fn install_agent_runtime(
+    req: InstallProviderRequest,
+    state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    state.app.install_agent_runtime(req)
+}
+
+#[tauri::command]
+async fn uninstall_agent_runtime(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.uninstall_agent_runtime(&runtime_id)
+}
+
+#[tauri::command]
+async fn set_default_agent_runtime(
+    runtime_id: String,
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_default_agent_runtime(&runtime_id)?;
+    let _ = app.emit(AGENT_SETTINGS_CHANGED_EVENT, ());
+    Ok(())
+}
+
+#[tauri::command]
+async fn inspect_runtime(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeInspectionResult, String> {
+    state.app.inspect_runtime(&runtime_id).await
+}
+
+#[tauri::command]
+async fn authenticate_runtime(
+    runtime_id: String,
+    method_id: String,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeAuthenticationResult, String> {
+    match state
+        .app
+        .authenticate_runtime(&runtime_id, &method_id)
+        .await?
+    {
+        peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction::Authenticated {
+            message,
+        } => Ok(RuntimeAuthenticationResult {
+            status: RuntimeAuthenticationStatus::Authenticated,
+            message,
+        }),
+        peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction::LaunchTerminal(
+            launch,
+        ) => {
+            launch_terminal_auth(&launch)?;
+            Ok(RuntimeAuthenticationResult {
+                status: RuntimeAuthenticationStatus::TerminalLoginStarted,
+                message: launch.message,
+            })
+        }
+    }
+}
+
+#[tauri::command]
+async fn refresh_runtime_capabilities(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeInspectionResult, String> {
+    state.app.refresh_runtime_capabilities(&runtime_id).await
+}
+
+// ============================================================================
+// ACP Registry Commands
+// ============================================================================
+
+#[tauri::command]
+async fn get_registry_agents(
+    page: usize,
+    page_size: usize,
+    search_query: Option<String>,
+    platform_only: bool,
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    use peekoo_agent_app::{RegistryFilterOptions, RegistrySortBy};
+
+    let filter = RegistryFilterOptions {
+        search_query,
+        platform_only,
+        sort_by: RegistrySortBy::Featured,
+        page: page.max(1),
+        page_size: page_size.clamp(1, 100),
+        method_filter: None,
+    };
+
+    let (agents, total_count) = state
+        .app
+        .fetch_registry_agents(&filter)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "agents": agents,
+        "totalCount": total_count,
+        "page": page,
+        "pageSize": page_size,
+        "hasMore": (page * page_size) < total_count,
+    }))
+}
+
+#[tauri::command]
+async fn search_registry_agents(
+    query: String,
+    state: State<'_, AgentState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let agents = state
+        .app
+        .search_registry_agents(&query)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(agents
+        .into_iter()
+        .map(|a| serde_json::to_value(a).unwrap())
+        .collect())
+}
+
+#[tauri::command]
+async fn install_registry_agent(
+    registry_id: String,
+    method: String,
+    state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    use peekoo_agent_app::InstallationMethod;
+
+    let install_method = match method.as_str() {
+        "npx" => InstallationMethod::Npx,
+        "binary" => InstallationMethod::Binary,
+        _ => return Err(format!("Unsupported installation method: {}", method)),
+    };
+
+    state
+        .app
+        .install_registry_agent(&registry_id, install_method)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn refresh_registry_catalog(state: State<'_, AgentState>) -> Result<(), String> {
+    state
+        .app
+        .refresh_registry()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -983,11 +1448,9 @@ pub fn run() {
         Target::new(TargetKind::LogDir { file_name: None })
     };
 
-    let agent_state = AgentState::new();
-
     tauri::Builder::default()
-        .manage(agent_state)
         .setup(|app| {
+            app.manage(AgentState::new(app.handle()));
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
                 .text(TRAY_SETTINGS_MENU_ID, "Settings")
@@ -1119,6 +1582,29 @@ pub fn run() {
             agent_provider_auth_set_api_key,
             agent_provider_auth_clear,
             agent_provider_config_set,
+            // Agent Provider Management
+            list_agent_providers,
+            install_agent_provider,
+            uninstall_agent_provider,
+            set_default_provider,
+            get_provider_config,
+            update_provider_config,
+            test_provider_connection,
+            check_installation_prerequisites,
+            add_custom_provider,
+            remove_custom_provider,
+            list_agent_runtimes,
+            install_agent_runtime,
+            uninstall_agent_runtime,
+            set_default_agent_runtime,
+            inspect_runtime,
+            authenticate_runtime,
+            refresh_runtime_capabilities,
+            // ACP Registry Commands
+            get_registry_agents,
+            search_registry_agents,
+            install_registry_agent,
+            refresh_registry_catalog,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,

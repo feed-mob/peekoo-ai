@@ -1,9 +1,23 @@
+export interface ToolCallState {
+  id: string;
+  name: string;
+  status: 'running' | 'complete' | 'error';
+  args?: string; // JSON arguments as string
+  result?: 'success' | 'failure';
+}
+
 export interface Message {
   id: string;
   role: "user" | "pet" | "error";
   text: string;
   /** True while the message is still being streamed */
   streaming?: boolean;
+  /** Thinking/reasoning content (if agent provides it) */
+  thinking?: string;
+  /** Tool calls made during this message */
+  toolCalls?: ToolCallState[];
+  /** UI state for thinking block collapse/expand */
+  showThinking?: boolean;
 }
 
 export interface SessionMessageDto {
@@ -49,11 +63,57 @@ export interface AgentEventGeneric {
   [key: string]: unknown;
 }
 
+export interface AgentEventTextDelta {
+  TextDelta: string;
+}
+
+export interface AgentEventThinkingDelta {
+  ThinkingDelta: string;
+}
+
+export interface AgentEventToolCallDeltaRust {
+  ToolCallDelta: {
+    id: string;
+    arguments: string;
+  };
+}
+
+export interface AgentEventToolCallStartRust {
+  ToolCallStart: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface AgentEventToolCallCompleteRust {
+  ToolCallComplete: {
+    id: string;
+  };
+}
+
+export interface AgentEventCompleteRust {
+  Complete: null | Record<string, never>;
+}
+
+// Helper type for when Complete is sent as just a string
+export type AgentEventCompleteString = "Complete";
+
+export interface AgentEventErrorRust {
+  Error: string;
+}
+
 export type AgentEvent =
   | AgentEventToolStart
   | AgentEventToolEnd
   | AgentEventMessageUpdate
   | AgentEventMessageEnd
+  | AgentEventTextDelta
+  | AgentEventThinkingDelta
+  | AgentEventToolCallDeltaRust
+  | AgentEventToolCallStartRust
+  | AgentEventToolCallCompleteRust
+  | AgentEventCompleteRust
+  | AgentEventErrorRust
   | AgentEventGeneric;
 
 // Sub-types from pi_agent_rust serialization

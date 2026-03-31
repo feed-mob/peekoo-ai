@@ -38,3 +38,6 @@ apps/desktop-tauri/src-tauri/LOGS.txt
 
 # mcporter and local config
 config/
+
+# Metadata files
+metadata.json

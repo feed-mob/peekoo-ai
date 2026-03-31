@@ -1,85 +1,210 @@
 //! Configuration for the agent service.
 
+use agent_client_protocol::McpServer;
+use std::collections::HashMap;
 use std::path::PathBuf;
+
+pub const PEEKOO_OPENCODE_BIN_ENV: &str = "PEEKOO_OPENCODE_BIN";
+
+/// Source of an agent provider
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderSource {
+    /// Built-in provider with hardcoded defaults
+    Builtin,
+    /// Installed from ACP registry
+    Registry,
+    /// Custom user-defined provider
+    Custom,
+}
+
+/// Agent provider configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentProvider {
+    /// Provider identifier (e.g., "opencode", "cursor", "pi-acp")
+    pub id: String,
+    /// Command to execute
+    pub command: String,
+    /// Arguments to pass
+    pub args: Vec<String>,
+    /// Source of the provider (for special handling)
+    pub source: ProviderSource,
+}
+
+impl AgentProvider {
+    /// Create a provider from registry runtime info
+    pub fn from_registry(id: &str, command: &str, args: Vec<String>) -> Self {
+        Self {
+            id: id.to_string(),
+            command: command.to_string(),
+            args,
+            source: ProviderSource::Registry,
+        }
+    }
+
+    /// Create a custom provider
+    pub fn custom(id: &str, command: &str, args: Vec<String>) -> Self {
+        Self {
+            id: id.to_string(),
+            command: command.to_string(),
+            args,
+            source: ProviderSource::Custom,
+        }
+    }
+
+    /// Built-in pi-acp provider
+    pub fn pi_acp() -> Self {
+        Self {
+            id: "pi-acp".to_string(),
+            command: "npx".to_string(),
+            args: vec!["pi-acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in opencode provider
+    pub fn opencode() -> Self {
+        Self {
+            id: "opencode".to_string(),
+            command: "opencode".to_string(),
+            args: vec!["acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in claude-code provider
+    pub fn claude_code() -> Self {
+        Self {
+            id: "claude-code".to_string(),
+            command: "npx".to_string(),
+            args: vec!["@anthropic-ai/claude-code".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in codex provider
+    pub fn codex() -> Self {
+        Self {
+            id: "codex".to_string(),
+            command: "npx".to_string(),
+            args: vec!["@zed-industries/codex-acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Get the command and arguments to spawn this provider
+    pub fn command(&self) -> (String, Vec<String>) {
+        (self.command.clone(), self.args.clone())
+    }
+
+    /// Get the command and arguments to spawn this provider, allowing environment overrides.
+    pub fn command_with_environment(
+        &self,
+        environment: &HashMap<String, String>,
+    ) -> (String, Vec<String>) {
+        // Special handling for opencode bundled binary path
+        if self.id == "opencode"
+            && let Some(command) = environment
+                .get(PEEKOO_OPENCODE_BIN_ENV)
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+                .or_else(|| {
+                    std::env::var(PEEKOO_OPENCODE_BIN_ENV)
+                        .ok()
+                        .filter(|value| !value.trim().is_empty())
+                })
+        {
+            return (command, vec!["acp".to_string()]);
+        }
+
+        self.command()
+    }
+
+    /// Provider identifier string
+    pub fn id(&self) -> String {
+        self.id.clone()
+    }
+
+    /// Check if this is a built-in provider
+    pub fn is_builtin(&self) -> bool {
+        self.source == ProviderSource::Builtin
+    }
+
+    /// Check if this is a registry-installed provider
+    pub fn is_registry(&self) -> bool {
+        self.source == ProviderSource::Registry
+    }
+
+    /// Check if this is a custom provider
+    pub fn is_custom(&self) -> bool {
+        self.source == ProviderSource::Custom
+    }
+}
+
+impl Default for AgentProvider {
+    fn default() -> Self {
+        Self::opencode()
+    }
+}
 
 /// Configuration for creating an [`AgentService`](super::service::AgentService).
 ///
-/// Maps to pi's [`SessionOptions`](pi::sdk::SessionOptions) under the hood,
-/// but provides a simpler, peekoo-specific surface.
+/// Provides a peekoo-specific configuration surface for ACP-compatible agents.
 pub struct AgentServiceConfig {
-    /// LLM provider identifier (e.g. `"anthropic"`, `"openai"`, `"google"`).
-    ///
-    /// When `None`, the default provider from pi's config is used.
-    pub provider: Option<String>,
+    /// Provider to use (default: Opencode)
+    pub provider: AgentProvider,
 
-    /// Model identifier within the provider (e.g. `"claude-sonnet-4-6"`, `"gpt-4o"`).
-    ///
-    /// When `None`, the default model is used.
+    /// Model identifier (provider-specific)
     pub model: Option<String>,
 
-    /// API key for the chosen provider.
-    ///
-    /// When `None`, pi resolves the key from environment variables or its
-    /// auth storage (`~/.pi/auth.json`).
+    /// LLM provider identifier selected for the current runtime.
+    pub llm_provider_id: Option<String>,
+
+    /// API key (if needed, passed to provider via env)
     pub api_key: Option<String>,
 
-    /// System prompt prepended to every conversation.
+    /// System prompt
     pub system_prompt: Option<String>,
 
-    /// Working directory for file-system tools (read, write, bash, etc.).
-    ///
-    /// When using Peekoo's `.peekoo/` convention, this is typically the same
-    /// directory that contains the persona markdown files.
+    /// Working directory
     pub working_directory: PathBuf,
 
-    /// Path to a directory containing startup instruction files.
-    ///
-    /// Supported files (all optional):
-    /// - `AGENTS.md` — Operating instructions and memory usage guidelines
-    /// - `BOOTSTRAP.md` — One-time first-run onboarding instructions
-    /// - `SOUL.md` — Persona tone and behavioral boundaries
-    /// - `IDENTITY.md` — Agent name, vibe, and emoji
-    /// - `USER.md` — User profile and addressing preferences
-    /// - `memory.md` or `MEMORY.md` — Persistent facts, user preferences, project context
-    /// - `memories/*.md` — Additional topic-specific memory notes
-    ///
-    /// These are composed into the system prompt before any `system_prompt`
-    /// or `agent_skills` content, in this order:
-    /// `AGENTS` -> `BOOTSTRAP` -> `SOUL` -> `IDENTITY` -> `USER` -> `Memory` -> `system_prompt` -> `agent_skills`.
+    /// Persona directory
     pub persona_dir: Option<PathBuf>,
 
-    /// List of paths to markdown files containing AgentSkills (from agentskills.io).
-    /// These are loaded, parsed, and injected into the system prompt as instructions.
+    /// Agent skills
     pub agent_skills: Vec<PathBuf>,
 
-    /// Automatically discover persona files and skills from a `.peekoo/` directory
-    /// in the `working_directory`, falling back to the platform global Peekoo
-    /// config directory (legacy `~/.peekoo/` is still checked for compatibility).
-    /// Discovered paths are used *only* if `persona_dir` and `agent_skills`
-    /// aren't explicitly provided.
+    /// Auto-discover configuration
     pub auto_discover: bool,
 
-    /// Maximum number of consecutive tool iterations before the agent stops.
+    /// Maximum tool iterations
     pub max_tool_iterations: usize,
 
-    /// Directory for session file storage. When set (and `no_session` is false),
-    /// pi organises session files under this directory by working directory.
+    /// Session directory for peekoo-managed persistence
     pub session_dir: Option<PathBuf>,
 
-    /// When `true`, sessions are ephemeral (in-memory only, no file persistence).
-    /// When `false`, pi automatically saves and restores conversation history.
+    /// Whether to disable session persistence
     pub no_session: bool,
 
-    /// Path to a specific session file to resume.
-    /// Takes precedence over `session_dir` when set.
+    /// Specific session to resume
+    pub resume_session_id: Option<String>,
+
+    /// Session file path to resume (for stashed sessions)
     pub session_path: Option<PathBuf>,
+
+    /// Environment variables to pass to ACP agent
+    pub environment: HashMap<String, String>,
+
+    /// MCP servers to attach to ACP sessions.
+    pub mcp_servers: Vec<McpServer>,
 }
 
 impl Default for AgentServiceConfig {
     fn default() -> Self {
         Self {
-            provider: None,
+            provider: AgentProvider::opencode(),
             model: None,
+            llm_provider_id: None,
             api_key: None,
             system_prompt: None,
             working_directory: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
@@ -89,7 +214,10 @@ impl Default for AgentServiceConfig {
             max_tool_iterations: 50,
             session_dir: None,
             no_session: false,
+            resume_session_id: None,
             session_path: None,
+            environment: HashMap::new(),
+            mcp_servers: Vec::new(),
         }
     }
 }
@@ -99,15 +227,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_config_has_no_provider() {
+    fn default_config_has_default_provider() {
         let config = AgentServiceConfig::default();
-        assert!(config.provider.is_none());
+        assert_eq!(config.provider.id(), "opencode");
     }
 
     #[test]
     fn default_config_has_no_model() {
         let config = AgentServiceConfig::default();
         assert!(config.model.is_none());
+    }
+
+    #[test]
+    fn default_config_has_no_llm_provider_id() {
+        let config = AgentServiceConfig::default();
+        assert!(config.llm_provider_id.is_none());
     }
 
     #[test]
@@ -129,6 +263,12 @@ mod tests {
     }
 
     #[test]
+    fn default_config_has_no_mcp_servers() {
+        let config = AgentServiceConfig::default();
+        assert!(config.mcp_servers.is_empty());
+    }
+
+    #[test]
     fn default_config_max_iterations_is_50() {
         let config = AgentServiceConfig::default();
         assert_eq!(config.max_tool_iterations, 50);
@@ -142,12 +282,64 @@ mod tests {
     }
 
     #[test]
+    fn default_config_enables_session_persistence() {
+        let config = AgentServiceConfig::default();
+        assert!(!config.no_session);
+        assert!(config.session_dir.is_none());
+        assert!(config.resume_session_id.is_none());
+    }
+
+    #[test]
+    fn provider_id_returns_expected_values() {
+        assert_eq!(AgentProvider::pi_acp().id(), "pi-acp");
+        assert_eq!(AgentProvider::opencode().id(), "opencode");
+        assert_eq!(AgentProvider::claude_code().id(), "claude-code");
+        assert_eq!(AgentProvider::codex().id(), "codex");
+
+        let custom = AgentProvider::custom(
+            "my-agent",
+            "/path/to/agent",
+            vec!["--mode".to_string(), "acp".to_string()],
+        );
+        assert_eq!(custom.id(), "my-agent");
+    }
+
+    #[test]
+    fn provider_command_returns_expected_commands() {
+        let (cmd, args) = AgentProvider::pi_acp().command();
+        assert_eq!(cmd, "npx");
+        assert_eq!(args, vec!["pi-acp"]);
+
+        let (cmd, args) = AgentProvider::opencode().command();
+        assert_eq!(cmd, "opencode");
+        assert_eq!(args, vec!["acp"]);
+
+        let custom = AgentProvider::custom("my-agent", "/path/to/agent", vec!["arg1".to_string()]);
+        let (cmd, args) = custom.command();
+        assert_eq!(cmd, "/path/to/agent");
+        assert_eq!(args, vec!["arg1"]);
+    }
+
+    #[test]
+    fn opencode_command_uses_environment_override() {
+        let env = HashMap::from([(
+            PEEKOO_OPENCODE_BIN_ENV.to_string(),
+            "/tmp/opencode".to_string(),
+        )]);
+
+        let (cmd, args) = AgentProvider::opencode().command_with_environment(&env);
+        assert_eq!(cmd, "/tmp/opencode");
+        assert_eq!(args, vec!["acp"]);
+    }
+
+    #[test]
     fn config_with_custom_values() {
         let config = AgentServiceConfig {
-            provider: Some("anthropic".into()),
-            model: Some("claude-sonnet-4-6".into()),
-            api_key: Some("sk-test-key".into()),
-            system_prompt: Some("You are a helpful assistant.".into()),
+            provider: AgentProvider::opencode(),
+            model: Some("gpt-4o".to_string()),
+            llm_provider_id: Some("openai".to_string()),
+            api_key: Some("sk-test-key".to_string()),
+            system_prompt: Some("You are a helpful assistant.".to_string()),
             working_directory: PathBuf::from("/tmp/test"),
             persona_dir: None,
             agent_skills: Vec::new(),
@@ -155,10 +347,13 @@ mod tests {
             max_tool_iterations: 25,
             session_dir: Some(PathBuf::from("/tmp/sessions")),
             no_session: false,
+            resume_session_id: None,
             session_path: None,
+            environment: HashMap::new(),
+            mcp_servers: Vec::new(),
         };
-        assert_eq!(config.provider.as_deref(), Some("anthropic"));
-        assert_eq!(config.model.as_deref(), Some("claude-sonnet-4-6"));
+        assert_eq!(config.provider.id(), "opencode");
+        assert_eq!(config.model.as_deref(), Some("gpt-4o"));
         assert_eq!(config.api_key.as_deref(), Some("sk-test-key"));
         assert_eq!(
             config.system_prompt.as_deref(),
@@ -171,10 +366,15 @@ mod tests {
     }
 
     #[test]
-    fn default_config_enables_session_persistence() {
-        let config = AgentServiceConfig::default();
-        assert!(!config.no_session);
-        assert!(config.session_dir.is_none());
-        assert!(config.session_path.is_none());
+    fn provider_equality() {
+        assert_eq!(AgentProvider::pi_acp(), AgentProvider::pi_acp());
+        assert_ne!(AgentProvider::pi_acp(), AgentProvider::opencode());
+
+        let custom1 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);
+        let custom2 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);
+        assert_eq!(custom1, custom2);
+
+        let custom3 = AgentProvider::custom("other-agent", "cmd", vec!["arg1".to_string()]);
+        assert_ne!(custom1, custom3);
     }
 }

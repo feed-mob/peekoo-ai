@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useCallback, useMemo, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-shell";
 import {
   type AgentSettings,
@@ -11,12 +12,12 @@ import {
 } from "@/types/agent-settings";
 
 type SettingsPatch = {
-  activeProviderId?: string;
-  activeModelId?: string;
   systemPrompt?: string;
   maxToolIterations?: number;
   skills?: SkillSettings[];
 };
+
+const AGENT_SETTINGS_CHANGED_EVENT = "agent-settings-changed";
 
 export function useChatSettings() {
   const [settings, setSettings] = useState<AgentSettings | null>(null);
@@ -80,33 +81,6 @@ export function useChatSettings() {
     return parsed;
   }, []);
 
-  const setProviderConfig = useCallback(
-    async (providerId: string, baseUrl: string, api?: string, authHeader?: boolean) => {
-      const rawConfig = await invoke("agent_provider_config_set", {
-        req: { providerId, baseUrl, api, authHeader },
-      });
-      const parsed = rawConfig as {
-        providerId: string;
-        baseUrl: string;
-        api: string;
-        authHeader: boolean;
-      };
-
-      setSettings((prev) => {
-        if (!prev) return prev;
-        const filtered = prev.providerConfigs.filter((item) => item.providerId !== providerId);
-        return {
-          ...prev,
-          providerConfigs: [...filtered, parsed],
-          version: prev.version + 1,
-        };
-      });
-
-      return parsed;
-    },
-    []
-  );
-
   const startOauth = useCallback(async (providerId: string) => {
     const response = (await invoke("agent_oauth_start", {
       req: { providerId },
@@ -163,10 +137,19 @@ export function useChatSettings() {
     return response;
   }, [oauthFlowId]);
 
-  const selectedProvider = useMemo(
-    () => catalog?.providers.find((provider) => provider.id === settings?.activeProviderId),
-    [catalog?.providers, settings?.activeProviderId]
-  );
+  const selectedProvider = null; // Derived from useAgentProviders().defaultProvider instead
+
+  useEffect(() => {
+    void refresh();
+
+    const unlisten = listen(AGENT_SETTINGS_CHANGED_EVENT, () => {
+      void refresh();
+    });
+
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, [refresh]);
 
   return {
     settings,
@@ -180,7 +163,6 @@ export function useChatSettings() {
     refresh,
     updateSettings,
     saveApiKey,
-    setProviderConfig,
     clearAuth,
     startOauth,
     pollOauthStatus,

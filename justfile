@@ -3,12 +3,12 @@
 # Run Tauri desktop app in development mode (trace logging by default)
 dev:
     cargo build -p peekoo-agent-acp
-    if [ "$(uname)" = "Darwin" ]; then RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev --config tauri.macos.conf.json; else RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev; fi
+    RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev
 
 # Build Tauri desktop app for production
 build:
     cargo build --release -p peekoo-agent-acp
-    if [ "$(uname)" = "Darwin" ]; then cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build --config tauri.macos.conf.json; else cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build; fi
+    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build
 
 # Build AppImage with linuxdeploy strip workaround
 build-appimage:

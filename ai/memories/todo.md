@@ -3,6 +3,15 @@
 ## Tauri Version (Current Focus)
 
 ### Completed
+
+- [x] peekoo-node-runtime crate for Node.js management
+  - Ported from Zed's node_runtime module (adapted for Tokio)
+  - System Node.js detection (PATH lookup, >= v18.0.0)
+  - Managed Node.js download (v20.18.0 LTS to `~/.peekoo/resources/node/`)
+  - NPX package installation to per-agent directories
+  - Archive extraction (tar.gz, zip)
+  - See changelog: `ai/memories/changelogs/202603311430-feat-peekoo-node-runtime.md`
+
 - [x] Agent Task Execution via ACP
   - Full ACP subprocess communication for agent task execution
   - AgentScheduler with 30-second polling for task execution
@@ -40,6 +49,47 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
+- [ ] **ACP Registry Integration - Phase 2: Full Integration (Current)**
+  - [x] Research Zed's ACP implementation and registry format
+  - [x] Create peekoo-node-runtime crate for Node.js/NPX support
+  - [x] Create acp-registry-client crate to fetch registry from CDN
+  - [x] Parse ACP registry JSON (agents with npx/binary/uvx distribution)
+  - [x] Platform-specific agent filtering (darwin/linux/windows, arch)
+  - [x] Cache registry with TTL (1 hour)
+  
+  **Phase 2.1: Database (Next)**
+  - [ ] Create migration: Add registry columns to agent_runtimes table
+  - [ ] Add registry_source, registry_id, registry_version, registry_metadata columns
+  
+  **Phase 2.2: Backend Integration (Next)**
+  - [ ] Refactor AgentProviderService to include RegistryClient
+  - [ ] Add fetch_registry_agents() with pagination
+  - [ ] Add search_registry_agents() for search functionality
+  - [ ] Add install_registry_agent() for Cursor/Gemini/etc
+  - [ ] Implement custom ordering (built-ins: opencode, pi, codex, claude first)
+  
+  **Phase 2.3: Tauri Commands (Next)**
+  - [ ] Add get_registry_agents() with pagination support
+  - [ ] Add search_registry_agents() for search
+  - [ ] Add install_registry_agent()
+  - [ ] Add refresh_registry_catalog()
+  
+  **Phase 2.4: Frontend (Next)**
+  - [ ] Create useRegistryAgents hook with pagination
+  - [ ] Create RegistryAgentCard component
+  - [ ] Update AgentProviderPanel with search bar
+  - [ ] Replace "Available Runtimes" with registry agents (40+ agents)
+  - [ ] Add "Load more" pagination
+  - [ ] Show platform compatibility badges
+  
+  **Phase 2.5: Testing (Next)**
+  - [ ] Install Cursor (binary) as proof of concept
+  - [ ] Test search functionality
+  - [ ] Test pagination (Load more)
+  - [ ] Verify custom ordering (built-ins at top)
+  
+  See detailed plan: `ai/plans/acp-registry-integration-phase2.md`
+
 - [ ] Evolve ACP/MCP into the primary agent runtime
   - [ ] Support OpenCode as another ACP provider
   - [ ] Ensure `peekoo-agent-acp` loads all available tools
@@ -120,7 +170,19 @@
 
 ---
 
-**Last updated**: 2026-03-27
+**Last updated**: 2026-03-31 (16:45)
+
+### Recent Major Changes (2026-03-31)
+- [x] acp-registry-client crate implementation (COMPLETE)
+  - Full registry client with fetch, cache, platform detection, installation
+  - 19 passing tests with mock HTTP server
+  - See changelog: `ai/memories/changelogs/202603311645-feat-acp-registry-client.md`
+  - Next: Integration with peekoo-agent-app and Tauri commands
+
+- [x] peekoo-node-runtime crate implementation
+  - Full port of Zed's node_runtime to Tokio-based architecture
+  - Foundation for ACP registry agent support (NPX and binary)
+  - See changelog: `ai/memories/changelogs/202603311430-feat-peekoo-node-runtime.md`
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring
