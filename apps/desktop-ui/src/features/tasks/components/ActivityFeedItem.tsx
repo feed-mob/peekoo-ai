@@ -27,14 +27,14 @@ const eventIcons = {
 };
 
 const eventColors = {
-  created: "text-blue-400",
-  status_changed: "text-green-400",
-  assigned: "text-purple-400",
-  labeled: "text-yellow-400",
-  unlabeled: "text-orange-400",
-  deleted: "text-red-400",
+  created: "text-blue-700 dark:text-blue-400",
+  status_changed: "text-green-700 dark:text-green-400",
+  assigned: "text-purple-700 dark:text-purple-400",
+  labeled: "text-yellow-700 dark:text-yellow-400",
+  unlabeled: "text-orange-700 dark:text-orange-400",
+  deleted: "text-red-700 dark:text-red-400",
   updated: "text-text-muted",
-  comment: "text-cyan-400",
+  comment: "text-cyan-700 dark:text-cyan-400",
 };
 
 function getEventDescription(event: TaskEvent, compact: boolean): string {
@@ -148,14 +148,14 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
             </button>
           )}
           <div className="flex flex-col gap-0.5 max-w-[85%]">
-            <span className={`text-[9px] font-medium ${isUser ? "text-right text-green-400" : "text-left text-purple-400"}`}>
+            <span className={`text-[9px] font-medium ${isUser ? "text-right text-green-700 dark:text-green-400" : "text-left text-purple-700 dark:text-purple-400"}`}>
               {authorLabel}
             </span>
-            <div
+              <div
               className={`px-2.5 py-1.5 rounded-lg text-xs ${
                 isUser
                   ? "bg-space-deep border border-glass-border text-text-primary"
-                  : "bg-purple-500/20 border border-purple-500/30 text-purple-100"
+                  : "bg-purple-500/15 border border-purple-500/30 text-purple-900 dark:bg-purple-500/20 dark:text-purple-100"
               }`}
             >
               <Streamdown>{text}</Streamdown>
@@ -181,14 +181,14 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
           </button>
         )}
         <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-          <span className={`text-[9px] font-medium mb-0.5 ${isUser ? "text-green-400" : "text-purple-400"}`}>
+          <span className={`text-[9px] font-medium mb-0.5 ${isUser ? "text-green-700 dark:text-green-400" : "text-purple-700 dark:text-purple-400"}`}>
             {authorLabel}
           </span>
           <div
             className={`max-w-[80%] px-3 py-2 rounded-xl text-sm ${
               isUser
                 ? "bg-space-deep border border-glass-border text-text-primary rounded-br-sm"
-                : "bg-purple-500/20 border border-purple-500/30 text-purple-100 rounded-bl-sm"
+                : "bg-purple-500/15 border border-purple-500/30 text-purple-900 rounded-bl-sm dark:bg-purple-500/20 dark:text-purple-100"
             }`}
           >
             <Streamdown>{text}</Streamdown>

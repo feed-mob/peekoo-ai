@@ -1,7 +1,12 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
-  RegistryAgent,
+  type InstallationMethod,
+  type InstallRuntimeResponse,
+  installRuntimeResponseSchema,
+} from "@/types/agent-runtime";
+import {
+  type RegistryAgent,
   paginatedRegistryAgentsSchema,
 } from "../types/agent-registry";
 
@@ -16,6 +21,8 @@ interface UseRegistryAgentsReturn {
   searchAgents: (query: string) => Promise<void>;
   loadMore: () => void;
   refresh: () => Promise<void>;
+  installAgent: (agent: RegistryAgent) => Promise<InstallRuntimeResponse>;
+  installingAgentId: string | null;
 }
 
 const PAGE_SIZE = 20;
@@ -27,7 +34,9 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
   const [hasMore, setHasMore] = useState(false);
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [installingAgentId, setInstallingAgentId] = useState<string | null>(null);
+  const pageRef = useRef(1);
+  const searchQueryRef = useRef("");
 
   const fetchAgents = useCallback(
     async (reset = false) => {
@@ -35,11 +44,12 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
       setError(null);
 
       try {
-        const currentPage = reset ? 1 : page;
+        const currentPage = reset ? 1 : pageRef.current;
+        const currentQuery = searchQueryRef.current;
         const result = await invoke<unknown>("get_registry_agents", {
           page: currentPage,
           pageSize: PAGE_SIZE,
-          searchQuery: searchQuery || null,
+          searchQuery: currentQuery || null,
           platformOnly: true,
         });
 
@@ -52,7 +62,9 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
         }
 
         setHasMore(parsed.hasMore);
-        setPage(currentPage + 1);
+        const nextPage = currentPage + 1;
+        setPage(nextPage);
+        pageRef.current = nextPage;
         setTotalCount(parsed.totalCount);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
@@ -60,13 +72,14 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
         setLoading(false);
       }
     },
-    [page, searchQuery]
+    []
   );
 
   const searchAgents = useCallback(
     async (query: string) => {
-      setSearchQuery(query);
+      searchQueryRef.current = query;
       setPage(1);
+      pageRef.current = 1;
       await fetchAgents(true);
     },
     [fetchAgents]
@@ -82,11 +95,40 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
     try {
       await invoke("refresh_registry_catalog");
       setPage(1);
+      pageRef.current = 1;
       await fetchAgents(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   }, [fetchAgents]);
+
+  const installAgent = useCallback(
+    async (agent: RegistryAgent) => {
+      const method = (agent.preferredMethod === "binary" || agent.supportedMethods.includes("binary")
+        ? "binary"
+        : "npx") as InstallationMethod;
+
+      setInstallingAgentId(agent.registryId);
+      setError(null);
+
+      try {
+        const result = await invoke<unknown>("install_registry_agent", {
+          registryId: agent.registryId,
+          method,
+        });
+        const parsed = installRuntimeResponseSchema.parse(result);
+        await fetchAgents(true);
+        return parsed;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setError(message);
+        throw e;
+      } finally {
+        setInstallingAgentId(null);
+      }
+    },
+    [fetchAgents]
+  );
 
   return {
     agents,
@@ -99,5 +141,7 @@ export function useRegistryAgents(): UseRegistryAgentsReturn {
     searchAgents,
     loadMore,
     refresh,
+    installAgent,
+    installingAgentId,
   };
 }

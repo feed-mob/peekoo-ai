@@ -326,12 +326,12 @@ fn build_agent_service_config(
     };
 
     if let Ok(provider_str) = std::env::var("PEEKOO_AGENT_PROVIDER") {
-        // Parse provider string to AgentProvider enum
         config.provider = match provider_str.as_str() {
-            "opencode" => AgentProvider::Opencode,
-            "claude-code" => AgentProvider::ClaudeCode,
-            "codex" => AgentProvider::Codex,
-            _ => AgentProvider::Opencode, // default
+            "opencode" => AgentProvider::opencode(),
+            "pi-acp" => AgentProvider::pi_acp(),
+            "claude-code" => AgentProvider::claude_code(),
+            "codex" => AgentProvider::codex(),
+            _ => AgentProvider::opencode(),
         };
     }
     if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {

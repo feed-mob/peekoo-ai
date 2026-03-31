@@ -1231,12 +1231,35 @@ impl AgentApplication {
             .get_default_runtime()
             .map_err(|e| format!("Get default runtime error: {e}"))?
             .ok_or_else(|| "No default runtime configured".to_string())?;
-        let provider_id = default_runtime.provider_id.clone();
+
+        // Build AgentProvider from the runtime
+        let provider = if default_runtime.is_bundled {
+            // Built-in providers have factory functions
+            match default_runtime.provider_id.as_str() {
+                "opencode" => peekoo_agent::config::AgentProvider::opencode(),
+                "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
+                "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
+                "codex" => peekoo_agent::config::AgentProvider::codex(),
+                _ => peekoo_agent::config::AgentProvider::from_registry(
+                    &default_runtime.provider_id,
+                    &default_runtime.command,
+                    default_runtime.args.clone(),
+                ),
+            }
+        } else {
+            // Registry-installed or custom providers use from_registry
+            peekoo_agent::config::AgentProvider::from_registry(
+                &default_runtime.provider_id,
+                &default_runtime.command,
+                default_runtime.args.clone(),
+            )
+        };
+
         let model_id = default_runtime.config.default_model.as_deref();
 
         let (mut config, settings_version) =
             self.settings
-                .to_agent_config(config, &provider_id, model_id)?;
+                .to_agent_config(config, provider, model_id)?;
 
         // Enable session persistence.
         config.no_session = false;
@@ -1315,22 +1338,45 @@ impl AgentApplication {
 
         if let Ok(config) = self.resolved_config()
             && let Ok(Some(runtime)) = self.provider_service.get_default_runtime()
-            && let Ok((resolved, _)) = self.settings.to_agent_config(
+        {
+            // Build AgentProvider from the runtime
+            let provider = if runtime.is_bundled {
+                match runtime.provider_id.as_str() {
+                    "opencode" => peekoo_agent::config::AgentProvider::opencode(),
+                    "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
+                    "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
+                    "codex" => peekoo_agent::config::AgentProvider::codex(),
+                    _ => peekoo_agent::config::AgentProvider::from_registry(
+                        &runtime.provider_id,
+                        &runtime.command,
+                        runtime.args.clone(),
+                    ),
+                }
+            } else {
+                peekoo_agent::config::AgentProvider::from_registry(
+                    &runtime.provider_id,
+                    &runtime.command,
+                    runtime.args.clone(),
+                )
+            };
+
+            if let Ok((resolved, _)) = self.settings.to_agent_config(
                 config,
-                &runtime.provider_id,
+                provider,
                 runtime.config.default_model.as_deref(),
             )
-        {
-            let runtime_id = resolved.provider.id();
+            {
+                let runtime_id = resolved.provider.id();
 
-            env.push(("PEEKOO_AGENT_PROVIDER".to_string(), runtime_id.clone()));
+                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), runtime_id.clone()));
 
-            // Apply model from resolved config
-            if let Some(model) = resolved.model {
-                env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
-            }
-            if let Some(api_key) = resolved.api_key {
-                env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
+                // Apply model from resolved config
+                if let Some(model) = resolved.model {
+                    env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
+                }
+                if let Some(api_key) = resolved.api_key {
+                    env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
+                }
             }
         }
 

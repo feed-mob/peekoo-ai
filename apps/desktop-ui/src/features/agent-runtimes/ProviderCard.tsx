@@ -20,19 +20,19 @@ interface ProviderCardProps {
 
 function getStatusIcon(status: RuntimeStatus, requiresAuth?: boolean) {
   if (requiresAuth) {
-    return <Lock className="h-4 w-4 text-yellow-500" />;
+    return <Lock className="h-4 w-4 text-yellow-700 dark:text-yellow-500" />;
   }
   switch (status) {
     case "ready":
-      return <Check className="h-4 w-4 text-green-500" />;
+      return <Check className="h-4 w-4 text-green-700 dark:text-green-500" />;
     case "installing":
-      return <Loader2 className="h-4 w-4 animate-spin text-blue-500" />;
+      return <Loader2 className="h-4 w-4 animate-spin text-blue-700 dark:text-blue-500" />;
     case "error":
-      return <AlertCircle className="h-4 w-4 text-red-500" />;
+      return <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />;
     case "needs_setup":
-      return <Settings className="h-4 w-4 text-yellow-500" />;
+      return <Settings className="h-4 w-4 text-yellow-700 dark:text-yellow-500" />;
     default:
-      return <Download className="h-4 w-4 text-gray-400" />;
+      return <Download className="h-4 w-4 text-gray-500 dark:text-gray-400" />;
   }
 }
 
@@ -120,8 +120,17 @@ export function ProviderCard({
       {/* Runtime Icon & Info */}
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-space-deep text-lg">
-            {provider.isBundled ? "🔧" : "🤖"}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
+            <img
+              src={`https://cdn.agentclientprotocol.com/registry/v1/latest/${provider.providerId}.svg`}
+              alt={provider.displayName}
+              className="h-8 w-8 object-contain"
+              onError={(e) => {
+                // Fallback to emoji if icon fails to load
+                (e.target as HTMLImageElement).style.display = "none";
+                (e.target as HTMLImageElement).parentElement!.textContent = provider.isBundled ? "🔧" : "🤖";
+              }}
+            />
           </div>
           <div>
             <h3 className="font-medium text-text-primary">{provider.displayName}</h3>
@@ -147,7 +156,7 @@ export function ProviderCard({
               {statusText}
             </button>
           ) : (
-            <span className={provider.status === "error" ? "text-red-400" : "text-text-secondary"}>
+            <span className={provider.status === "error" ? "text-red-700 dark:text-red-400" : "text-text-secondary"}>
               {statusText}
             </span>
           )}
@@ -190,7 +199,7 @@ export function ProviderCard({
               <Button
                 size="sm"
                 variant="outline"
-                className="flex-1 border-yellow-500/50 text-yellow-400 hover:bg-yellow-500/10"
+                className="flex-1 border-yellow-500/30 text-yellow-700 hover:bg-yellow-500/10 dark:border-yellow-500/50 dark:text-yellow-400 dark:hover:bg-yellow-500/10"
                 onClick={() => onConfigure(provider)}
               >
                 <Lock className="mr-1 h-3 w-3" />
@@ -210,7 +219,7 @@ export function ProviderCard({
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-red-400 hover:bg-red-500/10 hover:text-red-500"
+                className="text-red-700 hover:bg-red-500/10 hover:text-red-800 dark:text-red-400 dark:hover:bg-red-500/10 dark:hover:text-red-500"
                 onClick={() => onUninstall(provider.providerId)}
               >
                 <Trash2 className="h-3 w-3" />

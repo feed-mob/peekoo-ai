@@ -185,15 +185,15 @@ export function ChatPanel() {
 
       {/* Auth required banner */}
       {authRequired && (
-        <div className="mb-2 flex items-center gap-2 rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm">
-          <Lock className="h-4 w-4 shrink-0 text-yellow-400" />
-          <span className="flex-1 text-yellow-200">
+        <div className="mb-2 flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm dark:border-yellow-500/40">
+          <Lock className="h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400" />
+          <span className="flex-1 text-yellow-800 dark:text-yellow-200">
             {authRequiredProvider?.displayName ?? authRequired.runtimeId} needs login before it can respond.
           </span>
           <Button
             size="sm"
             variant="outline"
-            className="h-7 border-yellow-500/50 px-2 text-xs text-yellow-400 hover:bg-yellow-500/10"
+            className="h-7 border-yellow-500/30 px-2 text-xs text-yellow-700 hover:bg-yellow-500/10 dark:border-yellow-500/50 dark:text-yellow-400 dark:hover:bg-yellow-500/10"
             onClick={() => setShowLoginDialog(true)}
           >
             Login

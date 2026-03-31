@@ -706,10 +706,10 @@ async fn get_registry_agents(
     
     Ok(serde_json::json!({
         "agents": agents,
-        "total_count": total_count,
+        "totalCount": total_count,
         "page": page,
-        "page_size": page_size,
-        "has_more": (page * page_size) < total_count,
+        "pageSize": page_size,
+        "hasMore": (page * page_size) < total_count,
     }))
 }
 

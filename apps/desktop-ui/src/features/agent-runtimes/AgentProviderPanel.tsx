@@ -43,6 +43,8 @@ export function AgentProviderPanel() {
     searchAgents,
     loadMore,
     refresh: refreshRegistry,
+    installAgent,
+    installingAgentId,
   } = useRegistryAgents();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,12 +53,21 @@ export function AgentProviderPanel() {
   const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
   const [isConfigureDialogOpen, setIsConfigureDialogOpen] = useState(false);
   const [isAddCustomDialogOpen, setIsAddCustomDialogOpen] = useState(false);
+  const totalAvailableCount = registryAgents.length;
 
   // Load providers on mount
   useEffect(() => {
     refresh();
     fetchAgents(true);
   }, [refresh, fetchAgents]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void searchAgents(searchQuery);
+    }, 250);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchAgents, searchQuery]);
 
   const handleInstall = (provider: RuntimeInfo) => {
     setSelectedProvider(provider);
@@ -105,9 +116,9 @@ export function AgentProviderPanel() {
 
       {/* Error Alert */}
       {error && (
-        <Alert className="border-red-500/50 bg-red-500/10">
-          <AlertCircle className="h-4 w-4 text-red-500" />
-          <AlertDescription className="text-red-200">{error}</AlertDescription>
+        <Alert className="border-red-500/30 bg-red-500/10 dark:border-red-500/50 dark:bg-red-500/10">
+          <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />
+          <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
         </Alert>
       )}
 
@@ -123,8 +134,16 @@ export function AgentProviderPanel() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-space-deep text-lg">
-                {defaultProvider.isBundled ? "🔧" : "🤖"}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
+                <img
+                  src={`https://cdn.agentclientprotocol.com/registry/v1/latest/${defaultProvider.providerId}.svg`}
+                  alt={defaultProvider.displayName}
+                  className="h-8 w-8 object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = "none";
+                    (e.target as HTMLImageElement).parentElement!.textContent = defaultProvider.isBundled ? "🔧" : "🤖";
+                  }}
+                />
               </div>
               <div className="flex-1">
                 <div className="font-medium text-text-primary">{defaultProvider.displayName}</div>
@@ -162,14 +181,12 @@ export function AgentProviderPanel() {
         )}
       </div>
 
-      {/* Available Runtimes - ACP Registry */}
+      {/* Available Runtimes */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-text-secondary">
-            Available Runtimes from ACP Registry
-          </h3>
+          <h3 className="text-sm font-medium text-text-secondary">Available Runtimes</h3>
           <span className="text-xs text-text-muted">
-            Showing {registryAgents.length} agents
+            Showing {totalAvailableCount} runtimes
           </span>
         </div>
 
@@ -181,18 +198,15 @@ export function AgentProviderPanel() {
               placeholder="Search agents (e.g., Gemini, Cursor, Claude)..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  searchAgents(searchQuery);
-                }
-              }}
               className="pl-10"
             />
           </div>
           <Button
             variant="outline"
             size="icon"
-            onClick={() => searchAgents(searchQuery)}
+            onClick={() => {
+              void searchAgents(searchQuery);
+            }}
             disabled={registryLoading}
           >
             <Search className="h-4 w-4" />
@@ -209,18 +223,18 @@ export function AgentProviderPanel() {
 
         {/* Registry Error */}
         {registryError && (
-          <Alert className="mb-4 border-red-500/50 bg-red-500/10">
-            <AlertCircle className="h-4 w-4 text-red-500" />
-            <AlertDescription className="text-red-200">
+          <Alert className="mb-4 border-red-500/30 bg-red-500/10 dark:border-red-500/50 dark:bg-red-500/10">
+            <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />
+            <AlertDescription className="text-red-800 dark:text-red-200">
               {registryError}
             </AlertDescription>
           </Alert>
         )}
 
-        {/* Registry Agents Grid */}
-        {registryAgents.length === 0 && !registryLoading ? (
+        {/* Available Runtime Grid */}
+        {totalAvailableCount === 0 && !registryLoading ? (
           <div className="rounded-lg border border-dashed border-glass-border p-8 text-center">
-            <p className="text-sm text-text-muted">No agents found</p>
+            <p className="text-sm text-text-muted">No runtimes found</p>
           </div>
         ) : (
           <>
@@ -229,9 +243,11 @@ export function AgentProviderPanel() {
                 <RegistryAgentCard
                   key={agent.registryId}
                   agent={agent}
+                  isInstalling={installingAgentId === agent.registryId}
                   onInstall={() => {
-                    // TODO: Install from registry
-                    console.log("Install", agent.registryId);
+                    void installAgent(agent)
+                      .then(() => refresh())
+                      .catch(() => undefined);
                   }}
                 />
               ))}

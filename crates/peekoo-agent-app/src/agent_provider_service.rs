@@ -1,10 +1,11 @@
 //! Agent provider management service
 //!
 //! This service manages the installation, configuration, and lifecycle of
-//! ACP-compatible agent providers (pi-acp, opencode, claude-code, codex, custom).
+//! ACP-compatible agent providers.
 //!
 //! ## ACP Registry Integration
-//! The service now integrates with the ACP registry to support 40+ agents.
+//! The ACP registry is the single source of truth for available agents.
+//! The local DB (`agent_runtimes`) only contains installed agents.
 //! See: crates/acp-registry-client for registry client implementation.
 
 use anyhow;
@@ -72,6 +73,10 @@ pub struct ProviderInfo {
     pub status_message: Option<String>,
     pub available_methods: Vec<InstallationMethodInfo>,
     pub config: ProviderConfig,
+    /// Command to spawn this provider
+    pub command: String,
+    /// Arguments to pass to the command
+    pub args: Vec<String>,
 }
 
 pub type RuntimeInfo = ProviderInfo;
@@ -83,9 +88,6 @@ impl RuntimeInfo {
     }
 }
 
-fn is_builtin_runtime(provider_id: &str) -> bool {
-    matches!(provider_id, "pi-acp" | "opencode" | "claude-code" | "codex")
-}
 
 /// Registry agent info for displaying ACP registry agents in UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -314,9 +316,12 @@ pub struct AgentProviderService {
     conn: Arc<Mutex<Connection>>,
     data_dir: PathBuf,
     inspection_cache: Arc<Mutex<HashMap<String, RuntimeInspectionResult>>>,
-    bundled_opencode_path: Option<PathBuf>,
     /// ACP registry client for fetching and installing agents from registry
     registry_client: Option<RegistryClient>,
+    /// Node runtime for NPX-based agent installations
+    node_runtime: peekoo_node_runtime::NodeRuntime,
+    /// Keep the watch channel sender alive for node_runtime
+    _node_options_tx: tokio::sync::watch::Sender<Option<peekoo_node_runtime::NodeBinaryOptions>>,
 }
 
 impl AgentProviderService {
@@ -332,24 +337,34 @@ impl AgentProviderService {
     ) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
 
-        // Tables should already exist from migrations
-        // Tests use test_only_new() which calls ensure_tables
-
-        // Ensure built-in providers are registered
         let bundled_opencode_path =
             bundled_opencode_path.filter(|path| path.exists() && path.is_file());
 
-        Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
+        Self::seed_installed_opencode(&conn, bundled_opencode_path.as_deref())?;
 
         // Initialize registry client (may fail if no network/cache, but service still works)
         let registry_client = RegistryClient::new().ok();
+
+        // Initialize NodeRuntime for NPX installations
+        let options = peekoo_node_runtime::NodeBinaryOptions {
+            allow_path_lookup: true,
+            allow_binary_download: true,
+            use_paths: None,
+        };
+        let (tx, rx) = tokio::sync::watch::channel(Some(options));
+        let node_runtime = peekoo_node_runtime::NodeRuntime::new(
+            peekoo_node_runtime::HttpClient::new(),
+            None,
+            rx,
+        );
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
             inspection_cache: Arc::new(Mutex::new(HashMap::new())),
-            bundled_opencode_path,
             registry_client,
+            node_runtime,
+            _node_options_tx: tx,
         })
     }
 
@@ -367,25 +382,37 @@ impl AgentProviderService {
     ) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
 
-        // Run standard migrations for tests
         peekoo_persistence_sqlite::run_all_migrations(&conn)
             .map_err(|e| anyhow::anyhow!("Failed to run migrations: {e}"))?;
 
-        // Ensure built-in providers are registered
         let bundled_opencode_path =
             bundled_opencode_path.filter(|path| path.exists() && path.is_file());
 
-        Self::seed_builtin_providers(&conn, bundled_opencode_path.as_deref())?;
+        Self::seed_installed_opencode(&conn, bundled_opencode_path.as_deref())?;
 
         // Don't initialize registry client in tests to avoid network calls
         let registry_client = None;
+
+        // Initialize NodeRuntime for NPX installations
+        let options = peekoo_node_runtime::NodeBinaryOptions {
+            allow_path_lookup: true,
+            allow_binary_download: true,
+            use_paths: None,
+        };
+        let (tx, rx) = tokio::sync::watch::channel(Some(options));
+        let node_runtime = peekoo_node_runtime::NodeRuntime::new(
+            peekoo_node_runtime::HttpClient::new(),
+            None,
+            rx,
+        );
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
             data_dir,
             inspection_cache: Arc::new(Mutex::new(HashMap::new())),
-            bundled_opencode_path,
             registry_client,
+            node_runtime,
+            _node_options_tx: tx,
         })
     }
 
@@ -491,153 +518,46 @@ impl AgentProviderService {
         Ok(())
     }
 
-    fn seed_builtin_providers(
+    /// Seed an installed opencode row only if opencode is actually present
+    /// (bundled binary or on PATH). This is the only hardcoded seed — everything
+    /// else comes from the ACP registry.
+    fn seed_installed_opencode(
         conn: &Connection,
         bundled_opencode_path: Option<&std::path::Path>,
     ) -> anyhow::Result<()> {
+        let is_bundled = bundled_opencode_path.is_some();
+        let is_on_path = command_available("opencode");
+
+        if !is_bundled && !is_on_path {
+            // opencode not present — no row to seed; user installs via registry
+            return Ok(());
+        }
+
+        let command = bundled_opencode_path
+            .map(|p| p.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "opencode".to_string());
         let now = chrono::Utc::now().to_rfc3339();
-        let opencode_bundled = bundled_opencode_path.is_some();
-        let opencode_installed = opencode_bundled || command_available("opencode");
 
-        // Insert pi-acp as an external runtime option
-        Self::upsert_runtime_record(
-            conn,
-            "provider_pi_acp",
-            "pi-acp",
-            "pi",
-            "ACP runtime powered by the pi-acp package",
-            "npx",
-            "[\"pi-acp\"]",
-            "npx",
-            false,
-            false,
-            false,
-            "not_installed",
-            Some("npm i -g pi-acp"),
-            &ProviderConfig::default(),
-            &now,
-        )?;
-
-        // Insert opencode as the default runtime.
-        Self::upsert_runtime_record(
-            conn,
-            "provider_opencode",
-            "opencode",
-            "OpenCode",
-            "Open source AI coding agent with ACP support",
-            "opencode",
-            "[\"acp\"]",
-            if opencode_bundled {
-                "bundled"
-            } else {
-                "binary"
-            },
-            opencode_bundled,
-            opencode_installed,
-            true,
-            if opencode_installed {
-                "ready"
-            } else {
-                "not_installed"
-            },
-            Some(if opencode_bundled {
-                "Bundled with Peekoo."
-            } else {
-                "Install OpenCode and make the `opencode` command available on PATH."
-            }),
-            &ProviderConfig::default(),
-            &now,
-        )?;
-
-        // Insert claude-code as available provider
-        Self::upsert_runtime_record(
-            conn,
-            "provider_claude_code",
-            "claude-code",
-            "Claude Code",
-            "Anthropic's Claude Code agent",
-            "npx",
-            "[\"@anthropic-ai/claude-code\"]",
-            "npx",
-            false,
-            false,
-            false,
-            "not_installed",
-            Some("npm i -g @anthropic-ai/claude-code"),
-            &ProviderConfig::default(),
-            &now,
-        )?;
-
-        // Insert codex as available provider
-        Self::upsert_runtime_record(
-            conn,
-            "provider_codex",
-            "codex",
-            "Codex",
-            "OpenAI Codex agent via Zed's ACP wrapper",
-            "npx",
-            "[\"@zed-industries/codex-acp\"]",
-            "npx",
-            false,
-            false,
-            false,
-            "not_installed",
-            Some("npm i -g @zed-industries/codex-acp"),
-            &ProviderConfig::default(),
-            &now,
-        )?;
-
-        Ok(())
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn upsert_runtime_record(
-        conn: &Connection,
-        id: &str,
-        runtime_type: &str,
-        display_name: &str,
-        description: &str,
-        command: &str,
-        args_json: &str,
-        installation_method: &str,
-        is_bundled: bool,
-        is_installed: bool,
-        is_default: bool,
-        status: &str,
-        install_hint: Option<&str>,
-        config: &ProviderConfig,
-        now: &str,
-    ) -> anyhow::Result<()> {
         conn.execute(
             "INSERT INTO agent_runtimes (
                 id, runtime_type, display_name, description, command, args_json,
-                installation_method, is_bundled, is_installed, is_default, is_enabled,
-                status, status_message, install_hint, config_json, created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, ?11, NULL, ?12, ?13, ?14, ?14)
+                installation_method, is_bundled, is_installed, is_default,
+                status, status_message, config_json, registry_id, created_at, updated_at
+            ) VALUES (
+                'provider_opencode', 'opencode', 'OpenCode', 'Open source AI coding agent with ACP support',
+                ?1, '[\"acp\"]',
+                ?2, ?3, 1, 1,
+                'ready', NULL, '{}', 'opencode', ?4, ?4
+            )
             ON CONFLICT(id) DO UPDATE SET
-                runtime_type = excluded.runtime_type,
-                display_name = excluded.display_name,
-                description = excluded.description,
                 command = excluded.command,
-                args_json = excluded.args_json,
                 installation_method = excluded.installation_method,
                 is_bundled = excluded.is_bundled,
-                install_hint = excluded.install_hint,
                 updated_at = excluded.updated_at",
             params![
-                id,
-                runtime_type,
-                display_name,
-                description,
                 command,
-                args_json,
-                installation_method,
-                if is_bundled { 1 } else { 0 },
-                if is_installed { 1 } else { 0 },
-                if is_default { 1 } else { 0 },
-                status,
-                install_hint,
-                serde_json::to_string(config)?,
+                if is_bundled { "bundled" } else { "binary" },
+                if is_bundled { 1i64 } else { 0i64 },
                 now,
             ],
         )?;
@@ -671,6 +591,12 @@ impl AgentProviderService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
                 Ok(ProviderInfo {
                     id: row.get(0)?,
                     provider_id: provider_id.clone(),
@@ -684,6 +610,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -715,6 +643,12 @@ impl AgentProviderService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
                 Ok(RuntimeInfo {
                     id: row.get(0)?,
                     provider_id: runtime_type.clone(),
@@ -728,6 +662,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -810,6 +746,12 @@ impl AgentProviderService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
                 Ok(ProviderInfo {
                     id: row.get(0)?,
                     provider_id: provider_id.clone(),
@@ -823,6 +765,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })
             .optional()?;
@@ -855,6 +799,12 @@ impl AgentProviderService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
                 Ok(RuntimeInfo {
                     id: row.get(0)?,
                     provider_id: runtime_type,
@@ -868,6 +818,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })
             .optional()?;
@@ -897,14 +849,20 @@ impl AgentProviderService {
 
                 let available_methods = Self::get_available_methods(&runtime_type, is_bundled != 0);
 
-                let config_json: Option<String> = row.get(12)?;
+let config_json: Option<String> = row.get(12)?;
                 let config: ProviderConfig = config_json
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
-                Ok(RuntimeInfo {
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
+                Ok(ProviderInfo {
                     id: row.get(0)?,
-                    provider_id: runtime_type,
+                    provider_id: runtime_type.clone(),
                     display_name: row.get(2)?,
                     description: row.get(3)?,
                     is_bundled: is_bundled != 0,
@@ -915,6 +873,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })
             .optional()?;
@@ -1122,15 +1082,6 @@ impl AgentProviderService {
         &self,
         runtime_id: &str,
     ) -> anyhow::Result<(String, Vec<String>)> {
-        if runtime_id == "opencode"
-            && let Some(path) = self
-                .bundled_opencode_path
-                .as_ref()
-                .filter(|path| path.exists() && path.is_file())
-        {
-            return Ok((path.to_string_lossy().into_owned(), vec!["acp".to_string()]));
-        }
-
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT command, args_json FROM agent_runtimes WHERE runtime_type = ?1 LIMIT 1",
@@ -1549,22 +1500,13 @@ impl AgentProviderService {
         let provider = {
             let conn = self.conn()?;
 
-            Self::upsert_runtime_record(
-                &conn,
-                &id,
-                &id,
-                name,
-                description.unwrap_or("Custom ACP agent"),
-                command,
-                &args_json,
-                "custom",
-                false,
-                true,
-                false,
-                "ready",
-                Some("Custom ACP runtime"),
-                &ProviderConfig::default(),
-                &now,
+            conn.execute(
+                "INSERT INTO agent_runtimes (
+                    id, runtime_type, display_name, description, command, args_json,
+                    installation_method, is_bundled, is_installed, is_default,
+                    status, status_message, config_json, created_at, updated_at
+                ) VALUES (?1, ?1, ?2, ?3, ?4, ?5, 'custom', 0, 1, 0, 'ready', NULL, '{}', ?6, ?6)",
+                params![id, name, description.unwrap_or("Custom ACP agent"), command, args_json, now],
             )?;
 
             // Return the new provider info
@@ -1597,6 +1539,12 @@ impl AgentProviderService {
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
 
+                let command: String = row.get(10)?;
+                let args_json: Option<String> = row.get(11)?;
+                let args: Vec<String> = args_json
+                    .and_then(|s| serde_json::from_str(&s).ok())
+                    .unwrap_or_default();
+
                 Ok(ProviderInfo {
                     id: row.get(0)?,
                     provider_id: provider_id.clone(),
@@ -1610,6 +1558,8 @@ impl AgentProviderService {
                     status_message: row.get(9)?,
                     available_methods,
                     config,
+                    command,
+                    args,
                 })
             })?
         };
@@ -1624,9 +1574,18 @@ impl AgentProviderService {
         {
             let conn = self.conn()?;
 
-            // Only allow removing custom providers
-            if is_builtin_runtime(provider_id) {
-                return Err(anyhow::anyhow!("Cannot remove built-in providers"));
+            // Bundled agents cannot be removed
+            let is_bundled: i64 = conn
+                .query_row(
+                    "SELECT is_bundled FROM agent_runtimes WHERE runtime_type = ?1 OR id = ?1",
+                    params![provider_id],
+                    |row| row.get(0),
+                )
+                .optional()?
+                .unwrap_or(0);
+
+            if is_bundled != 0 {
+                return Err(anyhow::anyhow!("Cannot remove a bundled provider"));
             }
 
             // Check if it's the default
@@ -1867,13 +1826,41 @@ impl AgentProviderService {
         // Install based on method
         match method {
             InstallationMethod::Npx => {
-                // TODO: Implement NPX installation using peekoo-node-runtime
-                // This requires NodeRuntime to be available
-                unimplemented!("NPX installation from registry not yet implemented")
+                // Verify the agent has an NPX distribution
+                agent.distribution.npx.as_ref()
+                    .ok_or_else(|| anyhow::anyhow!(
+                        "Agent {} has no NPX distribution",
+                        registry_id
+                    ))?;
+
+                let install_config = acp_registry_client::InstallConfig {
+                    agent: agent.clone(),
+                    method: Some(acp_registry_client::InstallMethod::Npx),
+                    install_dir,
+                };
+
+                let installation = acp_registry_client::install(install_config, Some(&self.node_runtime)).await
+                    .context("Failed to install NPX agent")?;
+
+                self.create_runtime_from_registry(
+                    agent,
+                    method,
+                    &installation.executable_path,
+                    &installation.command,
+                )?;
+
+                Ok(InstallProviderResponse {
+                    success: true,
+                    message: format!(
+                        "Successfully installed {} ({})",
+                        agent.name, agent.version
+                    ),
+                    requires_restart: false,
+                })
             }
             InstallationMethod::Binary => {
                 // Get binary platform info
-                let platform_info = agent.distribution.binary.as_ref()
+                agent.distribution.binary.as_ref()
                     .and_then(|b| b.get(&platform))
                     .ok_or_else(|| anyhow::anyhow!(
                         "No binary distribution for agent {} on platform {}",
@@ -1955,11 +1942,11 @@ impl AgentProviderService {
         conn.execute(
             "INSERT OR REPLACE INTO agent_runtimes (
                 id, runtime_type, display_name, description, command, args_json,
-                installation_method, is_bundled, is_installed, is_default, is_enabled,
-                status, status_message, install_hint, config_json,
-                registry_source, registry_id, registry_version, registry_metadata, last_registry_sync,
+                installation_method, is_bundled, is_installed, is_default,
+                status, status_message, config_json,
+                registry_id, registry_version,
                 created_at, updated_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, 0, 'ready', NULL, '{}', ?8, ?9, ?10, ?10)",
             params![
                 runtime_id,
                 agent.id,
@@ -1972,25 +1959,8 @@ impl AgentProviderService {
                     InstallationMethod::Binary => "binary",
                     _ => "custom",
                 },
-                0, // is_bundled
-                1, // is_installed
-                0, // is_default
-                1, // is_enabled
-                "ready",
-                None::<String>,
-                None::<String>,
-                "{}", // config_json
-                "acp_registry",
                 agent.id,
                 agent.version,
-                serde_json::to_string(&serde_json::json!({
-                    "authors": agent.authors,
-                    "license": agent.license,
-                    "website": agent.website,
-                    "repository": agent.repository,
-                }))?,
-                now.clone(),
-                now.clone(),
                 now,
             ],
         )?;
@@ -2066,88 +2036,87 @@ mod tests {
 
         let providers = service.list_providers().unwrap();
 
-        // Should have the 4 built-in providers seeded
-        assert!(providers.len() >= 4);
-
-        // opencode remains the default runtime, but installation follows actual PATH availability.
-        let opencode = providers
-            .iter()
-            .find(|p| p.provider_id == "opencode")
-            .unwrap();
-        assert_eq!(opencode.is_installed, opencode_available);
-        assert!(opencode.is_default);
-        assert!(!opencode.is_bundled);
-
-        let pi_acp = providers
-            .iter()
-            .find(|p| p.provider_id == "pi-acp")
-            .unwrap();
-        assert!(!pi_acp.is_installed);
-        assert!(!pi_acp.is_default);
-        assert!(!pi_acp.is_bundled);
+        if opencode_available {
+            // opencode row seeded because it's on PATH
+            let opencode = providers
+                .iter()
+                .find(|p| p.provider_id == "opencode")
+                .unwrap();
+            assert!(opencode.is_installed);
+            assert!(opencode.is_default);
+            assert!(!opencode.is_bundled);
+        } else {
+            // no rows seeded — DB is empty
+            assert!(providers.is_empty());
+        }
     }
 
     #[test]
     fn test_get_default_provider() {
         let (service, _temp) = create_test_service();
+        let opencode_available = command_available("opencode");
 
         let default = service.get_default_provider().unwrap();
-        assert!(default.is_some());
-
-        let default = default.unwrap();
-        assert_eq!(default.provider_id, "opencode");
-        assert!(default.is_default);
+        if opencode_available {
+            assert!(default.is_some());
+            assert_eq!(default.unwrap().provider_id, "opencode");
+        } else {
+            assert!(default.is_none());
+        }
     }
 
     #[test]
     fn test_list_runtimes_uses_runtime_table() {
         let (service, _temp) = create_test_service();
+        let opencode_available = command_available("opencode");
 
         let runtimes = service.list_runtimes().unwrap();
-
-        assert!(runtimes.len() >= 4);
-        let default = runtimes.iter().find(|runtime| runtime.is_default).unwrap();
-        assert_eq!(default.provider_id, "opencode");
-
         let runtime_rows: i64 = service
             .test_conn()
             .query_row("SELECT COUNT(*) FROM agent_runtimes", [], |row| row.get(0))
             .unwrap();
-        assert!(runtime_rows >= 4);
+
+        if opencode_available {
+            assert_eq!(runtimes.len(), 1);
+            assert_eq!(runtime_rows, 1);
+            assert_eq!(runtimes[0].provider_id, "opencode");
+        } else {
+            assert_eq!(runtimes.len(), 0);
+            assert_eq!(runtime_rows, 0);
+        }
     }
 
     #[test]
     fn test_set_default_provider() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
-        // Set opencode as default
-        service.set_default_provider("opencode").unwrap();
-
-        // Verify
-        let default = service.get_default_provider().unwrap().unwrap();
-        assert_eq!(default.provider_id, "opencode");
-
-        // Verify pi-acp is no longer default
-        let providers = service.list_providers().unwrap();
-        let pi_acp = providers
-            .iter()
-            .find(|p| p.provider_id == "pi-acp")
+        // Add a second provider to switch default to
+        let custom = service
+            .add_custom_provider("Other Agent", None, "/tmp/other", &[], None)
             .unwrap();
-        assert!(!pi_acp.is_default);
+
+        // Switch default to custom
+        service.set_default_provider(&custom.provider_id).unwrap();
+        let default = service.get_default_provider().unwrap().unwrap();
+        assert_eq!(default.provider_id, custom.provider_id);
+
+        // opencode is no longer default
+        let providers = service.list_providers().unwrap();
+        let opencode = providers.iter().find(|p| p.provider_id == "opencode").unwrap();
+        assert!(!opencode.is_default);
     }
 
     #[test]
     fn test_get_provider_config() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
-        let config = service.get_provider_config("pi-acp").unwrap();
-        // Default config should be empty
+        let config = service.get_provider_config("opencode").unwrap();
         assert!(config.default_model.is_none());
     }
 
     #[test]
     fn test_update_provider_config() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
         let new_config = ProviderConfig {
             default_model: Some("claude-3.5-sonnet".to_string()),
@@ -2155,33 +2124,12 @@ mod tests {
             custom_args: vec!["--verbose".to_string()],
         };
 
-        service
-            .update_provider_config("pi-acp", &new_config)
-            .unwrap();
+        service.update_provider_config("opencode", &new_config).unwrap();
 
-        // Verify
-        let config = service.get_provider_config("pi-acp").unwrap();
+        let config = service.get_provider_config("opencode").unwrap();
         assert_eq!(config.default_model, Some("claude-3.5-sonnet".to_string()));
         assert_eq!(config.env_vars.get("API_KEY"), Some(&"secret".to_string()));
         assert_eq!(config.custom_args, vec!["--verbose"]);
-    }
-
-    #[tokio::test]
-    async fn test_pi_acp_runtime_uses_external_npx_command() {
-        let (service, _temp) = create_test_service();
-
-        let (command, args) = service.get_runtime_command("pi-acp").await.unwrap();
-        assert_eq!(command, "npx");
-        assert_eq!(args, vec!["pi-acp"]);
-    }
-
-    #[tokio::test]
-    async fn test_pi_acp_runtime_reports_not_installed_by_default() {
-        let (service, _temp) = create_test_service();
-
-        let result = service.test_connection("pi-acp").await.unwrap();
-        assert!(!result.success);
-        assert_eq!(result.message, "Provider is not installed");
     }
 
     #[tokio::test]
@@ -2255,12 +2203,12 @@ mod tests {
     }
 
     #[test]
-    fn test_cannot_remove_builtin_provider() {
-        let (service, _temp) = create_test_service();
+    fn test_cannot_remove_bundled_provider() {
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
-        let result = service.remove_custom_provider("pi-acp");
+        let result = service.remove_custom_provider("opencode");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("built-in"));
+        assert!(result.unwrap_err().to_string().contains("bundled"));
     }
 
     #[test]
@@ -2281,8 +2229,8 @@ mod tests {
     }
 
     #[test]
-    fn test_available_methods_for_pi_acp_external_runtime() {
-        let methods = AgentProviderService::get_available_methods("pi-acp", false);
+    fn test_available_methods_for_external_runtime() {
+        let methods = AgentProviderService::get_available_methods("some-agent", false);
 
         assert!(!methods.iter().any(|m| m.id == InstallationMethod::Bundled));
         assert!(methods.iter().any(|m| m.id == InstallationMethod::Npx));
@@ -2290,11 +2238,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_opencode_runtime_uses_cli_command_and_tracks_path_availability() {
-        let (service, _temp) = create_test_service();
-        let opencode_available = command_available("opencode");
+        let (service, _temp, bundled_bin) = create_test_service_with_bundled_opencode();
 
         let (command, args) = service.get_runtime_command("opencode").await.unwrap();
-        assert_eq!(command, "opencode");
+        assert_eq!(command, bundled_bin.to_string_lossy());
         assert_eq!(args, vec!["acp"]);
 
         let provider = service
@@ -2303,7 +2250,7 @@ mod tests {
             .into_iter()
             .find(|provider| provider.provider_id == "opencode")
             .unwrap();
-        assert_eq!(provider.is_installed, opencode_available);
+        assert!(provider.is_installed);
         assert!(provider.is_default);
     }
 

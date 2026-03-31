@@ -348,9 +348,31 @@ mod tests {
         (service, temp_dir)
     }
 
+    fn create_test_service_with_bundled_opencode() -> (AgentProviderService, TempDir, std::path::PathBuf) {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test.db");
+        let data_dir = temp_dir.path().join("data");
+        let bundled_dir = temp_dir.path().join("opencode");
+        std::fs::create_dir_all(&bundled_dir).unwrap();
+        let bundled_bin = bundled_dir.join(if cfg!(windows) {
+            "opencode.exe"
+        } else {
+            "opencode"
+        });
+        std::fs::write(&bundled_bin, b"fake-opencode").unwrap();
+
+        let service = AgentProviderService::test_only_new_with_bundled_opencode(
+            &db_path,
+            data_dir,
+            Some(bundled_bin.clone()),
+        )
+        .unwrap();
+        (service, temp_dir, bundled_bin)
+    }
+
     #[tokio::test]
     async fn test_list_providers_command() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
         let providers = list_agent_providers(&service).await.unwrap();
         assert!(!providers.is_empty());
@@ -358,14 +380,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_set_default_provider_command() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
-        // First mark opencode as installed
-        service.test_conn().execute(
-            "UPDATE agent_runtimes SET is_installed = 1, status = 'ready' WHERE runtime_type = 'opencode'",
-            [],
-        ).unwrap();
-
+        // opencode is already installed and default
         set_default_provider(&service, "opencode".to_string()).unwrap();
 
         let default = get_default_provider(&service).unwrap();
@@ -407,10 +424,10 @@ mod tests {
 
     #[test]
     fn test_provider_config_commands() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bin) = create_test_service_with_bundled_opencode();
 
-        // Get initial config
-        let config = get_provider_config(&service, "pi-acp".to_string()).unwrap();
+        // Get initial config for opencode (the seeded provider)
+        let config = get_provider_config(&service, "opencode".to_string()).unwrap();
         assert!(config.default_model.is_none());
 
         // Update config
@@ -420,10 +437,10 @@ mod tests {
             custom_args: vec!["--test".to_string()],
         };
 
-        update_provider_config(&service, "pi-acp".to_string(), new_config.clone()).unwrap();
+        update_provider_config(&service, "opencode".to_string(), new_config.clone()).unwrap();
 
         // Verify update
-        let config = get_provider_config(&service, "pi-acp".to_string()).unwrap();
+        let config = get_provider_config(&service, "opencode".to_string()).unwrap();
         assert_eq!(config.default_model, Some("gpt-4".to_string()));
     }
 

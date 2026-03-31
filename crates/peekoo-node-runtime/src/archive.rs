@@ -98,6 +98,16 @@ pub async fn extract_targz(archive: Bytes, dest: &Path) -> Result<()> {
             let mut outfile =
                 std::fs::File::create(&outpath).context("Failed to create file from tar.gz")?;
             io::copy(&mut entry, &mut outfile).context("Failed to write tar.gz file content")?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let mode = entry.header().mode().unwrap_or(0o644);
+                if mode & 0o111 != 0 {
+                    std::fs::set_permissions(&outpath, std::fs::Permissions::from_mode(mode))
+                        .context("Failed to set permissions from tar.gz")?;
+                }
+            }
         }
 
         Ok(())
@@ -140,6 +150,17 @@ pub async fn extract_zip(archive: Bytes, dest: &Path) -> Result<()> {
                     std::fs::File::create(&outpath).context("Failed to create file from zip")?;
 
                 std::io::copy(&mut file, &mut outfile).context("Failed to write file content")?;
+
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    if let Some(mode) = file.unix_mode() {
+                        if mode & 0o111 != 0 {
+                            std::fs::set_permissions(&outpath, std::fs::Permissions::from_mode(mode))
+                                .context("Failed to set permissions from zip")?;
+                        }
+                    }
+                }
             }
         }
 

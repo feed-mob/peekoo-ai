@@ -53,7 +53,7 @@ export function QuickProviderSwitcher({
             </>
           ) : (
             <>
-              <AlertCircle className="h-3 w-3 text-yellow-500" />
+              <AlertCircle className="h-3 w-3 text-yellow-700 dark:text-yellow-500" />
               <span>No runtime</span>
             </>
           )}

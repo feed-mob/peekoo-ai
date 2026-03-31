@@ -124,9 +124,9 @@ export function InstallProviderDialog({
               <AlertDescription>Checking prerequisites...</AlertDescription>
             </Alert>
           ) : prerequisites && !prerequisites.available ? (
-            <Alert className="border-yellow-500/50 bg-yellow-500/10">
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
-              <AlertDescription className="text-yellow-200">
+            <Alert className="border-yellow-500/30 bg-yellow-500/10 dark:border-yellow-500/50 dark:bg-yellow-500/10">
+              <AlertCircle className="h-4 w-4 text-yellow-700 dark:text-yellow-500" />
+              <AlertDescription className="text-yellow-800 dark:text-yellow-200">
                 Missing: {prerequisites.missingComponents.join(", ")}
                 {prerequisites.instructions && (
                   <div className="mt-2 text-xs">{prerequisites.instructions}</div>
@@ -134,9 +134,9 @@ export function InstallProviderDialog({
               </AlertDescription>
             </Alert>
           ) : prerequisites?.available ? (
-            <Alert className="border-green-500/50 bg-green-500/10">
-              <Check className="h-4 w-4 text-green-500" />
-              <AlertDescription className="text-green-200">
+            <Alert className="border-green-500/30 bg-green-500/10 dark:border-green-500/50 dark:bg-green-500/10">
+              <Check className="h-4 w-4 text-green-700 dark:text-green-500" />
+              <AlertDescription className="text-green-800 dark:text-green-200">
                 All prerequisites satisfied
               </AlertDescription>
             </Alert>
@@ -174,7 +174,7 @@ export function InstallProviderDialog({
                     </div>
                   </div>
                   {!method.isAvailable && (
-                    <span className="text-xs text-red-400">Not Available</span>
+                     <span className="text-xs text-red-700 dark:text-red-400">Not Available</span>
                   )}
                 </Label>
               </div>
@@ -197,9 +197,9 @@ export function InstallProviderDialog({
 
           {/* Error Message */}
           {error && (
-            <Alert className="border-red-500/50 bg-red-500/10">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <AlertDescription className="text-red-200">{error}</AlertDescription>
+            <Alert className="border-red-500/30 bg-red-500/10 dark:border-red-500/50 dark:bg-red-500/10">
+              <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />
+              <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
             </Alert>
           )}
         </div>

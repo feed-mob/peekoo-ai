@@ -201,6 +201,13 @@ async fn install_binary(
         ));
     }
 
+    // Ensure binaries are executable
+    let executable_name = Path::new(&platform_info.cmd)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(&platform_info.cmd);
+    make_binaries_executable(&config.install_dir, executable_name).await?;
+
     // Build executable path
     let executable_path = config.install_dir.join(&platform_info.cmd);
 
@@ -390,6 +397,66 @@ async fn find_executable_in_dir(dir: &Path, cmd: &str) -> Result<Option<PathBuf>
     }
 
     Ok(None)
+}
+
+#[cfg(unix)]
+async fn make_executable(path: &Path) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+        .await
+        .with_context(|| format!("Failed to set execute permission on {:?}", path))?;
+    Ok(())
+}
+
+#[cfg(windows)]
+async fn make_executable(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn should_be_executable(name: &str, main_executable: &str) -> bool {
+    name == main_executable
+        || (!name.contains('.') && !name.starts_with('.'))
+        || name.ends_with(".sh")
+}
+
+#[cfg(windows)]
+fn should_be_executable(name: &str, main_executable: &str) -> bool {
+    name == main_executable
+        || name.ends_with(".exe")
+        || name.ends_with(".bat")
+        || name.ends_with(".cmd")
+        || name.ends_with(".ps1")
+}
+
+async fn make_binaries_executable(install_dir: &Path, main_executable: &str) -> Result<()> {
+    let mut stack = vec![install_dir.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let mut entries = fs::read_dir(&dir).await.with_context(|| {
+            format!("Failed to read directory: {}", dir.display())
+        })?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            let file_type = entry.file_type().await?;
+
+            if file_type.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if file_type.is_file() {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+                if should_be_executable(name, main_executable) {
+                    make_executable(&path).await?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]

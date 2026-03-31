@@ -10,14 +10,14 @@ export const registryAgentSchema = z.object({
   description: z.string(),
   authors: z.array(z.string()),
   license: z.string(),
-  website: z.string().optional(),
-  iconUrl: z.string().optional(),
+  website: z.string().nullish(),
+  iconUrl: z.string().nullish(),
   supportedPlatforms: z.array(z.string()),
   supportedMethods: z.array(z.string()),
   isSupportedOnCurrentPlatform: z.boolean(),
-  preferredMethod: z.string().optional(),
+  preferredMethod: z.string().nullish(),
   isInstalled: z.boolean(),
-  installedVersion: z.string().optional(),
+  installedVersion: z.string().nullish(),
   displayOrder: z.number(),
 });
 

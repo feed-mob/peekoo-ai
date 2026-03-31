@@ -6,7 +6,7 @@ mod store;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent::config::{AgentProvider, AgentServiceConfig};
 use peekoo_agent_auth::{OAuthFlowStatus, OAuthService};
 use peekoo_security::{
     FallbackSecretStore, FileSecretStore, KeyringSecretStore, SecretStore, SecretStoreError,
@@ -270,11 +270,11 @@ impl SettingsService {
     pub fn to_agent_config(
         &self,
         mut base: AgentServiceConfig,
-        provider_id: &str,
+        provider: AgentProvider,
         model_id: Option<&str>,
     ) -> Result<(AgentServiceConfig, i64), String> {
         let settings = self.store.load_settings()?;
-        base.provider = provider_id_to_enum(provider_id);
+        base.provider = provider;
         base.model = model_id.map(|m| m.to_string());
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
@@ -291,7 +291,9 @@ impl SettingsService {
         }
         base.agent_skills = merged_skill_paths;
 
-        if let Some(api_key_ref) = self.store.active_api_key_ref(provider_id)? {
+        let provider_id = base.provider.id();
+
+        if let Some(api_key_ref) = self.store.active_api_key_ref(&provider_id)? {
             match self.secret_store.get(&api_key_ref) {
                 Ok(api_key) => base.api_key = Some(api_key),
                 Err(e) => {
@@ -304,7 +306,7 @@ impl SettingsService {
         }
 
         if base.api_key.is_none()
-            && let Some(oauth_token_ref) = self.store.active_oauth_token_ref(provider_id)?
+            && let Some(oauth_token_ref) = self.store.active_oauth_token_ref(&provider_id)?
         {
             match self.secret_store.get(&oauth_token_ref) {
                 Ok(access_token) => base.api_key = Some(access_token),
@@ -415,7 +417,7 @@ mod tests {
         // Verify it works when the secret exists
         let base = AgentServiceConfig::default();
         let (config, _version) = svc
-            .to_agent_config(base, "pi-acp", None)
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
             .expect("config with key");
         assert_eq!(config.api_key.as_deref(), Some("sk-test-123"));
 
@@ -438,7 +440,7 @@ mod tests {
 
         // Now to_agent_config should return an error, not silently proceed
         let base = AgentServiceConfig::default();
-        let result = svc.to_agent_config(base, "pi-acp", None);
+        let result = svc.to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None);
         match result {
             Ok(_) => panic!("Expected error when keyring secret is missing"),
             Err(err) => assert!(
@@ -504,7 +506,7 @@ mod tests {
 
         let base = AgentServiceConfig::default();
         let (config, _version) = svc
-            .to_agent_config(base, "pi-acp", None)
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
             .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("sk-fallback"));
 
@@ -532,21 +534,10 @@ mod tests {
 
         let base = AgentServiceConfig::default();
         let (config, _version) = svc
-            .to_agent_config(base, "codex", None)
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::codex(), None)
             .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
         let _ = std::fs::remove_file(&db_path);
-    }
-}
-
-/// Convert provider ID string to AgentProvider enum
-fn provider_id_to_enum(provider_id: &str) -> peekoo_agent::config::AgentProvider {
-    match provider_id {
-        "pi-acp" => peekoo_agent::config::AgentProvider::PiAcp,
-        "opencode" => peekoo_agent::config::AgentProvider::Opencode,
-        "claude-code" => peekoo_agent::config::AgentProvider::ClaudeCode,
-        "codex" => peekoo_agent::config::AgentProvider::Codex,
-        _ => peekoo_agent::config::AgentProvider::Opencode, // Default fallback
     }
 }

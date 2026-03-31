@@ -6,37 +6,94 @@ use std::path::PathBuf;
 
 pub const PEEKOO_OPENCODE_BIN_ENV: &str = "PEEKOO_OPENCODE_BIN";
 
-/// Agent provider types (built-in + custom)
-#[derive(Debug, Clone, PartialEq)]
-pub enum AgentProvider {
-    /// pi-acp runtime
-    PiAcp,
-    /// OpenCode ACP runtime (default, preferred)
-    Opencode,
-    /// Anthropic's Claude Code
-    ClaudeCode,
-    /// Zed's Codex agent
-    Codex,
-    /// Custom command
-    Custom { command: String, args: Vec<String> },
+/// Source of an agent provider
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProviderSource {
+    /// Built-in provider with hardcoded defaults
+    Builtin,
+    /// Installed from ACP registry
+    Registry,
+    /// Custom user-defined provider
+    Custom,
+}
+
+/// Agent provider configuration
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentProvider {
+    /// Provider identifier (e.g., "opencode", "cursor", "pi-acp")
+    pub id: String,
+    /// Command to execute
+    pub command: String,
+    /// Arguments to pass
+    pub args: Vec<String>,
+    /// Source of the provider (for special handling)
+    pub source: ProviderSource,
 }
 
 impl AgentProvider {
+    /// Create a provider from registry runtime info
+    pub fn from_registry(id: &str, command: &str, args: Vec<String>) -> Self {
+        Self {
+            id: id.to_string(),
+            command: command.to_string(),
+            args,
+            source: ProviderSource::Registry,
+        }
+    }
+
+    /// Create a custom provider
+    pub fn custom(id: &str, command: &str, args: Vec<String>) -> Self {
+        Self {
+            id: id.to_string(),
+            command: command.to_string(),
+            args,
+            source: ProviderSource::Custom,
+        }
+    }
+
+    /// Built-in pi-acp provider
+    pub fn pi_acp() -> Self {
+        Self {
+            id: "pi-acp".to_string(),
+            command: "npx".to_string(),
+            args: vec!["pi-acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in opencode provider
+    pub fn opencode() -> Self {
+        Self {
+            id: "opencode".to_string(),
+            command: "opencode".to_string(),
+            args: vec!["acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in claude-code provider
+    pub fn claude_code() -> Self {
+        Self {
+            id: "claude-code".to_string(),
+            command: "npx".to_string(),
+            args: vec!["@anthropic-ai/claude-code".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
+    /// Built-in codex provider
+    pub fn codex() -> Self {
+        Self {
+            id: "codex".to_string(),
+            command: "npx".to_string(),
+            args: vec!["@zed-industries/codex-acp".to_string()],
+            source: ProviderSource::Builtin,
+        }
+    }
+
     /// Get the command and arguments to spawn this provider
     pub fn command(&self) -> (String, Vec<String>) {
-        match self {
-            AgentProvider::PiAcp => ("npx".to_string(), vec!["pi-acp".to_string()]),
-            AgentProvider::Opencode => ("opencode".to_string(), vec!["acp".to_string()]),
-            AgentProvider::ClaudeCode => (
-                "npx".to_string(),
-                vec!["@anthropic-ai/claude-code".to_string()],
-            ),
-            AgentProvider::Codex => (
-                "npx".to_string(),
-                vec!["@zed-industries/codex-acp".to_string()],
-            ),
-            AgentProvider::Custom { command, args } => (command.clone(), args.clone()),
-        }
+        (self.command.clone(), self.args.clone())
     }
 
     /// Get the command and arguments to spawn this provider, allowing environment overrides.
@@ -44,36 +101,49 @@ impl AgentProvider {
         &self,
         environment: &HashMap<String, String>,
     ) -> (String, Vec<String>) {
-        match self {
-            AgentProvider::Opencode => {
-                if let Some(command) = environment
-                    .get(PEEKOO_OPENCODE_BIN_ENV)
-                    .filter(|value| !value.trim().is_empty())
-                    .cloned()
-                    .or_else(|| {
-                        std::env::var(PEEKOO_OPENCODE_BIN_ENV)
-                            .ok()
-                            .filter(|value| !value.trim().is_empty())
-                    })
-                {
-                    return (command, vec!["acp".to_string()]);
-                }
-
-                self.command()
+        // Special handling for opencode bundled binary path
+        if self.id == "opencode" {
+            if let Some(command) = environment
+                .get(PEEKOO_OPENCODE_BIN_ENV)
+                .filter(|value| !value.trim().is_empty())
+                .cloned()
+                .or_else(|| {
+                    std::env::var(PEEKOO_OPENCODE_BIN_ENV)
+                        .ok()
+                        .filter(|value| !value.trim().is_empty())
+                })
+            {
+                return (command, vec!["acp".to_string()]);
             }
-            _ => self.command(),
         }
+
+        self.command()
     }
 
     /// Provider identifier string
     pub fn id(&self) -> String {
-        match self {
-            AgentProvider::PiAcp => "pi-acp".to_string(),
-            AgentProvider::Opencode => "opencode".to_string(),
-            AgentProvider::ClaudeCode => "claude-code".to_string(),
-            AgentProvider::Codex => "codex".to_string(),
-            AgentProvider::Custom { command, .. } => format!("custom:{}", command),
-        }
+        self.id.clone()
+    }
+
+    /// Check if this is a built-in provider
+    pub fn is_builtin(&self) -> bool {
+        self.source == ProviderSource::Builtin
+    }
+
+    /// Check if this is a registry-installed provider
+    pub fn is_registry(&self) -> bool {
+        self.source == ProviderSource::Registry
+    }
+
+    /// Check if this is a custom provider
+    pub fn is_custom(&self) -> bool {
+        self.source == ProviderSource::Custom
+    }
+}
+
+impl Default for AgentProvider {
+    fn default() -> Self {
+        Self::opencode()
     }
 }
 
@@ -133,7 +203,7 @@ pub struct AgentServiceConfig {
 impl Default for AgentServiceConfig {
     fn default() -> Self {
         Self {
-            provider: AgentProvider::Opencode,
+            provider: AgentProvider::opencode(),
             model: None,
             llm_provider_id: None,
             api_key: None,
@@ -160,7 +230,7 @@ mod tests {
     #[test]
     fn default_config_has_default_provider() {
         let config = AgentServiceConfig::default();
-        assert_eq!(config.provider, AgentProvider::Opencode);
+        assert_eq!(config.provider.id(), "opencode");
     }
 
     #[test]
@@ -222,33 +292,31 @@ mod tests {
 
     #[test]
     fn provider_id_returns_expected_values() {
-        assert_eq!(AgentProvider::PiAcp.id(), "pi-acp");
-        assert_eq!(AgentProvider::Opencode.id(), "opencode");
-        assert_eq!(AgentProvider::ClaudeCode.id(), "claude-code");
-        assert_eq!(AgentProvider::Codex.id(), "codex");
+        assert_eq!(AgentProvider::pi_acp().id(), "pi-acp");
+        assert_eq!(AgentProvider::opencode().id(), "opencode");
+        assert_eq!(AgentProvider::claude_code().id(), "claude-code");
+        assert_eq!(AgentProvider::codex().id(), "codex");
 
-        let custom = AgentProvider::Custom {
-            command: "/path/to/agent".to_string(),
-            args: vec!["--mode".to_string(), "acp".to_string()],
-        };
-        assert!(custom.id().starts_with("custom:"));
+        let custom = AgentProvider::custom(
+            "my-agent",
+            "/path/to/agent",
+            vec!["--mode".to_string(), "acp".to_string()],
+        );
+        assert_eq!(custom.id(), "my-agent");
     }
 
     #[test]
     fn provider_command_returns_expected_commands() {
-        let (cmd, args) = AgentProvider::PiAcp.command();
+        let (cmd, args) = AgentProvider::pi_acp().command();
         assert_eq!(cmd, "npx");
         assert_eq!(args, vec!["pi-acp"]);
 
-        let (cmd, args) = AgentProvider::Opencode.command();
+        let (cmd, args) = AgentProvider::opencode().command();
         assert_eq!(cmd, "opencode");
         assert_eq!(args, vec!["acp"]);
 
-        let (cmd, args) = AgentProvider::Custom {
-            command: "/path/to/agent".to_string(),
-            args: vec!["arg1".to_string()],
-        }
-        .command();
+        let custom = AgentProvider::custom("my-agent", "/path/to/agent", vec!["arg1".to_string()]);
+        let (cmd, args) = custom.command();
         assert_eq!(cmd, "/path/to/agent");
         assert_eq!(args, vec!["arg1"]);
     }
@@ -260,7 +328,7 @@ mod tests {
             "/tmp/opencode".to_string(),
         )]);
 
-        let (cmd, args) = AgentProvider::Opencode.command_with_environment(&env);
+        let (cmd, args) = AgentProvider::opencode().command_with_environment(&env);
         assert_eq!(cmd, "/tmp/opencode");
         assert_eq!(args, vec!["acp"]);
     }
@@ -268,7 +336,7 @@ mod tests {
     #[test]
     fn config_with_custom_values() {
         let config = AgentServiceConfig {
-            provider: AgentProvider::Opencode,
+            provider: AgentProvider::opencode(),
             model: Some("gpt-4o".to_string()),
             llm_provider_id: Some("openai".to_string()),
             api_key: Some("sk-test-key".to_string()),
@@ -300,17 +368,14 @@ mod tests {
 
     #[test]
     fn provider_equality() {
-        assert_eq!(AgentProvider::PiAcp, AgentProvider::PiAcp);
-        assert_ne!(AgentProvider::PiAcp, AgentProvider::Opencode);
+        assert_eq!(AgentProvider::pi_acp(), AgentProvider::pi_acp());
+        assert_ne!(AgentProvider::pi_acp(), AgentProvider::opencode());
 
-        let custom1 = AgentProvider::Custom {
-            command: "cmd".to_string(),
-            args: vec!["arg1".to_string()],
-        };
-        let custom2 = AgentProvider::Custom {
-            command: "cmd".to_string(),
-            args: vec!["arg1".to_string()],
-        };
+        let custom1 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);
+        let custom2 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);
         assert_eq!(custom1, custom2);
+
+        let custom3 = AgentProvider::custom("other-agent", "cmd", vec!["arg1".to_string()]);
+        assert_ne!(custom1, custom3);
     }
 }

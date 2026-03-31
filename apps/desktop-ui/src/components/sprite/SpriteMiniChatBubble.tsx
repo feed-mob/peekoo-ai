@@ -59,7 +59,7 @@ export function SpriteMiniChatBubble({
 
           <div className={cn(
             "flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em]",
-            thinking ? "text-glow-cyan" : isError ? "text-red-400" : "text-glow-cyan/80"
+            thinking ? "text-glow-cyan" : isError ? "text-red-700 dark:text-red-400" : "text-glow-cyan/80"
           )}>
             {isError ? <AlertCircle size={10} /> : <Sparkles size={10} className={thinking ? "animate-pulse" : ""} />}
             <span>

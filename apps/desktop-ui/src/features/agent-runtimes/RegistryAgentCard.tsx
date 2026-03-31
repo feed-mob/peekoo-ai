@@ -7,9 +7,10 @@ import type { RegistryAgent } from "@/types/agent-registry";
 interface RegistryAgentCardProps {
   agent: RegistryAgent;
   onInstall: () => void;
+  isInstalling?: boolean;
 }
 
-export function RegistryAgentCard({ agent, onInstall }: RegistryAgentCardProps) {
+export function RegistryAgentCard({ agent, onInstall, isInstalling = false }: RegistryAgentCardProps) {
   // Get icon URL or use a default
   const iconUrl = agent.iconUrl || `https://cdn.agentclientprotocol.com/registry/v1/latest/${agent.registryId}.svg`;
 
@@ -18,7 +19,7 @@ export function RegistryAgentCard({ agent, onInstall }: RegistryAgentCardProps) 
       <CardHeader className="pb-3">
         <div className="flex items-start gap-3">
           {/* Icon */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-space-deep overflow-hidden">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
             <img
               src={iconUrl}
               alt={agent.name}
@@ -42,7 +43,7 @@ export function RegistryAgentCard({ agent, onInstall }: RegistryAgentCardProps) 
 
           {/* Install Status */}
           {agent.isInstalled ? (
-            <Badge variant="default" className="shrink-0 bg-green-500/20 text-green-400 border-green-500/30">
+            <Badge variant="default" className="shrink-0 bg-green-500/15 text-green-700 border-green-500/30 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30">
               <Check className="mr-1 h-3 w-3" />
               Installed
             </Badge>
@@ -94,12 +95,12 @@ export function RegistryAgentCard({ agent, onInstall }: RegistryAgentCardProps) 
               size="sm"
               variant={agent.isSupportedOnCurrentPlatform ? "default" : "outline"}
               onClick={onInstall}
-              disabled={!agent.isSupportedOnCurrentPlatform}
+              disabled={!agent.isSupportedOnCurrentPlatform || isInstalling}
             >
               {agent.isSupportedOnCurrentPlatform ? (
                 <>
                   <Download className="mr-1 h-3 w-3" />
-                  Install
+                  {isInstalling ? "Installing..." : "Install"}
                 </>
               ) : (
                 "Unsupported"

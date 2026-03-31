@@ -318,19 +318,19 @@ export function ConfigureProviderDialog({
               <Label>Status</Label>
               <div className="flex items-center gap-2">
                 {provider.status === "ready" && (
-                  <span className="inline-flex items-center rounded-full bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400">
+                  <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-500/20 dark:text-green-400">
                     <Check className="mr-1 h-3 w-3" />
                     Ready
                   </span>
                 )}
                 {provider.status === "needs_setup" && (
-                  <span className="inline-flex items-center rounded-full bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400">
+                  <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400">
                     <AlertCircle className="mr-1 h-3 w-3" />
                     Needs Setup
                   </span>
                 )}
                 {provider.status === "error" && (
-                  <span className="inline-flex items-center rounded-full bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400">
+                  <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-400">
                     <AlertCircle className="mr-1 h-3 w-3" />
                     Error
                   </span>
@@ -355,7 +355,7 @@ export function ConfigureProviderDialog({
                   Authentication
                 </Label>
                 {requiresAuth && (
-                  <span className="text-xs text-yellow-400">Login required</span>
+                  <span className="text-xs text-yellow-700 dark:text-yellow-400">Login required</span>
                 )}
                 {loginAvailable && (
                   <Button
@@ -404,7 +404,7 @@ export function ConfigureProviderDialog({
                             onClick={() => void handleCopyCommand(method.manualLoginCommand!, method.id)}
                           >
                             {copiedMethodId === method.id ? (
-                              <Check className="h-3.5 w-3.5 text-green-400" />
+                               <Check className="h-3.5 w-3.5 text-green-700 dark:text-green-400" />
                             ) : (
                               <Copy className="h-3.5 w-3.5" />
                             )}
@@ -532,17 +532,17 @@ export function ConfigureProviderDialog({
                 <Alert
                   className={`mt-3 ${
                     testResult.success
-                      ? "border-green-500/50 bg-green-500/10"
-                      : "border-red-500/50 bg-red-500/10"
+                      ? "border-green-500/30 bg-green-500/10 dark:border-green-500/50 dark:bg-green-500/10"
+                      : "border-red-500/30 bg-red-500/10 dark:border-red-500/50 dark:bg-red-500/10"
                   }`}
                 >
                   {testResult.success ? (
-                    <Check className="h-4 w-4 text-green-500" />
+                    <Check className="h-4 w-4 text-green-700 dark:text-green-500" />
                   ) : (
-                    <AlertCircle className="h-4 w-4 text-red-500" />
+                    <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />
                   )}
                   <AlertDescription
-                    className={testResult.success ? "text-green-200" : "text-red-200"}
+                    className={testResult.success ? "text-green-800 dark:text-green-200" : "text-red-800 dark:text-red-200"}
                   >
                     {testResult.message}
                     {testResult.providerVersion && (
@@ -589,7 +589,7 @@ export function ConfigureProviderDialog({
                       size="sm"
                       variant="ghost"
                       onClick={() => removeEnvVar(key)}
-                      className="text-red-400 hover:bg-red-500/10"
+                      className="text-red-700 hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -632,7 +632,7 @@ export function ConfigureProviderDialog({
                       size="sm"
                       variant="ghost"
                       onClick={() => removeCustomArg(index)}
-                      className="text-red-400 hover:bg-red-500/10"
+                      className="text-red-700 hover:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/10"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -647,9 +647,9 @@ export function ConfigureProviderDialog({
 
           {/* Error */}
           {error && (
-            <Alert className="border-red-500/50 bg-red-500/10">
-              <AlertCircle className="h-4 w-4 text-red-500" />
-              <AlertDescription className="text-red-200">{error}</AlertDescription>
+            <Alert className="border-red-500/30 bg-red-500/10 dark:border-red-500/50 dark:bg-red-500/10">
+              <AlertCircle className="h-4 w-4 text-red-700 dark:text-red-500" />
+              <AlertDescription className="text-red-800 dark:text-red-200">{error}</AlertDescription>
             </Alert>
           )}
         </div>
