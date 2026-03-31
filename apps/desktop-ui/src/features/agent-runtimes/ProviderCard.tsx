@@ -197,17 +197,6 @@ export function ProviderCard({
                 Login
               </Button>
             )}
-            {loginAvailable && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1"
-                onClick={() => onConfigure(provider)}
-              >
-                <Lock className="mr-1 h-3 w-3" />
-                Login
-              </Button>
-            )}
             <Button
               size="sm"
               variant="outline"
