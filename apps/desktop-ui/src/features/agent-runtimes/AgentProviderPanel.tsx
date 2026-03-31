@@ -2,18 +2,20 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, AlertCircle, RefreshCw, Sparkles } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, AlertCircle, RefreshCw, Sparkles, Search, Download } from "lucide-react";
 import { ProviderCard } from "./ProviderCard";
+import { RegistryAgentCard } from "./RegistryAgentCard";
 import { InstallProviderDialog } from "./InstallProviderDialog";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
 import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
+import { useRegistryAgents } from "@/hooks/useRegistryAgents";
 import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
 
 export function AgentProviderPanel() {
   const {
     installedProviders,
-    availableProviders,
     defaultProvider,
     isLoading,
     installingProvider,
@@ -31,6 +33,20 @@ export function AgentProviderPanel() {
     refreshRuntimeCapabilities,
   } = useAgentProviders();
 
+  // Registry agents integration
+  const {
+    agents: registryAgents,
+    loading: registryLoading,
+    error: registryError,
+    hasMore,
+    fetchAgents,
+    searchAgents,
+    loadMore,
+    refresh: refreshRegistry,
+  } = useRegistryAgents();
+
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [selectedProvider, setSelectedProvider] = useState<RuntimeInfo | null>(null);
   const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
   const [isConfigureDialogOpen, setIsConfigureDialogOpen] = useState(false);
@@ -39,7 +55,8 @@ export function AgentProviderPanel() {
   // Load providers on mount
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    fetchAgents(true);
+  }, [refresh, fetchAgents]);
 
   const handleInstall = (provider: RuntimeInfo) => {
     setSelectedProvider(provider);
@@ -145,26 +162,106 @@ export function AgentProviderPanel() {
         )}
       </div>
 
-      {/* Available Runtimes */}
-      {availableProviders.length > 0 && (
-        <div>
-          <h3 className="mb-3 text-sm font-medium text-text-secondary">Available Runtimes</h3>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {availableProviders.map((provider) => (
-              <ProviderCard
-                key={provider.providerId}
-                provider={provider}
-                isInstalling={installingProvider === provider.providerId}
-                onInspect={inspectRuntime}
-                onSetDefault={setAsDefault}
-                onInstall={handleInstall}
-                onConfigure={handleConfigure}
-                onUninstall={uninstallProvider}
-              />
-            ))}
-          </div>
+      {/* Available Runtimes - ACP Registry */}
+      <div>
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-text-secondary">
+            Available Runtimes from ACP Registry
+          </h3>
+          <span className="text-xs text-text-muted">
+            Showing {registryAgents.length} agents
+          </span>
         </div>
-      )}
+
+        {/* Search Bar */}
+        <div className="mb-4 flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <Input
+              placeholder="Search agents (e.g., Gemini, Cursor, Claude)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  searchAgents(searchQuery);
+                }
+              }}
+              className="pl-10"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => searchAgents(searchQuery)}
+            disabled={registryLoading}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={refreshRegistry}
+            disabled={registryLoading}
+          >
+            <RefreshCw className={`h-4 w-4 ${registryLoading ? "animate-spin" : ""}`} />
+          </Button>
+        </div>
+
+        {/* Registry Error */}
+        {registryError && (
+          <Alert className="mb-4 border-red-500/50 bg-red-500/10">
+            <AlertCircle className="h-4 w-4 text-red-500" />
+            <AlertDescription className="text-red-200">
+              {registryError}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Registry Agents Grid */}
+        {registryAgents.length === 0 && !registryLoading ? (
+          <div className="rounded-lg border border-dashed border-glass-border p-8 text-center">
+            <p className="text-sm text-text-muted">No agents found</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {registryAgents.map((agent) => (
+                <RegistryAgentCard
+                  key={agent.registryId}
+                  agent={agent}
+                  onInstall={() => {
+                    // TODO: Install from registry
+                    console.log("Install", agent.registryId);
+                  }}
+                />
+              ))}
+            </div>
+
+            {/* Load More */}
+            {hasMore && (
+              <div className="mt-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  onClick={loadMore}
+                  disabled={registryLoading}
+                >
+                  {registryLoading ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Loading...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Load more agents
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Dialogs */}
       <InstallProviderDialog
