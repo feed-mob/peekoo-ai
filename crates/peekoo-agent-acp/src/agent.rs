@@ -11,7 +11,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use peekoo_agent::service::AgentService;
 use peekoo_agent::{
-    AgentEvent,
+    AgentEvent, SessionType,
     config::{AgentProvider, AgentServiceConfig, PEEKOO_OPENCODE_BIN_ENV},
 };
 use tokio::sync::{mpsc, oneshot};
@@ -322,6 +322,7 @@ fn build_agent_service_config(
         mcp_servers: session_context
             .map(|session| session.mcp_servers.clone())
             .unwrap_or_default(),
+        session_type: SessionType::AcpTask,
         ..Default::default()
     };
 

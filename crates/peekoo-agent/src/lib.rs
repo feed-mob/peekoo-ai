@@ -36,5 +36,8 @@ pub use backend::{
     StopReason, TokenUsage,
 };
 
+/// Re-export session types
+pub use session_store::SessionType;
+
 /// Re-export process utilities from peekoo-utils for cross-platform command execution
 pub use peekoo_utils::{command_available, resolve_command};

@@ -50,6 +50,10 @@ pub struct AcpBackend {
     mcp_servers: Vec<acp::McpServer>,
     /// Whether the runtime has explicitly reported that authentication is required.
     auth_required: AtomicBool,
+    /// Whether the agent supports session/load (stable).
+    supports_load_session: bool,
+    /// Whether the agent supports session/resume (unstable).
+    supports_resume_session: bool,
     /// Event callback for streaming
     event_callback: Arc<Mutex<Option<EventCallback>>>,
 }
@@ -72,6 +76,16 @@ enum AcpCommand {
         working_dir: std::path::PathBuf,
         resp: oneshot::Sender<anyhow::Result<SessionResult>>,
     },
+    LoadSession {
+        session_id: String,
+        working_dir: std::path::PathBuf,
+        resp: oneshot::Sender<anyhow::Result<SessionResult>>,
+    },
+    ResumeSession {
+        session_id: String,
+        working_dir: std::path::PathBuf,
+        resp: oneshot::Sender<anyhow::Result<SessionResult>>,
+    },
     SetModel {
         model: String,
         resp: oneshot::Sender<anyhow::Result<()>>,
@@ -87,6 +101,9 @@ enum AcpCommand {
         method_id: String,
         resp: oneshot::Sender<anyhow::Result<()>>,
     },
+    GetAcpSessionId {
+        resp: oneshot::Sender<Option<String>>,
+    },
     Shutdown,
 }
 
@@ -95,6 +112,8 @@ enum AcpCommand {
 struct InitializeResult {
     supports_mcp: bool,
     auth_methods: Vec<acp::AuthMethod>,
+    supports_load_session: bool,
+    supports_resume_session: bool,
 }
 
 #[derive(Debug)]
@@ -160,12 +179,84 @@ fn extract_models_from_session_response(
     (models, current_model)
 }
 
+/// Extract models and config options from a LoadSessionResponse.
+fn extract_models_from_load_session_response(
+    response: &acp::LoadSessionResponse,
+) -> (Vec<DiscoveredModel>, Option<String>) {
+    extract_models_from_config_options(response.config_options.as_ref())
+}
+
+/// Extract models and config options from a ResumeSessionResponse.
+fn extract_models_from_resume_session_response(
+    response: &acp::ResumeSessionResponse,
+) -> (Vec<DiscoveredModel>, Option<String>) {
+    extract_models_from_config_options(response.config_options.as_ref())
+}
+
+fn extract_models_from_config_options(
+    config_options: Option<&Vec<acp::SessionConfigOption>>,
+) -> (Vec<DiscoveredModel>, Option<String>) {
+    let mut models = Vec::new();
+    let mut current_model = None;
+
+    if let Some(options) = config_options {
+        for option in options {
+            if let Some(acp::SessionConfigOptionCategory::Model) = option.category
+                && let acp::SessionConfigKind::Select(select) = &option.kind
+            {
+                match &select.options {
+                    acp::SessionConfigSelectOptions::Ungrouped(opts) => {
+                        for opt in opts {
+                            models.push(DiscoveredModel {
+                                model_id: opt.value.to_string(),
+                                name: opt.name.to_string(),
+                                description: opt.description.clone(),
+                            });
+                        }
+                    }
+                    acp::SessionConfigSelectOptions::Grouped(groups) => {
+                        for group in groups {
+                            for opt in &group.options {
+                                models.push(DiscoveredModel {
+                                    model_id: opt.value.to_string(),
+                                    name: opt.name.to_string(),
+                                    description: opt.description.clone(),
+                                });
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                current_model = Some(select.current_value.to_string());
+            }
+        }
+    }
+
+    (models, current_model)
+}
+
 async fn collect_prompt_content(mut content_rx: mpsc::Receiver<String>) -> String {
     let mut collected_content = String::new();
     while let Some(chunk) = content_rx.recv().await {
         collected_content.push_str(&chunk);
     }
     collected_content
+}
+
+/// Flatten a message into plain text for history replay.
+fn flatten_message(msg: &Message) -> String {
+    msg.content
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.trim().to_string()),
+            ContentBlock::ToolResult { content, .. } => Some(content.trim().to_string()),
+            ContentBlock::Thinking { .. }
+            | ContentBlock::ToolUse { .. }
+            | ContentBlock::Image { .. } => None,
+        })
+        .filter(|t| !t.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Client handler for ACP - handles requests FROM the agent
@@ -303,6 +394,8 @@ impl AcpBackend {
             supports_config_options: false,
             mcp_servers: Vec::new(),
             auth_required: AtomicBool::new(false),
+            supports_load_session: false,
+            supports_resume_session: false,
             event_callback: Arc::new(Mutex::new(None)),
         }
     }
@@ -532,10 +625,18 @@ impl AcpBackend {
 
                                     let mcp_caps = &response.agent_capabilities.mcp_capabilities;
                                     let supports_mcp = mcp_caps.http || mcp_caps.sse;
+                                    let supports_load_session = response.agent_capabilities.load_session;
+                                    let supports_resume_session = response
+                                        .agent_capabilities
+                                        .session_capabilities
+                                        .resume
+                                        .is_some();
 
                                     tracing::info!(
                                         auth_methods = response.auth_methods.len(),
                                         supports_mcp,
+                                        supports_load_session,
+                                        supports_resume_session,
                                         agent_info = ?response.agent_info,
                                         "ACP initialized"
                                     );
@@ -543,6 +644,8 @@ impl AcpBackend {
                                     Ok(InitializeResult {
                                         supports_mcp,
                                         auth_methods: response.auth_methods,
+                                        supports_load_session,
+                                        supports_resume_session,
                                     })
                                 }
                                 .await;
@@ -576,6 +679,86 @@ impl AcpBackend {
                                         current_model = ?current_model,
                                         has_config_options = response.config_options.as_ref().map(|v| v.len()).unwrap_or(0),
                                         "ACP session created"
+                                    );
+
+                                    Ok(SessionResult {
+                                        models,
+                                        current_model,
+                                        supports_config_options: response
+                                            .config_options
+                                            .as_ref()
+                                            .is_some_and(|options| !options.is_empty()),
+                                    })
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::LoadSession { session_id: sid, working_dir, resp } => {
+                                let result = async {
+                                    tracing::info!(
+                                        acp_session_id = %sid,
+                                        cwd = %working_dir.display(),
+                                        mcp_servers = mcp_servers.len(),
+                                        "ACP loading session"
+                                    );
+                                    let request = acp::LoadSessionRequest::new(
+                                        acp::SessionId::new(sid.as_str()),
+                                        working_dir,
+                                    )
+                                    .mcp_servers(mcp_servers.clone());
+                                    let response = connection.load_session(request).await?;
+
+                                    acp_session_id = Some(acp::SessionId::new(sid.as_str()));
+
+                                    let (models, current_model) =
+                                        extract_models_from_load_session_response(&response);
+
+                                    tracing::info!(
+                                        acp_session_id = %sid,
+                                        model_count = models.len(),
+                                        current_model = ?current_model,
+                                        "ACP session loaded"
+                                    );
+
+                                    Ok(SessionResult {
+                                        models,
+                                        current_model,
+                                        supports_config_options: response
+                                            .config_options
+                                            .as_ref()
+                                            .is_some_and(|options| !options.is_empty()),
+                                    })
+                                }
+                                .await;
+                                let _ = resp.send(result);
+                            }
+
+                            AcpCommand::ResumeSession { session_id: sid, working_dir, resp } => {
+                                let result = async {
+                                    tracing::info!(
+                                        acp_session_id = %sid,
+                                        cwd = %working_dir.display(),
+                                        mcp_servers = mcp_servers.len(),
+                                        "ACP resuming session"
+                                    );
+                                    let request = acp::ResumeSessionRequest::new(
+                                        acp::SessionId::new(sid.as_str()),
+                                        working_dir,
+                                    )
+                                    .mcp_servers(mcp_servers.clone());
+                                    let response = connection.resume_session(request).await?;
+
+                                    acp_session_id = Some(acp::SessionId::new(sid.as_str()));
+
+                                    let (models, current_model) =
+                                        extract_models_from_resume_session_response(&response);
+
+                                    tracing::info!(
+                                        acp_session_id = %sid,
+                                        model_count = models.len(),
+                                        current_model = ?current_model,
+                                        "ACP session resumed"
                                     );
 
                                     Ok(SessionResult {
@@ -689,6 +872,10 @@ impl AcpBackend {
                                 let _ = resp.send(result);
                             }
 
+                            AcpCommand::GetAcpSessionId { resp } => {
+                                let _ = resp.send(acp_session_id.as_ref().map(|s| s.to_string()));
+                            }
+
                             AcpCommand::Shutdown => {
                                 should_shutdown = true;
                                 break;
@@ -715,6 +902,87 @@ impl AcpBackend {
         });
 
         tracing::info!("ACP agent spawned and connected via local task");
+        Ok(())
+    }
+
+    /// Check if the agent supports session/load.
+    pub fn supports_load_session(&self) -> bool {
+        self.supports_load_session
+    }
+
+    /// Check if the agent supports session/resume.
+    pub fn supports_resume_session(&self) -> bool {
+        self.supports_resume_session
+    }
+
+    /// Get the ACP agent's internal session ID.
+    pub async fn acp_session_id(&self) -> Option<String> {
+        let cmd_tx = self.cmd_tx.as_ref()?;
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::GetAcpSessionId { resp: tx })
+            .await
+            .ok()?;
+        rx.await.ok()?
+    }
+
+    /// Load an existing ACP session (replays history via notifications).
+    pub async fn do_load_session(&mut self, session_id: &str) -> anyhow::Result<()> {
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::LoadSession {
+                session_id: session_id.to_string(),
+                working_dir: self.working_directory.clone(),
+                resp: tx,
+            })
+            .await?;
+
+        let session_result = rx.await??;
+        self.discovered_models = session_result.models;
+        self.current_model_id = session_result.current_model;
+        self.supports_config_options = session_result.supports_config_options;
+
+        if let Some(ref current) = self.current_model_id {
+            self.model_info.model = current.clone();
+        } else if let Some(first) = self.discovered_models.first() {
+            self.model_info.model = first.model_id.clone();
+        }
+
+        Ok(())
+    }
+
+    /// Resume an ACP session without history replay.
+    pub async fn do_resume_session(&mut self, session_id: &str) -> anyhow::Result<()> {
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::ResumeSession {
+                session_id: session_id.to_string(),
+                working_dir: self.working_directory.clone(),
+                resp: tx,
+            })
+            .await?;
+
+        let session_result = rx.await??;
+        self.discovered_models = session_result.models;
+        self.current_model_id = session_result.current_model;
+        self.supports_config_options = session_result.supports_config_options;
+
+        if let Some(ref current) = self.current_model_id {
+            self.model_info.model = current.clone();
+        } else if let Some(first) = self.discovered_models.first() {
+            self.model_info.model = first.model_id.clone();
+        }
+
         Ok(())
     }
 }
@@ -774,6 +1042,8 @@ impl AgentBackend for AcpBackend {
         let init_result = rx.await??;
         self.supports_mcp = init_result.supports_mcp;
         self.auth_methods = init_result.auth_methods;
+        self.supports_load_session = init_result.supports_load_session;
+        self.supports_resume_session = init_result.supports_resume_session;
 
         self.refresh_session_capabilities().await?;
 
@@ -880,6 +1150,78 @@ impl AgentBackend for AcpBackend {
         Ok(result)
     }
 
+    async fn prompt_with_history(
+        &self,
+        history: Vec<Message>,
+        input: &str,
+        on_event: EventCallback,
+    ) -> anyhow::Result<PromptResult> {
+        let cmd_tx = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("ACP not connected"))?;
+
+        // Replay historical messages WITHOUT emitting events to the UI.
+        // We temporarily clear the event callback during replay.
+        let saved_callback = {
+            let mut guard = self.event_callback.lock().await;
+            guard.take()
+        };
+
+        for msg in history {
+            let text = flatten_message(&msg);
+            if text.is_empty() {
+                continue;
+            }
+
+            let (tx, rx) = oneshot::channel();
+            cmd_tx
+                .send(AcpCommand::Prompt {
+                    input: text,
+                    resp: tx,
+                })
+                .await?;
+            let _ = rx.await?;
+        }
+
+        // Restore the callback for the actual prompt
+        {
+            let mut guard = self.event_callback.lock().await;
+            *guard = Some(on_event);
+        }
+
+        // Send the actual user input
+        let (tx, rx) = oneshot::channel();
+        cmd_tx
+            .send(AcpCommand::Prompt {
+                input: input.to_string(),
+                resp: tx,
+            })
+            .await?;
+
+        let result = match rx.await? {
+            Ok(result) => {
+                self.auth_required.store(false, Ordering::Relaxed);
+                result
+            }
+            Err(error) => {
+                self.auth_required
+                    .store(is_auth_required_error(&error), Ordering::Relaxed);
+                // Restore saved callback on error
+                if let Some(cb) = saved_callback {
+                    let mut guard = self.event_callback.lock().await;
+                    *guard = Some(cb);
+                }
+                return Err(error);
+            }
+        };
+        {
+            let mut guard = self.event_callback.lock().await;
+            *guard = saved_callback;
+        }
+        Ok(result)
+    }
+
     async fn set_model(&mut self, provider: &str, model: &str) -> anyhow::Result<()> {
         if provider != self.model_info.provider {
             // Provider change requires re-initialization
@@ -964,6 +1306,26 @@ impl AgentBackend for AcpBackend {
             self.model_info.model = model_id.to_string();
         }
         Ok(())
+    }
+
+    async fn get_acp_session_id(&self) -> Option<String> {
+        self.acp_session_id().await
+    }
+
+    fn supports_load_session(&self) -> bool {
+        self.supports_load_session
+    }
+
+    fn supports_resume_session(&self) -> bool {
+        self.supports_resume_session
+    }
+
+    async fn load_acp_session(&mut self, acp_session_id: &str) -> anyhow::Result<()> {
+        self.do_load_session(acp_session_id).await
+    }
+
+    async fn resume_acp_session(&mut self, acp_session_id: &str) -> anyhow::Result<()> {
+        self.do_resume_session(acp_session_id).await
     }
 }
 
@@ -1056,7 +1418,8 @@ mod tests {
                 ],
             ));
 
-        let (models, current_model) = extract_models_from_session_response(&response);
+                                    let (models, current_model) =
+                                        extract_models_from_session_response(&response);
 
         assert_eq!(current_model.as_deref(), Some("gpt-5.4"));
         assert_eq!(models.len(), 2);

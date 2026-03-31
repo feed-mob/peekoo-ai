@@ -3,7 +3,7 @@
 //! Uses the new SessionStore to locate and load conversation history.
 
 use peekoo_agent::backend::{ContentBlock, Message, MessageRole};
-use peekoo_agent::session_store::SessionStore;
+use peekoo_agent::session_store::{SessionStore, SessionType};
 use serde::Serialize;
 use std::path::Path;
 
@@ -60,6 +60,10 @@ fn find_last_session_from_db(db_path: &Path) -> anyhow::Result<Option<LastSessio
     let store = SessionStore::open(&db_path.to_path_buf())?;
 
     for session in store.list_sessions(Some("active"))? {
+        if session.session_type != SessionType::Chat {
+            continue;
+        }
+
         let messages = store.load_messages(&session.id)?;
         if messages.is_empty() {
             continue;
@@ -150,6 +154,7 @@ mod tests {
                 &std::env::temp_dir(),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .expect("create old session");
         store
@@ -178,6 +183,7 @@ mod tests {
                 &std::env::temp_dir(),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .expect("create empty session");
         assert_eq!(
@@ -196,27 +202,25 @@ mod tests {
 
     #[test]
     fn flattens_text_and_tool_result_blocks() {
-        let messages = vec![
-            serde_json::to_string(&Message {
-                role: MessageRole::Assistant,
-                content: vec![
-                    ContentBlock::Thinking {
-                        thinking: "hidden".to_string(),
-                    },
-                    ContentBlock::Text {
-                        text: "Answer".to_string(),
-                    },
-                    ContentBlock::ToolResult {
-                        tool_use_id: "tool-1".to_string(),
-                        content: "done".to_string(),
-                        is_error: false,
-                    },
-                ],
-                tool_calls: None,
-                tool_call_id: None,
-            })
-            .expect("serialize"),
-        ];
+        let messages = vec![serde_json::to_string(&Message {
+            role: MessageRole::Assistant,
+            content: vec![
+                ContentBlock::Thinking {
+                    thinking: "hidden".to_string(),
+                },
+                ContentBlock::Text {
+                    text: "Answer".to_string(),
+                },
+                ContentBlock::ToolResult {
+                    tool_use_id: "tool-1".to_string(),
+                    content: "done".to_string(),
+                    is_error: false,
+                },
+            ],
+            tool_calls: None,
+            tool_call_id: None,
+        })
+        .expect("serialize")];
 
         let dtos = json_messages_to_dtos(&messages);
 

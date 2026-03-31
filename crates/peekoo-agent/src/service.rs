@@ -71,11 +71,18 @@ impl AgentService {
         // Resume or create session
         let session_id = if let Some(resume_id) = &config.resume_session_id {
             // Try to resume existing session
-            Self::resume_session(&mut backend, &session_store, resume_id).await?
+            Self::resume_session(&mut backend, &session_store, resume_id, &config).await?
         } else {
             // Create new session
-            Self::create_new_session(&config, &session_store, &backend).await?
+            Self::create_new_session(&config, &session_store).await?
         };
+
+        // Persist the ACP agent's internal session ID for future resumption
+        if let Some(store) = &session_store {
+            if let Some(acp_sid) = backend.get_acp_session_id().await {
+                store.save_acp_session_id(&session_id, &acp_sid).ok();
+            }
+        }
 
         Ok(Self {
             backend: Box::new(backend),
@@ -115,10 +122,10 @@ impl AgentService {
             tool_call_id: None,
         };
 
-        // Send prompt to backend
+        // Send prompt to backend (replays history for context)
         let result = self
             .backend
-            .prompt(input, history, Box::new(on_event))
+            .prompt_with_history(history, input, Box::new(on_event))
             .await?;
 
         // Save messages to session store
@@ -348,7 +355,6 @@ impl AgentService {
     async fn create_new_session(
         config: &AgentServiceConfig,
         session_store: &Option<SessionStore>,
-        _backend: &dyn AgentBackend,
     ) -> Result<String> {
         let (command, args) = config
             .provider
@@ -369,6 +375,7 @@ impl AgentService {
                 &config.working_directory,
                 config.system_prompt.as_deref(),
                 &skills,
+                config.session_type,
             )?;
             store.update_runtime_context(
                 &session_id,
@@ -387,21 +394,69 @@ impl AgentService {
         backend: &mut dyn AgentBackend,
         session_store: &Option<SessionStore>,
         session_id: &str,
+        config: &AgentServiceConfig,
     ) -> Result<String> {
-        if let Some(store) = session_store {
-            let session = store
-                .load_session(session_id)?
-                .ok_or_else(|| anyhow::anyhow!("Session {} not found", session_id))?;
+        let Some(store) = session_store else {
+            tracing::warn!(
+                session_id = %session_id,
+                "Session resumption requested but session store is disabled; proceeding with fresh ACP session"
+            );
+            return Ok(session_id.to_string());
+        };
 
-            // Restore provider state if available
-            if let Some(state_json) = session.provider_state {
-                backend.restore_provider_state(state_json).await.ok(); // Best effort
-            }
+        let session = store
+            .load_session(session_id)?
+            .ok_or_else(|| anyhow::anyhow!("Session {} not found", session_id))?;
 
-            // Update session status
-            store.update_session_status(session_id, "active")?;
+        // Restore provider state if available
+        if let Some(state_json) = session.provider_state {
+            backend.restore_provider_state(state_json).await.ok();
         }
 
+        // Check if provider changed
+        let provider_changed = session.current_provider != config.provider.id();
+
+        if provider_changed {
+            // Provider switched: create new ACP session, history will be replayed
+            // via prompt_with_history on the first prompt.
+            tracing::info!(
+                peekoo_session = %session_id,
+                old_provider = %session.current_provider,
+                new_provider = %config.provider.id(),
+                "Provider changed, will replay history on first prompt"
+            );
+        } else if let Some(acp_sid) = session.acp_session_id.as_deref() {
+            // Same provider: try Approach B (native ACP resumption)
+            if backend.supports_resume_session() {
+                tracing::info!(
+                    peekoo_session = %session_id,
+                    acp_session = %acp_sid,
+                    "Resuming ACP session via session/resume"
+                );
+                if backend.resume_acp_session(acp_sid).await.is_ok() {
+                    store.save_acp_session_id(session_id, acp_sid).ok();
+                    store.update_session_status(session_id, "active")?;
+                    return Ok(session_id.to_string());
+                }
+                tracing::warn!("session/resume failed, falling back to session/load");
+            }
+
+            if backend.supports_load_session() {
+                tracing::info!(
+                    peekoo_session = %session_id,
+                    acp_session = %acp_sid,
+                    "Resuming ACP session via session/load"
+                );
+                if backend.load_acp_session(acp_sid).await.is_ok() {
+                    store.save_acp_session_id(session_id, acp_sid).ok();
+                    store.update_session_status(session_id, "active")?;
+                    return Ok(session_id.to_string());
+                }
+                tracing::warn!("session/load failed, will replay history on first prompt");
+            }
+        }
+
+        store.update_session_status(session_id, "active")?;
         Ok(session_id.to_string())
     }
 }

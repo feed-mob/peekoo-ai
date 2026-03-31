@@ -5,8 +5,33 @@
 //! allowing agent-specific state to be stored opaquely.
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
+
+/// Type of session - distinguishes user chat from background ACP tasks
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionType {
+    /// User-facing chat session
+    Chat,
+    /// Background ACP task execution
+    AcpTask,
+}
+
+impl SessionType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SessionType::Chat => "chat",
+            SessionType::AcpTask => "acp_task",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "acp_task" => SessionType::AcpTask,
+            _ => SessionType::Chat,
+        }
+    }
+}
 
 /// Session metadata for listing
 #[derive(Debug, Clone)]
@@ -15,6 +40,7 @@ pub struct SessionSummary {
     pub title: Option<String>,
     pub provider: String,
     pub status: String,
+    pub session_type: SessionType,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -32,6 +58,8 @@ pub struct Session {
     pub system_prompt: Option<String>,
     pub skills: Vec<String>,
     pub provider_state: Option<serde_json::Value>,
+    pub session_type: SessionType,
+    pub acp_session_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -92,6 +120,7 @@ impl SessionStore {
         working_dir: &Path,
         system_prompt: Option<&str>,
         skills: &[String],
+        session_type: SessionType,
     ) -> anyhow::Result<String> {
         let session_id = generate_session_id();
         let now = now_iso8601();
@@ -101,8 +130,8 @@ impl SessionStore {
                 id, title, status, current_provider, provider_command, 
                 provider_args_json, working_directory, system_prompt, 
                 skills_json, runtime_id, llm_provider_id, model_id,
-                created_at, updated_at, last_activity_at
-            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?4, NULL, NULL, ?10, ?10, ?10)",
+                created_at, updated_at, last_activity_at, session_type
+            ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?4, NULL, NULL, ?10, ?10, ?10, ?11)",
             params![
                 &session_id,
                 title,
@@ -114,6 +143,7 @@ impl SessionStore {
                 system_prompt,
                 &serde_json::to_string(skills)?,
                 &now,
+                session_type.as_str(),
             ],
         )?;
 
@@ -128,7 +158,7 @@ impl SessionStore {
                 "SELECT 
                 id, title, status, current_provider, provider_command,
                 provider_args_json, working_directory, system_prompt,
-                skills_json, provider_state_json, created_at, updated_at
+                skills_json, provider_state_json, session_type, acp_session_id, created_at, updated_at
             FROM agent_sessions WHERE id = ?1",
                 params![session_id],
                 |row| {
@@ -150,8 +180,10 @@ impl SessionStore {
                         system_prompt: row.get(7)?,
                         skills: serde_json::from_str(&skills_json).unwrap_or_default(),
                         provider_state,
-                        created_at: row.get(10)?,
-                        updated_at: row.get(11)?,
+                        session_type: SessionType::from_str(&row.get::<_, String>(10)?),
+                        acp_session_id: row.get(11)?,
+                        created_at: row.get(12)?,
+                        updated_at: row.get(13)?,
                     })
                 },
             )
@@ -330,6 +362,22 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Save the ACP agent's internal session ID for resumption.
+    pub fn save_acp_session_id(
+        &self,
+        session_id: &str,
+        acp_session_id: &str,
+    ) -> anyhow::Result<()> {
+        let now = now_iso8601();
+
+        self.conn.execute(
+            "UPDATE agent_sessions SET acp_session_id = ?1, updated_at = ?2 WHERE id = ?3",
+            params![acp_session_id, &now, session_id],
+        )?;
+
+        Ok(())
+    }
+
     /// Switch provider mid-session
     pub fn switch_provider(
         &self,
@@ -379,7 +427,7 @@ impl SessionStore {
     ) -> anyhow::Result<Vec<SessionSummary>> {
         if let Some(status) = status_filter {
             let mut stmt = self.conn.prepare(
-                "SELECT id, title, current_provider, status, created_at, updated_at 
+                "SELECT id, title, current_provider, status, session_type, created_at, updated_at 
                  FROM agent_sessions WHERE status = ?1 ORDER BY updated_at DESC",
             )?;
 
@@ -390,8 +438,9 @@ impl SessionStore {
                         title: row.get(1)?,
                         provider: row.get(2)?,
                         status: row.get(3)?,
-                        created_at: row.get(4)?,
-                        updated_at: row.get(5)?,
+                        session_type: SessionType::from_str(&row.get::<_, String>(4)?),
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -399,7 +448,7 @@ impl SessionStore {
             Ok(sessions)
         } else {
             let mut stmt = self.conn.prepare(
-                "SELECT id, title, current_provider, status, created_at, updated_at 
+                "SELECT id, title, current_provider, status, session_type, created_at, updated_at 
                  FROM agent_sessions ORDER BY updated_at DESC",
             )?;
 
@@ -410,8 +459,9 @@ impl SessionStore {
                         title: row.get(1)?,
                         provider: row.get(2)?,
                         status: row.get(3)?,
-                        created_at: row.get(4)?,
-                        updated_at: row.get(5)?,
+                        session_type: SessionType::from_str(&row.get::<_, String>(4)?),
+                        created_at: row.get(5)?,
+                        updated_at: row.get(6)?,
                     })
                 })?
                 .collect::<Result<Vec<_>, _>>()?;
@@ -498,28 +548,31 @@ mod tests {
                 &PathBuf::from("/tmp/test"),
                 Some("You are helpful."),
                 &["skill1".to_string(), "skill2".to_string()],
+                SessionType::Chat,
             )
             .unwrap();
 
         assert!(!session_id.is_empty());
         assert!(session_id.starts_with("sess_"));
 
-        let (runtime_id, llm_provider_id, model_id): (
+        let (runtime_id, llm_provider_id, model_id, session_type): (
+            Option<String>,
             Option<String>,
             Option<String>,
             Option<String>,
         ) = store
             .test_conn()
             .query_row(
-                "SELECT runtime_id, llm_provider_id, model_id FROM agent_sessions WHERE id = ?1",
+                "SELECT runtime_id, llm_provider_id, model_id, session_type FROM agent_sessions WHERE id = ?1",
                 params![&session_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .unwrap();
 
         assert_eq!(runtime_id.as_deref(), Some("pi-acp"));
         assert!(llm_provider_id.is_none());
         assert!(model_id.is_none());
+        assert_eq!(session_type.as_deref(), Some("chat"));
     }
 
     #[test]
@@ -534,6 +587,7 @@ mod tests {
                 &PathBuf::from("/tmp/test"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -566,6 +620,7 @@ mod tests {
                 &PathBuf::from("/tmp/test"),
                 Some("You are helpful."),
                 &["skill1".to_string()],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -601,6 +656,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -658,6 +714,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -680,6 +737,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -701,6 +759,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -736,6 +795,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
         let id2 = store
@@ -747,6 +807,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -775,6 +836,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -814,6 +876,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 
@@ -849,6 +912,7 @@ mod tests {
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
+                SessionType::Chat,
             )
             .unwrap();
 

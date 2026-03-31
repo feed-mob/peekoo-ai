@@ -1288,7 +1288,9 @@ impl AgentApplication {
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
         if let Ok(mut guard) = self.resume_session_path.lock() {
-            config.session_path = guard.take();
+            if let Some(path) = guard.take() {
+                config.resume_session_id = Some(path.to_string_lossy().into_owned());
+            }
         }
 
         let reactor = asupersync::runtime::reactor::create_reactor()

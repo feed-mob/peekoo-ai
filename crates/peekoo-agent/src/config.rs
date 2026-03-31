@@ -1,5 +1,6 @@
 //! Configuration for the agent service.
 
+use crate::SessionType;
 use agent_client_protocol::McpServer;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -192,6 +193,9 @@ pub struct AgentServiceConfig {
     /// Session file path to resume (for stashed sessions)
     pub session_path: Option<PathBuf>,
 
+    /// Session type: "chat" or "acp_task"
+    pub session_type: SessionType,
+
     /// Environment variables to pass to ACP agent
     pub environment: HashMap<String, String>,
 
@@ -216,6 +220,7 @@ impl Default for AgentServiceConfig {
             no_session: false,
             resume_session_id: None,
             session_path: None,
+            session_type: SessionType::Chat,
             environment: HashMap::new(),
             mcp_servers: Vec::new(),
         }
@@ -349,6 +354,7 @@ mod tests {
             no_session: false,
             resume_session_id: None,
             session_path: None,
+            session_type: SessionType::Chat,
             environment: HashMap::new(),
             mcp_servers: Vec::new(),
         };
