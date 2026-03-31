@@ -49,20 +49,46 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
-- [ ] ACP Registry Integration - Support all ACP registry agents
+- [ ] **ACP Registry Integration - Phase 2: Full Integration (Current)**
   - [x] Research Zed's ACP implementation and registry format
   - [x] Create peekoo-node-runtime crate for Node.js/NPX support
-  - [x] Create acp-registry-client crate to fetch registry from CDN (✅ Complete)
-  - [x] Parse ACP registry JSON (agents with npx/binary/uvx distribution) (✅ Complete)
-  - [x] Platform-specific agent filtering (darwin/linux/windows, arch) (✅ Complete)
-  - [x] Cache registry with TTL (1 hour) (✅ Complete)
-  - [ ] Add Tauri commands: `get_registry_agents()`, `install_registry_agent()` (Next)
-  - [ ] Update "Available Runtimes" UI to fetch from registry instead of hardcoded (Next)
-  - [ ] Integrate acp-registry-client with peekoo-agent-app (Next)
-  - [ ] Support binary agent download (Cursor, Kimi CLI, etc.)
-  - [ ] Support NPX agents: Gemini, Qwen Code, Cline, Auggie, etc.
-  - [ ] Support binary agents: Cursor, Kimi CLI, Goose, etc.
-  - [ ] Future: UVX agents (crow-cli, fast-agent)
+  - [x] Create acp-registry-client crate to fetch registry from CDN
+  - [x] Parse ACP registry JSON (agents with npx/binary/uvx distribution)
+  - [x] Platform-specific agent filtering (darwin/linux/windows, arch)
+  - [x] Cache registry with TTL (1 hour)
+  
+  **Phase 2.1: Database (Next)**
+  - [ ] Create migration: Add registry columns to agent_runtimes table
+  - [ ] Add registry_source, registry_id, registry_version, registry_metadata columns
+  
+  **Phase 2.2: Backend Integration (Next)**
+  - [ ] Refactor AgentProviderService to include RegistryClient
+  - [ ] Add fetch_registry_agents() with pagination
+  - [ ] Add search_registry_agents() for search functionality
+  - [ ] Add install_registry_agent() for Cursor/Gemini/etc
+  - [ ] Implement custom ordering (built-ins: opencode, pi, codex, claude first)
+  
+  **Phase 2.3: Tauri Commands (Next)**
+  - [ ] Add get_registry_agents() with pagination support
+  - [ ] Add search_registry_agents() for search
+  - [ ] Add install_registry_agent()
+  - [ ] Add refresh_registry_catalog()
+  
+  **Phase 2.4: Frontend (Next)**
+  - [ ] Create useRegistryAgents hook with pagination
+  - [ ] Create RegistryAgentCard component
+  - [ ] Update AgentProviderPanel with search bar
+  - [ ] Replace "Available Runtimes" with registry agents (40+ agents)
+  - [ ] Add "Load more" pagination
+  - [ ] Show platform compatibility badges
+  
+  **Phase 2.5: Testing (Next)**
+  - [ ] Install Cursor (binary) as proof of concept
+  - [ ] Test search functionality
+  - [ ] Test pagination (Load more)
+  - [ ] Verify custom ordering (built-ins at top)
+  
+  See detailed plan: `ai/plans/acp-registry-integration-phase2.md`
 
 - [ ] Evolve ACP/MCP into the primary agent runtime
   - [ ] Support OpenCode as another ACP provider
