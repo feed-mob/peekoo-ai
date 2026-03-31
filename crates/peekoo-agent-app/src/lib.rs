@@ -23,7 +23,8 @@ pub use agent_provider_service::{
     AgentProviderService, AuthMethodInfo, DiscoveredModelInfo, InstallProviderRequest,
     InstallProviderResponse, InstallRuntimeRequest, InstallRuntimeResponse, InstallationMethod,
     InstallationMethodInfo, PrerequisitesCheck, ProviderConfig, ProviderInfo, ProviderStatus,
-    RuntimeConfig, RuntimeInfo, RuntimeInspectionResult, RuntimeStatus, TestConnectionResult,
+    RegistryAgentInfo, RegistryFilterOptions, RegistrySortBy, RuntimeConfig, RuntimeInfo,
+    RuntimeInspectionResult, RuntimeStatus, TestConnectionResult,
 };
 pub use agent_runtime_service::AgentRuntimeService;
 pub use application::AgentApplication;

@@ -676,6 +676,88 @@ async fn refresh_runtime_capabilities(
     state.app.refresh_runtime_capabilities(&runtime_id).await
 }
 
+// ============================================================================
+// ACP Registry Commands
+// ============================================================================
+
+#[tauri::command]
+async fn get_registry_agents(
+    page: usize,
+    page_size: usize,
+    search_query: Option<String>,
+    platform_only: bool,
+    state: State<'_, AgentState>,
+) -> Result<serde_json::Value, String> {
+    use peekoo_agent_app::{RegistryFilterOptions, RegistrySortBy};
+    
+    let filter = RegistryFilterOptions {
+        search_query,
+        platform_only,
+        sort_by: RegistrySortBy::Featured,
+        page: page.max(1),
+        page_size: page_size.max(1).min(100),
+        method_filter: None,
+    };
+    
+    let (agents, total_count) = state.app
+        .fetch_registry_agents(&filter)
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(serde_json::json!({
+        "agents": agents,
+        "total_count": total_count,
+        "page": page,
+        "page_size": page_size,
+        "has_more": (page * page_size) < total_count,
+    }))
+}
+
+#[tauri::command]
+async fn search_registry_agents(
+    query: String,
+    state: State<'_, AgentState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let agents = state.app
+        .search_registry_agents(&query)
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(agents.into_iter()
+        .map(|a| serde_json::to_value(a).unwrap())
+        .collect())
+}
+
+#[tauri::command]
+async fn install_registry_agent(
+    registry_id: String,
+    method: String,
+    state: State<'_, AgentState>,
+) -> Result<InstallProviderResponse, String> {
+    use peekoo_agent_app::InstallationMethod;
+    
+    let install_method = match method.as_str() {
+        "npx" => InstallationMethod::Npx,
+        "binary" => InstallationMethod::Binary,
+        _ => return Err(format!("Unsupported installation method: {}", method)),
+    };
+    
+    state.app
+        .install_registry_agent(&registry_id, install_method)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn refresh_registry_catalog(
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app
+        .refresh_registry()
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn agent_oauth_start(
     req: ProviderRequest,
@@ -1513,6 +1595,11 @@ pub fn run() {
             inspect_runtime,
             authenticate_runtime,
             refresh_runtime_capabilities,
+            // ACP Registry Commands
+            get_registry_agents,
+            search_registry_agents,
+            install_registry_agent,
+            refresh_registry_catalog,
             agent_oauth_start,
             agent_oauth_status,
             agent_oauth_cancel,

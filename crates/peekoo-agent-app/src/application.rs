@@ -622,6 +622,52 @@ impl AgentApplication {
         .map_err(|e| format!("Runtime refresh error: {e}"))
     }
 
+    // =========================================================================
+    // ACP Registry Methods
+    // =========================================================================
+
+    /// Fetch agents from ACP registry with filtering and pagination
+    pub async fn fetch_registry_agents(
+        &self,
+        filter: &crate::agent_provider_service::RegistryFilterOptions,
+    ) -> Result<(Vec<crate::agent_provider_service::RegistryAgentInfo>, usize), String> {
+        self.provider_service
+            .fetch_registry_agents(filter)
+            .await
+            .map_err(|e| format!("Fetch registry agents error: {e}"))
+    }
+
+    /// Search registry agents by query
+    pub async fn search_registry_agents(
+        &self,
+        query: &str,
+    ) -> Result<Vec<crate::agent_provider_service::RegistryAgentInfo>, String> {
+        self.provider_service
+            .search_registry_agents(query)
+            .await
+            .map_err(|e| format!("Search registry agents error: {e}"))
+    }
+
+    /// Install an agent from ACP registry
+    pub async fn install_registry_agent(
+        &self,
+        registry_id: &str,
+        method: crate::agent_provider_service::InstallationMethod,
+    ) -> Result<crate::agent_provider_service::InstallProviderResponse, String> {
+        self.provider_service
+            .install_registry_agent(registry_id, method)
+            .await
+            .map_err(|e| format!("Install registry agent error: {e}"))
+    }
+
+    /// Force refresh registry from CDN
+    pub async fn refresh_registry(&self) -> Result<(), String> {
+        self.provider_service
+            .refresh_registry()
+            .await
+            .map_err(|e| format!("Refresh registry error: {e}"))
+    }
+
     // ── Global app settings ────────────────────────────────────────────
 
     pub fn get_active_sprite_id(&self) -> Result<String, String> {
