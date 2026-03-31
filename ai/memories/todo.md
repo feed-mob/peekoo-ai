@@ -3,6 +3,15 @@
 ## Tauri Version (Current Focus)
 
 ### Completed
+
+- [x] peekoo-node-runtime crate for Node.js management
+  - Ported from Zed's node_runtime module (adapted for Tokio)
+  - System Node.js detection (PATH lookup, >= v18.0.0)
+  - Managed Node.js download (v20.18.0 LTS to `~/.peekoo/resources/node/`)
+  - NPX package installation to per-agent directories
+  - Archive extraction (tar.gz, zip)
+  - See changelog: `ai/memories/changelogs/202603311430-feat-peekoo-node-runtime.md`
+
 - [x] Agent Task Execution via ACP
   - Full ACP subprocess communication for agent task execution
   - AgentScheduler with 30-second polling for task execution
@@ -40,6 +49,20 @@
 - [x] Settings input validation (non-empty provider/model, max_tool_iterations > 0)
 
 ### In Progress
+- [ ] ACP Registry Integration - Support all ACP registry agents
+  - [x] Research Zed's ACP implementation and registry format
+  - [x] Create peekoo-node-runtime crate for Node.js/NPX support
+  - [ ] Create acp-registry-client crate to fetch registry from CDN
+  - [ ] Parse ACP registry JSON (agents with npx/binary/uvx distribution)
+  - [ ] Add Tauri commands: `get_registry_agents()`, `install_registry_agent()`
+  - [ ] Update "Available Runtimes" UI to fetch from registry instead of hardcoded
+  - [ ] Support binary agent download (Cursor, Kimi CLI, etc.)
+  - [ ] Platform-specific agent filtering (darwin/linux/windows, arch)
+  - [ ] Cache registry with TTL (1 hour)
+  - [ ] Support NPX agents: Gemini, Qwen Code, Cline, Auggie, etc.
+  - [ ] Support binary agents: Cursor, Kimi CLI, Goose, etc.
+  - [ ] Future: UVX agents (crow-cli, fast-agent)
+
 - [ ] Evolve ACP/MCP into the primary agent runtime
   - [ ] Support OpenCode as another ACP provider
   - [ ] Ensure `peekoo-agent-acp` loads all available tools
@@ -120,7 +143,13 @@
 
 ---
 
-**Last updated**: 2026-03-27
+**Last updated**: 2026-03-31
+
+### Recent Major Changes (2026-03-31)
+- [x] peekoo-node-runtime crate implementation
+  - Full port of Zed's node_runtime to Tokio-based architecture
+  - Foundation for ACP registry agent support (NPX and binary)
+  - See changelog: `ai/memories/changelogs/202603311430-feat-peekoo-node-runtime.md`
 
 ### Recent Major Refactor (2026-03-21)
 - [x] Complete Tasks UI refactoring
