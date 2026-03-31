@@ -270,7 +270,7 @@ pub fn is_installed(_agent_id: &str, install_dir: PathBuf) -> bool {
 }
 
 /// Mark agent as installed (create .installed marker file)
-pub async fn mark_installed(install_dir: &PathBuf, installation: &Installation) -> Result<()> {
+pub async fn mark_installed(install_dir: &Path, installation: &Installation) -> Result<()> {
     let marker_path = install_dir.join(".installed");
     let json =
         serde_json::to_string(installation).context("Failed to serialize installation info")?;
@@ -281,7 +281,7 @@ pub async fn mark_installed(install_dir: &PathBuf, installation: &Installation) 
 }
 
 /// Load installation info from marker file
-pub async fn load_installation_info(install_dir: &PathBuf) -> Result<Option<Installation>> {
+pub async fn load_installation_info(install_dir: &Path) -> Result<Option<Installation>> {
     let marker_path = install_dir.join(".installed");
 
     if !marker_path.exists() {
@@ -433,9 +433,9 @@ async fn make_binaries_executable(install_dir: &Path, main_executable: &str) -> 
     let mut stack = vec![install_dir.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
-        let mut entries = fs::read_dir(&dir).await.with_context(|| {
-            format!("Failed to read directory: {}", dir.display())
-        })?;
+        let mut entries = fs::read_dir(&dir)
+            .await
+            .with_context(|| format!("Failed to read directory: {}", dir.display()))?;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();

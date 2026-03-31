@@ -211,9 +211,9 @@ impl acp::Client for AcpClientHandler {
             )
         }) {
             Ok(acp::RequestPermissionResponse::new(
-                acp::RequestPermissionOutcome::Selected(
-                    acp::SelectedPermissionOutcome::new(option.option_id.clone()),
-                ),
+                acp::RequestPermissionOutcome::Selected(acp::SelectedPermissionOutcome::new(
+                    option.option_id.clone(),
+                )),
             ))
         } else {
             Ok(acp::RequestPermissionResponse::new(

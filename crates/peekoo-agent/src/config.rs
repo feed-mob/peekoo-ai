@@ -102,8 +102,8 @@ impl AgentProvider {
         environment: &HashMap<String, String>,
     ) -> (String, Vec<String>) {
         // Special handling for opencode bundled binary path
-        if self.id == "opencode" {
-            if let Some(command) = environment
+        if self.id == "opencode"
+            && let Some(command) = environment
                 .get(PEEKOO_OPENCODE_BIN_ENV)
                 .filter(|value| !value.trim().is_empty())
                 .cloned()
@@ -112,9 +112,8 @@ impl AgentProvider {
                         .ok()
                         .filter(|value| !value.trim().is_empty())
                 })
-            {
-                return (command, vec!["acp".to_string()]);
-            }
+        {
+            return (command, vec!["acp".to_string()]);
         }
 
         self.command()

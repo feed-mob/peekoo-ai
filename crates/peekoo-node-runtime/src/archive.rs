@@ -138,12 +138,9 @@ pub async fn extract_zip(archive: Bytes, dest: &Path) -> Result<()> {
 
             if file.is_dir() {
                 std::fs::create_dir_all(&outpath).context("Failed to create directory from zip")?;
-            } else {
-                if let Some(parent) = outpath.parent() {
-                    if !parent.exists() {
-                        std::fs::create_dir_all(parent)
-                            .context("Failed to create parent directory")?;
-                    }
+            } else if let Some(parent) = outpath.parent() {
+                if !parent.exists() {
+                    std::fs::create_dir_all(parent).context("Failed to create parent directory")?;
                 }
 
                 let mut outfile =
@@ -154,11 +151,11 @@ pub async fn extract_zip(archive: Bytes, dest: &Path) -> Result<()> {
                 #[cfg(unix)]
                 {
                     use std::os::unix::fs::PermissionsExt;
-                    if let Some(mode) = file.unix_mode() {
-                        if mode & 0o111 != 0 {
-                            std::fs::set_permissions(&outpath, std::fs::Permissions::from_mode(mode))
-                                .context("Failed to set permissions from zip")?;
-                        }
+                    if let Some(mode) = file.unix_mode()
+                        && mode & 0o111 != 0
+                    {
+                        std::fs::set_permissions(&outpath, std::fs::Permissions::from_mode(mode))
+                            .context("Failed to set permissions from zip")?;
                     }
                 }
             }

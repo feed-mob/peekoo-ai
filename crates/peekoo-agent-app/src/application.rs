@@ -1258,8 +1258,7 @@ impl AgentApplication {
         let model_id = default_runtime.config.default_model.as_deref();
 
         let (mut config, settings_version) =
-            self.settings
-                .to_agent_config(config, provider, model_id)?;
+            self.settings.to_agent_config(config, provider, model_id)?;
 
         // Enable session persistence.
         config.no_session = false;
@@ -1364,8 +1363,7 @@ impl AgentApplication {
                 config,
                 provider,
                 runtime.config.default_model.as_deref(),
-            )
-            {
+            ) {
                 let runtime_id = resolved.provider.id();
 
                 env.push(("PEEKOO_AGENT_PROVIDER".to_string(), runtime_id.clone()));

@@ -348,7 +348,8 @@ mod tests {
         (service, temp_dir)
     }
 
-    fn create_test_service_with_bundled_opencode() -> (AgentProviderService, TempDir, std::path::PathBuf) {
+    fn create_test_service_with_bundled_opencode()
+    -> (AgentProviderService, TempDir, std::path::PathBuf) {
         let temp_dir = TempDir::new().unwrap();
         let db_path = temp_dir.path().join("test.db");
         let data_dir = temp_dir.path().join("data");

@@ -108,9 +108,11 @@ fn write_terminal_auth_script(
     Ok(path)
 }
 
+type TerminalLauncher = fn(&RuntimeTerminalAuthLaunch) -> Vec<String>;
+
 #[cfg(target_os = "linux")]
 fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
-    let candidates: [(&str, fn(&RuntimeTerminalAuthLaunch) -> Vec<String>); 8] = [
+    let candidates: [(&str, TerminalLauncher); 8] = [
         ("x-terminal-emulator", |launch| {
             let mut args = vec!["-e".to_string(), launch.command.clone()];
             args.extend(launch.args.clone());
@@ -689,21 +691,22 @@ async fn get_registry_agents(
     state: State<'_, AgentState>,
 ) -> Result<serde_json::Value, String> {
     use peekoo_agent_app::{RegistryFilterOptions, RegistrySortBy};
-    
+
     let filter = RegistryFilterOptions {
         search_query,
         platform_only,
         sort_by: RegistrySortBy::Featured,
         page: page.max(1),
-        page_size: page_size.max(1).min(100),
+        page_size: page_size.clamp(1, 100),
         method_filter: None,
     };
-    
-    let (agents, total_count) = state.app
+
+    let (agents, total_count) = state
+        .app
         .fetch_registry_agents(&filter)
         .await
         .map_err(|e| e.to_string())?;
-    
+
     Ok(serde_json::json!({
         "agents": agents,
         "totalCount": total_count,
@@ -718,12 +721,14 @@ async fn search_registry_agents(
     query: String,
     state: State<'_, AgentState>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let agents = state.app
+    let agents = state
+        .app
         .search_registry_agents(&query)
         .await
         .map_err(|e| e.to_string())?;
-    
-    Ok(agents.into_iter()
+
+    Ok(agents
+        .into_iter()
         .map(|a| serde_json::to_value(a).unwrap())
         .collect())
 }
@@ -735,24 +740,24 @@ async fn install_registry_agent(
     state: State<'_, AgentState>,
 ) -> Result<InstallProviderResponse, String> {
     use peekoo_agent_app::InstallationMethod;
-    
+
     let install_method = match method.as_str() {
         "npx" => InstallationMethod::Npx,
         "binary" => InstallationMethod::Binary,
         _ => return Err(format!("Unsupported installation method: {}", method)),
     };
-    
-    state.app
+
+    state
+        .app
         .install_registry_agent(&registry_id, install_method)
         .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-async fn refresh_registry_catalog(
-    state: State<'_, AgentState>,
-) -> Result<(), String> {
-    state.app
+async fn refresh_registry_catalog(state: State<'_, AgentState>) -> Result<(), String> {
+    state
+        .app
         .refresh_registry()
         .await
         .map_err(|e| e.to_string())
@@ -1445,7 +1450,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
-            app.manage(AgentState::new(&app.handle()));
+            app.manage(AgentState::new(app.handle()));
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
                 .text(TRAY_SETTINGS_MENU_ID, "Settings")

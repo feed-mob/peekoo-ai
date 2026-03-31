@@ -299,7 +299,7 @@ async fn build_agent_service(
     session_context: Option<&SessionContext>,
 ) -> anyhow::Result<AgentService> {
     let config = build_agent_service_config(task_id, session_context);
-    AgentService::new(config).await.map_err(Into::into)
+    AgentService::new(config).await
 }
 
 fn build_agent_service_config(

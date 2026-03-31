@@ -544,7 +544,7 @@ mod tests {
         // This test requires a running ACP agent, so we'll just test config
         let config = AgentServiceConfig::default();
 
-        assert!(config.provider.id().len() > 0);
+        assert!(!config.provider.id().is_empty());
     }
 
     #[test]

@@ -37,10 +37,10 @@ pub trait RuntimeAdapter: Send + Sync {
         // Forward critical path vars so runtimes can find credentials/config
         // regardless of how the Tauri app was launched.
         for key in &["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "PATH"] {
-            if !env.contains_key(*key) {
-                if let Ok(val) = std::env::var(key) {
-                    env.insert((*key).to_string(), val);
-                }
+            if !env.contains_key(*key)
+                && let Ok(val) = std::env::var(key)
+            {
+                env.insert((*key).to_string(), val);
             }
         }
 

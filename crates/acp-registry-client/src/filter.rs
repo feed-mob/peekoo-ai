@@ -47,10 +47,8 @@ pub enum SortBy {
 
 fn filter_single_agent(agent: &Agent, options: &FilterOptions, platform: &str) -> bool {
     // Platform support filter
-    if options.platform_supported_only {
-        if !crate::platform::is_supported_on(agent, platform) {
-            return false;
-        }
+    if options.platform_supported_only && !crate::platform::is_supported_on(agent, platform) {
+        return false;
     }
 
     // Method filter
@@ -222,7 +220,7 @@ mod tests {
 
     #[test]
     fn test_sort_by_name() {
-        let agents = vec![
+        let agents = [
             create_test_agent("zebra", "Zebra"),
             create_test_agent("alpha", "Alpha"),
             create_test_agent("beta", "Beta"),

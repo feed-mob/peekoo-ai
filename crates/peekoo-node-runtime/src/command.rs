@@ -59,10 +59,10 @@ pub fn npm_command_env(node_binary: Option<&Path>) -> HashMap<String, String> {
         command_env.insert("PATH".to_string(), env_path.to_string_lossy().into_owned());
     }
 
-    if let Ok(node_ca_certs) = std::env::var("NODE_EXTRA_CA_CERTS") {
-        if !node_ca_certs.is_empty() {
-            command_env.insert("NODE_EXTRA_CA_CERTS".to_string(), node_ca_certs);
-        }
+    if let Ok(node_ca_certs) = std::env::var("NODE_EXTRA_CA_CERTS")
+        && !node_ca_certs.is_empty()
+    {
+        command_env.insert("NODE_EXTRA_CA_CERTS".to_string(), node_ca_certs);
     }
 
     #[cfg(target_os = "windows")]

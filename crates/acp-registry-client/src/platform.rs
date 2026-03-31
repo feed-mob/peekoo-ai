@@ -85,10 +85,10 @@ pub fn supported_methods_on(agent: &Agent, platform: &str) -> Vec<InstallMethod>
     }
 
     // Binary is platform-specific
-    if let Some(ref binaries) = dist.binary {
-        if binaries.contains_key(platform) {
-            methods.push(InstallMethod::Binary);
-        }
+    if let Some(ref binaries) = dist.binary
+        && binaries.contains_key(platform)
+    {
+        methods.push(InstallMethod::Binary);
     }
 
     methods

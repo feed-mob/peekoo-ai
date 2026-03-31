@@ -23,9 +23,9 @@ use agent_client_protocol as acp;
 use crate::runtime_adapters::adapter_for_runtime;
 
 // Re-export registry types for convenience
-pub use acp_registry_client::{RegistryClient, InstallMethod as RegistryInstallMethod};
+use acp_registry_client::platform::{is_supported_on, preferred_method_for, supported_methods_on};
 pub use acp_registry_client::types::{Agent as RegistryAgent, AvailableAgent};
-use acp_registry_client::platform::{is_supported_on, supported_methods_on, preferred_method_for};
+pub use acp_registry_client::{InstallMethod as RegistryInstallMethod, RegistryClient};
 
 /// Provider installation method
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -87,7 +87,6 @@ impl RuntimeInfo {
         true
     }
 }
-
 
 /// Registry agent info for displaying ACP registry agents in UI
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -352,11 +351,8 @@ impl AgentProviderService {
             use_paths: None,
         };
         let (tx, rx) = tokio::sync::watch::channel(Some(options));
-        let node_runtime = peekoo_node_runtime::NodeRuntime::new(
-            peekoo_node_runtime::HttpClient::new(),
-            None,
-            rx,
-        );
+        let node_runtime =
+            peekoo_node_runtime::NodeRuntime::new(peekoo_node_runtime::HttpClient::new(), None, rx);
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -400,11 +396,8 @@ impl AgentProviderService {
             use_paths: None,
         };
         let (tx, rx) = tokio::sync::watch::channel(Some(options));
-        let node_runtime = peekoo_node_runtime::NodeRuntime::new(
-            peekoo_node_runtime::HttpClient::new(),
-            None,
-            rx,
-        );
+        let node_runtime =
+            peekoo_node_runtime::NodeRuntime::new(peekoo_node_runtime::HttpClient::new(), None, rx);
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -849,7 +842,7 @@ impl AgentProviderService {
 
                 let available_methods = Self::get_available_methods(&runtime_type, is_bundled != 0);
 
-let config_json: Option<String> = row.get(12)?;
+                let config_json: Option<String> = row.get(12)?;
                 let config: ProviderConfig = config_json
                     .and_then(|s| serde_json::from_str(&s).ok())
                     .unwrap_or_default();
@@ -1506,7 +1499,14 @@ let config_json: Option<String> = row.get(12)?;
                     installation_method, is_bundled, is_installed, is_default,
                     status, status_message, config_json, created_at, updated_at
                 ) VALUES (?1, ?1, ?2, ?3, ?4, ?5, 'custom', 0, 1, 0, 'ready', NULL, '{}', ?6, ?6)",
-                params![id, name, description.unwrap_or("Custom ACP agent"), command, args_json, now],
+                params![
+                    id,
+                    name,
+                    description.unwrap_or("Custom ACP agent"),
+                    command,
+                    args_json,
+                    now
+                ],
             )?;
 
             // Return the new provider info
@@ -1635,14 +1635,17 @@ let config_json: Option<String> = row.get(12)?;
         };
 
         // Fetch registry from CDN/cache
-        let registry = registry_client.fetch().await
+        let registry = registry_client
+            .fetch()
+            .await
             .context("Failed to fetch ACP registry")?;
 
         // Get current platform
         let platform = acp_registry_client::current_platform();
 
         // Convert registry agents to RegistryAgentInfo
-        let mut agents: Vec<RegistryAgentInfo> = registry.agents
+        let mut agents: Vec<RegistryAgentInfo> = registry
+            .agents
             .into_iter()
             .filter_map(|agent| {
                 // Check platform support
@@ -1656,10 +1659,10 @@ let config_json: Option<String> = row.get(12)?;
                 }
 
                 // Filter by method if requested
-                if let Some(method_filter) = filter.method_filter {
-                    if !supported_methods.contains(&method_filter) {
-                        return None;
-                    }
+                if let Some(method_filter) = filter.method_filter
+                    && !supported_methods.contains(&method_filter)
+                {
+                    return None;
                 }
 
                 // Search filter
@@ -1674,12 +1677,16 @@ let config_json: Option<String> = row.get(12)?;
                 }
 
                 // Get supported platforms
-                let supported_platforms = agent.distribution.binary.as_ref()
+                let supported_platforms = agent
+                    .distribution
+                    .binary
+                    .as_ref()
                     .map(|b| b.keys().cloned().collect())
                     .unwrap_or_default();
 
                 // Convert methods to strings
-                let supported_methods: Vec<String> = supported_methods.iter()
+                let supported_methods: Vec<String> = supported_methods
+                    .iter()
                     .map(|m| format!("{:?}", m).to_lowercase())
                     .collect();
                 let preferred_method = preferred_method.map(|m| format!("{:?}", m).to_lowercase());
@@ -1720,7 +1727,8 @@ let config_json: Option<String> = row.get(12)?;
             RegistrySortBy::Featured => {
                 // Sort by display_order, then by name
                 agents.sort_by(|a, b| {
-                    a.display_order.cmp(&b.display_order)
+                    a.display_order
+                        .cmp(&b.display_order)
                         .then_with(|| a.name.cmp(&b.name))
                 });
             }
@@ -1730,9 +1738,18 @@ let config_json: Option<String> = row.get(12)?;
             RegistrySortBy::PlatformSupport => {
                 // Supported agents first, then by display_order
                 agents.sort_by(|a, b| {
-                    let a_support = if a.is_supported_on_current_platform { 0 } else { 1 };
-                    let b_support = if b.is_supported_on_current_platform { 0 } else { 1 };
-                    a_support.cmp(&b_support)
+                    let a_support = if a.is_supported_on_current_platform {
+                        0
+                    } else {
+                        1
+                    };
+                    let b_support = if b.is_supported_on_current_platform {
+                        0
+                    } else {
+                        1
+                    };
+                    a_support
+                        .cmp(&b_support)
                         .then_with(|| a.display_order.cmp(&b.display_order))
                 });
             }
@@ -1780,7 +1797,9 @@ let config_json: Option<String> = row.get(12)?;
             }
         };
 
-        registry_client.refresh().await
+        registry_client
+            .refresh()
+            .await
             .context("Failed to refresh registry from CDN")?;
 
         Ok(())
@@ -1800,19 +1819,24 @@ let config_json: Option<String> = row.get(12)?;
             }
         };
 
-        let registry = registry_client.fetch().await
+        let registry = registry_client
+            .fetch()
+            .await
             .context("Failed to fetch registry")?;
 
-        let agent = registry.agents.iter()
+        let agent = registry
+            .agents
+            .iter()
             .find(|a| a.id == registry_id)
             .ok_or_else(|| anyhow::anyhow!("Agent {} not found in registry", registry_id))?;
 
         // Check if agent is supported on current platform
         let platform = acp_registry_client::current_platform();
-        if !is_supported_on(&agent, &platform) {
+        if !is_supported_on(agent, platform.as_str()) {
             return Err(anyhow::anyhow!(
                 "Agent {} is not supported on platform {}",
-                registry_id, platform
+                registry_id,
+                platform
             ));
         }
 
@@ -1827,11 +1851,9 @@ let config_json: Option<String> = row.get(12)?;
         match method {
             InstallationMethod::Npx => {
                 // Verify the agent has an NPX distribution
-                agent.distribution.npx.as_ref()
-                    .ok_or_else(|| anyhow::anyhow!(
-                        "Agent {} has no NPX distribution",
-                        registry_id
-                    ))?;
+                agent.distribution.npx.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!("Agent {} has no NPX distribution", registry_id)
+                })?;
 
                 let install_config = acp_registry_client::InstallConfig {
                     agent: agent.clone(),
@@ -1839,8 +1861,10 @@ let config_json: Option<String> = row.get(12)?;
                     install_dir,
                 };
 
-                let installation = acp_registry_client::install(install_config, Some(&self.node_runtime)).await
-                    .context("Failed to install NPX agent")?;
+                let installation =
+                    acp_registry_client::install(install_config, Some(&self.node_runtime))
+                        .await
+                        .context("Failed to install NPX agent")?;
 
                 self.create_runtime_from_registry(
                     agent,
@@ -1851,21 +1875,24 @@ let config_json: Option<String> = row.get(12)?;
 
                 Ok(InstallProviderResponse {
                     success: true,
-                    message: format!(
-                        "Successfully installed {} ({})",
-                        agent.name, agent.version
-                    ),
+                    message: format!("Successfully installed {} ({})", agent.name, agent.version),
                     requires_restart: false,
                 })
             }
             InstallationMethod::Binary => {
                 // Get binary platform info
-                agent.distribution.binary.as_ref()
+                agent
+                    .distribution
+                    .binary
+                    .as_ref()
                     .and_then(|b| b.get(&platform))
-                    .ok_or_else(|| anyhow::anyhow!(
-                        "No binary distribution for agent {} on platform {}",
-                        registry_id, platform
-                    ))?;
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "No binary distribution for agent {} on platform {}",
+                            registry_id,
+                            platform
+                        )
+                    })?;
 
                 // Download and extract
                 let install_config = acp_registry_client::InstallConfig {
@@ -1874,7 +1901,8 @@ let config_json: Option<String> = row.get(12)?;
                     install_dir,
                 };
 
-                let installation = acp_registry_client::install(install_config, None).await
+                let installation = acp_registry_client::install(install_config, None)
+                    .await
                     .context("Failed to install binary agent")?;
 
                 // Create runtime entry in database
@@ -1887,16 +1915,14 @@ let config_json: Option<String> = row.get(12)?;
 
                 Ok(InstallProviderResponse {
                     success: true,
-                    message: format!(
-                        "Successfully installed {} ({})",
-                        agent.name, agent.version
-                    ),
+                    message: format!("Successfully installed {} ({})", agent.name, agent.version),
                     requires_restart: false,
                 })
             }
-            _ => {
-                Err(anyhow::anyhow!("Installation method {:?} not supported for registry agents", method))
-            }
+            _ => Err(anyhow::anyhow!(
+                "Installation method {:?} not supported for registry agents",
+                method
+            )),
         }
     }
 
@@ -1934,7 +1960,8 @@ let config_json: Option<String> = row.get(12)?;
         let now = chrono::Utc::now().to_rfc3339();
 
         let runtime_id = format!("provider_{}", agent.id);
-        let command_str = command.first()
+        let command_str = command
+            .first()
             .map(|s| s.as_str())
             .unwrap_or(executable_path.to_str().unwrap_or(""));
         let args: Vec<String> = command.iter().skip(1).cloned().collect();
@@ -2102,7 +2129,10 @@ mod tests {
 
         // opencode is no longer default
         let providers = service.list_providers().unwrap();
-        let opencode = providers.iter().find(|p| p.provider_id == "opencode").unwrap();
+        let opencode = providers
+            .iter()
+            .find(|p| p.provider_id == "opencode")
+            .unwrap();
         assert!(!opencode.is_default);
     }
 
@@ -2124,7 +2154,9 @@ mod tests {
             custom_args: vec!["--verbose".to_string()],
         };
 
-        service.update_provider_config("opencode", &new_config).unwrap();
+        service
+            .update_provider_config("opencode", &new_config)
+            .unwrap();
 
         let config = service.get_provider_config("opencode").unwrap();
         assert_eq!(config.default_model, Some("claude-3.5-sonnet".to_string()));

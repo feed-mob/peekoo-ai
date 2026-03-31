@@ -6,7 +6,7 @@
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
 use rusqlite::{Connection, OptionalExtension, params};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 /// Session metadata for listing
 #[derive(Debug, Clone)]
@@ -82,13 +82,14 @@ impl SessionStore {
     }
 
     /// Create a new session
+    #[allow(clippy::too_many_arguments)]
     pub fn create_session(
         &self,
         title: Option<&str>,
         provider: &str,
         command: &str,
         args: &[String],
-        working_dir: &PathBuf,
+        working_dir: &Path,
         system_prompt: Option<&str>,
         skills: &[String],
     ) -> anyhow::Result<String> {
