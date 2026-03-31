@@ -14,7 +14,7 @@ use tokio::sync::{Mutex, watch};
 use tracing::{info, warn};
 
 use crate::http_client::HttpClient;
-use crate::paths::data_dir;
+use crate::paths::node_dir;
 
 const NODE_VERSION: &str = "v20.18.0";
 const NODE_CA_CERTS_ENV_VAR: &str = "NODE_EXTRA_CA_CERTS";
@@ -378,7 +378,7 @@ impl ManagedNodeRuntime {
 
         let version = NODE_VERSION;
         let folder_name = format!("node-{version}-{os}-{arch}");
-        let node_containing_dir = data_dir()?.join("resources/node");
+        let node_containing_dir = node_dir()?;
         let node_dir = node_containing_dir.join(&folder_name);
         let node_binary = node_dir.join(Self::NODE_PATH);
         let npm_file = node_dir.join(Self::NPM_PATH);
@@ -414,7 +414,7 @@ impl ManagedNodeRuntime {
 
         if !valid {
             let _ = fs::remove_dir_all(&node_containing_dir).await;
-            fs::create_dir(&node_containing_dir)
+            fs::create_dir_all(&node_containing_dir)
                 .await
                 .context("error creating node containing dir")?;
 
@@ -453,7 +453,7 @@ impl ManagedNodeRuntime {
             info!("Extracted Node.js to {}", node_containing_dir.display())
         }
 
-        fs::create_dir(node_dir.join("cache")).await.ok();
+        fs::create_dir_all(node_dir.join("cache")).await.ok();
         fs::write(node_dir.join("blank_user_npmrc"), []).await.ok();
         fs::write(node_dir.join("blank_global_npmrc"), [])
             .await
@@ -462,27 +462,6 @@ impl ManagedNodeRuntime {
         Ok(ManagedNodeRuntime {
             installation_path: node_dir,
         })
-    }
-}
-
-fn path_with_node_binary_prepended(node_binary: &Path) -> Option<std::ffi::OsString> {
-    let existing_path = std::env::var_os("PATH");
-    let node_bin_dir = node_binary.parent().map(|dir| dir.as_os_str());
-    match (existing_path, node_bin_dir) {
-        (Some(existing_path), Some(node_bin_dir)) => {
-            if let Ok(joined) = std::env::join_paths(
-                [PathBuf::from(node_bin_dir)]
-                    .into_iter()
-                    .chain(std::env::split_paths(&existing_path)),
-            ) {
-                Some(joined)
-            } else {
-                Some(existing_path)
-            }
-        }
-        (Some(existing_path), None) => Some(existing_path),
-        (None, Some(node_bin_dir)) => Some(node_bin_dir.to_owned()),
-        _ => None,
     }
 }
 
@@ -603,9 +582,9 @@ impl SystemNodeRuntime {
             )
         }
 
-        let scratch_dir = data_dir()?.join("resources/node");
-        fs::create_dir(&scratch_dir).await.ok();
-        fs::create_dir(scratch_dir.join("cache")).await.ok();
+        let scratch_dir = node_dir()?;
+        fs::create_dir_all(&scratch_dir).await.ok();
+        fs::create_dir_all(scratch_dir.join("cache")).await.ok();
 
         let mut this = Self {
             node,
