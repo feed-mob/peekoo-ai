@@ -2363,7 +2363,7 @@ mod tests {
 
     #[test]
     fn test_runtime_inspection_cache_round_trip() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bundled_bin) = create_test_service_with_bundled_opencode();
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
@@ -2401,7 +2401,7 @@ mod tests {
 
     #[test]
     fn test_update_provider_config_invalidates_runtime_inspection_cache() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bundled_bin) = create_test_service_with_bundled_opencode();
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
@@ -2456,7 +2456,7 @@ mod tests {
 
     #[test]
     fn test_cached_runtime_inspection_loads_from_database() {
-        let (service, _temp) = create_test_service();
+        let (service, _temp, _bundled_bin) = create_test_service_with_bundled_opencode();
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
