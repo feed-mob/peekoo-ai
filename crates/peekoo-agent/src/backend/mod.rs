@@ -25,6 +25,18 @@ pub trait AgentBackend: Send + Sync {
         on_event: EventCallback,
     ) -> anyhow::Result<PromptResult>;
 
+    /// Send a prompt after replaying conversation history.
+    /// Default implementation calls `prompt` with the history (backends that ignore
+    /// `conversation_history` in `prompt` should override this to replay history).
+    async fn prompt_with_history(
+        &self,
+        history: Vec<Message>,
+        input: &str,
+        on_event: EventCallback,
+    ) -> anyhow::Result<PromptResult> {
+        self.prompt(input, history, on_event).await
+    }
+
     /// Switch to a different model/provider at runtime
     async fn set_model(&mut self, provider: &str, model: &str) -> anyhow::Result<()>;
 
@@ -45,6 +57,32 @@ pub trait AgentBackend: Send + Sync {
 
     /// Restore provider state from persisted data
     async fn restore_provider_state(&mut self, state: serde_json::Value) -> anyhow::Result<()>;
+
+    /// Get the ACP agent's internal session ID for persistence.
+    /// Returns None for backends that don't have an internal session concept.
+    async fn get_acp_session_id(&self) -> Option<String> {
+        None
+    }
+
+    /// Check if the backend supports ACP session/load.
+    fn supports_load_session(&self) -> bool {
+        false
+    }
+
+    /// Check if the backend supports ACP session/resume.
+    fn supports_resume_session(&self) -> bool {
+        false
+    }
+
+    /// Load an existing ACP session by its internal ID.
+    async fn load_acp_session(&mut self, _acp_session_id: &str) -> anyhow::Result<()> {
+        anyhow::bail!("session/load not supported")
+    }
+
+    /// Resume an ACP session by its internal ID.
+    async fn resume_acp_session(&mut self, _acp_session_id: &str) -> anyhow::Result<()> {
+        anyhow::bail!("session/resume not supported")
+    }
 }
 
 /// Backend configuration

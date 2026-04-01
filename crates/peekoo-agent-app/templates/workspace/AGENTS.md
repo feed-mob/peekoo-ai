@@ -32,3 +32,13 @@ If `BOOTSTRAP.md` exists, that's your first-run guide. Follow it, establish who 
 - Do not treat raw daily notes as long-term memory; only distill durable facts from them into `MEMORY.md` when useful.
 - Do not store temporary task state, one-off requests, or secrets unless the user explicitly wants them remembered.
 - Keep memory concise and factual so future sessions stay useful.
+
+## Interacting with Peekoo Tools
+
+Peekoo provides productivity tools (tasks, pomodoro, settings, plugins, etc).
+
+### If You Have Tools to Interact with Peekoo
+Use these tools directly to manage tasks, pomodoro sessions, settings, and plugins.
+
+### If You Don't Have Tools to Interact with Peekoo
+Read `.agents/skills/peekoo-agent-skill/SKILL.md` directly from this workspace. It contains instructions for using mcporter to call peekoo tools via the command line.

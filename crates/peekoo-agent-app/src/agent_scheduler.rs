@@ -21,6 +21,7 @@ pub struct AgentScheduler {
     task_service: Arc<SqliteTaskService>,
     shutdown_token: tokio_util::sync::CancellationToken,
     launch_env: Arc<Mutex<Vec<(String, String)>>>,
+    context_prompt: Arc<Mutex<Option<String>>>,
 }
 
 impl AgentScheduler {
@@ -31,6 +32,7 @@ impl AgentScheduler {
             task_service,
             shutdown_token: tokio_util::sync::CancellationToken::new(),
             launch_env: Arc::new(Mutex::new(Vec::new())),
+            context_prompt: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -40,12 +42,19 @@ impl AgentScheduler {
         }
     }
 
+    pub fn set_context_prompt(&self, prompt: String) {
+        if let Ok(mut guard) = self.context_prompt.lock() {
+            *guard = Some(prompt);
+        }
+    }
+
     pub fn start(&self) {
         tracing::info!("AgentScheduler starting - will check for tasks every 30 seconds");
 
         let task_service = Arc::clone(&self.task_service);
         let shutdown = self.shutdown_token.clone();
         let launch_env = Arc::clone(&self.launch_env);
+        let context_prompt = Arc::clone(&self.context_prompt);
 
         let _ = self
             .scheduler
@@ -58,8 +67,9 @@ impl AgentScheduler {
                 let task_service = Arc::clone(&task_service);
                 let shutdown = shutdown.clone();
                 let launch_env = Arc::clone(&launch_env);
+                let context_prompt = Arc::clone(&context_prompt);
 
-                Self::spawn_worker(task_service, shutdown, launch_env);
+                Self::spawn_worker(task_service, shutdown, launch_env, context_prompt);
             }
         });
 
@@ -72,6 +82,7 @@ impl AgentScheduler {
             Arc::clone(&self.task_service),
             self.shutdown_token.clone(),
             Arc::clone(&self.launch_env),
+            Arc::clone(&self.context_prompt),
         );
     }
 
@@ -86,6 +97,7 @@ impl AgentScheduler {
         task_service: Arc<SqliteTaskService>,
         shutdown: tokio_util::sync::CancellationToken,
         launch_env: Arc<Mutex<Vec<(String, String)>>>,
+        context_prompt: Arc<Mutex<Option<String>>>,
     ) {
         std::thread::spawn(move || {
             tracing::info!("AgentScheduler: Spawning worker thread for task execution");
@@ -118,8 +130,14 @@ impl AgentScheduler {
                 }
 
                 let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
-                if let Err(e) =
-                    check_and_execute_tasks(&task_service, mcp_address, &launch_env).await
+                let context_prompt = context_prompt.lock().ok().and_then(|g| g.clone());
+                if let Err(e) = check_and_execute_tasks(
+                    &task_service,
+                    mcp_address,
+                    &launch_env,
+                    context_prompt.as_deref(),
+                )
+                .await
                 {
                     tracing::error!("AgentScheduler: Error during task execution: {}", e);
                 } else {
@@ -136,6 +154,7 @@ async fn check_and_execute_tasks(
     task_service: &SqliteTaskService,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
+    context_prompt: Option<&str>,
 ) -> Result<(), String> {
     tracing::info!("AgentScheduler: Querying database for agent tasks");
 
@@ -201,7 +220,9 @@ async fn check_and_execute_tasks(
             "AgentScheduler: Starting ACP execution for task {}",
             task.id
         );
-        if let Err(e) = execute_task_acp(task_service, task, mcp_address, launch_env).await {
+        if let Err(e) =
+            execute_task_acp(task_service, task, mcp_address, launch_env, context_prompt).await
+        {
             tracing::error!(
                 "AgentScheduler: Failed to execute task {} via ACP: {}",
                 task.id,
@@ -253,6 +274,7 @@ async fn execute_task_acp(
     task: &peekoo_task_app::TaskDto,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
+    context_prompt: Option<&str>,
 ) -> Result<(), String> {
     use agent_client_protocol::Agent as _;
 
@@ -461,11 +483,15 @@ async fn execute_task_acp(
                 prompt_json.len()
             );
 
+            // Build content blocks: context prompt first, then task context
+            let mut content_blocks = Vec::new();
+            if let Some(ctx) = context_prompt {
+                content_blocks.push(ContentBlock::Text(TextContent::new(ctx.to_string())));
+            }
+            content_blocks.push(ContentBlock::Text(TextContent::new(prompt_json)));
+
             let prompt_response = conn
-                .prompt(PromptRequest::new(
-                    session.session_id,
-                    vec![ContentBlock::Text(TextContent::new(prompt_json))],
-                ))
+                .prompt(PromptRequest::new(session.session_id, content_blocks))
                 .await
                 .map_err(|e| {
                     tracing::error!(

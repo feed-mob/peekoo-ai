@@ -1262,16 +1262,25 @@ impl AgentProviderService {
             _ => return Err(anyhow::anyhow!("Unknown provider: {}", provider_id)),
         };
 
-        // Try to get package info from npm registry
-        let resolved_npm = resolve_command("npm");
-        let output = Command::new(&resolved_npm)
+        // Try managed Node.js first, then fall back to system npm
+        let npm_path = peekoo_node_runtime::paths::node_dir()
+            .ok()
+            .map(|dir| dir.join("bin").join("npm"))
+            .filter(|p| p.exists())
+            .unwrap_or_else(|| resolve_command("npm"));
+
+        let output = Command::new(&npm_path)
             .args(["view", package, "version"])
             .output()
-            .map_err(|e| anyhow::anyhow!("Failed to run npm: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to run npm at {:?}: {}", npm_path, e))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!("Package not found: {}", stderr));
+            return Err(anyhow::anyhow!(
+                "Package '{}' not found: {}",
+                package,
+                stderr.trim()
+            ));
         }
 
         Ok(())
@@ -1398,12 +1407,29 @@ impl AgentProviderService {
         };
 
         match provider {
-            Some((_, _, false, _)) => Ok(TestConnectionResult {
-                success: false,
-                message: "Provider is not installed".to_string(),
-                available_models: vec![],
-                provider_version: None,
-            }),
+            Some((_, _, false, status)) => {
+                // Return the actual error message if installation failed
+                let message = if status == "error" {
+                    let conn = self.conn()?;
+                    let status_msg: Option<String> = conn
+                        .query_row(
+                            "SELECT status_message FROM agent_runtimes WHERE runtime_type = ?1",
+                            params![provider_id],
+                            |row| row.get(0),
+                        )
+                        .optional()?
+                        .flatten();
+                    status_msg.unwrap_or_else(|| "Provider installation failed".to_string())
+                } else {
+                    "Provider is not installed".to_string()
+                };
+                Ok(TestConnectionResult {
+                    success: false,
+                    message,
+                    available_models: vec![],
+                    provider_version: None,
+                })
+            }
             Some((_command, _args_json, true, status)) if status == "ready" => {
                 let inspection = self.inspect_runtime(provider_id).await?;
                 Ok(test_connection_result_from_inspection(inspection))
