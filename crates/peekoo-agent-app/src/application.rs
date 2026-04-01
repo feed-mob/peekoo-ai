@@ -84,8 +84,8 @@ pub struct AgentApplication {
     agent_config_version: Mutex<Option<i64>>,
     /// Directory where pi session files are stored.
     session_dir: PathBuf,
-    /// Workspace root used to scope session restore and resumption.
-    workspace_dir: PathBuf,
+    /// Agent workspace root (e.g. `~/.peekoo/workspace/`).
+    agent_workspace_dir: PathBuf,
     /// Path to the last session file, used to resume context on the next prompt.
     resume_session_path: Mutex<Option<PathBuf>>,
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
@@ -164,7 +164,7 @@ impl AgentApplication {
             )
             .map_err(|e| format!("Create provider service error: {e}"))?,
         );
-        let workspace_dir = ensure_agent_workspace()?;
+        let agent_workspace_dir = ensure_agent_workspace()?;
 
         // Create agent scheduler for task execution
         let agent_scheduler =
@@ -189,7 +189,7 @@ impl AgentApplication {
             shutdown_token,
             agent_config_version: Mutex::new(None),
             session_dir,
-            workspace_dir,
+            agent_workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
@@ -228,7 +228,7 @@ impl AgentApplication {
             app_settings_service,
             plugin_registry,
             mcp_shutdown,
-            self.workspace_dir.clone(),
+            self.agent_workspace_dir.clone(),
         ) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);
@@ -1321,7 +1321,7 @@ impl AgentApplication {
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let skills_dir = self.workspace_dir.join("skills");
+        let skills_dir = self.agent_workspace_dir.join("skills");
         let agent_skills = if skills_dir.is_dir() {
             vec![skills_dir]
         } else {
@@ -1332,8 +1332,8 @@ impl AgentApplication {
         let system_prompt = self.task_service.task_activity_summary().ok();
 
         Ok(AgentServiceConfig {
-            working_directory: self.workspace_dir.clone(),
-            persona_dir: Some(self.workspace_dir.clone()),
+            working_directory: self.agent_workspace_dir.clone(),
+            persona_dir: Some(self.agent_workspace_dir.clone()),
             agent_skills,
             system_prompt,
             auto_discover: false,

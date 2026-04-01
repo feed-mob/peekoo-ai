@@ -53,7 +53,7 @@ pub fn start_sync(
     app_settings_service: Arc<AppSettingsService>,
     plugin_registry: Option<Arc<PluginRegistry>>,
     shutdown_token: CancellationToken,
-    workspace_dir: std::path::PathBuf,
+    agent_workspace_dir: std::path::PathBuf,
 ) -> Result<SocketAddr, String> {
     // Check if already started
     if let Some(addr) = get_mcp_address() {
@@ -89,7 +89,7 @@ pub fn start_sync(
                 app_settings_service,
                 plugin_registry,
                 token_for_thread.clone(),
-                workspace_dir,
+                agent_workspace_dir,
             )
             .await
             {
@@ -151,7 +151,7 @@ impl McpServerManager {
         app_settings_service: Arc<AppSettingsService>,
         plugin_registry: Option<Arc<PluginRegistry>>,
         shutdown_token: CancellationToken,
-        workspace_dir: std::path::PathBuf,
+        agent_workspace_dir: std::path::PathBuf,
     ) -> Result<Self, String> {
         // Find an available port and bind immediately (avoids race condition)
         let listener = Self::find_available_listener().await?;
@@ -183,7 +183,7 @@ impl McpServerManager {
         );
 
         // Write mcporter config with the actual bound port
-        write_mcporter_config(&workspace_dir, server_address.port());
+        write_mcporter_config(&agent_workspace_dir, server_address.port());
 
         // Watch for shutdown signal
         let address = server_address;
@@ -225,7 +225,7 @@ impl McpServerManager {
 /// Write the mcporter config file with the actual bound port.
 /// This allows ACP agents to discover and call peekoo MCP tools
 /// via the mcporter CLI when MCP is not natively supported.
-fn write_mcporter_config(workspace_dir: &std::path::Path, port: u16) {
+fn write_mcporter_config(agent_workspace_dir: &std::path::Path, port: u16) {
     let config = serde_json::json!({
         "mcpServers": {
             "peekoo-native": {
@@ -239,7 +239,7 @@ fn write_mcporter_config(workspace_dir: &std::path::Path, port: u16) {
         }
     });
 
-    let path = workspace_dir
+    let path = agent_workspace_dir
         .join(".agents/skills/peekoo-agent-skill/mcporter.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);

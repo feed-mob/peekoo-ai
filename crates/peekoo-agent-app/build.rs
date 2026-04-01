@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::Path;
 
 fn main() {
-    let skills_dir = Path::new("templates/persona/.agents/skills");
+    let skills_dir = Path::new("templates/workspace/.agents/skills");
     println!("cargo:rerun-if-changed={}", skills_dir.display());
 
     let out_dir = env::var("OUT_DIR").expect("OUT_DIR not set");

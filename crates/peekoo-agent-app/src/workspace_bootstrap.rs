@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 
 use peekoo_paths::peekoo_global_config_dir;
 
-const AGENTS_TEMPLATE: &str = include_str!("../templates/persona/AGENTS.md");
-const BOOTSTRAP_TEMPLATE: &str = include_str!("../templates/persona/BOOTSTRAP.md");
-const IDENTITY_TEMPLATE: &str = include_str!("../templates/persona/IDENTITY.md");
-const MEMORY_TEMPLATE: &str = include_str!("../templates/persona/MEMORY.md");
-const SOUL_TEMPLATE: &str = include_str!("../templates/persona/SOUL.md");
-const USER_TEMPLATE: &str = include_str!("../templates/persona/USER.md");
+const AGENTS_TEMPLATE: &str = include_str!("../templates/workspace/AGENTS.md");
+const BOOTSTRAP_TEMPLATE: &str = include_str!("../templates/workspace/BOOTSTRAP.md");
+const IDENTITY_TEMPLATE: &str = include_str!("../templates/workspace/IDENTITY.md");
+const MEMORY_TEMPLATE: &str = include_str!("../templates/workspace/MEMORY.md");
+const SOUL_TEMPLATE: &str = include_str!("../templates/workspace/SOUL.md");
+const USER_TEMPLATE: &str = include_str!("../templates/workspace/USER.md");
 
 mod skill_templates {
     include!(concat!(env!("OUT_DIR"), "/skill_templates.rs"));
@@ -16,8 +16,13 @@ mod skill_templates {
 
 const REQUIRED_USER_FIELDS: &[&str] = &["- Name: [NOT_SET]"];
 
+/// The subdirectory name under the peekoo home where the agent workspace lives.
+const WORKSPACE_SUBDIR: &str = "workspace";
+
 pub fn ensure_agent_workspace() -> Result<PathBuf, String> {
-    let workspace_dir = resolve_workspace_dir()?;
+    let peekoo_home = resolve_peekoo_home()?;
+    let workspace_dir = peekoo_home.join(WORKSPACE_SUBDIR);
+
     if !workspace_dir.exists() {
         fs::create_dir_all(&workspace_dir)
             .map_err(|e| format!("Create agent workspace error: {e}"))?;
@@ -47,7 +52,7 @@ fn sync_skill_templates(workspace_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn resolve_workspace_dir() -> Result<PathBuf, String> {
+fn resolve_peekoo_home() -> Result<PathBuf, String> {
     if let Some(local_dir) = find_local_peekoo_dir() {
         return Ok(local_dir);
     }
