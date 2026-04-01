@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Stage OpenCode CLI for Tauri release bundling.
 
-- Windows targets are intentionally skipped (ACP issues on Windows).
-- macOS/Linux targets install opencode via npm and expose a stable
-  top-level `opencode` executable for runtime lookup.
+Installs opencode via npm for all platforms and exposes a stable
+top-level executable (`opencode` on Unix, `opencode.cmd` on Windows)
+for runtime lookup.
 """
 
 from __future__ import annotations
@@ -21,13 +21,13 @@ from typing import Final
 DEFAULT_VERSION = os.environ.get("OPENCODE_BUNDLE_VERSION", "latest")
 OPENCODE_NPM_PACKAGE: Final[str] = os.environ.get("OPENCODE_NPM_PACKAGE", "opencode-ai")
 
-ASSET_NAMES = {
-    "aarch64-apple-darwin": "opencode-darwin-arm64.zip",
-    "x86_64-apple-darwin": "opencode-darwin-x64.zip",
-    "x86_64-unknown-linux-gnu": "opencode-linux-x64.zip",
-    "aarch64-unknown-linux-gnu": "opencode-linux-arm64.zip",
-    "x86_64-pc-windows-msvc": "opencode-windows-x64.zip",
-    "aarch64-pc-windows-msvc": "opencode-windows-arm64.zip",
+SUPPORTED_TARGETS: Final[set[str]] = {
+    "aarch64-apple-darwin",
+    "x86_64-apple-darwin",
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "x86_64-pc-windows-msvc",
+    "aarch64-pc-windows-msvc",
 }
 
 WINDOWS_TARGETS: Final[set[str]] = {
@@ -94,13 +94,33 @@ def create_unix_wrapper(destination_dir: Path) -> Path:
     return wrapper
 
 
-def stage_npm_opencode(destination_dir: Path, package: str, version: str) -> Path:
+def create_windows_wrapper(destination_dir: Path) -> Path:
+    bin_path = destination_dir / "node_modules" / ".bin" / "opencode.cmd"
+    if not bin_path.exists() or not bin_path.is_file():
+        raise SystemExit(f"Expected npm binary not found at {bin_path}")
+
+    wrapper = destination_dir / "opencode.cmd"
+    wrapper.write_text(
+        "@echo off\r\n"
+        "setlocal\r\n"
+        'set "SCRIPT_DIR=%~dp0"\r\n'
+        'call "%SCRIPT_DIR%node_modules\\.bin\\opencode.cmd" %*\r\n',
+        encoding="utf-8",
+    )
+    return wrapper
+
+
+def stage_npm_opencode(
+    destination_dir: Path, package: str, version: str, target: str
+) -> Path:
     destination_dir.mkdir(parents=True, exist_ok=True)
     write_package_json(destination_dir)
 
     package_spec = package if version == "latest" else f"{package}@{version}"
     run_npm_install(destination_dir, package_spec)
 
+    if target in WINDOWS_TARGETS:
+        return create_windows_wrapper(destination_dir)
     return create_unix_wrapper(destination_dir)
 
 
@@ -117,18 +137,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.target in WINDOWS_TARGETS:
-        print(f"Skipping OpenCode bundle for Windows target: {args.target}")
-        return 0
-
-    if args.target not in ASSET_NAMES:
-        supported = ", ".join(sorted(ASSET_NAMES))
+    if args.target not in SUPPORTED_TARGETS:
+        supported = ", ".join(sorted(SUPPORTED_TARGETS))
         raise SystemExit(
             f"Unsupported OpenCode bundle target '{args.target}'. Supported: {supported}"
         )
 
     destination = stage_npm_opencode(
-        Path(args.output), OPENCODE_NPM_PACKAGE, args.version
+        Path(args.output), OPENCODE_NPM_PACKAGE, args.version, args.target
     )
     print(destination)
     return 0
