@@ -21,7 +21,7 @@ use peekoo_security::{
 };
 use peekoo_task_app::TaskService;
 use rand::rngs::OsRng;
-use reqwest::{Method, blocking::ClientBuilder};
+use reqwest::Method;
 use sha2::{Digest, Sha256};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::stream::MaybeTlsStream;
@@ -1793,9 +1793,7 @@ fn execute_http_request(
         let result = (|| {
             let method = Method::from_bytes(method.as_bytes())
                 .map_err(|e| format!("Invalid HTTP method: {e}"))?;
-            let client = ClientBuilder::new()
-                .build()
-                .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+            let client = reqwest::blocking::Client::new();
             let mut request = client.request(method, &url);
             for header in headers {
                 if let (Some(name), Some(value)) =
