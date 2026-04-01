@@ -1267,7 +1267,7 @@ impl AgentProviderService {
             .ok()
             .map(|dir| dir.join("bin").join("npm"))
             .filter(|p| p.exists())
-            .unwrap_or_else(|| resolve_command("npm").into());
+            .unwrap_or_else(|| resolve_command("npm"));
 
         let output = Command::new(&npm_path)
             .args(["view", package, "version"])

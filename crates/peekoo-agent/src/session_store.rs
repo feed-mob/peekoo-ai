@@ -5,7 +5,7 @@
 //! allowing agent-specific state to be stored opaquely.
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::{Path, PathBuf};
 
 /// Type of session - distinguishes user chat from background ACP tasks
@@ -25,7 +25,7 @@ impl SessionType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn parse(s: &str) -> Self {
         match s {
             "acp_task" => SessionType::AcpTask,
             _ => SessionType::Chat,
@@ -180,7 +180,7 @@ impl SessionStore {
                         system_prompt: row.get(7)?,
                         skills: serde_json::from_str(&skills_json).unwrap_or_default(),
                         provider_state,
-                        session_type: SessionType::from_str(&row.get::<_, String>(10)?),
+                        session_type: SessionType::parse(&row.get::<_, String>(10)?),
                         acp_session_id: row.get(11)?,
                         created_at: row.get(12)?,
                         updated_at: row.get(13)?,
@@ -438,7 +438,7 @@ impl SessionStore {
                         title: row.get(1)?,
                         provider: row.get(2)?,
                         status: row.get(3)?,
-                        session_type: SessionType::from_str(&row.get::<_, String>(4)?),
+                        session_type: SessionType::parse(&row.get::<_, String>(4)?),
                         created_at: row.get(5)?,
                         updated_at: row.get(6)?,
                     })
@@ -459,7 +459,7 @@ impl SessionStore {
                         title: row.get(1)?,
                         provider: row.get(2)?,
                         status: row.get(3)?,
-                        session_type: SessionType::from_str(&row.get::<_, String>(4)?),
+                        session_type: SessionType::parse(&row.get::<_, String>(4)?),
                         created_at: row.get(5)?,
                         updated_at: row.get(6)?,
                     })

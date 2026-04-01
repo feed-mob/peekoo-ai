@@ -1425,8 +1425,7 @@ mod tests {
                 ],
             ));
 
-                                    let (models, current_model) =
-                                        extract_models_from_session_response(&response);
+        let (models, current_model) = extract_models_from_session_response(&response);
 
         assert_eq!(current_model.as_deref(), Some("gpt-5.4"));
         assert_eq!(models.len(), 2);

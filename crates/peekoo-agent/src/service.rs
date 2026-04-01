@@ -77,10 +77,10 @@ impl AgentService {
         };
 
         // Persist the ACP agent's internal session ID for future resumption
-        if let Some(store) = &session_store {
-            if let Some(acp_sid) = backend.get_acp_session_id().await {
-                store.save_acp_session_id(&session_id, &acp_sid).ok();
-            }
+        if let Some(store) = &session_store
+            && let Some(acp_sid) = backend.get_acp_session_id().await
+        {
+            store.save_acp_session_id(&session_id, &acp_sid).ok();
         }
 
         Ok(Self {
@@ -333,10 +333,10 @@ impl AgentService {
              Use the skill tool to load skills on demand."
         ));
 
-        if let Some(ref summary) = config.system_prompt {
-            if !summary.trim().is_empty() {
-                parts.push(format!("## Task Activity\n{summary}"));
-            }
+        if let Some(ref summary) = config.system_prompt
+            && !summary.trim().is_empty()
+        {
+            parts.push(format!("## Task Activity\n{summary}"));
         }
 
         Ok(parts.join("\n\n"))

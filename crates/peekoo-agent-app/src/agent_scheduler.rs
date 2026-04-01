@@ -131,8 +131,13 @@ impl AgentScheduler {
 
                 let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
                 let context_prompt = context_prompt.lock().ok().and_then(|g| g.clone());
-                if let Err(e) =
-                    check_and_execute_tasks(&task_service, mcp_address, &launch_env, context_prompt.as_deref()).await
+                if let Err(e) = check_and_execute_tasks(
+                    &task_service,
+                    mcp_address,
+                    &launch_env,
+                    context_prompt.as_deref(),
+                )
+                .await
                 {
                     tracing::error!("AgentScheduler: Error during task execution: {}", e);
                 } else {
@@ -215,7 +220,9 @@ async fn check_and_execute_tasks(
             "AgentScheduler: Starting ACP execution for task {}",
             task.id
         );
-        if let Err(e) = execute_task_acp(task_service, task, mcp_address, launch_env, context_prompt).await {
+        if let Err(e) =
+            execute_task_acp(task_service, task, mcp_address, launch_env, context_prompt).await
+        {
             tracing::error!(
                 "AgentScheduler: Failed to execute task {} via ACP: {}",
                 task.id,
@@ -484,10 +491,7 @@ async fn execute_task_acp(
             content_blocks.push(ContentBlock::Text(TextContent::new(prompt_json)));
 
             let prompt_response = conn
-                .prompt(PromptRequest::new(
-                    session.session_id,
-                    content_blocks,
-                ))
+                .prompt(PromptRequest::new(session.session_id, content_blocks))
                 .await
                 .map_err(|e| {
                     tracing::error!(

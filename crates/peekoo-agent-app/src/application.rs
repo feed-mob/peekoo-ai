@@ -247,10 +247,11 @@ impl AgentApplication {
         {
             scheduler.set_agent_launch_env(self.agent_launch_env());
             // Build context prompt for task scheduler
-            if let Ok(config) = self.resolved_config() {
-                if let Ok(prompt) = peekoo_agent::service::AgentService::build_system_prompt(&config) {
-                    scheduler.set_context_prompt(prompt);
-                }
+            if let Ok(config) = self.resolved_config()
+                && let Ok(prompt) =
+                    peekoo_agent::service::AgentService::build_system_prompt(&config)
+            {
+                scheduler.set_context_prompt(prompt);
             }
             scheduler.start();
         }
@@ -1294,10 +1295,10 @@ impl AgentApplication {
 
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
-        if let Ok(mut guard) = self.resume_session_path.lock() {
-            if let Some(path) = guard.take() {
-                config.resume_session_id = Some(path.to_string_lossy().into_owned());
-            }
+        if let Ok(mut guard) = self.resume_session_path.lock()
+            && let Some(path) = guard.take()
+        {
+            config.resume_session_id = Some(path.to_string_lossy().into_owned());
         }
 
         let reactor = asupersync::runtime::reactor::create_reactor()

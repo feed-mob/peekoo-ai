@@ -239,8 +239,7 @@ fn write_mcporter_config(agent_workspace_dir: &std::path::Path, port: u16) {
         }
     });
 
-    let path = agent_workspace_dir
-        .join(".agents/skills/peekoo-agent-skill/mcporter.json");
+    let path = agent_workspace_dir.join(".agents/skills/peekoo-agent-skill/mcporter.json");
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
