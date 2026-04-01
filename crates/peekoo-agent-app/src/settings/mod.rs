@@ -393,11 +393,9 @@ mod tests {
     #[test]
     fn to_agent_config_preserves_base_skill_roots() {
         let db_path = temp_db_path("skills-merge-guard");
-        let svc = SettingsService::with_secret_store(
-            &db_path,
-            Box::new(InMemorySecretStore::default()),
-        )
-        .expect("create settings service");
+        let svc =
+            SettingsService::with_secret_store(&db_path, Box::new(InMemorySecretStore::default()))
+                .expect("create settings service");
 
         let mut base = AgentServiceConfig::default();
         let discovered = vec![

@@ -17,7 +17,11 @@ pub fn discover_skills_in_roots(roots: &[PathBuf]) -> Vec<SkillDto> {
     out
 }
 
-fn discover_skills_under_dir(dir: &std::path::Path, seen: &mut HashSet<String>, out: &mut Vec<SkillDto>) {
+fn discover_skills_under_dir(
+    dir: &std::path::Path,
+    seen: &mut HashSet<String>,
+    out: &mut Vec<SkillDto>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
