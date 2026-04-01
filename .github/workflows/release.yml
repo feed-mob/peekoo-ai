@@ -144,12 +144,6 @@ jobs:
             libfuse2 \
             fuse
 
-      - name: Install linuxdeploy for AppImage
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          wget -q -O /usr/local/bin/linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          chmod +x /usr/local/bin/linuxdeploy
-
       - name: Install nightly Rust
         uses: dtolnay/rust-toolchain@nightly
 
@@ -177,6 +171,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_CONFIG: ${{ matrix.platform == 'macos-14' && '{"app":{"macOSPrivateApi":true}}' || '{"app":{"macOSPrivateApi":false}}' }}
           APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: 1
         with:
           projectPath: apps/desktop-tauri
           tagName: ${{ needs.prepare-release.outputs.tag_name }}
