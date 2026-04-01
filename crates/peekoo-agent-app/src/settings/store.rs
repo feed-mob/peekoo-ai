@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::settings::dto::{
-    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
+    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto,
 };
 
 const DEFAULT_MAX_TOOL_ITERATIONS: i64 = 50;
@@ -15,8 +15,6 @@ const SQL_UPSERT_PROVIDER_AUTH: &str = concat!(
     "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, datetime('now'))",
     " ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = excluded.api_key_ref, oauth_token_ref = excluded.oauth_token_ref, oauth_expires_at = excluded.oauth_expires_at, updated_at = datetime('now')"
 );
-
-use crate::settings::skills::discover_skills;
 
 pub(crate) struct SettingsStore {
     conn: Arc<Mutex<Connection>>,
@@ -94,27 +92,6 @@ impl SettingsStore {
         let provider_auth: Result<Vec<_>, _> = auth_rows.collect();
         let provider_auth = provider_auth.map_err(|e| format!("Map auth rows error: {e}"))?;
 
-        let mut skill_stmt = conn
-            .prepare(
-                "SELECT skill_id, source_type, path, enabled FROM agent_skills ORDER BY skill_id",
-            )
-            .map_err(|e| format!("Prepare skills query error: {e}"))?;
-        let skill_rows = skill_stmt
-            .query_map([], |row| {
-                Ok(SkillDto {
-                    skill_id: row.get(0)?,
-                    source_type: row.get(1)?,
-                    path: row.get(2)?,
-                    enabled: row.get::<_, i64>(3)? == 1,
-                })
-            })
-            .map_err(|e| format!("Query skill rows error: {e}"))?;
-        let skills: Result<Vec<_>, _> = skill_rows.collect();
-        let mut skills = skills.map_err(|e| format!("Map skill rows error: {e}"))?;
-        if skills.is_empty() {
-            skills = discover_skills();
-        }
-
         let mut provider_cfg_stmt = conn
             .prepare("SELECT provider_id, base_url, api, auth_header FROM agent_provider_configs")
             .map_err(|e| format!("Prepare provider config query error: {e}"))?;
@@ -138,7 +115,6 @@ impl SettingsStore {
             version: row.2,
             provider_auth,
             provider_configs,
-            skills,
         })
     }
 
@@ -154,7 +130,6 @@ impl SettingsStore {
         let AgentSettingsPatchDto {
             system_prompt,
             max_tool_iterations,
-            skills,
         } = patch;
 
         if max_tool_iterations == Some(0) {
@@ -175,23 +150,6 @@ impl SettingsStore {
                 params![max_tool_iterations as i64],
             )
             .map_err(|e| format!("Update max tool iterations error: {e}"))?;
-        }
-
-        if let Some(skills) = skills {
-            conn.execute("DELETE FROM agent_skills", [])
-                .map_err(|e| format!("Delete existing skill rows error: {e}"))?;
-            for skill in skills {
-                conn.execute(
-                    "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
-                    params![skill.skill_id, skill.source_type, skill.path, if skill.enabled { 1 } else { 0 }],
-                )
-                .map_err(|e| format!("Insert skill row error: {e}"))?;
-            }
-            conn.execute(
-                "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                [],
-            )
-            .map_err(|e| format!("Bump settings version error: {e}"))?;
         }
 
         drop(conn);
@@ -440,7 +398,6 @@ mod tests {
         let result = store.apply_patch(AgentSettingsPatchDto {
             system_prompt: None,
             max_tool_iterations: Some(0),
-            skills: None,
         });
 
         match result {
@@ -460,6 +417,33 @@ mod tests {
         let after = store.load_settings().expect("load settings").version;
 
         assert_eq!(after, before + 1);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Chat settings persistence must not surface `agent_skills` rows (catalog is separate).
+    #[test]
+    fn load_settings_chat_dto_omits_persisted_skills() {
+        let (store, path) = new_store();
+        {
+            let conn = Connection::open(&path).expect("open db for seed");
+            conn.execute(
+                "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES ('seeded-skill', 'path', '/nope/SKILL.md', 1, datetime('now'))",
+                [],
+            )
+            .expect("insert agent_skills row");
+        }
+
+        let settings = store.load_settings().expect("load settings");
+        let json = serde_json::to_value(&settings).expect("serialize settings");
+        assert!(
+            json.get("skills").is_none(),
+            "AgentSettingsDto must not expose skills for chat settings; got {json:?}"
+        );
+        assert!(
+            !json.to_string().contains("seeded-skill"),
+            "persisted agent_skills rows must not appear on chat settings DTO"
+        );
 
         let _ = std::fs::remove_file(path);
     }

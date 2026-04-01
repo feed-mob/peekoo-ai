@@ -35,7 +35,6 @@ pub struct AgentSettingsDto {
     pub version: i64,
     pub provider_auth: Vec<ProviderAuthDto>,
     pub provider_configs: Vec<ProviderConfigDto>,
-    pub skills: Vec<SkillDto>,
 }
 
 #[derive(Deserialize)]
@@ -43,7 +42,6 @@ pub struct AgentSettingsDto {
 pub struct AgentSettingsPatchDto {
     pub system_prompt: Option<String>,
     pub max_tool_iterations: Option<usize>,
-    pub skills: Option<Vec<SkillDto>>,
 }
 
 #[derive(Serialize)]

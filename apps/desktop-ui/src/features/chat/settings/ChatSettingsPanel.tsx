@@ -1,6 +1,5 @@
-import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { SkillToggleList } from "./SkillToggleList";
+import { SkillList } from "./SkillList";
 import { useChatSettings } from "./useChatSettings";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
 
@@ -15,21 +14,9 @@ export function ChatSettingsPanel({
   activeRuntimeName,
   configuredModelId,
 }: ChatSettingsPanelProps) {
-  const {
-    settings,
-    catalog,
-    isLoading,
-    error,
-    refresh,
-    updateSettings,
-  } = useChatSettings();
+  const { settings, catalog, isLoading, error, refresh } = useChatSettings();
 
   const { defaultProvider } = useAgentProviders();
-
-  const effectiveSkills = useMemo(() => {
-    if (!settings || !catalog) return [];
-    return settings.skills.length > 0 ? settings.skills : catalog.discoveredSkills;
-  }, [catalog, settings]);
 
   if (isLoading && !settings) {
     return <div className="text-sm text-text-muted">Loading settings...</div>;
@@ -113,15 +100,10 @@ export function ChatSettingsPanel({
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-text-primary">Skills</p>
-        <SkillToggleList
-          skills={effectiveSkills}
-          onToggle={(skillId, enabled) => {
-            const skills = effectiveSkills.map((skill) =>
-              skill.skillId === skillId ? { ...skill, enabled } : skill
-            );
-            void updateSettings({ skills });
-          }}
-        />
+        <p className="text-xs text-text-muted">
+          Peekoo finds skills automatically from configured skill folders.
+        </p>
+        <SkillList skills={catalog.discoveredSkills} />
       </div>
     </div>
   );

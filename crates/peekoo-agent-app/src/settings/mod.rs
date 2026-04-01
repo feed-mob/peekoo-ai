@@ -24,6 +24,7 @@ pub use dto::{
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
     SetProviderConfigRequest, SkillDto,
 };
+pub(crate) use skills::skill_discovery_roots;
 
 pub struct SettingsService {
     store: SettingsStore,
@@ -278,18 +279,6 @@ impl SettingsService {
         base.model = model_id.map(|m| m.to_string());
         base.system_prompt = settings.system_prompt.clone();
         base.max_tool_iterations = settings.max_tool_iterations;
-        let mut merged_skill_paths = base.agent_skills.clone();
-        for skill_path in settings
-            .skills
-            .iter()
-            .filter(|skill| skill.enabled)
-            .map(|skill| PathBuf::from(skill.path.clone()))
-        {
-            if !merged_skill_paths.iter().any(|path| path == &skill_path) {
-                merged_skill_paths.push(skill_path);
-            }
-        }
-        base.agent_skills = merged_skill_paths;
 
         let provider_id = base.provider.id();
 
@@ -398,6 +387,64 @@ mod tests {
         let expected = peekoo_paths::peekoo_settings_db_path().expect("shared db path");
         let actual = default_db_path().expect("settings db path");
         assert_eq!(actual, expected);
+    }
+
+    /// Legacy `agent_skills` rows may remain in the settings DB; runtime config must still come
+    /// from the base config (workspace discovery / application layer), not chat-settings persistence.
+    #[test]
+    fn to_agent_config_does_not_merge_persisted_agent_skills() {
+        let db_path = temp_db_path("skills-merge-guard");
+        let svc = SettingsService::with_secret_store(
+            &db_path,
+            Box::new(InMemorySecretStore::default()),
+        )
+        .expect("create settings service");
+
+        {
+            let conn = rusqlite::Connection::open(&db_path).expect("open db for seed");
+            conn.execute(
+                "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES ('legacy', 'path', '/db/only/SKILL.md', 1, datetime('now'))",
+                [],
+            )
+            .expect("insert agent_skills row");
+        }
+
+        let mut base = AgentServiceConfig::default();
+        let discovered = vec![
+            std::path::PathBuf::from("/workspace/skills/alpha"),
+            std::path::PathBuf::from("/workspace/skills/beta"),
+        ];
+        base.agent_skills = discovered.clone();
+
+        let (config_with_skills, _version) = svc
+            .to_agent_config(base, peekoo_agent::config::AgentProvider::opencode(), None)
+            .expect("to_agent_config");
+
+        assert_eq!(
+            config_with_skills.agent_skills, discovered,
+            "runtime skill roots must pass through unchanged; DB agent_skills must not override"
+        );
+        assert!(
+            !config_with_skills.agent_skills.iter().any(|p| {
+                p.to_string_lossy().contains("db/only")
+            }),
+            "persisted agent_skills rows must not inject paths into AgentServiceConfig"
+        );
+
+        let empty_base = AgentServiceConfig::default();
+        let (config_without_skills, _version) = svc
+            .to_agent_config(
+                empty_base,
+                peekoo_agent::config::AgentProvider::opencode(),
+                None,
+            )
+            .expect("to_agent_config with empty base skills");
+        assert!(
+            config_without_skills.agent_skills.is_empty(),
+            "persisted agent_skills rows must not backfill AgentServiceConfig when base skills are empty"
+        );
+
+        let _ = std::fs::remove_file(&db_path);
     }
 
     #[test]
