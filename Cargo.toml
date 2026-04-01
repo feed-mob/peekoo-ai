@@ -31,7 +31,7 @@ asupersync = "=0.2.9"
 [workspace.package]
 edition = "2024"
 license = "MIT"
-version = "0.1.13"
+version = "0.1.14"
 
 [profile.release]
 lto = true
