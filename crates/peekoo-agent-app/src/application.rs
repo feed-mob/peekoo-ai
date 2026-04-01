@@ -228,6 +228,7 @@ impl AgentApplication {
             app_settings_service,
             plugin_registry,
             mcp_shutdown,
+            self.workspace_dir.clone(),
         ) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);

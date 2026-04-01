@@ -6,19 +6,21 @@ The `ACP_SYSTEM_PROMPT` environment variable approach was not part of the ACP pr
 ## Solution
 Migrated to injecting the system prompt as the first content block in the ACP `session/prompt` request. Replaced the full content assembly with a minimal context prompt that directs the agent to read files natively.
 
-### Context Prompt Format
+### Context Prompt Format (with Full Paths)
 ```
-Read AGENTS.md first — it contains all instructions for working with this workspace, including how to use SOUL.md, IDENTITY.md, USER.md, and MEMORY.md.
+Read /home/richard/.peekoo/AGENTS.md first — it contains all instructions for working with this workspace, including how to use SOUL.md, IDENTITY.md, USER.md, and MEMORY.md.
 
-Skills are available in .agents/skills/. Use the skill tool to load skills on demand.
+Skills are available in /home/richard/.peekoo/.agents/skills/. Use the skill tool to load skills on demand.
 
 <Task activity summary if any>
 ```
 
+**Note:** Uses full workspace paths (not relative) to ensure the agent always finds the correct files regardless of its working directory.
+
 ### Key Changes
 - **Removed** `ACP_SYSTEM_PROMPT` env var injection from ACP spawn
 - **Removed** `load_persona_sections()` and `load_skill_sections()` dead code
-- **Rewrote** `build_system_prompt()` to output minimal context prompt instead of full content assembly
+- **Rewrote** `build_system_prompt()` to output minimal context prompt with full paths
 - **Modified** ACP prompt handler to prepend context prompt as first `ContentBlock` in `PromptRequest`
 - **Threaded** context prompt through task scheduler (`agent_scheduler.rs`) so background tasks also receive the context prompt
 
@@ -33,3 +35,4 @@ Skills are available in .agents/skills/. Use the skill tool to load skills on de
 - Agent reads AGENTS.md natively (no duplication)
 - Agent loads skills on-demand via skill tool (no upfront content cost)
 - Much smaller token budget per prompt turn
+- Full paths ensure agent finds files regardless of working directory

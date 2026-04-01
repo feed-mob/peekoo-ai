@@ -321,17 +321,17 @@ impl AgentService {
     pub fn build_system_prompt(config: &AgentServiceConfig) -> Result<String> {
         let mut parts = Vec::new();
 
-        parts.push(
-            "Read AGENTS.md first — it contains all instructions for working \
+        let workspace = config.working_directory.display();
+        parts.push(format!(
+            "Read {workspace}/AGENTS.md first — it contains all instructions for working \
              with this workspace, including how to use SOUL.md, IDENTITY.md, \
              USER.md, and MEMORY.md."
-                .to_string(),
-        );
+        ));
 
-        parts.push(
-            "Skills are available in .agents/skills/. Use the skill tool to load skills on demand."
-                .to_string(),
-        );
+        parts.push(format!(
+            "Skills are available in {workspace}/.agents/skills/. \
+             Use the skill tool to load skills on demand."
+        ));
 
         if let Some(ref summary) = config.system_prompt {
             if !summary.trim().is_empty() {
@@ -476,23 +476,27 @@ mod tests {
     fn test_system_prompt_building() {
         let config = AgentServiceConfig {
             system_prompt: Some("Task summary".to_string()),
+            working_directory: PathBuf::from("/test/workspace"),
             ..Default::default()
         };
 
         let prompt = AgentService::build_system_prompt(&config).unwrap();
-        assert!(prompt.contains("Read AGENTS.md first"));
-        assert!(prompt.contains("Skills are available in .agents/skills/"));
+        assert!(prompt.contains("Read /test/workspace/AGENTS.md first"));
+        assert!(prompt.contains("Skills are available in /test/workspace/.agents/skills/"));
         assert!(prompt.contains("Task Activity"));
         assert!(prompt.contains("Task summary"));
     }
 
     #[test]
     fn test_default_system_prompt() {
-        let config = AgentServiceConfig::default();
+        let config = AgentServiceConfig {
+            working_directory: PathBuf::from("/home/user/.peekoo"),
+            ..Default::default()
+        };
 
         let prompt = AgentService::build_system_prompt(&config).unwrap();
-        assert!(prompt.contains("Read AGENTS.md first"));
-        assert!(prompt.contains("Skills are available in .agents/skills/"));
+        assert!(prompt.contains("Read /home/user/.peekoo/AGENTS.md first"));
+        assert!(prompt.contains("Skills are available in /home/user/.peekoo/.agents/skills/"));
     }
 
     #[test]

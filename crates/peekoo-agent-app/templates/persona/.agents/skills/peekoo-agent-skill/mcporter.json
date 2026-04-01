@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "peekoo-native": {
+      "description": "Peekoo native productivity tools (task, pomodoro, settings)",
+      "baseUrl": "http://127.0.0.1:49152/mcp"
+    },
+    "peekoo-plugins": {
+      "description": "Peekoo plugin tools (Google Calendar, OpenClaw, etc.)",
+      "baseUrl": "http://127.0.0.1:49152/mcp/plugins"
+    }
+  }
+}

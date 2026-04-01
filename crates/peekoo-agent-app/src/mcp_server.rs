@@ -53,6 +53,7 @@ pub fn start_sync(
     app_settings_service: Arc<AppSettingsService>,
     plugin_registry: Option<Arc<PluginRegistry>>,
     shutdown_token: CancellationToken,
+    workspace_dir: std::path::PathBuf,
 ) -> Result<SocketAddr, String> {
     // Check if already started
     if let Some(addr) = get_mcp_address() {
@@ -88,6 +89,7 @@ pub fn start_sync(
                 app_settings_service,
                 plugin_registry,
                 token_for_thread.clone(),
+                workspace_dir,
             )
             .await
             {
@@ -149,6 +151,7 @@ impl McpServerManager {
         app_settings_service: Arc<AppSettingsService>,
         plugin_registry: Option<Arc<PluginRegistry>>,
         shutdown_token: CancellationToken,
+        workspace_dir: std::path::PathBuf,
     ) -> Result<Self, String> {
         // Find an available port and bind immediately (avoids race condition)
         let listener = Self::find_available_listener().await?;
@@ -178,6 +181,9 @@ impl McpServerManager {
             "📋 [MCP] Available tools: 24 native tools (task, pomodoro, settings) \
              (+ plugin tools if registry provided)"
         );
+
+        // Write mcporter config with the actual bound port
+        write_mcporter_config(&workspace_dir, server_address.port());
 
         // Watch for shutdown signal
         let address = server_address;
@@ -213,5 +219,32 @@ impl McpServerManager {
             }
         }
         Err("No available port found for MCP server in range 49152-65535".to_string())
+    }
+}
+
+/// Write the mcporter config file with the actual bound port.
+/// This allows ACP agents to discover and call peekoo MCP tools
+/// via the mcporter CLI when MCP is not natively supported.
+fn write_mcporter_config(workspace_dir: &std::path::Path, port: u16) {
+    let config = serde_json::json!({
+        "mcpServers": {
+            "peekoo-native": {
+                "description": "Peekoo native productivity tools (task, pomodoro, settings)",
+                "baseUrl": format!("http://127.0.0.1:{port}/mcp")
+            },
+            "peekoo-plugins": {
+                "description": "Peekoo plugin tools (Google Calendar, OpenClaw, etc.)",
+                "baseUrl": format!("http://127.0.0.1:{port}/mcp/plugins")
+            }
+        }
+    });
+
+    let path = workspace_dir
+        .join(".agents/skills/peekoo-agent-skill/mcporter.json");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap()) {
+        tracing::warn!("Failed to write mcporter config: {}", e);
     }
 }
