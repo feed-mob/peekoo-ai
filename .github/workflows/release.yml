@@ -144,6 +144,12 @@ jobs:
             libfuse2 \
             fuse
 
+      - name: Install linuxdeploy for AppImage
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          wget -q -O /usr/local/bin/linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x /usr/local/bin/linuxdeploy
+
       - name: Install nightly Rust
         uses: dtolnay/rust-toolchain@nightly
 
