@@ -245,6 +245,12 @@ impl AgentApplication {
             && let Some(ref scheduler) = *guard
         {
             scheduler.set_agent_launch_env(self.agent_launch_env());
+            // Build context prompt for task scheduler
+            if let Ok(config) = self.resolved_config() {
+                if let Ok(prompt) = peekoo_agent::service::AgentService::build_system_prompt(&config) {
+                    scheduler.set_context_prompt(prompt);
+                }
+            }
             scheduler.start();
         }
     }

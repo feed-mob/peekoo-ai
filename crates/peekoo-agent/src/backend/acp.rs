@@ -531,10 +531,6 @@ impl AcpBackend {
             cmd.env(key, value);
         }
 
-        if let Some(ref prompt) = self.system_prompt {
-            cmd.env("ACP_SYSTEM_PROMPT", prompt);
-        }
-
         // Log spawn environment for diagnosing credential/config discovery issues.
         // Values are intentionally omitted to avoid leaking secrets.
         tracing::debug!(
@@ -568,6 +564,7 @@ impl AcpBackend {
         // Clone fields for the thread
         let event_callback = self.event_callback.clone();
         let mcp_servers = self.mcp_servers.clone();
+        let system_prompt = self.system_prompt.clone();
 
         // Spawn a dedicated thread for ACP operations with its own single-threaded runtime
         // This is necessary because ACP uses !Send futures which require LocalSet
@@ -806,9 +803,19 @@ impl AcpBackend {
                                     let (content_tx, content_rx) = mpsc::channel::<String>(100);
                                     client_handler.set_content_sender(content_tx.clone()).await;
 
-                                    let content = acp::TextContent::new(input);
+                                    // Build content blocks: system prompt first, then user input
+                                    let mut blocks = Vec::new();
+                                    if let Some(ref ctx) = system_prompt {
+                                        blocks.push(acp::ContentBlock::Text(
+                                            acp::TextContent::new(ctx.clone()),
+                                        ));
+                                    }
+                                    blocks.push(acp::ContentBlock::Text(
+                                        acp::TextContent::new(input),
+                                    ));
+
                                     let request =
-                                        acp::PromptRequest::new(session_id, vec![acp::ContentBlock::Text(content)]);
+                                        acp::PromptRequest::new(session_id, blocks);
 
                                     // Send the prompt - content streams via notifications
                                     let response = connection.prompt(request).await?;
