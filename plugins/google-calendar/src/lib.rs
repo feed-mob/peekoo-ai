@@ -714,6 +714,9 @@ fn bucket_to_event(bucket: CalendarEventBucket) -> CalendarEvent {
 fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
     ensure_sync_schedule()?;
     let Some(mut bundle) = load_token_bundle()? else {
+        let mut state = load_calendar_state()?;
+        state.last_error = None;
+        save_calendar_state(&state)?;
         return panel_snapshot();
     };
 
