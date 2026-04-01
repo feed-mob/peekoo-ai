@@ -8,13 +8,11 @@ import {
   type AgentSettingsCatalog,
   agentSettingsCatalogSchema,
   type ProviderAuth,
-  type SkillSettings,
 } from "@/types/agent-settings";
 
 type SettingsPatch = {
   systemPrompt?: string;
   maxToolIterations?: number;
-  skills?: SkillSettings[];
 };
 
 const AGENT_SETTINGS_CHANGED_EVENT = "agent-settings-changed";

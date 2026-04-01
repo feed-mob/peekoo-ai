@@ -27,7 +27,6 @@ export const agentSettingsSchema = z.object({
   version: z.number(),
   providerAuth: z.array(providerAuthSchema),
   providerConfigs: z.array(providerConfigSchema),
-  skills: z.array(skillSchema),
 });
 
 export const providerCatalogSchema = z.object({

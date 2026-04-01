@@ -264,6 +264,16 @@ mod tests {
     }
 
     #[test]
+    fn agent_skills_table_is_removed() {
+        let conn = setup_test_db();
+
+        assert!(
+            !sqlite_table_exists(&conn, "agent_skills").expect("query sqlite_master"),
+            "agent_skills table should be removed after migrations"
+        );
+    }
+
+    #[test]
     fn known_migration_ids_present() {
         let ids: Vec<&str> = MIGRATIONS.iter().map(|m| m.id).collect();
         assert!(ids.contains(&"0001_init"), "missing 0001_init");

@@ -38,7 +38,7 @@ use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
-    SettingsService,
+    SettingsService, skill_discovery_roots,
 };
 use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
@@ -1322,12 +1322,7 @@ impl AgentApplication {
     }
 
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let skills_dir = self.agent_workspace_dir.join("skills");
-        let agent_skills = if skills_dir.is_dir() {
-            vec![skills_dir]
-        } else {
-            Vec::new()
-        };
+        let agent_skills = skill_discovery_roots();
 
         // Inject task activity summary so the agent has context.
         let system_prompt = self.task_service.task_activity_summary().ok();
