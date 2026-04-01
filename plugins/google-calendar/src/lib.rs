@@ -614,10 +614,11 @@ fn panel_snapshot() -> Result<GoogleCalendarPanelDto, String> {
     let client_credentials = load_client_credentials_optional()?;
     let now_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let bucketed = bucket_events(&state.cached_events, &now_iso, DEFAULT_UPCOMING_LIMIT)?;
+    let connected = load_token_bundle()?.is_some();
 
     Ok(GoogleCalendarPanelDto {
         status: GoogleCalendarStatusDto {
-            connected: load_token_bundle()?.is_some(),
+            connected,
             client_configured: client_credentials.is_some(),
             client_json_uploaded: client_credentials.is_some(),
             effective_client_id: client_credentials
@@ -626,7 +627,7 @@ fn panel_snapshot() -> Result<GoogleCalendarPanelDto, String> {
                 .unwrap_or_default(),
             connected_account: load_connected_account()?,
             last_sync_at: state.last_sync_at,
-            last_error: state.last_error,
+            last_error: visible_last_error(connected, state.last_error),
         },
         calendars: state.calendars.clone(),
         upcoming: bucketed.upcoming,
@@ -634,6 +635,10 @@ fn panel_snapshot() -> Result<GoogleCalendarPanelDto, String> {
         week: bucketed.week,
         event_link_statuses: build_event_link_statuses(&state.task_links),
     })
+}
+
+fn visible_last_error(connected: bool, last_error: Option<String>) -> Option<String> {
+    if connected { last_error } else { None }
 }
 
 fn build_event_link_statuses(links: &[TaskCalendarLink]) -> Vec<EventLinkStatus> {
@@ -714,6 +719,9 @@ fn bucket_to_event(bucket: CalendarEventBucket) -> CalendarEvent {
 fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
     ensure_sync_schedule()?;
     let Some(mut bundle) = load_token_bundle()? else {
+        let mut state = load_calendar_state()?;
+        state.last_error = None;
+        save_calendar_state(&state)?;
         return panel_snapshot();
     };
 
@@ -1843,6 +1851,12 @@ mod tests {
     fn reminder_schedule_key_uses_event_id() {
         let key = reminder_schedule_key("evt-abc");
         assert_eq!(key, "reminder:evt-abc");
+    }
+
+    #[test]
+    fn disconnected_panel_snapshot_hides_stale_last_error() {
+        let last_error = visible_last_error(false, Some("Previous sync failed".to_string()));
+        assert_eq!(last_error, None);
     }
 
     #[test]
