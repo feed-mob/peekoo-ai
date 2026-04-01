@@ -384,14 +384,23 @@ pub fn on_event(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn tool_google_calendar_set_client_json(input: String) -> FnResult<String> {
-    peekoo::log::info(&format!("Received client.json upload, input length: {}", input.len()));
+    peekoo::log::info(&format!(
+        "Received client.json upload, input length: {}",
+        input.len()
+    ));
     let payload: Value = serde_json::from_str(&input)?;
     let client_json = payload["clientJson"]
         .as_str()
         .ok_or_else(|| Error::msg("Missing clientJson"))?;
-    peekoo::log::info(&format!("Parsing client.json, length: {}", client_json.len()));
+    peekoo::log::info(&format!(
+        "Parsing client.json, length: {}",
+        client_json.len()
+    ));
     let credentials = parse_google_client_json(client_json).map_err(Error::msg)?;
-    peekoo::log::info(&format!("Parsed credentials, client_id: {}", credentials.client_id));
+    peekoo::log::info(&format!(
+        "Parsed credentials, client_id: {}",
+        credentials.client_id
+    ));
     peekoo::secrets::set(CLIENT_ID_KEY, &credentials.client_id)?;
     peekoo::secrets::set(CLIENT_SECRET_KEY, &credentials.client_secret)?;
     peekoo::log::info("Client credentials saved successfully");
@@ -942,7 +951,6 @@ fn fetch_google_calendar_list(access_token: &str) -> Result<Vec<GoogleCalendarLi
         headers: vec![
             ("Authorization", &format!("Bearer {access_token}")),
             ("User-Agent", "Peekoo-Desktop/0.1.0"),
-            ("Origin", "http://localhost:1455"),
         ],
         body: None,
     })
@@ -1023,7 +1031,6 @@ fn create_google_event(
             ("Content-Type", "application/json"),
             ("Accept", "application/json"),
             ("User-Agent", "Peekoo-Desktop/0.1.0"),
-            ("Origin", "http://localhost:1455"),
         ],
         body: Some(&body),
     })

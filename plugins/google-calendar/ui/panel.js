@@ -879,6 +879,7 @@ saveClientJsonButton.addEventListener("click", async () => {
       argsJson: JSON.stringify({ clientJson }),
     });
     clientJsonInput.value = "";
+    showSuccess("Client credentials uploaded successfully. You can now connect your Google Calendar.");
     await refreshSnapshot(false);
   } catch (error) {
     showError(String(error));
