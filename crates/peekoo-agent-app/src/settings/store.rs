@@ -421,28 +421,15 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
-    /// Chat settings persistence must not surface `agent_skills` rows (catalog is separate).
+    /// Chat settings DTOs should not surface skill state; discovery is catalog-driven.
     #[test]
-    fn load_settings_chat_dto_omits_persisted_skills() {
+    fn load_settings_chat_dto_omits_skills() {
         let (store, path) = new_store();
-        {
-            let conn = Connection::open(&path).expect("open db for seed");
-            conn.execute(
-                "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES ('seeded-skill', 'path', '/nope/SKILL.md', 1, datetime('now'))",
-                [],
-            )
-            .expect("insert agent_skills row");
-        }
-
         let settings = store.load_settings().expect("load settings");
         let json = serde_json::to_value(&settings).expect("serialize settings");
         assert!(
             json.get("skills").is_none(),
             "AgentSettingsDto must not expose skills for chat settings; got {json:?}"
-        );
-        assert!(
-            !json.to_string().contains("seeded-skill"),
-            "persisted agent_skills rows must not appear on chat settings DTO"
         );
 
         let _ = std::fs::remove_file(path);

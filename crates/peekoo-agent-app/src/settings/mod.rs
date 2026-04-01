@@ -389,25 +389,15 @@ mod tests {
         assert_eq!(actual, expected);
     }
 
-    /// Legacy `agent_skills` rows may remain in the settings DB; runtime config must still come
-    /// from the base config (workspace discovery / application layer), not chat-settings persistence.
+    /// Runtime skill roots come only from the caller's base config.
     #[test]
-    fn to_agent_config_does_not_merge_persisted_agent_skills() {
+    fn to_agent_config_preserves_base_skill_roots() {
         let db_path = temp_db_path("skills-merge-guard");
         let svc = SettingsService::with_secret_store(
             &db_path,
             Box::new(InMemorySecretStore::default()),
         )
         .expect("create settings service");
-
-        {
-            let conn = rusqlite::Connection::open(&db_path).expect("open db for seed");
-            conn.execute(
-                "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES ('legacy', 'path', '/db/only/SKILL.md', 1, datetime('now'))",
-                [],
-            )
-            .expect("insert agent_skills row");
-        }
 
         let mut base = AgentServiceConfig::default();
         let discovered = vec![
@@ -422,13 +412,7 @@ mod tests {
 
         assert_eq!(
             config_with_skills.agent_skills, discovered,
-            "runtime skill roots must pass through unchanged; DB agent_skills must not override"
-        );
-        assert!(
-            !config_with_skills.agent_skills.iter().any(|p| {
-                p.to_string_lossy().contains("db/only")
-            }),
-            "persisted agent_skills rows must not inject paths into AgentServiceConfig"
+            "runtime skill roots must pass through unchanged"
         );
 
         let empty_base = AgentServiceConfig::default();
@@ -441,7 +425,7 @@ mod tests {
             .expect("to_agent_config with empty base skills");
         assert!(
             config_without_skills.agent_skills.is_empty(),
-            "persisted agent_skills rows must not backfill AgentServiceConfig when base skills are empty"
+            "to_agent_config must not backfill AgentServiceConfig when base skills are empty"
         );
 
         let _ = std::fs::remove_file(&db_path);
