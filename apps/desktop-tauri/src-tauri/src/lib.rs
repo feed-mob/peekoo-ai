@@ -240,7 +240,7 @@ impl AgentState {
 
 fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
     let file_name = if cfg!(windows) {
-        "opencode.exe"
+        "opencode.cmd"
     } else {
         "opencode"
     };

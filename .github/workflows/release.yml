@@ -151,7 +151,6 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Setup Node.js for OpenCode bundling
-        if: matrix.platform != 'windows-latest'
         uses: actions/setup-node@v4
         with:
           node-version: 20
