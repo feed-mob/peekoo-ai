@@ -12,6 +12,7 @@ use peekoo_agent_app::{
     RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
     StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
+use rusqlite::Connection;
 use serde::Serialize;
 use std::env;
 use std::path::PathBuf;
@@ -40,6 +41,7 @@ const TRAY_QUIT_MENU_ID: &str = "quit";
 const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
 const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
+const SETTING_LOG_LEVEL: &str = "log_level";
 
 #[cfg(target_os = "macos")]
 fn quote_posix_shell(arg: &str) -> String {
@@ -222,6 +224,38 @@ fn tray_menu_action(menu_id: &str) -> Option<TrayMenuAction> {
         TRAY_QUIT_MENU_ID => Some(TrayMenuAction::Quit),
         _ => None,
     }
+}
+
+fn resolve_default_log_level(
+    rust_log_env: Option<String>,
+    persisted_log_level: Option<String>,
+    fallback_level: log::LevelFilter,
+) -> log::LevelFilter {
+    rust_log_env
+        .as_deref()
+        .and_then(parse_log_level)
+        .or_else(|| persisted_log_level.as_deref().and_then(parse_log_level))
+        .unwrap_or(fallback_level)
+}
+
+fn parse_log_level(value: &str) -> Option<log::LevelFilter> {
+    value.parse::<log::LevelFilter>().ok()
+}
+
+fn read_persisted_log_level() -> Option<String> {
+    let db_path = peekoo_paths::peekoo_settings_db_path().ok()?;
+    let parent = db_path.parent()?;
+    if !parent.exists() || !db_path.exists() {
+        return None;
+    }
+
+    let conn = Connection::open(db_path).ok()?;
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [SETTING_LOG_LEVEL],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
 }
 
 struct AgentState {
@@ -1423,16 +1457,16 @@ pub fn run() {
         }
     }
 
-    let default_level = env::var("RUST_LOG")
-        .ok()
-        .and_then(|v| v.parse::<log::LevelFilter>().ok())
-        .unwrap_or({
-            if cfg!(debug_assertions) {
-                log::LevelFilter::Info
-            } else {
-                log::LevelFilter::Error
-            }
-        });
+    let fallback_level = if cfg!(debug_assertions) {
+        log::LevelFilter::Info
+    } else {
+        log::LevelFilter::Error
+    };
+    let default_level = resolve_default_log_level(
+        env::var("RUST_LOG").ok(),
+        read_persisted_log_level(),
+        fallback_level,
+    );
 
     let file_target = if cfg!(debug_assertions) {
         let log_dir = env::var("PEEKOO_PROJECT_ROOT")
@@ -1817,7 +1851,7 @@ mod tests {
 
     use super::{
         MainWindowVisibilityAction, TrayMenuAction, next_main_window_visibility_action,
-        process_plugin_notifications, tray_menu_action,
+        process_plugin_notifications, resolve_default_log_level, tray_menu_action,
     };
     use super::{resolve_webview2_data_dir, resolve_webview2_data_dir_with_write_check};
     use std::io;
@@ -2043,5 +2077,34 @@ mod tests {
         );
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn log_level_prefers_env_override() {
+        let level = resolve_default_log_level(
+            Some("trace".to_string()),
+            Some("error".to_string()),
+            log::LevelFilter::Info,
+        );
+
+        assert_eq!(level, log::LevelFilter::Trace);
+    }
+
+    #[test]
+    fn log_level_uses_persisted_setting_when_env_missing() {
+        let level = resolve_default_log_level(None, Some("debug".to_string()), log::LevelFilter::Error);
+
+        assert_eq!(level, log::LevelFilter::Debug);
+    }
+
+    #[test]
+    fn log_level_falls_back_when_values_invalid() {
+        let level = resolve_default_log_level(
+            Some("invalid".to_string()),
+            Some("also-invalid".to_string()),
+            log::LevelFilter::Error,
+        );
+
+        assert_eq!(level, log::LevelFilter::Error);
     }
 }
