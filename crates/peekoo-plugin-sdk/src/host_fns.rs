@@ -198,6 +198,12 @@ pub(crate) struct OkResponse {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct TaskListRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status_filter: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct BridgeFsReadResponse {
     pub content: Option<String>,
 }
@@ -349,6 +355,12 @@ extern "ExtismHost" {
         input: Json<CryptoEd25519SignRequest>,
     ) -> Json<CryptoEd25519SignResponse>;
     pub(crate) fn peekoo_set_mood(input: Json<SetMoodRequest>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_task_create(input: Json<Value>) -> Json<Value>;
+    pub(crate) fn peekoo_task_list(input: Json<TaskListRequest>) -> Json<Value>;
+    pub(crate) fn peekoo_task_update(input: Json<Value>) -> Json<Value>;
+    pub(crate) fn peekoo_task_delete(input: Json<Value>) -> Json<OkResponse>;
+    pub(crate) fn peekoo_task_toggle(input: Json<Value>) -> Json<Value>;
+    pub(crate) fn peekoo_task_assign(input: Json<Value>) -> Json<Value>;
 }
 
 #[cfg(test)]

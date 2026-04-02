@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Linear</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <main class="panel">
+      <header class="panel__header">
+        <h1>Linear Sync</h1>
+        <span id="statusBadge" class="badge">Unknown</span>
+      </header>
+
+      <p id="statusLine" class="muted">Loading status...</p>
+      <p id="workspaceLine" class="muted"></p>
+      <p id="userLine" class="muted"></p>
+
+      <section class="section">
+        <h2>API Key</h2>
+        <label class="field">
+          <span>Linear API Key</span>
+          <input id="apiKeyInput" type="password" placeholder="lin_api_..." />
+        </label>
+        <p id="apiKeyHint" class="muted">API key will be stored securely and auto-saved.</p>
+      </section>
+
+      <section class="section">
+        <h2>Connection</h2>
+        <div class="row">
+          <button id="disconnectButton" class="btn">Disconnect</button>
+          <button id="syncButton" class="btn">Sync Now</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Sync Settings</h2>
+        <label class="field">
+          <span>Sync Target</span>
+          <select id="syncTargetSelect"></select>
+        </label>
+        <label class="field">
+          <span>Sync States</span>
+          <div id="syncStateList" class="sync-state-list"></div>
+        </label>
+        <label class="checkbox">
+          <input id="autoPushToggle" type="checkbox" />
+          <span>Auto push new Peekoo tasks to Linear</span>
+        </label>
+      </section>
+
+      <p id="lastSyncLine" class="muted"></p>
+      <p id="successBanner" class="success hidden"></p>
+      <p id="errorBanner" class="error hidden"></p>
+    </main>
+
+    <script src="panel.js"></script>
+  </body>
+</html>

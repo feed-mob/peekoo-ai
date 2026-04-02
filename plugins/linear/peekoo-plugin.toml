@@ -1,0 +1,62 @@
+[plugin]
+key = "linear"
+name = "Linear"
+version = "0.1.2"
+author = "Peekoo Team"
+description = "Sync Linear issues with Peekoo tasks."
+min_peekoo_version = "0.1.0"
+wasm = "linear-v012.wasm"
+
+[permissions]
+required = ["scheduler", "state:read", "state:write", "secrets:read", "secrets:write", "net:http", "tasks"]
+allowed_hosts = ["api.linear.app", "linear.app"]
+
+[[tools.definitions]]
+name = "linear_set_api_key"
+description = "Set and verify Linear API key"
+parameters = '{"type":"object","properties":{"apiKey":{"type":"string"}},"required":["apiKey"]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_disconnect"
+description = "Disconnect the current Linear account"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_sync_now"
+description = "Run one immediate two-way sync"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_set_sync_settings"
+description = "Update Linear sync settings"
+parameters = '{"type":"object","properties":{"defaultTeamId":{"type":"string"},"autoPushNewTasks":{"type":"boolean"}},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_get_connection_status"
+description = "Get current Linear connection status"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[events]
+subscribe = ["schedule:fired"]
+
+[[data.providers]]
+name = "connection_status"
+description = "Current Linear integration connection and sync status"
+schema = '{"type":"object"}'
+
+[[data.providers]]
+name = "panel_snapshot"
+description = "Current Linear panel state"
+schema = '{"type":"object"}'
+
+[[ui.panels]]
+label = "panel-linear"
+title = "Linear"
+width = 420
+height = 560
+entry = "ui/panel.html"

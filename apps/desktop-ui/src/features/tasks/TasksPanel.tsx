@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CheckCircle2, RefreshCw } from "lucide-react";
+import { CheckCircle2, Link2, RefreshCw } from "lucide-react";
 import type { TaskTab } from "@/types/task";
 import { useTasks } from "./hooks/use-tasks";
 import { TaskList } from "./components/TaskList";
@@ -10,6 +10,9 @@ import { TaskDetailView } from "./components/TaskDetailView";
 import { NotificationToast } from "./components/ErrorToast";
 import { LoadingSpinner } from "./components/LoadingSpinner";
 import { formatSyncStatus } from "./utils/task-sync";
+import { usePlugins } from "@/hooks/use-plugins";
+import { openPanelWindow } from "@/hooks/use-panel-windows";
+import type { PanelLabel } from "@/types/window";
 
 const TAB_CONFIG: { value: TaskTab; label: string; emoji: string }[] = [
   { value: "today", label: "Today", emoji: "📅" },
@@ -46,6 +49,7 @@ function EmptyState({ tab }: { tab: TaskTab }) {
 type MainTab = "tasks" | "activity";
 
 export function TasksPanel() {
+  const { plugins, panels: pluginPanels } = usePlugins();
   const {
     tasks,
     activityEvents,
@@ -71,6 +75,10 @@ export function TasksPanel() {
   } = useTasks();
 
   const [mainTab, setMainTab] = useState<MainTab>("tasks");
+  const linearPlugin = plugins.find((plugin) => plugin.pluginKey === "linear");
+  const linearPanel = pluginPanels.find((panel) => panel.pluginKey === "linear");
+  const showLinearButton = Boolean(linearPlugin && linearPanel);
+  const canOpenLinearPanel = Boolean(linearPanel);
 
   // Show loading state
   if (isLoading) {
@@ -112,6 +120,27 @@ export function TasksPanel() {
           {stats.completed} / {stats.total} done
         </span>
       </div>
+
+      {showLinearButton ? (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-glass-border/50 bg-glass/60 px-2 py-1.5">
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">Sources</span>
+          <button
+            type="button"
+            onClick={() => {
+              if (!linearPanel) {
+                return;
+              }
+              void openPanelWindow(linearPanel.label as PanelLabel, pluginPanels);
+            }}
+            disabled={!canOpenLinearPanel}
+            className="h-8 px-3 rounded-full shrink-0 flex items-center gap-1.5 text-xs font-medium text-text-primary bg-glass border border-glass-border hover:bg-space-overlay/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            title={canOpenLinearPanel ? "Open Linear panel" : "Enable Linear plugin to open panel"}
+          >
+            <Link2 size={13} />
+            <span>Linear</span>
+          </button>
+        </div>
+      ) : null}
 
       {/* Main Tabs */}
       <div className="flex gap-1 bg-glass backdrop-blur-xl rounded-lg p-1 border border-glass-border/50 mb-3">
