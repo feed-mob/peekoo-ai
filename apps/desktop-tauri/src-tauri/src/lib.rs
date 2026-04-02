@@ -231,9 +231,13 @@ struct AgentState {
 impl AgentState {
     fn new(app_handle: &AppHandle) -> Self {
         let bundled_opencode_path = resolve_bundled_opencode_path(app_handle);
+        let bundled_acp_path = resolve_bundled_acp_path(app_handle);
         Self {
-            app: AgentApplication::new_with_bundled_opencode(bundled_opencode_path)
-                .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
+            app: AgentApplication::new_with_bundled_binaries(
+                bundled_opencode_path,
+                bundled_acp_path,
+            )
+            .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
         }
     }
 }
@@ -249,6 +253,20 @@ fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
         .resource_dir()
         .ok()
         .map(|dir| dir.join("opencode").join(file_name))
+        .filter(|path| path.exists() && path.is_file())
+}
+
+fn resolve_bundled_acp_path(app: &AppHandle) -> Option<PathBuf> {
+    let file_name = if cfg!(windows) {
+        "peekoo-agent-acp.exe"
+    } else {
+        "peekoo-agent-acp"
+    };
+
+    app.path()
+        .resource_dir()
+        .ok()
+        .map(|dir| dir.join(file_name))
         .filter(|path| path.exists() && path.is_file())
 }
 

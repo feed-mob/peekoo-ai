@@ -10,12 +10,12 @@
 
 use anyhow;
 use anyhow::Context;
-use peekoo_utils::{command_available, resolve_command};
+use peekoo_utils::command_available;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use agent_client_protocol as acp;
@@ -158,16 +158,15 @@ pub enum RegistrySortBy {
 pub fn calculate_display_order(registry_id: &str) -> i32 {
     match registry_id {
         "opencode" => 0,
-        "pi-acp" => 1,
-        "codex-acp" => 2,
-        "claude-acp" => 3,
-        "gemini" => 4,
-        "cursor" => 5,
-        "goose" => 6,
-        "kimi" => 7,
-        "qwen-code" => 8,
-        "cline" => 9,
-        "auggie" => 10,
+        "codex-acp" => 1,
+        "claude-acp" => 2,
+        "gemini" => 3,
+        "cursor" => 4,
+        "goose" => 5,
+        "kimi" => 6,
+        "qwen-code" => 7,
+        "cline" => 8,
+        "auggie" => 9,
         _ => {
             // Alphabetical order for rest
             100 + registry_id.chars().next().map(|c| c as i32).unwrap_or(127)
@@ -1159,9 +1158,9 @@ impl AgentProviderService {
                 Ok(())
             }
             InstallationMethod::Npx => {
-                // For npx, we just need to verify the package exists
-                // Actual installation happens on first use
-                Self::verify_npx_package(&req.provider_id)
+                // NPX packages are resolved at runtime via npx.
+                // No pre-installation verification needed.
+                Ok(())
             }
             InstallationMethod::Binary => {
                 // Download binary
@@ -1249,41 +1248,6 @@ impl AgentProviderService {
             ],
         )?;
         Ok(response)
-    }
-
-    /// Verify npx package exists
-    fn verify_npx_package(provider_id: &str) -> anyhow::Result<()> {
-        // Map provider to npm package name
-        let package = match provider_id {
-            "pi-acp" => "pi-acp",
-            "opencode" => "opencode-ai",
-            "claude-code" => "@anthropic-ai/claude-code",
-            "codex" => "@zed-industries/codex-acp",
-            _ => return Err(anyhow::anyhow!("Unknown provider: {}", provider_id)),
-        };
-
-        // Try managed Node.js first, then fall back to system npm
-        let npm_path = peekoo_node_runtime::paths::node_dir()
-            .ok()
-            .map(|dir| dir.join("bin").join("npm"))
-            .filter(|p| p.exists())
-            .unwrap_or_else(|| resolve_command("npm"));
-
-        let output = Command::new(&npm_path)
-            .args(["view", package, "version"])
-            .output()
-            .map_err(|e| anyhow::anyhow!("Failed to run npm at {:?}: {}", npm_path, e))?;
-
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(anyhow::anyhow!(
-                "Package '{}' not found: {}",
-                package,
-                stderr.trim()
-            ));
-        }
-
-        Ok(())
     }
 
     /// Download provider binary

@@ -148,9 +148,9 @@ mod tests {
         let old_session = store
             .create_session(
                 Some("Old"),
-                "pi-acp",
+                "test-provider",
                 "npx",
-                &["pi-acp".to_string()],
+                &["test-provider".to_string()],
                 &std::env::temp_dir(),
                 None,
                 &[],
@@ -168,7 +168,7 @@ mod tests {
                     tool_calls: None,
                     tool_call_id: None,
                 },
-                Some("pi-acp"),
+                Some("test-provider"),
                 Some("claude-sonnet-4-6"),
                 None,
             )

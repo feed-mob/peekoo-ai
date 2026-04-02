@@ -29,6 +29,7 @@ plugins/*/Cargo.lock
 *.log
 apps/desktop-tauri/src-tauri/logs/
 apps/desktop-tauri/src-tauri/LOGS.txt
+apps/desktop-tauri/src-tauri/binaries/
 
 # Peekoo runtime files
 .peekoo/

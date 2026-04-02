@@ -7,7 +7,10 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_agent::AgentEvent;
-use peekoo_agent::config::{AgentServiceConfig, PEEKOO_OPENCODE_BIN_ENV};
+use peekoo_agent::config::{
+    AgentServiceConfig, PEEKOO_AGENT_PROVIDER_ARGS_ENV, PEEKOO_AGENT_PROVIDER_COMMAND_ENV,
+    PEEKOO_OPENCODE_BIN_ENV,
+};
 use peekoo_agent::service::AgentService;
 use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 use peekoo_notifications::{
@@ -64,6 +67,29 @@ fn format_error_chain(err: &dyn std::error::Error) -> String {
     }
 }
 
+fn build_task_runtime_launch_env(config: &AgentServiceConfig) -> Vec<(String, String)> {
+    let mut env = vec![("PEEKOO_AGENT_PROVIDER".to_string(), config.provider.id())];
+
+    env.push((
+        PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+        config.provider.command.clone(),
+    ));
+
+    if let Ok(args_json) = serde_json::to_string(&config.provider.args) {
+        env.push((PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(), args_json));
+    }
+
+    if let Some(model) = &config.model {
+        env.push(("PEEKOO_AGENT_MODEL".to_string(), model.clone()));
+    }
+
+    if let Some(api_key) = &config.api_key {
+        env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key.clone()));
+    }
+
+    env
+}
+
 pub struct AgentApplication {
     agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
@@ -97,11 +123,12 @@ pub struct AgentApplication {
 
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
-        Self::new_with_bundled_opencode(None)
+        Self::new_with_bundled_binaries(None, None)
     }
 
-    pub fn new_with_bundled_opencode(
+    pub fn new_with_bundled_binaries(
         bundled_opencode_path: Option<PathBuf>,
+        bundled_acp_path: Option<PathBuf>,
     ) -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
 
@@ -167,8 +194,10 @@ impl AgentApplication {
         let agent_workspace_dir = ensure_agent_workspace()?;
 
         // Create agent scheduler for task execution
-        let agent_scheduler =
-            crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
+        let agent_scheduler = crate::agent_scheduler::AgentScheduler::new(
+            Arc::new(sqlite_task_service.clone()),
+            bundled_acp_path.clone(),
+        );
 
         Ok(Self {
             agent: Arc::new(Mutex::new(None)),
@@ -195,6 +224,12 @@ impl AgentApplication {
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
             bundled_opencode_path,
         })
+    }
+
+    pub fn new_with_bundled_opencode(
+        bundled_opencode_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
+        Self::new_with_bundled_binaries(bundled_opencode_path, None)
     }
 
     pub fn set_task_change_callback(
@@ -1240,28 +1275,12 @@ impl AgentApplication {
             .map_err(|e| format!("Get default runtime error: {e}"))?
             .ok_or_else(|| "No default runtime configured".to_string())?;
 
-        // Build AgentProvider from the runtime
-        let provider = if default_runtime.is_bundled {
-            // Built-in providers have factory functions
-            match default_runtime.provider_id.as_str() {
-                "opencode" => peekoo_agent::config::AgentProvider::opencode(),
-                "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
-                "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
-                "codex" => peekoo_agent::config::AgentProvider::codex(),
-                _ => peekoo_agent::config::AgentProvider::from_registry(
-                    &default_runtime.provider_id,
-                    &default_runtime.command,
-                    default_runtime.args.clone(),
-                ),
-            }
-        } else {
-            // Registry-installed or custom providers use from_registry
-            peekoo_agent::config::AgentProvider::from_registry(
-                &default_runtime.provider_id,
-                &default_runtime.command,
-                default_runtime.args.clone(),
-            )
-        };
+        // Build AgentProvider from runtime metadata (bundled or registry).
+        let provider = peekoo_agent::config::AgentProvider::from_registry(
+            &default_runtime.provider_id,
+            &default_runtime.command,
+            default_runtime.args.clone(),
+        );
 
         let model_id = default_runtime.config.default_model.as_deref();
 
@@ -1343,43 +1362,19 @@ impl AgentApplication {
         if let Ok(config) = self.resolved_config()
             && let Ok(Some(runtime)) = self.provider_service.get_default_runtime()
         {
-            // Build AgentProvider from the runtime
-            let provider = if runtime.is_bundled {
-                match runtime.provider_id.as_str() {
-                    "opencode" => peekoo_agent::config::AgentProvider::opencode(),
-                    "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
-                    "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
-                    "codex" => peekoo_agent::config::AgentProvider::codex(),
-                    _ => peekoo_agent::config::AgentProvider::from_registry(
-                        &runtime.provider_id,
-                        &runtime.command,
-                        runtime.args.clone(),
-                    ),
-                }
-            } else {
-                peekoo_agent::config::AgentProvider::from_registry(
-                    &runtime.provider_id,
-                    &runtime.command,
-                    runtime.args.clone(),
-                )
-            };
+            // Build AgentProvider from runtime metadata (bundled or registry).
+            let provider = peekoo_agent::config::AgentProvider::from_registry(
+                &runtime.provider_id,
+                &runtime.command,
+                runtime.args.clone(),
+            );
 
             if let Ok((resolved, _)) = self.settings.to_agent_config(
                 config,
                 provider,
                 runtime.config.default_model.as_deref(),
             ) {
-                let runtime_id = resolved.provider.id();
-
-                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), runtime_id.clone()));
-
-                // Apply model from resolved config
-                if let Some(model) = resolved.model {
-                    env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
-                }
-                if let Some(api_key) = resolved.api_key {
-                    env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
-                }
+                env.extend(build_task_runtime_launch_env(&resolved));
             }
         }
 
@@ -1509,6 +1504,10 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use peekoo_agent::config::{
+        AgentProvider, AgentServiceConfig, PEEKOO_AGENT_PROVIDER_ARGS_ENV,
+        PEEKOO_AGENT_PROVIDER_COMMAND_ENV,
+    };
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
     use peekoo_scheduler::Scheduler;
@@ -1516,7 +1515,10 @@ mod tests {
     use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
-    use super::{format_error_chain, install_discovered_plugins, should_restore_agent};
+    use super::{
+        build_task_runtime_launch_env, format_error_chain, install_discovered_plugins,
+        should_restore_agent,
+    };
     use std::error::Error as StdError;
     use std::fmt;
 
@@ -1628,6 +1630,34 @@ mod tests {
         fn load_task(&self, _: &str) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
+    }
+
+    #[test]
+    fn build_task_runtime_launch_env_includes_runtime_command_and_args() {
+        let config = AgentServiceConfig {
+            provider: AgentProvider::from_registry(
+                "pi-acp",
+                "/tmp/pi-acp",
+                vec!["serve".to_string(), "--json".to_string()],
+            ),
+            model: Some("test-model".to_string()),
+            api_key: Some("secret".to_string()),
+            ..Default::default()
+        };
+
+        let env = build_task_runtime_launch_env(&config);
+
+        assert!(env.contains(&("PEEKOO_AGENT_PROVIDER".to_string(), "pi-acp".to_string())));
+        assert!(env.contains(&(
+            PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+            "/tmp/pi-acp".to_string(),
+        )));
+        assert!(env.contains(&(
+            PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(),
+            "[\"serve\",\"--json\"]".to_string(),
+        )));
+        assert!(env.contains(&("PEEKOO_AGENT_MODEL".to_string(), "test-model".to_string())));
+        assert!(env.contains(&("PEEKOO_AGENT_API_KEY".to_string(), "secret".to_string())));
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

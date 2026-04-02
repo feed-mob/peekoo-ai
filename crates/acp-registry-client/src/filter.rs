@@ -113,7 +113,6 @@ pub fn featured_agents(agents: &[Agent]) -> Vec<&Agent> {
         "goose",      // Block
         "qwen-code",  // Alibaba
         "opencode",   // Anomaly
-        "pi-acp",     // Community
         "cline",      // Cline Bot
     ];
 

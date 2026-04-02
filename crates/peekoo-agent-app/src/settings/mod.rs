@@ -438,15 +438,17 @@ mod tests {
 
         // Save an API key (puts it in both DB and secret store)
         svc.set_provider_api_key(SetApiKeyRequest {
-            provider_id: "pi-acp".into(),
+            provider_id: "test-provider".into(),
             api_key: "sk-test-123".into(),
         })
         .expect("save api key");
 
         // Verify it works when the secret exists
         let base = AgentServiceConfig::default();
+        let test_provider =
+            peekoo_agent::config::AgentProvider::from_registry("test-provider", "npx", vec![]);
         let (config, _version) = svc
-            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
+            .to_agent_config(base, test_provider.clone(), None)
             .expect("config with key");
         assert_eq!(config.api_key.as_deref(), Some("sk-test-123"));
 
@@ -455,21 +457,21 @@ mod tests {
         let auth = settings
             .provider_auth
             .iter()
-            .find(|a| a.provider_id == "pi-acp")
+            .find(|a| a.provider_id == "test-provider")
             .expect("auth entry");
         assert!(auth.configured);
 
         // Read the ref from DB and delete it from the in-memory secret store
         let api_key_ref = svc
             .store
-            .active_api_key_ref("pi-acp")
+            .active_api_key_ref("test-provider")
             .unwrap()
             .expect("ref exists");
         secret_store.delete(&api_key_ref).expect("delete secret");
 
         // Now to_agent_config should return an error, not silently proceed
         let base = AgentServiceConfig::default();
-        let result = svc.to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None);
+        let result = svc.to_agent_config(base, test_provider, None);
         match result {
             Ok(_) => panic!("Expected error when keyring secret is missing"),
             Err(err) => assert!(
@@ -526,7 +528,7 @@ mod tests {
 
         let auth = svc
             .set_provider_api_key(SetApiKeyRequest {
-                provider_id: "pi-acp".into(),
+                provider_id: "test-provider".into(),
                 api_key: "sk-fallback".into(),
             })
             .expect("save through fallback");
@@ -534,8 +536,10 @@ mod tests {
         assert_eq!(auth.auth_mode, "api_key");
 
         let base = AgentServiceConfig::default();
+        let test_provider =
+            peekoo_agent::config::AgentProvider::from_registry("test-provider", "npx", vec![]);
         let (config, _version) = svc
-            .to_agent_config(base, peekoo_agent::config::AgentProvider::pi_acp(), None)
+            .to_agent_config(base, test_provider, None)
             .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("sk-fallback"));
 
@@ -563,7 +567,11 @@ mod tests {
 
         let base = AgentServiceConfig::default();
         let (config, _version) = svc
-            .to_agent_config(base, peekoo_agent::config::AgentProvider::codex(), None)
+            .to_agent_config(
+                base,
+                peekoo_agent::config::AgentProvider::from_registry("codex", "npx", vec![]),
+                None,
+            )
             .expect("resolve config");
         assert_eq!(config.api_key.as_deref(), Some("oauth-fallback-token"));
 
