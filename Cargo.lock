@@ -4083,6 +4083,8 @@ dependencies = [
  "dirs 6.0.0",
  "log",
  "peekoo-agent-app",
+ "peekoo-paths",
+ "rusqlite",
  "serde",
  "serde_json",
  "tauri",

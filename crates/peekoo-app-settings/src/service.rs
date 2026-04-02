@@ -8,6 +8,7 @@ use crate::store::AppSettingsStore;
 
 const SETTING_ACTIVE_SPRITE_ID: &str = "active_sprite_id";
 const SETTING_THEME_MODE: &str = "theme_mode";
+const SETTING_LOG_LEVEL: &str = "log_level";
 const DEFAULT_SPRITE_ID: &str = "dark-cat";
 const DEFAULT_THEME_MODE: &str = "system";
 
@@ -103,6 +104,11 @@ impl AppSettingsService {
         self.store.get_all()
     }
 
+    /// Return a setting value by key, if present.
+    pub fn get(&self, key: &str) -> Result<Option<String>, String> {
+        self.store.get(key)
+    }
+
     /// Set a single setting by key.
     pub fn set(&self, key: &str, value: &str) -> Result<(), String> {
         if key == SETTING_ACTIVE_SPRITE_ID {
@@ -110,6 +116,14 @@ impl AppSettingsService {
         }
         if key == SETTING_THEME_MODE {
             return self.set_theme_mode(value);
+        }
+        if key == SETTING_LOG_LEVEL {
+            return match value {
+                "error" | "warn" | "info" | "debug" | "trace" => {
+                    self.store.set(SETTING_LOG_LEVEL, value)
+                }
+                _ => Err(format!("Invalid log level: {value}")),
+            };
         }
         self.store.set(key, value)
     }
@@ -190,6 +204,29 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid theme mode"));
         assert_eq!(svc.get_theme_mode().unwrap(), "system");
+    }
+
+    #[test]
+    fn generic_set_validates_log_level() {
+        let svc = test_service();
+
+        let result = svc.set("log_level", "verbose");
+
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Invalid log level"));
+        assert!(!svc.get_all().unwrap().contains_key("log_level"));
+    }
+
+    #[test]
+    fn generic_set_accepts_supported_log_level() {
+        let svc = test_service();
+
+        svc.set("log_level", "debug").unwrap();
+
+        assert_eq!(
+            svc.get_all().unwrap().get("log_level").map(String::as_str),
+            Some("debug")
+        );
     }
 
     #[test]
