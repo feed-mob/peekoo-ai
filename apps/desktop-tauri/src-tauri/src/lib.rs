@@ -279,17 +279,25 @@ impl AgentState {
 }
 
 fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
-    let file_name = if cfg!(windows) {
-        "opencode.cmd"
-    } else {
-        "opencode"
-    };
+    let resource_dir = app.path().resource_dir().ok()?;
+    let opencode_dir = resource_dir.join("opencode");
 
-    app.path()
-        .resource_dir()
-        .ok()
-        .map(|dir| dir.join("opencode").join(file_name))
-        .filter(|path| path.exists() && path.is_file())
+    if cfg!(windows) {
+        // Try the npm wrapper first, then fall back to the legacy direct binary.
+        // Some Windows users may have either depending on which release they
+        // installed — the bundling strategy switched from direct binary fetch
+        // (opencode.exe) to npm-based wrapper (opencode.cmd).
+        for file_name in &["opencode.cmd", "opencode.exe"] {
+            let candidate = opencode_dir.join(file_name);
+            if candidate.is_file() {
+                return Some(candidate);
+            }
+        }
+        None
+    } else {
+        let candidate = opencode_dir.join("opencode");
+        candidate.is_file().then_some(candidate)
+    }
 }
 
 fn resolve_bundled_acp_path(app: &AppHandle) -> Option<PathBuf> {
