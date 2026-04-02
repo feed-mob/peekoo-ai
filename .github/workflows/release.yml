@@ -144,6 +144,28 @@ jobs:
             libfuse2 \
             fuse
 
+      - name: Seed local Tauri AppImage tools
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          mkdir -p target/.tauri
+          wget -q -O target/.tauri/AppRun-x86_64 \
+            https://github.com/tauri-apps/binary-releases/releases/download/apprun-old/AppRun-x86_64
+          wget -q -O target/.tauri/linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O target/.tauri/linuxdeploy-plugin-gtk.sh \
+            https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
+          wget -q -O target/.tauri/linuxdeploy-plugin-gstreamer.sh \
+            https://raw.githubusercontent.com/tauri-apps/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
+          wget -q -O target/.tauri/linuxdeploy-plugin-appimage.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x \
+            target/.tauri/AppRun-x86_64 \
+            target/.tauri/linuxdeploy-x86_64.AppImage \
+            target/.tauri/linuxdeploy-plugin-gtk.sh \
+            target/.tauri/linuxdeploy-plugin-gstreamer.sh \
+            target/.tauri/linuxdeploy-plugin-appimage.AppImage
+          file target/.tauri/AppRun-x86_64 target/.tauri/linuxdeploy-x86_64.AppImage target/.tauri/linuxdeploy-plugin-appimage.AppImage
+
       - name: Install nightly Rust
         uses: dtolnay/rust-toolchain@nightly
 

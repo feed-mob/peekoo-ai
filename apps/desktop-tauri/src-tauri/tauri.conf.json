@@ -37,6 +37,7 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "useLocalToolsDir": true,
     "resources": [
       "resources/**/*"
     ],
