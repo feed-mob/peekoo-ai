@@ -30,14 +30,6 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
-      - name: Inject platform-specific Tauri config
-        run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":true}}' >> "$GITHUB_ENV"
-          else
-            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":false}}' >> "$GITHUB_ENV"
-          fi
-
       - name: Clippy
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
