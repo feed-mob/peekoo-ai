@@ -2092,7 +2092,8 @@ mod tests {
 
     #[test]
     fn log_level_uses_persisted_setting_when_env_missing() {
-        let level = resolve_default_log_level(None, Some("debug".to_string()), log::LevelFilter::Error);
+        let level =
+            resolve_default_log_level(None, Some("debug".to_string()), log::LevelFilter::Error);
 
         assert_eq!(level, log::LevelFilter::Debug);
     }
