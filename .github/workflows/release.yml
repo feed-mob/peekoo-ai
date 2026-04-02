@@ -165,6 +165,18 @@ jobs:
       - name: Build ACP sidecar
         run: cargo build --release --locked -p peekoo-agent-acp --target ${{ matrix.rust_target }}
 
+      - name: Debug Linux AppImage env
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          echo "matrix.platform=${{ matrix.platform }}"
+          echo "matrix.args=${{ matrix.args }}"
+          echo "APPIMAGE_EXTRACT_AND_RUN=${APPIMAGE_EXTRACT_AND_RUN}"
+          echo "NO_STRIP=${NO_STRIP}"
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: 1
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
