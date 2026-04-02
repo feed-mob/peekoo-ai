@@ -21,7 +21,7 @@ pub enum ProviderSource {
 /// Agent provider configuration
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentProvider {
-    /// Provider identifier (e.g., "opencode", "cursor", "pi-acp")
+    /// Provider identifier (e.g., "opencode", "cursor", "gemini")
     pub id: String,
     /// Command to execute
     pub command: String,
@@ -52,42 +52,12 @@ impl AgentProvider {
         }
     }
 
-    /// Built-in pi-acp provider
-    pub fn pi_acp() -> Self {
-        Self {
-            id: "pi-acp".to_string(),
-            command: "npx".to_string(),
-            args: vec!["pi-acp".to_string()],
-            source: ProviderSource::Builtin,
-        }
-    }
-
     /// Built-in opencode provider
     pub fn opencode() -> Self {
         Self {
             id: "opencode".to_string(),
             command: "opencode".to_string(),
             args: vec!["acp".to_string()],
-            source: ProviderSource::Builtin,
-        }
-    }
-
-    /// Built-in claude-code provider
-    pub fn claude_code() -> Self {
-        Self {
-            id: "claude-code".to_string(),
-            command: "npx".to_string(),
-            args: vec!["@anthropic-ai/claude-code".to_string()],
-            source: ProviderSource::Builtin,
-        }
-    }
-
-    /// Built-in codex provider
-    pub fn codex() -> Self {
-        Self {
-            id: "codex".to_string(),
-            command: "npx".to_string(),
-            args: vec!["@zed-industries/codex-acp".to_string()],
             source: ProviderSource::Builtin,
         }
     }
@@ -125,20 +95,6 @@ impl AgentProvider {
         self.id.clone()
     }
 
-    /// Check if this is a built-in provider
-    pub fn is_builtin(&self) -> bool {
-        self.source == ProviderSource::Builtin
-    }
-
-    /// Check if this is a registry-installed provider
-    pub fn is_registry(&self) -> bool {
-        self.source == ProviderSource::Registry
-    }
-
-    /// Check if this is a custom provider
-    pub fn is_custom(&self) -> bool {
-        self.source == ProviderSource::Custom
-    }
 }
 
 impl Default for AgentProvider {
@@ -296,10 +252,11 @@ mod tests {
 
     #[test]
     fn provider_id_returns_expected_values() {
-        assert_eq!(AgentProvider::pi_acp().id(), "pi-acp");
         assert_eq!(AgentProvider::opencode().id(), "opencode");
-        assert_eq!(AgentProvider::claude_code().id(), "claude-code");
-        assert_eq!(AgentProvider::codex().id(), "codex");
+
+        let registry =
+            AgentProvider::from_registry("gemini", "npx", vec!["@google/gemini-cli".to_string()]);
+        assert_eq!(registry.id(), "gemini");
 
         let custom = AgentProvider::custom(
             "my-agent",
@@ -311,10 +268,6 @@ mod tests {
 
     #[test]
     fn provider_command_returns_expected_commands() {
-        let (cmd, args) = AgentProvider::pi_acp().command();
-        assert_eq!(cmd, "npx");
-        assert_eq!(args, vec!["pi-acp"]);
-
         let (cmd, args) = AgentProvider::opencode().command();
         assert_eq!(cmd, "opencode");
         assert_eq!(args, vec!["acp"]);
@@ -373,8 +326,7 @@ mod tests {
 
     #[test]
     fn provider_equality() {
-        assert_eq!(AgentProvider::pi_acp(), AgentProvider::pi_acp());
-        assert_ne!(AgentProvider::pi_acp(), AgentProvider::opencode());
+        assert_eq!(AgentProvider::opencode(), AgentProvider::opencode());
 
         let custom1 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);
         let custom2 = AgentProvider::custom("my-agent", "cmd", vec!["arg1".to_string()]);

@@ -5,7 +5,7 @@
 //! allowing agent-specific state to be stored opaquely.
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::path::{Path, PathBuf};
 
 /// Type of session - distinguishes user chat from background ACP tasks
@@ -542,9 +542,9 @@ mod tests {
         let session_id = store
             .create_session(
                 Some("Test Session"),
-                "pi-acp",
+                "test-provider",
                 "npx",
-                &["pi-acp".to_string()],
+                &["test-provider".to_string()],
                 &PathBuf::from("/tmp/test"),
                 Some("You are helpful."),
                 &["skill1".to_string(), "skill2".to_string()],
@@ -569,7 +569,7 @@ mod tests {
             )
             .unwrap();
 
-        assert_eq!(runtime_id.as_deref(), Some("pi-acp"));
+        assert_eq!(runtime_id.as_deref(), Some("test-provider"));
         assert!(llm_provider_id.is_none());
         assert!(model_id.is_none());
         assert_eq!(session_type.as_deref(), Some("chat"));
@@ -581,9 +581,9 @@ mod tests {
         let session_id = store
             .create_session(
                 Some("Test Session"),
-                "pi-acp",
+                "test-provider",
                 "npx",
-                &["pi-acp".to_string()],
+                &["test-provider".to_string()],
                 &PathBuf::from("/tmp/test"),
                 None,
                 &[],
@@ -614,9 +614,9 @@ mod tests {
         let session_id = store
             .create_session(
                 Some("Test Session"),
-                "pi-acp",
+                "test-provider",
                 "npx",
-                &["pi-acp".to_string()],
+                &["test-provider".to_string()],
                 &PathBuf::from("/tmp/test"),
                 Some("You are helpful."),
                 &["skill1".to_string()],
@@ -629,9 +629,9 @@ mod tests {
 
         let session = session.unwrap();
         assert_eq!(session.title, Some("Test Session".to_string()));
-        assert_eq!(session.current_provider, "pi-acp");
+        assert_eq!(session.current_provider, "test-provider");
         assert_eq!(session.provider_command, "npx");
-        assert_eq!(session.provider_args, vec!["pi-acp"]);
+        assert_eq!(session.provider_args, vec!["test-provider"]);
         assert_eq!(session.working_directory, PathBuf::from("/tmp/test"));
         assert_eq!(session.system_prompt, Some("You are helpful.".to_string()));
         assert_eq!(session.skills, vec!["skill1"]);
@@ -650,7 +650,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -670,7 +670,7 @@ mod tests {
             tool_call_id: None,
         };
         store
-            .append_message(&session_id, &user_msg, Some("pi-acp"), None, None)
+            .append_message(&session_id, &user_msg, Some("test-provider"), None, None)
             .unwrap();
 
         // Append an assistant message
@@ -686,7 +686,7 @@ mod tests {
             .append_message(
                 &session_id,
                 &assistant_msg,
-                Some("pi-acp"),
+                Some("test-provider"),
                 Some("claude-3.5"),
                 Some(&TokenUsage {
                     input_tokens: 10,
@@ -708,7 +708,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -731,7 +731,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -753,9 +753,9 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
-                &["pi-acp".to_string()],
+                &["test-provider".to_string()],
                 &PathBuf::from("/tmp"),
                 None,
                 &[],
@@ -789,7 +789,7 @@ mod tests {
         let id1 = store
             .create_session(
                 Some("Session 1"),
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -830,7 +830,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -870,7 +870,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -906,7 +906,7 @@ mod tests {
         let session_id = store
             .create_session(
                 None,
-                "pi-acp",
+                "test-provider",
                 "npx",
                 &[],
                 &PathBuf::from("/tmp"),
@@ -927,7 +927,13 @@ mod tests {
             tool_call_id: None,
         };
         store
-            .append_message(&session_id, &msg, Some("pi-acp"), Some("claude-3.5"), None)
+            .append_message(
+                &session_id,
+                &msg,
+                Some("test-provider"),
+                Some("claude-3.5"),
+                None,
+            )
             .unwrap();
 
         let messages = store.load_messages(&session_id).unwrap();

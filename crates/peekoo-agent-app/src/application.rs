@@ -1240,28 +1240,12 @@ impl AgentApplication {
             .map_err(|e| format!("Get default runtime error: {e}"))?
             .ok_or_else(|| "No default runtime configured".to_string())?;
 
-        // Build AgentProvider from the runtime
-        let provider = if default_runtime.is_bundled {
-            // Built-in providers have factory functions
-            match default_runtime.provider_id.as_str() {
-                "opencode" => peekoo_agent::config::AgentProvider::opencode(),
-                "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
-                "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
-                "codex" => peekoo_agent::config::AgentProvider::codex(),
-                _ => peekoo_agent::config::AgentProvider::from_registry(
-                    &default_runtime.provider_id,
-                    &default_runtime.command,
-                    default_runtime.args.clone(),
-                ),
-            }
-        } else {
-            // Registry-installed or custom providers use from_registry
-            peekoo_agent::config::AgentProvider::from_registry(
-                &default_runtime.provider_id,
-                &default_runtime.command,
-                default_runtime.args.clone(),
-            )
-        };
+        // Build AgentProvider from runtime metadata (bundled or registry).
+        let provider = peekoo_agent::config::AgentProvider::from_registry(
+            &default_runtime.provider_id,
+            &default_runtime.command,
+            default_runtime.args.clone(),
+        );
 
         let model_id = default_runtime.config.default_model.as_deref();
 
@@ -1343,26 +1327,12 @@ impl AgentApplication {
         if let Ok(config) = self.resolved_config()
             && let Ok(Some(runtime)) = self.provider_service.get_default_runtime()
         {
-            // Build AgentProvider from the runtime
-            let provider = if runtime.is_bundled {
-                match runtime.provider_id.as_str() {
-                    "opencode" => peekoo_agent::config::AgentProvider::opencode(),
-                    "pi-acp" => peekoo_agent::config::AgentProvider::pi_acp(),
-                    "claude-code" => peekoo_agent::config::AgentProvider::claude_code(),
-                    "codex" => peekoo_agent::config::AgentProvider::codex(),
-                    _ => peekoo_agent::config::AgentProvider::from_registry(
-                        &runtime.provider_id,
-                        &runtime.command,
-                        runtime.args.clone(),
-                    ),
-                }
-            } else {
-                peekoo_agent::config::AgentProvider::from_registry(
-                    &runtime.provider_id,
-                    &runtime.command,
-                    runtime.args.clone(),
-                )
-            };
+            // Build AgentProvider from runtime metadata (bundled or registry).
+            let provider = peekoo_agent::config::AgentProvider::from_registry(
+                &runtime.provider_id,
+                &runtime.command,
+                runtime.args.clone(),
+            );
 
             if let Ok((resolved, _)) = self.settings.to_agent_config(
                 config,
