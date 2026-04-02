@@ -38,6 +38,9 @@
     "targets": "all",
     "createUpdaterArtifacts": true,
     "useLocalToolsDir": true,
+    "externalBin": [
+      "binaries/peekoo-agent-acp"
+    ],
     "resources": [
       "resources/**/*"
     ],

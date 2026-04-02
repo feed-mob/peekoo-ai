@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 pub const PEEKOO_OPENCODE_BIN_ENV: &str = "PEEKOO_OPENCODE_BIN";
+pub const PEEKOO_AGENT_PROVIDER_COMMAND_ENV: &str = "PEEKOO_AGENT_PROVIDER_COMMAND";
+pub const PEEKOO_AGENT_PROVIDER_ARGS_ENV: &str = "PEEKOO_AGENT_PROVIDER_ARGS";
 
 /// Source of an agent provider
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,6 +74,25 @@ impl AgentProvider {
         &self,
         environment: &HashMap<String, String>,
     ) -> (String, Vec<String>) {
+        if let Some(command) = environment
+            .get(PEEKOO_AGENT_PROVIDER_COMMAND_ENV)
+            .filter(|value| !value.trim().is_empty())
+            .cloned()
+            .or_else(|| {
+                std::env::var(PEEKOO_AGENT_PROVIDER_COMMAND_ENV)
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+            })
+        {
+            let args = environment
+                .get(PEEKOO_AGENT_PROVIDER_ARGS_ENV)
+                .cloned()
+                .or_else(|| std::env::var(PEEKOO_AGENT_PROVIDER_ARGS_ENV).ok())
+                .and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+                .unwrap_or_else(|| self.args.clone());
+            return (command, args);
+        }
+
         // Special handling for opencode bundled binary path
         if self.id == "opencode"
             && let Some(command) = environment
@@ -288,6 +309,26 @@ mod tests {
         let (cmd, args) = AgentProvider::opencode().command_with_environment(&env);
         assert_eq!(cmd, "/tmp/opencode");
         assert_eq!(args, vec!["acp"]);
+    }
+
+    #[test]
+    fn provider_command_uses_explicit_command_and_args_override_from_environment() {
+        let env = HashMap::from([
+            (
+                PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+                "/tmp/pi-acp".to_string(),
+            ),
+            (
+                PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(),
+                "[\"serve\",\"--json\"]".to_string(),
+            ),
+        ]);
+
+        let provider = AgentProvider::from_registry("pi-acp", "pi-acp", vec![]);
+        let (cmd, args) = provider.command_with_environment(&env);
+
+        assert_eq!(cmd, "/tmp/pi-acp");
+        assert_eq!(args, vec!["serve", "--json"]);
     }
 
     #[test]
