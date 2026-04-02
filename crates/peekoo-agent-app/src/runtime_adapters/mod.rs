@@ -1,5 +1,6 @@
 use crate::agent_provider_service::ProviderConfig;
 use std::collections::HashMap;
+use std::path::Path;
 
 pub trait RuntimeAdapter: Send + Sync {
     fn build_terminal_auth_launch(
@@ -26,9 +27,15 @@ pub trait RuntimeAdapter: Send + Sync {
     /// launched from a desktop entry with a stripped environment.
     /// User-configured values in `provider_config.env_vars` take precedence.
     ///
-    /// Prepends the managed Node.js bin directory to PATH so `npx` commands
-    /// work even when the user doesn't have Node.js installed on their system.
-    fn build_launch_env(&self, provider_config: &ProviderConfig) -> HashMap<String, String> {
+    /// When `node_bin_dir` is provided (typically the bundled Node.js binary
+    /// directory from the Tauri resource bundle), it is prepended to PATH so
+    /// agent wrapper scripts that depend on `node` work even when the user
+    /// has no system Node.js installation (common on macOS GUI apps).
+    fn build_launch_env(
+        &self,
+        provider_config: &ProviderConfig,
+        node_bin_dir: Option<&Path>,
+    ) -> HashMap<String, String> {
         let mut env = provider_config.env_vars.clone();
 
         // Forward critical path vars so runtimes can find credentials/config
@@ -41,17 +48,15 @@ pub trait RuntimeAdapter: Send + Sync {
             }
         }
 
-        // Forward PATH, prepending managed Node.js bin directory so `npx`
-        // works even without a system Node.js installation.
+        // Forward PATH, prepending the bundled Node.js bin directory when
+        // available so agent wrapper scripts can resolve `node`.
         let current_path = std::env::var("PATH").unwrap_or_default();
-        let managed_path = peekoo_node_runtime::paths::node_dir()
-            .ok()
-            .map(|dir| dir.join("bin"))
-            .filter(|bin_dir| bin_dir.exists())
-            .map(|bin_dir| format!("{}:{}", bin_dir.display(), current_path))
+        let enriched_path = node_bin_dir
+            .filter(|dir| dir.is_dir())
+            .map(|dir| format!("{}:{}", dir.display(), current_path))
             .unwrap_or(current_path);
         if !env.contains_key("PATH") {
-            env.insert("PATH".to_string(), managed_path);
+            env.insert("PATH".to_string(), enriched_path);
         }
 
         env
@@ -136,7 +141,7 @@ mod tests {
             custom_args: vec![],
         };
 
-        let env = adapter.build_launch_env(&config);
+        let env = adapter.build_launch_env(&config, None);
 
         if let Ok(expected_home) = std::env::var("HOME") {
             assert_eq!(
@@ -155,8 +160,28 @@ mod tests {
             custom_args: vec![],
         };
 
-        let env = adapter.build_launch_env(&config);
+        let env = adapter.build_launch_env(&config, None);
 
         assert_eq!(env.get("HOME").map(String::as_str), Some("/custom/home"));
+    }
+
+    #[test]
+    fn build_launch_env_prepends_node_bin_dir_to_path() {
+        let adapter = CustomRuntimeAdapter;
+        let config = ProviderConfig {
+            default_model: None,
+            env_vars: HashMap::new(),
+            custom_args: vec![],
+        };
+
+        // Use a directory that exists on any system.
+        let node_bin = std::path::Path::new("/tmp");
+        let env = adapter.build_launch_env(&config, Some(node_bin));
+
+        let path = env.get("PATH").expect("PATH should be set");
+        assert!(
+            path.starts_with("/tmp:"),
+            "PATH should start with the node bin dir, got: {path}"
+        );
     }
 }
