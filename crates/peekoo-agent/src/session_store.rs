@@ -5,7 +5,7 @@
 //! allowing agent-specific state to be stored opaquely.
 
 use crate::backend::{ContentBlock, Message, MessageRole, TokenUsage};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use std::path::{Path, PathBuf};
 
 /// Type of session - distinguishes user chat from background ACP tasks

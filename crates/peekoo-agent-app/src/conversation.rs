@@ -202,25 +202,27 @@ mod tests {
 
     #[test]
     fn flattens_text_and_tool_result_blocks() {
-        let messages = vec![serde_json::to_string(&Message {
-            role: MessageRole::Assistant,
-            content: vec![
-                ContentBlock::Thinking {
-                    thinking: "hidden".to_string(),
-                },
-                ContentBlock::Text {
-                    text: "Answer".to_string(),
-                },
-                ContentBlock::ToolResult {
-                    tool_use_id: "tool-1".to_string(),
-                    content: "done".to_string(),
-                    is_error: false,
-                },
-            ],
-            tool_calls: None,
-            tool_call_id: None,
-        })
-        .expect("serialize")];
+        let messages = vec![
+            serde_json::to_string(&Message {
+                role: MessageRole::Assistant,
+                content: vec![
+                    ContentBlock::Thinking {
+                        thinking: "hidden".to_string(),
+                    },
+                    ContentBlock::Text {
+                        text: "Answer".to_string(),
+                    },
+                    ContentBlock::ToolResult {
+                        tool_use_id: "tool-1".to_string(),
+                        content: "done".to_string(),
+                        is_error: false,
+                    },
+                ],
+                tool_calls: None,
+                tool_call_id: None,
+            })
+            .expect("serialize"),
+        ];
 
         let dtos = json_messages_to_dtos(&messages);
 
