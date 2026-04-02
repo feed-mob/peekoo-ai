@@ -115,7 +115,6 @@ impl AgentProvider {
     pub fn id(&self) -> String {
         self.id.clone()
     }
-
 }
 
 impl Default for AgentProvider {

@@ -194,11 +194,10 @@ impl AgentApplication {
         let agent_workspace_dir = ensure_agent_workspace()?;
 
         // Create agent scheduler for task execution
-        let agent_scheduler =
-            crate::agent_scheduler::AgentScheduler::new(
-                Arc::new(sqlite_task_service.clone()),
-                bundled_acp_path.clone(),
-            );
+        let agent_scheduler = crate::agent_scheduler::AgentScheduler::new(
+            Arc::new(sqlite_task_service.clone()),
+            bundled_acp_path.clone(),
+        );
 
         Ok(Self {
             agent: Arc::new(Mutex::new(None)),

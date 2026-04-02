@@ -11,7 +11,11 @@ fn prepare_acp_sidecar() {
     println!("cargo:rerun-if-env-changed=TARGET");
 
     let manifest_dir = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("manifest dir"));
-    let Some(workspace_root) = manifest_dir.parent().and_then(|path| path.parent()).and_then(|path| path.parent()) else {
+    let Some(workspace_root) = manifest_dir
+        .parent()
+        .and_then(|path| path.parent())
+        .and_then(|path| path.parent())
+    else {
         return;
     };
 

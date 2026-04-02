@@ -335,11 +335,7 @@ fn build_agent_service_config(
     if let Ok(provider_str) = std::env::var("PEEKOO_AGENT_PROVIDER") {
         config.provider = match provider_str.as_str() {
             "opencode" => AgentProvider::opencode(),
-            _ => AgentProvider::from_registry(
-                &provider_str,
-                &provider_str,
-                vec![],
-            ),
+            _ => AgentProvider::from_registry(&provider_str, &provider_str, vec![]),
         };
     }
     if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {
