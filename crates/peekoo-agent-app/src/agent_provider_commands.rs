@@ -225,7 +225,8 @@ pub async fn authenticate_runtime(
         model: config.default_model.clone(),
         provider: Some(runtime_id.clone()),
         api_key: None,
-        environment: adapter_for_runtime(&runtime_id).build_launch_env(&config, service.node_bin_dir()),
+        environment: adapter_for_runtime(&runtime_id)
+            .build_launch_env(&config, service.node_bin_dir()),
         mcp_servers: Vec::new(),
     };
 

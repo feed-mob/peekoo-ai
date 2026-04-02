@@ -1301,10 +1301,8 @@ impl AgentApplication {
         // Apply adapter-specific launch env from the runtime's ProviderConfig.
         if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
             let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
-            let adapter_env = adapter.build_launch_env(
-                &runtime_config,
-                self.bundled_node_bin_dir.as_deref(),
-            );
+            let adapter_env =
+                adapter.build_launch_env(&runtime_config, self.bundled_node_bin_dir.as_deref());
             for (key, value) in adapter_env {
                 config.environment.entry(key).or_insert(value);
             }
