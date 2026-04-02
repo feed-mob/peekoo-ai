@@ -1,6 +1,6 @@
 [package]
 name = "peekoo-desktop-tauri"
-version = "0.1.14"
+version = "0.1.15"
 description = "Peekoo AI Desktop Pet - Tauri Version"
 edition = "2024"
 rust-version = "1.85"
