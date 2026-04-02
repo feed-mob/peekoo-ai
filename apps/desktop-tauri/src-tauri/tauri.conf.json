@@ -29,7 +29,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self' 'unsafe-inline'; connect-src 'self' ipc: localhost:*; img-src 'self' asset: http://asset.localhost; media-src 'self' asset: http://asset.localhost; font-src 'self' https://fonts.bunny.net; style-src 'self' 'unsafe-inline' https://fonts.bunny.net",
+      "csp": null,
       "dangerousDisableAssetCspModification": false
     }
   },
