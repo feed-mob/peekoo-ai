@@ -320,18 +320,21 @@ pub struct AgentProviderService {
     node_runtime: peekoo_node_runtime::NodeRuntime,
     /// Keep the watch channel sender alive for node_runtime
     _node_options_tx: tokio::sync::watch::Sender<Option<peekoo_node_runtime::NodeBinaryOptions>>,
+    /// Directory containing the bundled Node.js binary for PATH injection.
+    bundled_node_bin_dir: Option<PathBuf>,
 }
 
 impl AgentProviderService {
     /// Create a new provider service
     pub fn new(db_path: &PathBuf, data_dir: PathBuf) -> anyhow::Result<Self> {
-        Self::new_with_bundled_opencode(db_path, data_dir, None)
+        Self::new_with_bundled_opencode(db_path, data_dir, None, None)
     }
 
     pub fn new_with_bundled_opencode(
         db_path: &PathBuf,
         data_dir: PathBuf,
         bundled_opencode_path: Option<PathBuf>,
+        bundled_node_bin_dir: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
         let conn = Connection::open(db_path)?;
 
@@ -360,6 +363,7 @@ impl AgentProviderService {
             registry_client,
             node_runtime,
             _node_options_tx: tx,
+            bundled_node_bin_dir,
         })
     }
 
@@ -405,6 +409,7 @@ impl AgentProviderService {
             registry_client,
             node_runtime,
             _node_options_tx: tx,
+            bundled_node_bin_dir: None,
         })
     }
 
@@ -422,6 +427,11 @@ impl AgentProviderService {
         self.conn
             .lock()
             .map_err(|e| anyhow::anyhow!("provider db lock poisoned: {e}"))
+    }
+
+    /// Directory containing the bundled Node.js binary, if available.
+    pub fn node_bin_dir(&self) -> Option<&std::path::Path> {
+        self.bundled_node_bin_dir.as_deref()
     }
 
     fn cached_runtime_inspection(
@@ -941,7 +951,7 @@ impl AgentProviderService {
             provider: Some(runtime_id.to_string()),
             api_key: None,
             environment: crate::runtime_adapters::adapter_for_runtime(runtime_id)
-                .build_launch_env(&config),
+                .build_launch_env(&config, self.bundled_node_bin_dir.as_deref()),
             mcp_servers: Vec::new(),
         };
 

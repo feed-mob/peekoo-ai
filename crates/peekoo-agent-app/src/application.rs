@@ -119,16 +119,19 @@ pub struct AgentApplication {
     /// Scheduler for agent task execution.
     agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
     bundled_opencode_path: Option<PathBuf>,
+    /// Directory containing the bundled Node.js binary (e.g. `<resources>/opencode/node/bin`).
+    bundled_node_bin_dir: Option<PathBuf>,
 }
 
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
-        Self::new_with_bundled_binaries(None, None)
+        Self::new_with_bundled_binaries(None, None, None)
     }
 
     pub fn new_with_bundled_binaries(
         bundled_opencode_path: Option<PathBuf>,
         bundled_acp_path: Option<PathBuf>,
+        bundled_node_bin_dir: Option<PathBuf>,
     ) -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
 
@@ -188,6 +191,7 @@ impl AgentApplication {
                 &db_path,
                 peekoo_paths::peekoo_global_data_dir()?,
                 bundled_opencode_path.clone(),
+                bundled_node_bin_dir.clone(),
             )
             .map_err(|e| format!("Create provider service error: {e}"))?,
         );
@@ -223,13 +227,14 @@ impl AgentApplication {
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
             bundled_opencode_path,
+            bundled_node_bin_dir,
         })
     }
 
     pub fn new_with_bundled_opencode(
         bundled_opencode_path: Option<PathBuf>,
     ) -> Result<Self, String> {
-        Self::new_with_bundled_binaries(bundled_opencode_path, None)
+        Self::new_with_bundled_binaries(bundled_opencode_path, None, None)
     }
 
     pub fn set_task_change_callback(
@@ -1296,7 +1301,10 @@ impl AgentApplication {
         // Apply adapter-specific launch env from the runtime's ProviderConfig.
         if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
             let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
-            let adapter_env = adapter.build_launch_env(&runtime_config);
+            let adapter_env = adapter.build_launch_env(
+                &runtime_config,
+                self.bundled_node_bin_dir.as_deref(),
+            );
             for (key, value) in adapter_env {
                 config.environment.entry(key).or_insert(value);
             }
