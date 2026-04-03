@@ -31,7 +31,7 @@ export function useGlobalSettings() {
       setState({
         activeSpriteId: settings.active_sprite_id ?? "dark-cat",
         themeMode: settings.theme_mode ?? "system",
-        logLevel: settings.log_level ?? "info",
+        logLevel: settings.log_level ?? "error",
         sprites,
         loading: false,
         error: null,
