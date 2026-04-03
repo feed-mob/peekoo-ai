@@ -8,7 +8,8 @@
     "dismiss": "閉じる",
     "back": "戻る",
     "refresh": "更新",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "save": "保存"
   },
   "panel": {
     "chat": "チャット",
@@ -45,16 +46,6 @@
     "sprite": {
       "title": "ペットスプライト",
       "loadingPreview": "読み込み中..."
-    },
-    "spriteMeta": {
-      "dark-cat": {
-        "name": "ダークキャット",
-        "description": "デフォルトのダークテーマ AI ペットです。"
-      },
-      "cute-dog": {
-        "name": "キュートドッグ",
-        "description": "かわいい代替 AI ペットです。"
-      }
     }
   },
   "chat": {
@@ -178,6 +169,85 @@
       "tueThu": "火 / 木",
       "weekly": "毎週",
       "monthly": "毎月"
+    },
+    "activityFeed": {
+      "created": "作成",
+      "createdFull": "\"{{title}}\" を作成",
+      "statusChanged": "ステータス",
+      "statusChangedFull": "{{from}} → {{to}}（\"{{title}}\"）",
+      "assigned": "割り当て",
+      "assignedFull": "\"{{title}}\" を {{to}} に割り当て",
+      "labeled": "ラベル",
+      "labeledFull": "\"{{title}}\" に \"{{label}}\" を追加",
+      "unlabeled": "ラベル",
+      "unlabeledFull": "\"{{title}}\" から \"{{label}}\" を削除",
+      "deleted": "削除",
+      "deletedFull": "\"{{title}}\" を削除",
+      "updated": "更新",
+      "updatedFull": "\"{{title}}\" を更新",
+      "comment": "コメント",
+      "commentFull": "コメントを追加",
+      "unknownTask": "不明なタスク",
+      "deleteComment": "コメントを削除"
+    },
+    "agentWork": {
+      "pending": "待機中",
+      "executing": "実行中",
+      "failed": "失敗"
+    },
+    "formatting": {
+      "today": "今日",
+      "tomorrow": "明日",
+      "minutesShort": "分",
+      "hoursShort": "時間"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "たった今",
+    "ago": "前",
+    "daysAgo": "日前"
+  },
+  "chatSettings": {
+    "loading": "設定を読み込み中...",
+    "failedLoad": "設定の読み込みに失敗しました。",
+    "title": "エージェント設定",
+    "provider": "プロバイダー",
+    "model": "モデル",
+    "modelPlaceholder": "例: gpt-4.1-mini",
+    "baseUrl": "ベースURL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "最大ツール反復回数",
+    "providerAuthentication": "プロバイダー認証",
+    "skills": "スキル",
+    "noSkills": "まだスキルが見つかりません。",
+    "auth": {
+      "mode": "認証モード",
+      "none": "なし",
+      "oauthStatus": "OAuth ステータス",
+      "connected": "接続済み",
+      "notConnected": "未接続",
+      "updateApiKey": "APIキーを更新",
+      "enterApiKey": "APIキーを入力",
+      "saveApiKey": "APIキーを保存",
+      "apiKeySaved": "APIキーを保存しました",
+      "connectOauth": "OAuth接続",
+      "reconnectOauth": "OAuth再接続",
+      "finishedLogin": "ログイン完了",
+      "browserLoginHelp": "ブラウザでログインしました。OAuthを完了してから「ログイン完了」をクリックしてください。",
+      "connectedHelp": "OAuthは接続済みです。認証情報を更新する場合は「OAuth再接続」を使用してください。",
+      "connectHelp": "「OAuth接続」をクリックしてプロバイダーアカウントでログインします。",
+      "oauthFailed": "OAuth失敗: {{error}}",
+      "oauthExpired": "OAuthセッションが期限切れです。再度お試しください。",
+      "oauthConnected": "OAuth接続に成功しました。",
+      "clearAuth": "認証をクリア"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "集中",
+      "focusPaused": "集中（一時停止中）",
+      "break": "休憩",
+      "breakPaused": "休憩（一時停止中）"
     }
   },
   "pomodoro": {
@@ -208,6 +278,10 @@
       "reset": "リセット",
       "switchToBreak": "休憩へ切替",
       "switchToWork": "集中へ切替"
+    },
+    "outcome": {
+      "completed": "完了",
+      "interrupted": "中断"
     }
   },
   "plugins": {
@@ -248,6 +322,14 @@
     "runtimeSettingsHint": "リマインダーの間隔と全体の静音時間を設定します。",
     "dndOn": "おやすみモード ON",
     "dndOff": "おやすみモード OFF",
-    "saveSettings": "設定を保存"
+    "saveSettings": "設定を保存",
+    "permissionLabels": {
+      "bridge:fs_read": "ブリッジ読み取り",
+      "notifications": "通知",
+      "pet:mood": "ペットの気分",
+      "scheduler": "スケジューラー",
+      "state:read": "状態読み取り",
+      "state:write": "状態書き込み"
+    }
   }
 }

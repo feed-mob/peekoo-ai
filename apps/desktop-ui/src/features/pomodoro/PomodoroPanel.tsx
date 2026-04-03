@@ -7,6 +7,7 @@ import { emitPetReaction } from "@/lib/pet-events";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
+import i18next from "i18next";
 import { cn } from "@/lib/utils";
 import {
   finishPomodoro,
@@ -211,14 +212,14 @@ export function PomodoroPanel() {
   const formatHistoryTime = (entry: PomodoroHistoryEntry) => {
     const actualMinutes = Math.floor(entry.actual_elapsed_secs / 60);
     const actualSeconds = entry.actual_elapsed_secs % 60;
-    return `${actualMinutes}m ${actualSeconds.toString().padStart(2, "0")}s / ${entry.planned_minutes}m`;
+    return `${actualMinutes}${t("tasks.formatting.minutesShort")} ${actualSeconds.toString().padStart(2, "0")}${t("tasks.formatting.secondsShort", "s")} / ${entry.planned_minutes}${t("tasks.formatting.minutesShort")}`;
   };
 
   const formatHistoryTimestamp = (value: string) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime())
       ? value
-      : date.toLocaleString([], {
+      : date.toLocaleString(i18next.language || "en", {
           month: "short",
           day: "numeric",
           hour: "numeric",
@@ -371,7 +372,7 @@ export function PomodoroPanel() {
 
                         <div className="shrink-0 text-right">
                           <div className={`text-[10px] font-extrabold uppercase tracking-[0.16em] ${isCompleted ? "text-success" : "text-text-muted"}`}>
-                            {entry.outcome}
+                            {entry.outcome === "completed" ? t("pomodoro.outcome.completed") : t("pomodoro.outcome.interrupted")}
                           </div>
                           <div className="mt-1 text-[11px] font-mono text-text-secondary">
                             {formatHistoryTime(entry)}

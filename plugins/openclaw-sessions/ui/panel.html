@@ -140,22 +140,10 @@
         <span id="connectionStatus" class="status-indicator status-disconnected">
           <span class="status-dot"></span><span data-i18n="ui.status.disconnected">Disconnected</span>
         </span>
-<<<<<<< HEAD
-        <button class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions" data-i18n-title="ui.actions.refreshSessions">
-||||||| 18198c7
-        <button class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions">
-=======
-        <button type="button" class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions">
->>>>>>> origin/master
+        <button type="button" class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions" data-i18n-title="ui.actions.refreshSessions">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
         </button>
-<<<<<<< HEAD
-        <button class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings" data-i18n-title="ui.actions.connectionSettings">
-||||||| 18198c7
-        <button class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings">
-=======
-        <button type="button" class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings">
->>>>>>> origin/master
+        <button type="button" class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings" data-i18n-title="ui.actions.connectionSettings">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
         </button>
       </div>
@@ -794,16 +782,8 @@
       dom.btnSaveConfig.disabled = true;
       dom.btnSaveConfig.textContent = tp('ui.actions.saving', 'Saving...');
       try {
-<<<<<<< HEAD
         await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
         setModalBanner(dom.configModalSuccess, tp('ui.messages.configurationSaved', 'Configuration saved.'), 'success');
-||||||| 18198c7
-        await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
-        setModalBanner(dom.configModalSuccess, 'Configuration saved.', 'success');
-=======
-        await invokePluginTool('save_openclaw_config', { websocketUrl: wsUrl, token, password });
-        setModalBanner(dom.configModalSuccess, 'Configuration saved.', 'success');
->>>>>>> origin/master
         setTimeout(() => { closeConfigModal(); refreshSessions(); }, 900);
       } catch (e) {
         setModalBanner(dom.configModalError, tp('ui.messages.failedToSave', 'Failed to save: {{error}}', { error: String(e) }));
@@ -835,15 +815,6 @@
 
     function friendlyGatewayError(e) {
       const s = String(e);
-<<<<<<< HEAD
-      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return tp('ui.messages.cannotConnect', 'Cannot connect to OpenClaw server. Is it running?');
-      if (s.includes('401') || s.includes('unauthorized')) return tp('ui.messages.authFailed', 'Authentication failed. Check your token or password.');
-      if (s.includes('timeout')) return tp('ui.messages.connectionTimedOut', 'Connection timed out.');
-||||||| 18198c7
-      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return 'Cannot connect to OpenClaw server. Is it running?';
-      if (s.includes('401') || s.includes('unauthorized')) return 'Authentication failed. Check your token or password.';
-      if (s.includes('timeout')) return 'Connection timed out.';
-=======
       if (s.toLowerCase().includes('pairing required')) {
         return 'OpenClaw requires device pairing. Approve this device in OpenClaw first, then retry Refresh.';
       }
@@ -851,10 +822,9 @@
         const ws = dom.inputWsUrl.value.trim() || 'your configured WebSocket URL';
         return `OpenClaw gateway unavailable or handshake failed (${ws}). Please confirm OpenClaw server is running and token/password is valid.`;
       }
-      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return 'Cannot connect to OpenClaw server. Is it running?';
-      if (s.includes('401') || s.includes('unauthorized')) return 'Authentication failed. Check your token or password.';
-      if (s.includes('timeout')) return 'Connection timed out.';
->>>>>>> origin/master
+      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return tp('ui.messages.cannotConnect', 'Cannot connect to OpenClaw server. Is it running?');
+      if (s.includes('401') || s.includes('unauthorized')) return tp('ui.messages.authFailed', 'Authentication failed. Check your token or password.');
+      if (s.includes('timeout')) return tp('ui.messages.connectionTimedOut', 'Connection timed out.');
       return s;
     }
 
@@ -980,21 +950,9 @@
           renderChatMessages(optimistic);
         }
       } catch (e) {
-<<<<<<< HEAD
-        msgs.push({
-          role: 'system',
-          content: tp('ui.messages.errorPrefix', 'Error: {{error}}', { error: String(e) }),
-          ts: Date.now(),
-        });
-        renderChatMessages(msgs);
-||||||| 18198c7
-        msgs.push({ role: 'system', content: 'Error: ' + String(e), ts: Date.now() });
-        renderChatMessages(msgs);
-=======
-        optimistic.push({ role: 'system', content: 'Error: ' + String(e), ts: Date.now() });
+        optimistic.push({ role: 'system', content: tp('ui.messages.errorPrefix', 'Error: {{error}}', { error: String(e) }), ts: Date.now() });
         state.chatLastCount = optimistic.length;
         renderChatMessages(optimistic);
->>>>>>> origin/master
       } finally {
         dom.btnSendChat.disabled = false;
         dom.chatInput.focus();

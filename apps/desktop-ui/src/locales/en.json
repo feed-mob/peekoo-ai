@@ -8,7 +8,8 @@
     "dismiss": "Dismiss",
     "back": "Back",
     "refresh": "Refresh",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "save": "Save"
   },
   "panel": {
     "chat": "Chat",
@@ -45,16 +46,6 @@
     "sprite": {
       "title": "Pet Sprite",
       "loadingPreview": "Loading..."
-    },
-    "spriteMeta": {
-      "dark-cat": {
-        "name": "Dark Cat",
-        "description": "Default dark-themed AI pet."
-      },
-      "cute-dog": {
-        "name": "Cute Dog",
-        "description": "A cute alternative AI pet."
-      }
     }
   },
   "chat": {
@@ -135,6 +126,10 @@
       "reset": "Reset",
       "switchToBreak": "Switch to Break",
       "switchToWork": "Switch to Work"
+    },
+    "outcome": {
+      "completed": "Completed",
+      "interrupted": "Interrupted"
     }
   },
   "badge": {
@@ -200,7 +195,15 @@
     "runtimeSettingsHint": "Configure reminder timing and global quiet hours.",
     "dndOn": "DND on",
     "dndOff": "DND off",
-    "saveSettings": "Save settings"
+    "saveSettings": "Save settings",
+    "permissionLabels": {
+      "bridge:fs_read": "Bridge read",
+      "notifications": "Notifications",
+      "pet:mood": "Pet mood",
+      "scheduler": "Scheduler",
+      "state:read": "State read",
+      "state:write": "State write"
+    }
   },
   "tasks": {
     "title": "Tasks",
@@ -291,6 +294,76 @@
       "tueThu": "Tue / Thu",
       "weekly": "Weekly",
       "monthly": "Monthly"
+    },
+    "activityFeed": {
+      "created": "Created",
+      "createdFull": "Created \"{{title}}\"",
+      "statusChanged": "Status",
+      "statusChangedFull": "{{from}} → {{to}} for \"{{title}}\"",
+      "assigned": "Assignment",
+      "assignedFull": "Assigned \"{{title}}\" to {{to}}",
+      "labeled": "Label",
+      "labeledFull": "Added \"{{label}}\" to \"{{title}}\"",
+      "unlabeled": "Label",
+      "unlabeledFull": "Removed \"{{label}}\" from \"{{title}}\"",
+      "deleted": "Deleted",
+      "deletedFull": "Deleted \"{{title}}\"",
+      "updated": "Updated",
+      "updatedFull": "Updated \"{{title}}\"",
+      "comment": "Comment",
+      "commentFull": "Added a comment",
+      "unknownTask": "Unknown task",
+      "deleteComment": "Delete comment"
+    },
+    "agentWork": {
+      "pending": "Pending",
+      "executing": "Executing",
+      "failed": "Failed"
+    },
+    "formatting": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "minutesShort": "m",
+      "hoursShort": "h"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "just now",
+    "ago": "ago",
+    "daysAgo": "days ago"
+  },
+  "pomodoro": {
+    "loadingSystem": "Loading System...",
+    "status": {
+      "focusing": "Focusing",
+      "resting": "Resting",
+      "ready": "Ready",
+      "break": "Break"
+    },
+    "readyToStart": "Ready to Start?",
+    "recentSessions": "Recent Sessions",
+    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
+    "mode": {
+      "focus": "Focus",
+      "break": "Break"
+    },
+    "focusMemo": "Focus Memo",
+    "actions": {
+      "saving": "Saving...",
+      "applied": "Applied",
+      "saveChanges": "Save Changes",
+      "synced": "Synced"
+    },
+    "controls": {
+      "pause": "Pause",
+      "start": "Start",
+      "reset": "Reset",
+      "switchToBreak": "Switch to Break",
+      "switchToWork": "Switch to Work"
+    },
+    "outcome": {
+      "completed": "Completed",
+      "interrupted": "Interrupted"
     }
   }
 }

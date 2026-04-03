@@ -8,7 +8,8 @@
     "dismiss": "Ignorer",
     "back": "Retour",
     "refresh": "Actualiser",
-    "saving": "Enregistrement..."
+    "saving": "Enregistrement...",
+    "save": "Enregistrer"
   },
   "panel": {
     "chat": "Chat",
@@ -178,6 +179,85 @@
       "tueThu": "Mar / Jeu",
       "weekly": "Hebdomadaire",
       "monthly": "Mensuel"
+    },
+    "activityFeed": {
+      "created": "Créé",
+      "createdFull": "A créé « {{title}} »",
+      "statusChanged": "Statut",
+      "statusChangedFull": "{{from}} → {{to}} pour « {{title}} »",
+      "assigned": "Attribution",
+      "assignedFull": "« {{title}} » attribué à {{to}}",
+      "labeled": "Étiquette",
+      "labeledFull": "Étiquette « {{label}} » ajoutée à « {{title}} »",
+      "unlabeled": "Étiquette",
+      "unlabeledFull": "Étiquette « {{label}} » retirée de « {{title}} »",
+      "deleted": "Supprimé",
+      "deletedFull": "A supprimé « {{title}} »",
+      "updated": "Mis à jour",
+      "updatedFull": "A mis à jour « {{title}} »",
+      "comment": "Commentaire",
+      "commentFull": "A ajouté un commentaire",
+      "unknownTask": "Tâche inconnue",
+      "deleteComment": "Supprimer le commentaire"
+    },
+    "agentWork": {
+      "pending": "En attente",
+      "executing": "En cours d'exécution",
+      "failed": "Échoué"
+    },
+    "formatting": {
+      "today": "Aujourd'hui",
+      "tomorrow": "Demain",
+      "minutesShort": "min",
+      "hoursShort": "h"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "à l'instant",
+    "ago": "il y a",
+    "daysAgo": "jours"
+  },
+  "chatSettings": {
+    "loading": "Chargement des paramètres...",
+    "failedLoad": "Échec du chargement des paramètres.",
+    "title": "Paramètres de l'agent",
+    "provider": "Fournisseur",
+    "model": "Modèle",
+    "modelPlaceholder": "ex. gpt-4.1-mini",
+    "baseUrl": "URL de base",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Itérations d'outil max",
+    "providerAuthentication": "Authentification du fournisseur",
+    "skills": "Compétences",
+    "noSkills": "Aucune compétence découverte pour le moment.",
+    "auth": {
+      "mode": "Mode d'authentification",
+      "none": "aucun",
+      "oauthStatus": "Statut OAuth",
+      "connected": "Connecté",
+      "notConnected": "Non connecté",
+      "updateApiKey": "Mettre à jour la clé API",
+      "enterApiKey": "Saisir la clé API",
+      "saveApiKey": "Enregistrer la clé API",
+      "apiKeySaved": "Clé API enregistrée",
+      "connectOauth": "Connecter OAuth",
+      "reconnectOauth": "Reconnecter OAuth",
+      "finishedLogin": "J'ai terminé la connexion",
+      "browserLoginHelp": "La connexion par navigateur est ouverte. Terminez l'OAuth dans le navigateur, puis cliquez sur « J'ai terminé la connexion ».",
+      "connectedHelp": "OAuth est connecté pour ce fournisseur. Utilisez Reconnecter OAuth si vous souhaitez actualiser les identifiants.",
+      "connectHelp": "Cliquez sur Connecter OAuth pour vous connecter avec votre compte fournisseur.",
+      "oauthFailed": "OAuth a échoué : {{error}}",
+      "oauthExpired": "La session OAuth a expiré. Recommencez.",
+      "oauthConnected": "OAuth connecté avec succès.",
+      "clearAuth": "Effacer l'authentification"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Concentration",
+      "focusPaused": "Concentration (En pause)",
+      "break": "Pause",
+      "breakPaused": "Pause (En pause)"
     }
   },
   "pomodoro": {
@@ -208,6 +288,10 @@
       "reset": "Réinitialiser",
       "switchToBreak": "Passer en pause",
       "switchToWork": "Passer en concentration"
+    },
+    "outcome": {
+      "completed": "Terminé",
+      "interrupted": "Interrompu"
     }
   },
   "plugins": {

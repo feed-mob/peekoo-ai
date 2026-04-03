@@ -4,17 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import type { StorePlugin } from "@/types/plugin";
 import { useTranslation } from "react-i18next";
 
-const PERMISSION_LABELS: Record<string, string> = {
-  "bridge:fs_read": "Bridge read",
-  notifications: "Notifications",
-  "pet:mood": "Pet mood",
-  scheduler: "Scheduler",
-  "state:read": "State read",
-  "state:write": "State write",
-};
-
-function formatPermission(permission: string): string {
-  return PERMISSION_LABELS[permission] ?? permission;
+function formatPermission(permission: string, t: (key: string) => string): string {
+  const key = `plugins.permissionLabels.${permission}`;
+  const translated = t(key);
+  return translated === key ? permission : translated;
 }
 
 interface PluginStoreCatalogProps {
@@ -166,7 +159,7 @@ export function PluginStoreCatalog({
                           className="border-glass-border bg-space-deep/40 text-text-secondary"
                           title={permission}
                         >
-                          {formatPermission(permission)}
+                          {formatPermission(permission, t)}
                         </Badge>
                       ))}
                     </div>

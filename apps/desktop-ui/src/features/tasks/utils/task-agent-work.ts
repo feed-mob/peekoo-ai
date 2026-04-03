@@ -1,4 +1,5 @@
 import type { Task } from "@/types/task";
+import type { TFunction } from "i18next";
 
 export interface AgentWorkStatusBadge {
   label: string;
@@ -7,15 +8,23 @@ export interface AgentWorkStatusBadge {
 }
 
 const AGENT_WORK_STATUS_BADGES: Partial<
-  Record<NonNullable<Task["agent_work_status"]>, AgentWorkStatusBadge>
+  Record<NonNullable<Task["agent_work_status"]>, Omit<AgentWorkStatusBadge, "label"> & { labelKey: string }>
 > = {
-  pending: { label: "Pending", color: "#F59E0B", animated: false },
-  executing: { label: "Executing", color: "#3B82F6", animated: true },
-  failed: { label: "Failed", color: "#EF4444", animated: false },
+  pending: { labelKey: "tasks.agentWork.pending", color: "#F59E0B", animated: false },
+  executing: { labelKey: "tasks.agentWork.executing", color: "#3B82F6", animated: true },
+  failed: { labelKey: "tasks.agentWork.failed", color: "#EF4444", animated: false },
 };
 
 export function getAgentWorkStatusBadge(
-  status: Task["agent_work_status"]
+  status: Task["agent_work_status"],
+  t: TFunction
 ): AgentWorkStatusBadge | null {
-  return status ? AGENT_WORK_STATUS_BADGES[status] ?? null : null;
+  if (!status) return null;
+  const config = AGENT_WORK_STATUS_BADGES[status];
+  if (!config) return null;
+  return {
+    label: t(config.labelKey),
+    color: config.color,
+    animated: config.animated,
+  };
 }

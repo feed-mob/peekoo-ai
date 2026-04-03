@@ -38,16 +38,16 @@ export function TaskListItem({
   const status = STATUS_CONFIG[task.status];
   const isDone = task.status === "done";
 
-  // FIXED: Now passing all 4 arguments correctly
   const timeLabel = formatTimeRange(
     task.scheduled_start_at,
     task.scheduled_end_at,
     task.recurrence_rule,
-    task.recurrence_time_of_day
+    task.recurrence_time_of_day,
+    t
   );
 
   const overdue = isOverdue(task.scheduled_start_at, task.status);
-  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
+  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status, t);
   const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
   const doneTaskVisualStyle = getDoneTaskVisualStyle(isDone, isTodayTab);
 

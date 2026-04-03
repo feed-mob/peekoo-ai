@@ -8,7 +8,8 @@
     "dismiss": "关闭提示",
     "back": "返回",
     "refresh": "刷新",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "save": "保存"
   },
   "panel": {
     "chat": "聊天",
@@ -45,16 +46,6 @@
     "sprite": {
       "title": "精灵形象",
       "loadingPreview": "加载中..."
-    },
-    "spriteMeta": {
-      "dark-cat": {
-        "name": "黑猫",
-        "description": "默认的深色主题 AI 精灵。"
-      },
-      "cute-dog": {
-        "name": "可爱小狗",
-        "description": "一个可爱的替代 AI 精灵。"
-      }
     }
   },
   "chat": {
@@ -135,6 +126,10 @@
       "reset": "重置",
       "switchToBreak": "切换到休息",
       "switchToWork": "切换到专注"
+    },
+    "outcome": {
+      "completed": "已完成",
+      "interrupted": "已中断"
     }
   },
   "badge": {
@@ -200,7 +195,15 @@
     "runtimeSettingsHint": "配置提醒时间和全局免打扰时段。",
     "dndOn": "勿扰已开",
     "dndOff": "勿扰已关",
-    "saveSettings": "保存设置"
+    "saveSettings": "保存设置",
+    "permissionLabels": {
+      "bridge:fs_read": "桥接读取",
+      "notifications": "通知",
+      "pet:mood": "精灵心情",
+      "scheduler": "调度器",
+      "state:read": "状态读取",
+      "state:write": "状态写入"
+    }
   },
   "tasks": {
     "title": "任务",
@@ -291,6 +294,42 @@
       "tueThu": "周二 / 周四",
       "weekly": "每周",
       "monthly": "每月"
+    },
+    "activityFeed": {
+      "created": "已创建",
+      "createdFull": "创建了\"{{title}}\"",
+      "statusChanged": "状态",
+      "statusChangedFull": "{{from}} → {{to}}（\"{{title}}\"）",
+      "assigned": "分配",
+      "assignedFull": "将\"{{title}}\"分配给{{to}}",
+      "labeled": "标签",
+      "labeledFull": "为\"{{title}}\"添加了\"{{label}}\"标签",
+      "unlabeled": "标签",
+      "unlabeledFull": "从\"{{title}}\"移除了\"{{label}}\"标签",
+      "deleted": "已删除",
+      "deletedFull": "删除了\"{{title}}\"",
+      "updated": "已更新",
+      "updatedFull": "更新了\"{{title}}\"",
+      "comment": "评论",
+      "commentFull": "添加了一条评论",
+      "unknownTask": "未知任务",
+      "deleteComment": "删除评论"
+    },
+    "agentWork": {
+      "pending": "等待中",
+      "executing": "执行中",
+      "failed": "失败"
+    },
+    "formatting": {
+      "today": "今天",
+      "tomorrow": "明天",
+      "minutesShort": "分",
+      "hoursShort": "时"
     }
+  },
+  "dateHelpers": {
+    "justNow": "刚刚",
+    "ago": "前",
+    "daysAgo": "天前"
   }
 }

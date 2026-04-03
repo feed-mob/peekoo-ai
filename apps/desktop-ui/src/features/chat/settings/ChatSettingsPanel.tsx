@@ -1,8 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { SkillToggleList } from "./SkillToggleList";
-import { ModelSelector } from "./ModelSelector";
-import { AuthSection } from "./AuthSection";
+import { SkillList } from "./SkillList";
 import { useChatSettings } from "./useChatSettings";
 import { useTranslation } from "react-i18next";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
@@ -18,36 +15,12 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   const {
     settings,
     catalog,
-    selectedProvider,
     isLoading,
     error,
-    oauthFlowId,
-    oauthStatus,
-    oauthError,
     refresh,
-    updateSettings,
-    saveApiKey,
-    setProviderConfig,
-    clearAuth,
-    startOauth,
-    pollOauthStatus,
   } = useChatSettings();
 
   const { defaultProvider } = useAgentProviders();
-
-  const {
-    customModelInput,
-    setCustomModelInput,
-    compatBaseUrl,
-    setCompatBaseUrl,
-    maxIterationsInput,
-    setMaxIterationsInput,
-    apiKey,
-    setApiKey,
-    authState,
-    isCompatibleProvider,
-    effectiveSkills,
-  } = useChatSettings();
 
   if (isLoading && !settings) {
     return <div className="text-sm text-text-muted">{t("chatSettings.loading")}</div>;
@@ -57,7 +30,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     return (
       <div className="space-y-2">
         <p className="text-sm text-danger">{t("chatSettings.failedLoad")}</p>
-        {error ? <p className="text-xs text-text-muted">{error}</p> : null}
+        <p className="text-xs text-text-muted">{error}</p>
         <Button size="sm" onClick={() => void refresh()}>
           {t("common.retry")}
         </Button>
@@ -114,112 +87,23 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        <div className="rounded-md border border-glass-border bg-space-surface/40 px-3 py-2 text-xs text-text-muted">
-          <div>Active runtime: {defaultProvider.displayName}</div>
+        <div className="rounded-md border border-glass-border bg-space-deep px-3 py-2">
+          <div className="text-sm text-text-secondary">Model</div>
+          <div className="mt-1 text-sm text-text-primary">
+            {(settings as Record<string, unknown>).activeModelId as string ?? "No global model configured"}
+          </div>
+          <div className="mt-1 text-xs text-text-muted">
+            Change this in global runtime settings.
+          </div>
         </div>
-
-        {selectedProvider.models.length > 0 ? (
-          <ModelSelector
-            models={selectedProvider.models}
-            value={settings.activeModelId}
-            onChange={(modelId) => void updateSettings({ activeModelId: modelId })}
-          />
-        ) : (
-          <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            {t("chatSettings.model")}
-            <Input
-              type="text"
-              value={customModelInput}
-              onChange={(event) => setCustomModelInput(event.target.value)}
-              onBlur={() => {
-                if (!customModelInput.trim()) return;
-                if (customModelInput.trim() === settings.activeModelId) return;
-                void updateSettings({ activeModelId: customModelInput.trim() });
-              }}
-              placeholder={t("chatSettings.modelPlaceholder")}
-              className="bg-space-deep border-glass-border"
-            />
-          </label>
-        )}
-
-        {isCompatibleProvider && (
-          <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            {t("chatSettings.baseUrl")}
-            <Input
-              type="text"
-              value={compatBaseUrl}
-              onChange={(event) => setCompatBaseUrl(event.target.value)}
-              onBlur={() => {
-                if (!compatBaseUrl.trim()) return;
-                void setProviderConfig(settings.activeProviderId, compatBaseUrl.trim());
-              }}
-              placeholder={t("chatSettings.baseUrlPlaceholder")}
-              className="bg-space-deep border-glass-border"
-            />
-          </label>
-        )}
-
-        <label className="flex flex-col gap-1 text-sm text-text-secondary">
-          {t("chatSettings.maxToolIterations")}
-          <Input
-            type="text"
-            inputMode="numeric"
-            value={maxIterationsInput}
-            onChange={(event) => {
-              const nextValue = event.target.value.replace(/[^0-9]/g, "");
-              setMaxIterationsInput(nextValue);
-            }}
-            onBlur={() => {
-              const value = Number(maxIterationsInput);
-              if (!Number.isNaN(value) && value > 0) {
-                void updateSettings({ maxToolIterations: value });
-                return;
-              }
-              setMaxIterationsInput(String(settings.maxToolIterations));
-            }}
-            className="bg-space-deep border-glass-border"
-          />
-        </label>
-      </div>
-
-      <div className="space-y-2">
-        <p className="text-sm font-medium text-text-primary">{t("chatSettings.providerAuthentication")}</p>
-        <AuthSection
-          provider={selectedProvider}
-          auth={authState}
-          apiKey={apiKey}
-          setApiKey={setApiKey}
-          oauthFlowRunning={oauthFlowId !== null}
-          oauthStatus={oauthStatus}
-          oauthError={oauthError}
-          onSaveApiKey={async () => {
-            if (!apiKey.trim()) return;
-            await saveApiKey(settings.activeProviderId, apiKey.trim());
-            setApiKey("");
-          }}
-          onClearAuth={async () => {
-            await clearAuth(settings.activeProviderId);
-          }}
-          onStartOauth={async () => {
-            await startOauth(settings.activeProviderId);
-          }}
-          onCheckOauth={async () => {
-            await pollOauthStatus();
-          }}
-        />
       </div>
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-text-primary">{t("chatSettings.skills")}</p>
-        <SkillToggleList
-          skills={effectiveSkills}
-          onToggle={(skillId, enabled) => {
-            const skills = effectiveSkills.map((skill) =>
-              skill.skillId === skillId ? { ...skill, enabled } : skill
-            );
-            void updateSettings({ skills });
-          }}
-        />
+        <p className="text-xs text-text-muted">
+          Peekoo finds skills automatically from configured skill folders.
+        </p>
+        <SkillList skills={catalog.discoveredSkills} />
       </div>
     </div>
   );

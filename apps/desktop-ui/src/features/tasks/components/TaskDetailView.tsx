@@ -19,7 +19,6 @@ import {
   PRIORITY_CONFIG,
   RECURRENCE_OPTIONS,
   STATUS_CONFIG,
-  TASK_STATUS_OPTIONS,
   TIME_OPTIONS,
   formatRecurrenceDisplay,
 } from "../utils/task-formatting";
@@ -97,7 +96,7 @@ export function TaskDetailView({
 
 
   const isDone = task.status === "done";
-  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
+  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status, t);
   const agentFailureDetail = getAgentFailureDetail(task);
   const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
   const startDate = toDateInputValue(task.scheduled_start_at);
@@ -193,16 +192,16 @@ export function TaskDetailView({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-space-deep border-glass-border">
-                {TASK_STATUS_OPTIONS.map((option) => {
-                  const config = STATUS_CONFIG[option.value];
+                {(["todo", "in_progress", "done"] as const).map((statusValue) => {
+                  const config = STATUS_CONFIG[statusValue];
                   return (
-                    <SelectItem key={option.value} value={option.value}>
+                    <SelectItem key={statusValue} value={statusValue}>
                       <div className="flex items-center gap-2">
                         <span
                           className="w-2 h-2 rounded-full"
                           style={{ backgroundColor: config.color }}
                         />
-                        {t(`tasks.status.${option.value}`)}
+                        {t(`tasks.status.${statusValue}`)}
                       </div>
                     </SelectItem>
                   );
@@ -339,7 +338,8 @@ export function TaskDetailView({
                   : recurring
                   ? formatRecurrenceDisplay(
                       task.recurrence_rule!,
-                      task.recurrence_time_of_day
+                      task.recurrence_time_of_day,
+                      t
                     )
                   : task.scheduled_start_at
                   ? t("tasks.detail.scheduled")
@@ -388,7 +388,7 @@ export function TaskDetailView({
                                       ? t("tasks.recurrence.weekly")
                                       : opt.value === "FREQ=MONTHLY"
                                         ? t("tasks.recurrence.monthly")
-                                        : opt.label}
+                                        : t(opt.labelKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>

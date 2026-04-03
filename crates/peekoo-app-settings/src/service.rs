@@ -8,12 +8,8 @@ use crate::store::AppSettingsStore;
 
 const SETTING_ACTIVE_SPRITE_ID: &str = "active_sprite_id";
 const SETTING_THEME_MODE: &str = "theme_mode";
-<<<<<<< HEAD
 const SETTING_APP_LANGUAGE: &str = "app_language";
-||||||| 18198c7
-=======
 const SETTING_LOG_LEVEL: &str = "log_level";
->>>>>>> origin/master
 const DEFAULT_SPRITE_ID: &str = "dark-cat";
 const DEFAULT_THEME_MODE: &str = "system";
 const DEFAULT_APP_LANGUAGE: &str = "en";
@@ -139,11 +135,9 @@ impl AppSettingsService {
         if key == SETTING_THEME_MODE {
             return self.set_theme_mode(value);
         }
-<<<<<<< HEAD
         if key == SETTING_APP_LANGUAGE {
             return self.set_app_language(value);
-||||||| 18198c7
-=======
+        }
         if key == SETTING_LOG_LEVEL {
             return match value {
                 "error" | "warn" | "info" | "debug" | "trace" => {
@@ -151,7 +145,6 @@ impl AppSettingsService {
                 }
                 _ => Err(format!("Invalid log level: {value}")),
             };
->>>>>>> origin/master
         }
         self.store.set(key, value)
     }
@@ -262,7 +255,6 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
     fn generic_set_validates_app_language() {
         let svc = test_service();
 
@@ -271,8 +263,9 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("Invalid app language"));
         assert_eq!(svc.get_app_language().unwrap(), "en");
-||||||| 18198c7
-=======
+    }
+
+    #[test]
     fn generic_set_validates_log_level() {
         let svc = test_service();
 
@@ -293,7 +286,6 @@ mod tests {
             svc.get_all().unwrap().get("log_level").map(String::as_str),
             Some("debug")
         );
->>>>>>> origin/master
     }
 
     #[test]

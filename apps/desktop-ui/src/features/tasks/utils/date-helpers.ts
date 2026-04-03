@@ -78,7 +78,9 @@ export function compareDates(
 /**
  * Format relative time (e.g., "just now", "5m ago", "2h ago")
  */
-export function formatRelativeTime(isoString: string): string {
+import type { TFunction } from "i18next";
+
+export function formatRelativeTime(isoString: string, t?: TFunction): string {
   const date = parseISODate(isoString);
   if (!date) return "";
 
@@ -88,11 +90,11 @@ export function formatRelativeTime(isoString: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffMins < 1) return t ? t("dateHelpers.justNow", "just now") : "just now";
+  if (diffMins < 60) return t ? `${diffMins}${t("tasks.formatting.minutesShort")} ${t("dateHelpers.ago", "ago")}` : `${diffMins}m ago`;
+  if (diffHours < 24) return t ? `${diffHours}${t("tasks.formatting.hoursShort")} ${t("dateHelpers.ago", "ago")}` : `${diffHours}h ago`;
+  if (diffDays === 1) return t ? t("tasks.activity.yesterday") : "yesterday";
+  if (diffDays < 7) return t ? `${diffDays} ${t("dateHelpers.daysAgo", "days ago")}` : `${diffDays} days ago`;
 
   return date.toLocaleDateString("en-US", {
     month: "short",

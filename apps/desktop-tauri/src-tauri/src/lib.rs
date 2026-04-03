@@ -208,7 +208,6 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
         .map_err(|e| format!("Terminal launch error: {e}"))?;
     Ok(())
 }
->>>>>>> origin/master
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TrayMenuAction {
@@ -1711,22 +1710,19 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
-<<<<<<< HEAD
-            let initial_language = app
-                .state::<AgentState>()
-                .app
-                .get_app_language()
-                .unwrap_or_else(|_| "en".to_string());
-            let labels = tray_menu_labels(&initial_language);
-||||||| 18198c7
-=======
             let needs_opencode = AgentState::needs_opencode_download(app.handle());
             app.manage(AgentState::new(app.handle()));
 
             if needs_opencode {
                 spawn_opencode_registry_install(app.handle().clone());
             }
->>>>>>> origin/master
+
+            let initial_language = app
+                .state::<AgentState>()
+                .app
+                .get_app_language()
+                .unwrap_or_else(|_| "en".to_string());
+            let labels = tray_menu_labels(&initial_language);
 
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, labels.toggle_pet)

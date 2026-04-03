@@ -8,7 +8,8 @@
     "dismiss": "Descartar",
     "back": "Volver",
     "refresh": "Actualizar",
-    "saving": "Guardando..."
+    "saving": "Guardando...",
+    "save": "Guardar"
   },
   "panel": {
     "chat": "Chat",
@@ -45,16 +46,6 @@
     "sprite": {
       "title": "Sprite de mascota",
       "loadingPreview": "Cargando..."
-    },
-    "spriteMeta": {
-      "dark-cat": {
-        "name": "Gato Oscuro",
-        "description": "Mascota IA predeterminada con tema oscuro."
-      },
-      "cute-dog": {
-        "name": "Perro Tierno",
-        "description": "Una mascota IA alternativa y adorable."
-      }
     }
   },
   "chat": {
@@ -178,6 +169,85 @@
       "tueThu": "Mar / Jue",
       "weekly": "Semanal",
       "monthly": "Mensual"
+    },
+    "activityFeed": {
+      "created": "Creado",
+      "createdFull": "Creado \"{{title}}\"",
+      "statusChanged": "Estado",
+      "statusChangedFull": "{{from}} → {{to}} para \"{{title}}\"",
+      "assigned": "Asignación",
+      "assignedFull": "Asignado \"{{title}}\" a {{to}}",
+      "labeled": "Etiqueta",
+      "labeledFull": "Añadida etiqueta \"{{label}}\" a \"{{title}}\"",
+      "unlabeled": "Etiqueta",
+      "unlabeledFull": "Eliminada etiqueta \"{{label}}\" de \"{{title}}\"",
+      "deleted": "Eliminado",
+      "deletedFull": "Eliminado \"{{title}}\"",
+      "updated": "Actualizado",
+      "updatedFull": "Actualizado \"{{title}}\"",
+      "comment": "Comentario",
+      "commentFull": "Añadido un comentario",
+      "unknownTask": "Tarea desconocida",
+      "deleteComment": "Eliminar comentario"
+    },
+    "agentWork": {
+      "pending": "Pendiente",
+      "executing": "Ejecutando",
+      "failed": "Fallido"
+    },
+    "formatting": {
+      "today": "Hoy",
+      "tomorrow": "Mañana",
+      "minutesShort": "min",
+      "hoursShort": "h"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "ahora mismo",
+    "ago": "hace",
+    "daysAgo": "días atrás"
+  },
+  "chatSettings": {
+    "loading": "Cargando configuración...",
+    "failedLoad": "No se pudo cargar la configuración.",
+    "title": "Configuración del Agente",
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "modelPlaceholder": "ej. gpt-4.1-mini",
+    "baseUrl": "URL Base",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Iteraciones Máximas de Herramienta",
+    "providerAuthentication": "Autenticación del Proveedor",
+    "skills": "Habilidades",
+    "noSkills": "Aún no se descubrieron habilidades.",
+    "auth": {
+      "mode": "Modo de autenticación",
+      "none": "ninguno",
+      "oauthStatus": "Estado OAuth",
+      "connected": "Conectado",
+      "notConnected": "No conectado",
+      "updateApiKey": "Actualizar clave API",
+      "enterApiKey": "Ingresar clave API",
+      "saveApiKey": "Guardar clave API",
+      "apiKeySaved": "Clave API guardada",
+      "connectOauth": "Conectar OAuth",
+      "reconnectOauth": "Reconectar OAuth",
+      "finishedLogin": "Terminé de iniciar sesión",
+      "browserLoginHelp": "El inicio de sesión del navegador está abierto. Termine OAuth en el navegador, luego haga clic en \"Terminé de iniciar sesión\".",
+      "connectedHelp": "OAuth está conectado para este proveedor. Use Reconectar OAuth si desea actualizar las credenciales.",
+      "connectHelp": "Haga clic en Conectar OAuth para iniciar sesión con su cuenta de proveedor.",
+      "oauthFailed": "OAuth falló: {{error}}",
+      "oauthExpired": "La sesión OAuth expiró. Comience de nuevo.",
+      "oauthConnected": "OAuth conectado exitosamente.",
+      "clearAuth": "Limpiar autenticación"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Enfoque",
+      "focusPaused": "Enfoque (Pausado)",
+      "break": "Descanso",
+      "breakPaused": "Descanso (Pausado)"
     }
   },
   "pomodoro": {
@@ -208,6 +278,10 @@
       "reset": "Reiniciar",
       "switchToBreak": "Pasar a descanso",
       "switchToWork": "Pasar a enfoque"
+    },
+    "outcome": {
+      "completed": "Completado",
+      "interrupted": "Interrumpido"
     }
   },
   "plugins": {
