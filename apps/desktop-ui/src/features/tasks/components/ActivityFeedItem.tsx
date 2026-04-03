@@ -135,7 +135,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
   const eventTitle = getEventTitle(event);
 
   if (isCommentEvent(event)) {
-    const authorLabel = getCommentAuthorDisplayName(event);
+    const authorLabel = getCommentAuthorDisplayName(event, t);
     const text = getCommentText(event);
     const isUser = isUserComment(event);
 

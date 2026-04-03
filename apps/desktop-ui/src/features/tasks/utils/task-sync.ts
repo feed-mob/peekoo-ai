@@ -1,26 +1,29 @@
+import type { TFunction } from "i18next";
+
 export function formatSyncStatus(
   isRefreshing: boolean,
   lastSyncedAt: number | null,
-  now = Date.now()
+  now = Date.now(),
+  t?: TFunction
 ): string {
   if (isRefreshing) {
-    return "Syncing…";
+    return t ? t("tasks.sync.syncing") : "Syncing…";
   }
 
   if (!lastSyncedAt) {
-    return "Waiting for sync";
+    return t ? t("tasks.sync.waiting") : "Waiting for sync";
   }
 
   const diffSeconds = Math.max(0, Math.floor((now - lastSyncedAt) / 1000));
 
   if (diffSeconds < 5) {
-    return "Updated just now";
+    return t ? t("tasks.sync.updatedJustNow") : "Updated just now";
   }
 
   if (diffSeconds < 60) {
-    return `Updated ${diffSeconds}s ago`;
+    return t ? t("tasks.sync.updatedSecondsAgo", { seconds: diffSeconds }) : `Updated ${diffSeconds}s ago`;
   }
 
   const diffMinutes = Math.floor(diffSeconds / 60);
-  return `Updated ${diffMinutes}m ago`;
+  return t ? t("tasks.sync.updatedMinutesAgo", { minutes: diffMinutes }) : `Updated ${diffMinutes}m ago`;
 }

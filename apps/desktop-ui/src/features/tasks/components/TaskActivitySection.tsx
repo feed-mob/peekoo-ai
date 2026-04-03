@@ -52,7 +52,7 @@ export function TaskActivitySection({ taskId }: TaskActivitySectionProps) {
           </h3>
           <div className="mt-1 flex items-center gap-1.5 text-[10px] text-text-muted">
             <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
-            <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
+            <span>{formatSyncStatus(isRefreshing, lastSyncedAt, Date.now(), t)}</span>
           </div>
         </div>
         <button

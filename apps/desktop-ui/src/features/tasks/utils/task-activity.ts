@@ -1,4 +1,5 @@
 import { KNOWN_AGENTS, type TaskEvent } from "@/types/task";
+import type { TFunction } from "i18next";
 
 export const TASKS_CHANGED_EVENT = "tasks-changed";
 
@@ -7,15 +8,15 @@ function getCommentAuthor(event: TaskEvent): string {
   return (payload?.author as string) ?? "user";
 }
 
-export function getCommentAuthorDisplayName(event: TaskEvent): string {
+export function getCommentAuthorDisplayName(event: TaskEvent, t?: TFunction): string {
   const author = getCommentAuthor(event);
 
   if (author === "user") {
-    return "You";
+    return t ? t("tasks.activity.you") : "You";
   }
 
   if (author === "agent") {
-    return "Agent";
+    return t ? t("tasks.activity.agent") : "Agent";
   }
 
   const knownAgent = KNOWN_AGENTS.find((candidate) => candidate.id === author);

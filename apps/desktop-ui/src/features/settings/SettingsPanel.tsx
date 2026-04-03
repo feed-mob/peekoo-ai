@@ -62,12 +62,12 @@ export function SettingsPanel() {
 
     await setLogLevel(nextLevel);
     const shouldRestart = await ask(
-      "Log level updated. Restart Peekoo now to apply the new logging level?",
+      t("settings.logLevelRestartMsg"),
       {
-        title: "Restart Required",
+        title: t("settings.restartRequired"),
         kind: "info",
-        okLabel: "Restart Now",
-        cancelLabel: "Later",
+        okLabel: t("settings.restartNow"),
+        cancelLabel: t("settings.later"),
       },
     );
 
@@ -142,9 +142,9 @@ export function SettingsPanel() {
       </section>
 
       <section className="space-y-3">
-        <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">Logging</h3>
+        <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">{t("settings.logging")}</h3>
         <p className="text-xs text-text-muted">
-          Set runtime log detail for troubleshooting. Restart required to apply changes.
+          {t("settings.loggingHelp")}
         </p>
         <div className="flex flex-wrap gap-2">
           {logLevelOptions.map((option) => {
@@ -170,7 +170,7 @@ export function SettingsPanel() {
 
       <section className="space-y-3">
         <h3 className="text-sm font-medium text-text-secondary uppercase tracking-wider">
-          ACP Runtimes
+          {t("settings.acpRuntimes")}
         </h3>
         <AgentProviderPanel />
       </section>

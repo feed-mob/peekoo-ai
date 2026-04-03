@@ -316,11 +316,11 @@ export function PomodoroPanel() {
                 onChange={(e) => setDateFilter(e.target.value as DateFilter)}
                 className="text-[10px] font-bold uppercase tracking-wider bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-text-secondary hover:bg-white/10 focus:outline-none focus:border-white/20 cursor-pointer"
               >
-                <option value="recent6">Recent 6</option>
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="last7days">Last 7 Days</option>
-                <option value="last30days">Last 30 Days</option>
+                <option value="recent6">{t("pomodoro.dateFilter.recent6")}</option>
+                <option value="today">{t("pomodoro.dateFilter.today")}</option>
+                <option value="yesterday">{t("pomodoro.dateFilter.yesterday")}</option>
+                <option value="last7days">{t("pomodoro.dateFilter.last7days")}</option>
+                <option value="last30days">{t("pomodoro.dateFilter.last30days")}</option>
               </select>
             </div>
 
@@ -389,7 +389,7 @@ export function PomodoroPanel() {
                              <textarea
                                className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-xs text-text-primary focus:outline-none focus:border-white/20 custom-scrollbar resize-none"
                                rows={3}
-                               placeholder={isWork ? "What did you accomplish?" : "How was your break?"}
+                                placeholder={isWork ? t("pomodoro.memo.workPlaceholder") : t("pomodoro.memo.breakPlaceholder")}
                                value={editingMemo}
                                onChange={(e) => setEditingMemo(e.target.value)}
                              />
@@ -450,7 +450,7 @@ export function PomodoroPanel() {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[9px] font-extrabold text-pomodoro-rest uppercase tracking-[0.25em]">
-                <Coffee className="w-3 h-3" /> Long Break
+                <Coffee className="w-3 h-3" /> {t("pomodoro.settings.longBreak")}
               </div>
               <div className="flex items-center gap-2 bg-white/[0.03] rounded-2xl border border-white/5 p-1.5 focus-within:border-pomodoro-rest/30 transition-none">
                 <input
@@ -463,7 +463,7 @@ export function PomodoroPanel() {
             </div>
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-[9px] font-extrabold text-text-muted uppercase tracking-[0.25em]">
-                <History className="w-3 h-3" /> Cycle
+                <History className="w-3 h-3" /> {t("pomodoro.settings.cycle")}
               </div>
               <div className="flex items-center gap-2 bg-white/[0.03] rounded-2xl border border-white/5 p-1.5 focus-within:border-white/20 transition-none">
                 <input
@@ -492,7 +492,7 @@ export function PomodoroPanel() {
                 <div className="p-2 rounded-xl bg-white/5 text-success/80">
                   <Play className="w-3.5 h-3.5" />
                 </div>
-                <div className="text-[11px] font-bold text-text-primary/90 tracking-tight">Autopilot</div>
+                <div className="text-[11px] font-bold text-text-primary/90 tracking-tight">{t("pomodoro.settings.autopilot")}</div>
               </div>
               <Checkbox checked={autoAdvance} onCheckedChange={(checked) => setAutoAdvance(checked === true)} />
             </div>

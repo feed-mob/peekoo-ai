@@ -105,7 +105,7 @@ export function TasksPanel() {
           <h2 className="text-base font-semibold text-text-primary">{t("tasks.title")}</h2>
           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-text-muted">
             <RefreshCw size={10} className={isRefreshing ? "animate-spin" : ""} />
-            <span>{formatSyncStatus(isRefreshing, lastSyncedAt)}</span>
+            <span>{formatSyncStatus(isRefreshing, lastSyncedAt, Date.now(), t)}</span>
           </div>
         </div>
         <span className="text-xs text-text-muted font-medium">

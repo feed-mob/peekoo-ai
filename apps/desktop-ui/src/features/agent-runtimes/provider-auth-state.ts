@@ -1,4 +1,5 @@
 import type { RuntimeInspectionResult, RuntimeStatus } from "@/types/agent-runtime";
+import type { TFunction } from "i18next";
 
 type ProviderInspectionLike = Pick<RuntimeInspectionResult, "authRequired" | "authMethods"> | null | undefined;
 
@@ -16,27 +17,28 @@ export function getProviderStatusText(
   status: RuntimeStatus,
   inspection?: ProviderInspectionLike,
   statusMessage?: string | null,
+  t?: TFunction,
 ) {
   const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
 
   if (requiresAuth) {
-    return "Login Required";
+    return t ? t("agentRuntimes.status.loginRequired") : "Login Required";
   }
 
   if (loginAvailable) {
-    return "Login Available";
+    return t ? t("agentRuntimes.status.loginAvailable") : "Login Available";
   }
 
   switch (status) {
     case "ready":
-      return "Ready";
+      return t ? t("agentRuntimes.status.ready") : "Ready";
     case "installing":
-      return "Installing...";
+      return t ? t("agentRuntimes.status.installing") : "Installing...";
     case "error":
-      return statusMessage || "Error";
+      return statusMessage || (t ? t("agentRuntimes.status.error") : "Error");
     case "needs_setup":
-      return "Setup Required";
+      return t ? t("agentRuntimes.status.setupRequired") : "Setup Required";
     default:
-      return "Not Installed";
+      return t ? t("agentRuntimes.status.notInstalled") : "Not Installed";
   }
 }

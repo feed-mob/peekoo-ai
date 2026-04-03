@@ -46,7 +46,14 @@
     "sprite": {
       "title": "Pet Sprite",
       "loadingPreview": "Loading..."
-    }
+    },
+    "logging": "Logging",
+    "loggingHelp": "Set runtime log detail for troubleshooting. Restart required to apply changes.",
+    "acpRuntimes": "ACP Runtimes",
+    "logLevelRestartMsg": "Log level updated. Restart Peekoo now to apply the new logging level?",
+    "restartRequired": "Restart Required",
+    "restartNow": "Restart Now",
+    "later": "Later"
   },
   "chat": {
     "newChat": "New Chat",
@@ -54,7 +61,16 @@
     "hideSettings": "Hide Settings",
     "empty": "Start chatting with your Peekoo pet!",
     "thinking": "Thinking...",
-    "inputPlaceholder": "Type a message..."
+    "inputPlaceholder": "Type a message...",
+    "authBanner": {
+      "message": "needs login before it can respond.",
+      "loginButton": "Login"
+    },
+    "thinkingBlock": "Thinking...",
+    "toolCall": {
+      "running": "Running",
+      "arguments": "Arguments"
+    }
   },
   "chatSettings": {
     "loading": "Loading settings...",
@@ -69,6 +85,14 @@
     "providerAuthentication": "Provider Authentication",
     "skills": "Skills",
     "noSkills": "No skills discovered yet.",
+    "noRuntimes": "No ACP runtimes installed.",
+    "installRuntimeHelp": "Install a runtime from the Settings panel to get started.",
+    "runtimeNotFound": "Selected runtime not found.",
+    "runtimeUnavailable": "The previously selected runtime is no longer available.",
+    "modelLabel": "Model",
+    "noModelConfigured": "No global model configured",
+    "modelHelp": "Change this in global runtime settings.",
+    "skillsHelp": "Peekoo finds skills automatically from configured skill folders.",
     "auth": {
       "mode": "Auth mode",
       "none": "none",
@@ -96,7 +120,8 @@
     "openFullChat": "Open full chat",
     "needAttention": "Need attention",
     "readingMode": "Reading mode",
-    "quickReply": "Quick reply"
+    "quickReply": "Quick reply",
+    "welcomeMessage": "Welcome! Your AI desktop sprite is ready to help you!"
   },
   "pomodoro": {
     "loadingSystem": "Loading System...",
@@ -130,6 +155,22 @@
     "outcome": {
       "completed": "Completed",
       "interrupted": "Interrupted"
+    },
+    "dateFilter": {
+      "recent6": "Recent 6",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last7days": "Last 7 Days",
+      "last30days": "Last 30 Days"
+    },
+    "memo": {
+      "workPlaceholder": "What did you accomplish?",
+      "breakPlaceholder": "How was your break?"
+    },
+    "settings": {
+      "longBreak": "Long Break",
+      "cycle": "Cycle",
+      "autopilot": "Autopilot"
     }
   },
   "badge": {
@@ -155,7 +196,9 @@
     "releaseNotes": "Release notes",
     "checkForUpdates": "Check for Updates",
     "installing": "Installing...",
-    "installAndRestart": "Install and Restart"
+    "installAndRestart": "Install and Restart",
+    "openLogs": "Open Logs",
+    "unknownError": "Unknown error"
   },
   "plugins": {
     "tabs": {
@@ -245,7 +288,9 @@
       "eventsAppearHere": "Task events will appear here",
       "addCommentPlaceholder": "Add a comment...",
       "addComment": "Add Comment",
-      "adding": "Adding..."
+      "adding": "Adding...",
+      "you": "You",
+      "agent": "Agent"
     },
     "deleteDialog": {
       "title": "Delete Task?",
@@ -318,13 +363,32 @@
     "agentWork": {
       "pending": "Pending",
       "executing": "Executing",
-      "failed": "Failed"
+      "failed": "Failed",
+      "attempts_one": "{{count}} attempt",
+      "attempts_other": "{{count}} attempts"
     },
     "formatting": {
       "today": "Today",
       "tomorrow": "Tomorrow",
       "minutesShort": "m",
       "hoursShort": "h"
+    },
+    "sync": {
+      "syncing": "Syncing...",
+      "waiting": "Waiting for sync",
+      "updatedJustNow": "Updated just now",
+      "updatedSecondsAgo": "Updated {{seconds}}s ago",
+      "updatedMinutesAgo": "Updated {{minutes}}m ago"
+    },
+    "toast": {
+      "failedToLoad": "Failed to load tasks",
+      "created": "Task created",
+      "failedToCreate": "Failed to create task",
+      "completed": "Task completed!",
+      "failedToUpdate": "Failed to update task",
+      "failedToSave": "Failed to save changes",
+      "deleted": "Task deleted",
+      "failedToDelete": "Failed to delete task"
     }
   },
   "dateHelpers": {
@@ -332,38 +396,114 @@
     "ago": "ago",
     "daysAgo": "days ago"
   },
-  "pomodoro": {
-    "loadingSystem": "Loading System...",
+  "updater": {
+    "title": "Update Available",
+    "message": "Peekoo {{version}} is available. Install it now and restart?",
+    "messageWithNotes": "Peekoo {{version}} is available.\n\n{{notes}}\n\nInstall it now and restart?",
+    "installButton": "Install and Restart",
+    "later": "Later"
+  },
+  "agentRuntimes": {
+    "title": "ACP Runtimes",
+    "description": "Manage ACP agents and their LLM settings",
+    "refresh": "Refresh",
+    "addRuntime": "Add Runtime",
+    "activeRuntime": "Active Runtime",
+    "activeRuntimeDescription": "The ACP runtime currently used for new conversations",
+    "defaultModel": "Default model",
+    "installedRuntimes": "Installed Runtimes",
+    "noRuntimesInstalled": "No runtimes installed yet",
+    "availableRuntimes": "Available Runtimes",
+    "showingRuntimes": "Showing {{count}} runtimes",
+    "searchPlaceholder": "Search agents (e.g., Gemini, Cursor, Claude)...",
+    "noRuntimesFound": "No runtimes found",
+    "loading": "Loading...",
+    "loadMore": "Load more agents",
+    "default": "Default",
+    "modelLabel": "Model:",
+    "setDefault": "Set Default",
+    "login": "Login",
+    "configure": "Configure",
+    "installing": "Installing...",
+    "install": "Install",
+    "installed": "Installed",
+    "unsupported": "Unsupported",
+    "noRuntime": "No runtime",
+    "switchRuntime": "Switch Runtime",
+    "noRuntimesInstalledOption": "No runtimes installed",
+    "manageRuntimes": "Manage Runtimes...",
     "status": {
-      "focusing": "Focusing",
-      "resting": "Resting",
       "ready": "Ready",
-      "break": "Break"
+      "needsSetup": "Needs Setup",
+      "error": "Error",
+      "loginRequired": "Login Required",
+      "loginAvailable": "Login available",
+      "installing": "Installing...",
+      "setupRequired": "Setup Required",
+      "notInstalled": "Not Installed",
+      "discoveringCapabilities": "Discovering capabilities..."
     },
-    "readyToStart": "Ready to Start?",
-    "recentSessions": "Recent Sessions",
-    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
-    "mode": {
-      "focus": "Focus",
-      "break": "Break"
+    "installDialog": {
+      "title": "Install {{name}}",
+      "description": "Choose how you want to install this ACP runtime.",
+      "customPathRequired": "Please enter a path for the custom installation",
+      "checkingPrerequisites": "Checking prerequisites...",
+      "missing": "Missing:",
+      "allPrerequisitesSatisfied": "All prerequisites satisfied",
+      "notAvailable": "Not Available",
+      "binaryPathLabel": "Path to Agent Binary",
+      "binaryPathPlaceholder": "/path/to/agent_binary",
+      "cancel": "Cancel"
     },
-    "focusMemo": "Focus Memo",
-    "actions": {
+    "configureDialog": {
+      "title": "Configure {{name}}",
+      "description": "Manage runtime settings and authentication.",
+      "statusLabel": "Status",
+      "authSection": "Authentication",
+      "loginRequired": "Login required",
+      "hideLoginOptions": "Hide login options",
+      "loginAvailable": "Login available",
+      "modelSection": "Model",
+      "selectModel": "Select a model",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "Default Model",
+      "defaultModelPlaceholder": "e.g., claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "This runtime does not use ACP model discovery. Enter a model ID manually if needed.",
+      "manualModelPlaceholder": "e.g., gpt-4, claude-3-5-sonnet",
+      "noModelsDiscovered": "No models discovered. Enter a model ID manually or refresh to discover.",
+      "discoverModels": "Discover Models",
+      "testing": "Testing...",
+      "testConnection": "Test Connection",
+      "versionLabel": "Version:",
+      "advancedSettings": "Advanced Settings",
+      "envVarsLabel": "Environment Variables",
+      "envVarNamePlaceholder": "Variable name",
+      "envVarValuePlaceholder": "Value",
+      "addEnvVar": "Add",
+      "customArgsLabel": "Custom Arguments",
+      "customArgsPlaceholder": "--flag or value",
+      "addArgument": "Add Argument",
       "saving": "Saving...",
-      "applied": "Applied",
       "saveChanges": "Save Changes",
-      "synced": "Synced"
+      "cancel": "Cancel"
     },
-    "controls": {
-      "pause": "Pause",
-      "start": "Start",
-      "reset": "Reset",
-      "switchToBreak": "Switch to Break",
-      "switchToWork": "Switch to Work"
-    },
-    "outcome": {
-      "completed": "Completed",
-      "interrupted": "Interrupted"
+    "addCustomDialog": {
+      "title": "Add Custom ACP Runtime",
+      "description": "Register a local ACP command and then configure its LLM provider and models.",
+      "nameRequired": "Name and command are required.",
+      "nameLabel": "Runtime Name",
+      "namePlaceholder": "My Custom ACP Runtime",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
+      "commandLabel": "Command",
+      "commandPlaceholder": "e.g. claude-code-acp",
+      "argsLabel": "Arguments",
+      "argsPlaceholder": "e.g. --acp --experimental-acp",
+      "workingDirLabel": "Working Directory",
+      "workingDirPlaceholder": "Optional working directory",
+      "cancel": "Cancel",
+      "adding": "Adding...",
+      "addRuntime": "Add Runtime"
     }
   }
 }

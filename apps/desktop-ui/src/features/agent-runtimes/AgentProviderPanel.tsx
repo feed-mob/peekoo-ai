@@ -12,8 +12,10 @@ import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { useRegistryAgents } from "@/hooks/useRegistryAgents";
 import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
+import { useTranslation } from "react-i18next";
 
 export function AgentProviderPanel() {
+  const { t } = useTranslation();
   const {
     installedProviders,
     defaultProvider,
@@ -96,20 +98,20 @@ export function AgentProviderPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-text-primary">ACP Runtimes</h2>
-          <p className="text-sm text-text-muted">Manage ACP agents and their LLM settings</p>
+          <h2 className="text-lg font-semibold text-text-primary">{t("agentRuntimes.title")}</h2>
+          <p className="text-sm text-text-muted">{t("agentRuntimes.description")}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={refresh} disabled={isLoading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
-            Refresh
+            {t("agentRuntimes.refresh")}
           </Button>
           <Button
             size="sm"
             onClick={() => setIsAddCustomDialogOpen(true)}
           >
             <Plus className="mr-2 h-4 w-4" />
-            Add Runtime
+            {t("agentRuntimes.addRuntime")}
           </Button>
         </div>
       </div>
@@ -128,9 +130,9 @@ export function AgentProviderPanel() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-base">
               <Sparkles className="h-4 w-4 text-primary" />
-              Active Runtime
+              {t("agentRuntimes.activeRuntime")}
             </CardTitle>
-            <CardDescription>The ACP runtime currently used for new conversations</CardDescription>
+            <CardDescription>{t("agentRuntimes.activeRuntimeDescription")}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3">
@@ -148,7 +150,7 @@ export function AgentProviderPanel() {
               <div className="flex-1">
                 <div className="font-medium text-text-primary">{defaultProvider.displayName}</div>
                 <div className="text-xs text-text-muted">
-                  {defaultProvider.config.defaultModel || "Default model"}
+                  {defaultProvider.config.defaultModel || t("agentRuntimes.defaultModel")}
                 </div>
               </div>
             </div>
@@ -158,10 +160,10 @@ export function AgentProviderPanel() {
 
       {/* Installed Runtimes */}
       <div>
-        <h3 className="mb-3 text-sm font-medium text-text-secondary">Installed Runtimes</h3>
+        <h3 className="mb-3 text-sm font-medium text-text-secondary">{t("agentRuntimes.installedRuntimes")}</h3>
         {installedProviders.length === 0 ? (
           <div className="rounded-lg border border-dashed border-glass-border p-8 text-center">
-            <p className="text-sm text-text-muted">No runtimes installed yet</p>
+            <p className="text-sm text-text-muted">{t("agentRuntimes.noRuntimesInstalled")}</p>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -184,9 +186,9 @@ export function AgentProviderPanel() {
       {/* Available Runtimes */}
       <div>
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-medium text-text-secondary">Available Runtimes</h3>
+          <h3 className="text-sm font-medium text-text-secondary">{t("agentRuntimes.availableRuntimes")}</h3>
           <span className="text-xs text-text-muted">
-            Showing {totalAvailableCount} runtimes
+            {t("agentRuntimes.showingRuntimes", { count: totalAvailableCount })}
           </span>
         </div>
 
@@ -195,7 +197,7 @@ export function AgentProviderPanel() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
             <Input
-              placeholder="Search agents (e.g., Gemini, Cursor, Claude)..."
+              placeholder={t("agentRuntimes.searchPlaceholder")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10"
@@ -234,7 +236,7 @@ export function AgentProviderPanel() {
         {/* Available Runtime Grid */}
         {totalAvailableCount === 0 && !registryLoading ? (
           <div className="rounded-lg border border-dashed border-glass-border p-8 text-center">
-            <p className="text-sm text-text-muted">No runtimes found</p>
+            <p className="text-sm text-text-muted">{t("agentRuntimes.noRuntimesFound")}</p>
           </div>
         ) : (
           <>
@@ -264,12 +266,12 @@ export function AgentProviderPanel() {
                   {registryLoading ? (
                     <>
                       <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Loading...
+                      {t("agentRuntimes.loading")}
                     </>
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
-                      Load more agents
+                      {t("agentRuntimes.loadMore")}
                     </>
                   )}
                 </Button>

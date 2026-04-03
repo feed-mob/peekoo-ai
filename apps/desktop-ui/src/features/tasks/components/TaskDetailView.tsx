@@ -97,7 +97,7 @@ export function TaskDetailView({
 
   const isDone = task.status === "done";
   const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status, t);
-  const agentFailureDetail = getAgentFailureDetail(task);
+  const agentFailureDetail = getAgentFailureDetail(task, t);
   const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
   const startDate = toDateInputValue(task.scheduled_start_at);
   const startTime = toTimeInputValue(task.scheduled_start_at);

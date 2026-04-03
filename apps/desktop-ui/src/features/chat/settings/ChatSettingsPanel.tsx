@@ -41,7 +41,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   if (!settings || !catalog) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-danger">Failed to load settings.</p>
+        <p className="text-sm text-danger">{t("chatSettings.failedLoad")}</p>
         <Button size="sm" onClick={() => void refresh()}>
           {t("common.retry")}
         </Button>
@@ -52,9 +52,9 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   if (catalog.providers.length === 0) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-text-muted">No ACP runtimes installed.</p>
+        <p className="text-sm text-text-muted">{t("chatSettings.noRuntimes")}</p>
         <p className="text-xs text-text-secondary">
-          Install a runtime from the Settings panel to get started.
+          {t("chatSettings.installRuntimeHelp")}
         </p>
         <Button size="sm" onClick={() => void refresh()}>
           {t("common.refresh")}
@@ -66,9 +66,9 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
   if (!defaultProvider) {
     return (
       <div className="space-y-2">
-        <p className="text-sm text-text-muted">Selected runtime not found.</p>
+        <p className="text-sm text-text-muted">{t("chatSettings.runtimeNotFound")}</p>
         <p className="text-xs text-text-secondary">
-          The previously selected runtime is no longer available.
+          {t("chatSettings.runtimeUnavailable")}
         </p>
         <Button size="sm" onClick={() => void refresh()}>
           {t("common.refresh")}
@@ -88,12 +88,12 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
 
       <div className="grid grid-cols-1 gap-3">
         <div className="rounded-md border border-glass-border bg-space-deep px-3 py-2">
-          <div className="text-sm text-text-secondary">Model</div>
+          <div className="text-sm text-text-secondary">{t("chatSettings.modelLabel")}</div>
           <div className="mt-1 text-sm text-text-primary">
-            {(settings as Record<string, unknown>).activeModelId as string ?? "No global model configured"}
+            {(settings as Record<string, unknown>).activeModelId as string ?? t("chatSettings.noModelConfigured")}
           </div>
           <div className="mt-1 text-xs text-text-muted">
-            Change this in global runtime settings.
+            {t("chatSettings.modelHelp")}
           </div>
         </div>
       </div>
@@ -101,7 +101,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       <div className="space-y-2">
         <p className="text-sm font-medium text-text-primary">{t("chatSettings.skills")}</p>
         <p className="text-xs text-text-muted">
-          Peekoo finds skills automatically from configured skill folders.
+          {t("chatSettings.skillsHelp")}
         </p>
         <SkillList skills={catalog.discoveredSkills} />
       </div>

@@ -105,7 +105,7 @@ export function AboutPanel() {
           {checking ? t("about.checking") : t("about.checkForUpdates")}
         </Button>
         <Button variant="glass" onClick={() => void invoke("system_open_log_dir")}>
-          Open Logs
+          {t("about.openLogs")}
         </Button>
         {snapshot.isUpdateAvailable ? (
           <Button variant="success" onClick={() => void installUpdate()} disabled={installing || checking}>
