@@ -156,6 +156,7 @@ jobs:
           node-version: 20
 
       - name: Stage bundled OpenCode
+        if: matrix.platform != 'ubuntu-22.04'
         shell: bash
         run: |
           python scripts/fetch_opencode_bundle.py \

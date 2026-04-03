@@ -30,6 +30,7 @@ tracing = "0.1"
 peekoo-agent-app = { path = "../../../crates/peekoo-agent-app", default-features = false }
 peekoo-paths = { path = "../../../crates/peekoo-paths" }
 rusqlite = { workspace = true }
+which = "7"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dirs = "6"

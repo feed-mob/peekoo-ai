@@ -267,14 +267,25 @@ impl AgentState {
         let bundled_opencode_path = resolve_bundled_opencode_path(app_handle);
         let bundled_acp_path = resolve_bundled_acp_path(app_handle);
         let bundled_node_bin_dir = resolve_bundled_node_bin_dir(app_handle);
+
+        // If no bundled opencode, check previously-downloaded or system PATH.
+        let opencode_path = bundled_opencode_path.or_else(resolve_opencode_fallback_path);
+
         Self {
             app: AgentApplication::new_with_bundled_binaries(
-                bundled_opencode_path,
+                opencode_path,
                 bundled_acp_path,
                 bundled_node_bin_dir,
             )
             .unwrap_or_else(|e| panic!("Failed to initialize agent application: {e}")),
         }
+    }
+
+    /// Whether opencode needs to be downloaded from the ACP registry.
+    /// Returns `true` when no bundled, downloaded, or system opencode was found.
+    fn needs_opencode_download(app_handle: &AppHandle) -> bool {
+        resolve_bundled_opencode_path(app_handle).is_none()
+            && resolve_opencode_fallback_path().is_none()
     }
 }
 
@@ -298,6 +309,58 @@ fn resolve_bundled_opencode_path(app: &AppHandle) -> Option<PathBuf> {
         let candidate = opencode_dir.join("opencode");
         candidate.is_file().then_some(candidate)
     }
+}
+
+/// Check for a previously-installed opencode (via ACP registry) or one on the system PATH.
+fn resolve_opencode_fallback_path() -> Option<PathBuf> {
+    // Check ACP-registry install dir: ~/.peekoo/resources/agents/opencode/
+    // The .installed marker written by `acp_registry_client::mark_installed`
+    // contains the executable path; fall back to a glob search if missing.
+    if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
+        let agent_dir = data_dir.join("resources").join("agents").join("opencode");
+        let marker = agent_dir.join(".installed");
+        if marker.is_file() {
+            // Marker is JSON with an `executable_path` field.
+            if let Ok(json) = std::fs::read_to_string(&marker) {
+                if let Ok(info) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(exe) = info.get("executable_path").and_then(|v| v.as_str()) {
+                        let path = PathBuf::from(exe);
+                        if path.is_file() {
+                            return Some(path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Check system PATH
+    which::which("opencode").ok()
+}
+
+/// Spawn a background task to install opencode from the ACP registry.
+///
+/// Uses `install_registry_agent` so version resolution, download, extraction,
+/// and DB seeding all go through the same path as user-initiated installs.
+fn spawn_opencode_registry_install(app_handle: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        tracing::info!("OpenCode not found, installing from ACP registry...");
+
+        let state = app_handle.state::<AgentState>();
+        match state
+            .app
+            .install_registry_agent("opencode", InstallationMethod::Binary)
+            .await
+        {
+            Ok(resp) => {
+                tracing::info!("OpenCode installed from registry: {}", resp.message);
+                let _ = app_handle.emit_to(MAIN_WINDOW_LABEL, AGENT_SETTINGS_CHANGED_EVENT, ());
+            }
+            Err(err) => {
+                tracing::warn!("OpenCode registry install failed: {err}");
+            }
+        }
+    });
 }
 
 fn resolve_bundled_acp_path(app: &AppHandle) -> Option<PathBuf> {
@@ -1547,7 +1610,13 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
+            let needs_opencode = AgentState::needs_opencode_download(app.handle());
             app.manage(AgentState::new(app.handle()));
+
+            if needs_opencode {
+                spawn_opencode_registry_install(app.handle().clone());
+            }
+
             let tray_menu = MenuBuilder::new(app)
                 .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
                 .text(TRAY_SETTINGS_MENU_ID, "Settings")
