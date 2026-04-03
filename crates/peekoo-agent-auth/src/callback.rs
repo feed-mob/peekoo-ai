@@ -15,10 +15,19 @@ const OAUTH_CALLBACK_PORT_END: u16 = 1465;
 fn bind_available_port() -> Option<(TcpListener, u16)> {
     for port in OAUTH_CALLBACK_PORT_START..=OAUTH_CALLBACK_PORT_END {
         match TcpListener::bind(format!("127.0.0.1:{port}")) {
-            Ok(listener) => return Some((listener, port)),
-            Err(_) => continue,
+            Ok(listener) => {
+                log::info!("OAuth callback listener bound to port {port}");
+                return Some((listener, port));
+            }
+            Err(err) => {
+                log::debug!("Port {port} unavailable for OAuth callback: {err}");
+                continue;
+            }
         }
     }
+    log::warn!(
+        "All OAuth callback ports in range {OAUTH_CALLBACK_PORT_START}-{OAUTH_CALLBACK_PORT_END} are in use"
+    );
     None
 }
 
