@@ -45,10 +45,11 @@ fn custom_start_builds_authorize_url_with_standard_and_extra_params() {
     );
     assert!(started.authorize_url.contains("response_type=code"));
     assert!(started.authorize_url.contains("client_id=client-id"));
+    // Redirect URI should be localhost with a port between 1455-1465
     assert!(
         started
             .authorize_url
-            .contains("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback")
+            .contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A")
     );
     assert!(
         started

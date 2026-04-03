@@ -42,7 +42,21 @@ impl OAuthService {
     pub fn start_custom(&self, config: OAuthStartConfig) -> Result<OAuthStartResult, OAuthError> {
         let flow_id = Uuid::new_v4().to_string();
         let (verifier, challenge) = generate_pkce();
-        let authorize_url = build_authorize_url(&config, &challenge, &verifier);
+
+        // Try to start the callback listener first to get an available port
+        let callback_port = match spawn_callback_listener(self.flows.clone(), flow_id.clone()) {
+            Some(port) => port,
+            None => {
+                return Err(OAuthError::PortBindingFailed(
+                    "Failed to bind to any available port for OAuth callback".to_string(),
+                ));
+            }
+        };
+
+        // Build redirect URI dynamically with the actual port
+        let redirect_uri = format!("http://127.0.0.1:{}/auth/callback", callback_port);
+
+        let authorize_url = build_authorize_url(&config, &challenge, &verifier, &redirect_uri);
 
         let mut lock = self
             .flows
@@ -57,11 +71,10 @@ impl OAuthService {
                 auth_code: None,
                 status: OAuthFlowStatus::Pending,
                 error: None,
+                redirect_uri,
             },
         );
         drop(lock);
-
-        spawn_callback_listener(self.flows.clone(), flow_id.clone());
 
         Ok(OAuthStartResult {
             flow_id,
@@ -122,7 +135,13 @@ impl OAuthService {
             });
         };
 
-        let token = exchange_token(&flow.start_config, &auth_code, &flow.verifier).await?;
+        let token = exchange_token(
+            &flow.start_config,
+            &auth_code,
+            &flow.verifier,
+            &flow.redirect_uri,
+        )
+        .await?;
 
         let mut lock = self
             .flows
@@ -160,11 +179,16 @@ struct OAuthTokenResponse {
     refresh_token: Option<String>,
 }
 
-fn build_authorize_url(config: &OAuthStartConfig, challenge: &str, state: &str) -> String {
+fn build_authorize_url(
+    config: &OAuthStartConfig,
+    challenge: &str,
+    state: &str,
+    redirect_uri: &str,
+) -> String {
     let mut params = vec![
         ("response_type", "code".to_string()),
         ("client_id", config.client_id.clone()),
-        ("redirect_uri", config.redirect_uri.clone()),
+        ("redirect_uri", redirect_uri.to_string()),
         ("scope", config.scope.clone()),
         ("code_challenge", challenge.to_string()),
         ("code_challenge_method", "S256".to_string()),
@@ -187,8 +211,9 @@ async fn exchange_token(
     config: &OAuthStartConfig,
     authorization_code: &str,
     verifier: &str,
+    redirect_uri: &str,
 ) -> Result<OAuthTokenResponse, OAuthError> {
-    let form_body = build_token_form_body(config, authorization_code, verifier);
+    let form_body = build_token_form_body(config, authorization_code, verifier, redirect_uri);
     let client = Client::new();
     let response = client
         .post(&config.token_exchange.token_url)
@@ -217,13 +242,14 @@ fn build_token_form_body(
     config: &OAuthStartConfig,
     authorization_code: &str,
     verifier: &str,
+    redirect_uri: &str,
 ) -> String {
     let mut params = vec![
         OAuthQueryParam::new("grant_type", "authorization_code"),
         OAuthQueryParam::new("client_id", config.client_id.clone()),
         OAuthQueryParam::new("code", authorization_code),
         OAuthQueryParam::new("code_verifier", verifier),
-        OAuthQueryParam::new("redirect_uri", config.redirect_uri.clone()),
+        OAuthQueryParam::new("redirect_uri", redirect_uri),
     ];
     if let Some(client_secret) = config
         .client_secret

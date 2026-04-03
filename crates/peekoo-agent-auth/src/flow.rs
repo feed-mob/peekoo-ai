@@ -25,6 +25,7 @@ pub struct OAuthFlow {
     pub auth_code: Option<String>,
     pub status: OAuthFlowStatus,
     pub error: Option<String>,
+    pub redirect_uri: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
