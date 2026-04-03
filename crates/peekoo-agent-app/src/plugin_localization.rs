@@ -178,6 +178,10 @@ fn locale_candidates(language: &str) -> Vec<String> {
         tags.push("zh-CN".to_string());
         tags.push("zh".to_string());
     }
+    if normalized.eq_ignore_ascii_case("zh-tw") {
+        tags.push("zh-TW".to_string());
+        tags.push("zh".to_string());
+    }
 
     let mut unique = HashSet::<String>::new();
     tags.into_iter()

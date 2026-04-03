@@ -7,8 +7,9 @@ import zh from "@/locales/zh.json";
 import ja from "@/locales/ja.json";
 import es from "@/locales/es.json";
 import fr from "@/locales/fr.json";
+import zhTW from "@/locales/zh-TW.json";
 
-export type AppLanguage = "en" | "zh-CN" | "ja" | "es" | "fr";
+export type AppLanguage = "en" | "zh-CN" | "zh-TW" | "ja" | "es" | "fr";
 
 const DEFAULT_LANGUAGE: AppLanguage = "en";
 const SETTING_APP_LANGUAGE_KEY = "app_language";
@@ -17,6 +18,9 @@ function normalizeLanguage(value?: string | null): AppLanguage {
   if (!value) return DEFAULT_LANGUAGE;
   if (value === "zh" || value === "zh-CN" || value === "zh-Hans") {
     return "zh-CN";
+  }
+  if (value === "zh-TW" || value === "zh-Hant") {
+    return "zh-TW";
   }
   if (value === "ja" || value === "ja-JP") {
     return "ja";
@@ -52,6 +56,7 @@ export async function initI18n(): Promise<void> {
     resources: {
       en: { translation: en },
       "zh-CN": { translation: zh },
+      "zh-TW": { translation: zhTW },
       ja: { translation: ja },
       es: { translation: es },
       fr: { translation: fr },
