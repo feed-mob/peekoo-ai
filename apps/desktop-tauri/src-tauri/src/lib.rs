@@ -38,11 +38,14 @@ const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
 const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
 const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
-const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
 const SETTING_APP_LANGUAGE: &str = "app_language";
 const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
 const SETTING_LOG_LEVEL: &str = "log_level";
+
+mod tray_i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 #[cfg(target_os = "macos")]
 fn quote_posix_shell(arg: &str) -> String {
@@ -217,77 +220,21 @@ enum TrayMenuAction {
     Quit,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct TrayMenuLabels {
-    toggle_pet: &'static str,
-    settings: &'static str,
-    about: &'static str,
-    quit: &'static str,
-    tooltip: &'static str,
-}
-
-fn tray_menu_labels(language: &str) -> TrayMenuLabels {
-    if language == "zh-CN" {
-        return TrayMenuLabels {
-            toggle_pet: "显示/隐藏精灵",
-            settings: "设置",
-            about: "关于 Peekoo",
-            quit: "退出 Peekoo",
-            tooltip: TRAY_TOOLTIP,
-        };
-    }
-    if language == "ja" {
-        return TrayMenuLabels {
-            toggle_pet: "ペットを表示/非表示",
-            settings: "設定",
-            about: "Peekoo について",
-            quit: "Peekoo を終了",
-            tooltip: TRAY_TOOLTIP,
-        };
-    }
-    if language == "es" {
-        return TrayMenuLabels {
-            toggle_pet: "Mostrar/Ocultar mascota",
-            settings: "Configuración",
-            about: "Acerca de Peekoo",
-            quit: "Salir de Peekoo",
-            tooltip: TRAY_TOOLTIP,
-        };
-    }
-    if language == "fr" {
-        return TrayMenuLabels {
-            toggle_pet: "Afficher/Masquer l'animal",
-            settings: "Paramètres",
-            about: "À propos de Peekoo",
-            quit: "Quitter Peekoo",
-            tooltip: TRAY_TOOLTIP,
-        };
-    }
-
-    TrayMenuLabels {
-        toggle_pet: "Show/Hide Pet",
-        settings: "Settings",
-        about: "About Peekoo",
-        quit: "Quit Peekoo",
-        tooltip: TRAY_TOOLTIP,
-    }
-}
-
 fn apply_tray_menu_language(app: &AppHandle, language: &str) -> Result<(), String> {
-    let labels = tray_menu_labels(language);
+    tray_i18n::set_tray_locale(language);
     let tray_menu = MenuBuilder::new(app)
-        .text(TRAY_TOGGLE_MENU_ID, labels.toggle_pet)
-        .text(TRAY_SETTINGS_MENU_ID, labels.settings)
-        .text(TRAY_ABOUT_MENU_ID, labels.about)
+        .text(TRAY_TOGGLE_MENU_ID, tray_i18n::tray_toggle())
+        .text(TRAY_SETTINGS_MENU_ID, tray_i18n::tray_settings())
+        .text(TRAY_ABOUT_MENU_ID, tray_i18n::tray_about())
         .separator()
-        .text(TRAY_QUIT_MENU_ID, labels.quit)
+        .text(TRAY_QUIT_MENU_ID, tray_i18n::tray_quit())
         .build()
         .map_err(|e| format!("Build tray menu error: {e}"))?;
 
     if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
         tray.set_menu(Some(tray_menu))
             .map_err(|e| format!("Set tray menu error: {e}"))?;
-        tray.set_tooltip(Some(labels.tooltip))
+        tray.set_tooltip(Some("Peekoo"))
             .map_err(|e| format!("Set tray tooltip error: {e}"))?;
     }
 
@@ -1722,19 +1669,19 @@ pub fn run() {
                 .app
                 .get_app_language()
                 .unwrap_or_else(|_| "en".to_string());
-            let labels = tray_menu_labels(&initial_language);
+            tray_i18n::set_tray_locale(&initial_language);
 
             let tray_menu = MenuBuilder::new(app)
-                .text(TRAY_TOGGLE_MENU_ID, labels.toggle_pet)
-                .text(TRAY_SETTINGS_MENU_ID, labels.settings)
-                .text(TRAY_ABOUT_MENU_ID, labels.about)
+                .text(TRAY_TOGGLE_MENU_ID, tray_i18n::tray_toggle())
+                .text(TRAY_SETTINGS_MENU_ID, tray_i18n::tray_settings())
+                .text(TRAY_ABOUT_MENU_ID, tray_i18n::tray_about())
                 .separator()
-                .text(TRAY_QUIT_MENU_ID, labels.quit)
+                .text(TRAY_QUIT_MENU_ID, tray_i18n::tray_quit())
                 .build()?;
 
             let mut tray_builder = tauri::tray::TrayIconBuilder::with_id(TRAY_ICON_ID)
                 .menu(&tray_menu)
-                .tooltip(labels.tooltip)
+                .tooltip("Peekoo")
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| handle_tray_menu_event(app, event.id().as_ref()))
                 .on_tray_icon_event(|tray, event| {
