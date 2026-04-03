@@ -6,8 +6,6 @@ import { useAgentProviders } from "@/hooks/useAgentProviders";
 
 interface ChatSettingsPanelProps {
   onClose: () => void;
-  activeRuntimeName?: string | null;
-  configuredModelId?: string | null;
 }
 
 export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
@@ -90,7 +88,7 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
         <div className="rounded-md border border-glass-border bg-space-deep px-3 py-2">
           <div className="text-sm text-text-secondary">{t("chatSettings.modelLabel")}</div>
           <div className="mt-1 text-sm text-text-primary">
-            {(settings as Record<string, unknown>).activeModelId as string ?? t("chatSettings.noModelConfigured")}
+            {defaultProvider.config.defaultModel ?? t("chatSettings.noModelConfigured")}
           </div>
           <div className="mt-1 text-xs text-text-muted">
             {t("chatSettings.modelHelp")}

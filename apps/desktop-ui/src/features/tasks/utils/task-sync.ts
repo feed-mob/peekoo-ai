@@ -4,26 +4,26 @@ export function formatSyncStatus(
   isRefreshing: boolean,
   lastSyncedAt: number | null,
   now = Date.now(),
-  t?: TFunction
+  t: TFunction
 ): string {
   if (isRefreshing) {
-    return t ? t("tasks.sync.syncing") : "Syncing…";
+    return t("tasks.sync.syncing");
   }
 
   if (!lastSyncedAt) {
-    return t ? t("tasks.sync.waiting") : "Waiting for sync";
+    return t("tasks.sync.waiting");
   }
 
   const diffSeconds = Math.max(0, Math.floor((now - lastSyncedAt) / 1000));
 
   if (diffSeconds < 5) {
-    return t ? t("tasks.sync.updatedJustNow") : "Updated just now";
+    return t("tasks.sync.updatedJustNow");
   }
 
   if (diffSeconds < 60) {
-    return t ? t("tasks.sync.updatedSecondsAgo", { seconds: diffSeconds }) : `Updated ${diffSeconds}s ago`;
+    return t("tasks.sync.updatedSecondsAgo", { seconds: diffSeconds });
   }
 
   const diffMinutes = Math.floor(diffSeconds / 60);
-  return t ? t("tasks.sync.updatedMinutesAgo", { minutes: diffMinutes }) : `Updated ${diffMinutes}m ago`;
+  return t("tasks.sync.updatedMinutesAgo", { minutes: diffMinutes });
 }

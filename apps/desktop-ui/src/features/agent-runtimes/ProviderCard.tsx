@@ -84,7 +84,7 @@ export function ProviderCard({
 
   const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
   const statusIcon = getStatusIcon(provider.status, requiresAuth);
-  const statusText = getProviderStatusText(provider.status, inspection, provider.statusMessage);
+  const statusText = getProviderStatusText(provider.status, inspection, provider.statusMessage, t);
   const currentModel = provider.config.defaultModel || inspection?.currentModelId || t("agentRuntimes.default");
 
   const handleQuickRefresh = async (e: React.MouseEvent) => {

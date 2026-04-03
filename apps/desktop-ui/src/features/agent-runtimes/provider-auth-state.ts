@@ -15,30 +15,30 @@ export function getProviderAuthState(inspection: ProviderInspectionLike) {
 
 export function getProviderStatusText(
   status: RuntimeStatus,
-  inspection?: ProviderInspectionLike,
-  statusMessage?: string | null,
-  t?: TFunction,
+  inspection: ProviderInspectionLike | undefined,
+  statusMessage: string | null | undefined,
+  t: TFunction,
 ) {
   const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
 
   if (requiresAuth) {
-    return t ? t("agentRuntimes.status.loginRequired") : "Login Required";
+    return t("agentRuntimes.status.loginRequired");
   }
 
   if (loginAvailable) {
-    return t ? t("agentRuntimes.status.loginAvailable") : "Login Available";
+    return t("agentRuntimes.status.loginAvailable");
   }
 
   switch (status) {
     case "ready":
-      return t ? t("agentRuntimes.status.ready") : "Ready";
+      return t("agentRuntimes.status.ready");
     case "installing":
-      return t ? t("agentRuntimes.status.installing") : "Installing...";
+      return t("agentRuntimes.status.installing");
     case "error":
-      return statusMessage || (t ? t("agentRuntimes.status.error") : "Error");
+      return statusMessage || t("agentRuntimes.status.error");
     case "needs_setup":
-      return t ? t("agentRuntimes.status.setupRequired") : "Setup Required";
+      return t("agentRuntimes.status.setupRequired");
     default:
-      return t ? t("agentRuntimes.status.notInstalled") : "Not Installed";
+      return t("agentRuntimes.status.notInstalled");
   }
 }

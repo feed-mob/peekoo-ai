@@ -7,7 +7,6 @@ import { emitPetReaction } from "@/lib/pet-events";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useTranslation } from "react-i18next";
-import i18next from "i18next";
 import { cn } from "@/lib/utils";
 import {
   finishPomodoro,
@@ -71,7 +70,7 @@ function getDateRange(filter: DateFilter): { start: string; end: string } | null
 }
 
 export function PomodoroPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [status, setStatus] = useState<PomodoroStatus | null>(null);
   const [history, setHistory] = useState<PomodoroHistoryEntry[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>("recent6");
@@ -219,7 +218,7 @@ export function PomodoroPanel() {
     const date = new Date(value);
     return Number.isNaN(date.getTime())
       ? value
-      : date.toLocaleString(i18next.language || "en", {
+      : date.toLocaleString(i18n.language || "en", {
           month: "short",
           day: "numeric",
           hour: "numeric",

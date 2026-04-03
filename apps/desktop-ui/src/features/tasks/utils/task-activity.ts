@@ -8,15 +8,15 @@ function getCommentAuthor(event: TaskEvent): string {
   return (payload?.author as string) ?? "user";
 }
 
-export function getCommentAuthorDisplayName(event: TaskEvent, t?: TFunction): string {
+export function getCommentAuthorDisplayName(event: TaskEvent, t: TFunction): string {
   const author = getCommentAuthor(event);
 
   if (author === "user") {
-    return t ? t("tasks.activity.you") : "You";
+    return t("tasks.activity.you");
   }
 
   if (author === "agent") {
-    return t ? t("tasks.activity.agent") : "Agent";
+    return t("tasks.activity.agent");
   }
 
   const knownAgent = KNOWN_AGENTS.find((candidate) => candidate.id === author);

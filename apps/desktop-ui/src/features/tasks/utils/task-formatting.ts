@@ -1,5 +1,6 @@
 import type { TaskStatus } from "@/types/task";
 import type { TFunction } from "i18next";
+import i18next from "i18next";
 import {
   parseISODate,
   isToday,
@@ -96,8 +97,10 @@ export function formatTimeRange(
 
   if (!start && !end) return null;
 
+  const locale = i18next.language || "en";
+
   const fmtTime = (d: Date) =>
-    d.toLocaleTimeString("en-US", {
+    d.toLocaleTimeString(locale, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -106,7 +109,7 @@ export function formatTimeRange(
   const dayLabel = (d: Date): string => {
     if (isToday(d)) return t("tasks.formatting.today");
     if (isTomorrow(d)) return t("tasks.formatting.tomorrow");
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
   };
 
   if (!start && end) {

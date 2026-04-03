@@ -155,8 +155,6 @@ export function ChatPanel() {
         {showSettings && (
           <ChatSettingsPanel
             onClose={() => setShowSettings(false)}
-            activeRuntimeName={defaultProvider?.displayName ?? null}
-            configuredModelId={defaultProvider?.config.defaultModel ?? null}
           />
         )}
       </div>

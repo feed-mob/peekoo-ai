@@ -1,20 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { STATUS_CONFIG, TASK_STATUS_OPTIONS } from "./task-formatting";
+import { STATUS_CONFIG, getTaskStatusOptions } from "./task-formatting";
 
-describe("TASK_STATUS_OPTIONS", () => {
+const mockT = ((key: string) => key) as import("i18next").TFunction;
+
+describe("getTaskStatusOptions", () => {
   test("includes todo, in progress, and done statuses", () => {
-    expect(TASK_STATUS_OPTIONS.map((option) => option.value)).toEqual([
+    expect(getTaskStatusOptions(mockT).map((option) => option.value)).toEqual([
       "todo",
       "in_progress",
       "done",
     ]);
   });
 
-  test("reuses the labels from STATUS_CONFIG", () => {
-    expect(TASK_STATUS_OPTIONS.map((option) => option.label)).toEqual([
-      STATUS_CONFIG.todo.label,
-      STATUS_CONFIG.in_progress.label,
-      STATUS_CONFIG.done.label,
+  test("reuses the labelKeys from STATUS_CONFIG", () => {
+    expect(getTaskStatusOptions(mockT).map((option) => option.label)).toEqual([
+      STATUS_CONFIG.todo.labelKey,
+      STATUS_CONFIG.in_progress.labelKey,
+      STATUS_CONFIG.done.labelKey,
     ]);
   });
 });
