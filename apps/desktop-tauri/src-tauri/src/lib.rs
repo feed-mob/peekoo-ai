@@ -354,11 +354,7 @@ fn spawn_opencode_registry_install(app_handle: AppHandle) {
         {
             Ok(resp) => {
                 tracing::info!("OpenCode installed from registry: {}", resp.message);
-                let _ = app_handle.emit_to(
-                    MAIN_WINDOW_LABEL,
-                    AGENT_SETTINGS_CHANGED_EVENT,
-                    (),
-                );
+                let _ = app_handle.emit_to(MAIN_WINDOW_LABEL, AGENT_SETTINGS_CHANGED_EVENT, ());
             }
             Err(err) => {
                 tracing::warn!("OpenCode registry install failed: {err}");
