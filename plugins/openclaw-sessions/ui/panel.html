@@ -186,9 +186,12 @@
     <div class="modal chat-modal">
       <div class="modal-header">
         <div><h3 class="modal-title">OpenClaw Session Chat</h3><div id="chatSessionKey" class="chat-session-key"></div></div>
-        <button class="modal-close" id="btnCloseChatModal" aria-label="Close">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button type="button" class="btn btn-secondary" id="btnLoadMoreChat" style="display:none;padding:6px 10px;">Load Older</button>
+          <button class="modal-close" id="btnCloseChatModal" aria-label="Close">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
       </div>
       <div class="modal-body"><div id="chatMessages" class="chat-messages"></div></div>
       <div class="modal-footer">
@@ -241,6 +244,7 @@
       sessions: [], filtered: [], page: 1, pageSize: 10,
       searchQuery: '', connected: false,
       chatSessionId: null, chatSessionKey: null, chatLiveTimer: null, chatLastCount: 0,
+      chatHistoryLimit: 200,
       chatMessages: [],
     };
 
@@ -278,6 +282,7 @@
       chatSessionKey: $('chatSessionKey'),
       chatInput: $('chatInput'),
       btnSendChat: $('btnSendChat'),
+      btnLoadMoreChat: $('btnLoadMoreChat'),
       btnCloseChatModal: $('btnCloseChatModal'),
     };
 
@@ -491,16 +496,30 @@
 
     function extractTokenStats(session) {
       const t = session.token_usage || session.tokens || session.usage || {};
-      let used = 0, max = 0;
+      const input =
+        toNumber(session.inputTokens || session.input_tokens || t.input_tokens || t.input || 0);
+      const output =
+        toNumber(session.outputTokens || session.output_tokens || t.output_tokens || t.output || 0);
+      const totalFromFields =
+        toNumber(session.totalTokens || session.total_tokens || t.total_tokens || t.total || 0);
+      let used = totalFromFields || (input + output);
+      let max =
+        toNumber(session.contextTokens || session.context_tokens || t.context_length || t.max_tokens || t.limit || 0);
       if (t.context_window) {
         const r = parseUsedMaxText(t.context_window);
-        used = r.used; max = r.max;
-      } else {
-        used = toNumber(t.total_tokens || t.used || t.input_tokens || 0);
-        max = toNumber(t.max_tokens || t.context_length || t.limit || 0);
+        if (!used) used = r.used;
+        if (!max) max = r.max;
       }
       if (!used) used = pickFirstNumber(session.total_tokens || session.tokens_used || 0);
-      return { used, max };
+      return { used, max, input, output, total: used };
+    }
+
+    function formatDurationMs(ms) {
+      const n = Math.max(0, Math.floor(toNumber(ms)));
+      if (n < 60000) return 'just now';
+      if (n < 3600000) return Math.floor(n / 60000) + 'm ago';
+      if (n < 86400000) return Math.floor(n / 3600000) + 'h ago';
+      return Math.floor(n / 86400000) + 'd ago';
     }
 
     function formatRelativeTime(tsMs) {
@@ -519,8 +538,9 @@
       const kind = (raw.kind || raw.type || raw.session_type || 'unknown').toLowerCase();
       const model = raw.model || raw.model_name || raw.llm || '—';
       const ts = toTimestampMs(raw.created_at || raw.timestamp || raw.last_active || raw.updated_at || raw.updatedAt || 0);
-      const { used, max } = extractTokenStats(raw);
-      return { id, key, kind, model, ts, used, max, _raw: raw };
+      const ageMs = toNumber(raw.ageMs || raw.age_ms || 0);
+      const { used, max, input, output, total } = extractTokenStats(raw);
+      return { id, key, kind, model, ts, ageMs, used, max, input, output, total, _raw: raw };
     }
 
     function extractMessageContent(msg) {
@@ -596,11 +616,14 @@
       }
       dom.sessionsTableBody.innerHTML = sessions.map(s => {
         const pct = s.max > 0 ? Math.min(100, Math.round(s.used / s.max * 100)) : 0;
-        const tokenLabel = s.used ? `${formatCompactToken(s.used)}${s.max ? ' / ' + formatCompactToken(s.max) : ''} ${s.max ? '(' + pct + '%)' : ''}` : '—';
+        const tokenLabel = s.total
+          ? `${formatCompactToken(s.total)}${s.max ? ' / ' + formatCompactToken(s.max) : ''}${s.max ? ' (' + pct + '%)' : ''}${(s.input || s.output) ? ` · in ${formatCompactToken(s.input)} out ${formatCompactToken(s.output)}` : ''}`
+          : '—';
+        const ageLabel = s.ageMs > 0 ? formatDurationMs(s.ageMs) : formatRelativeTime(s.ts);
         return `<tr>
           <td><span class="cell-kind ${getSessionKindClass(s.kind)}">${escapeHtml(s.kind)}</span></td>
           <td><span class="cell-key">${escapeHtml(truncate(s.key, 20))}</span></td>
-          <td style="color:var(--text-muted);font-size:12px;">${formatRelativeTime(s.ts)}</td>
+          <td style="color:var(--text-muted);font-size:12px;">${ageLabel}</td>
           <td style="font-size:12px;">${escapeHtml(truncate(s.model, 22))}</td>
           <td><div class="cell-tokens">
             ${s.max > 0 ? `<div class="token-bar"><div class="token-fill" style="width:${pct}%"></div></div>` : ''}
@@ -677,6 +700,37 @@
       return { role, content, ts };
     }
 
+    function isPluginErrorPayload(data) {
+      return !!(data && typeof data === 'object' && data.success === false);
+    }
+
+    function collectMessageLikes(node, out, seen, depth = 0) {
+      if (!node || depth > 8) return;
+      if (Array.isArray(node)) {
+        for (const item of node) collectMessageLikes(item, out, seen, depth + 1);
+        return;
+      }
+      if (typeof node !== 'object') return;
+      if (seen.has(node)) return;
+      seen.add(node);
+
+      const normalized = normalizeHistoryMessage(node);
+      if (normalized && normalized.content && normalized.content.trim().length > 0) {
+        out.push(normalized);
+      }
+
+      const likelyContainers = [
+        'payload', 'data', 'result',
+        'messages', 'history', 'items', 'events', 'entries', 'chunks', 'turns',
+        'message', 'event', 'record',
+      ];
+      for (const key of likelyContainers) {
+        if (node[key] !== undefined) {
+          collectMessageLikes(node[key], out, seen, depth + 1);
+        }
+      }
+    }
+
     function extractHistoryMessages(data) {
       if (!data) return [];
       const walk = (node, depth = 0) => {
@@ -699,9 +753,15 @@
       };
 
       const arr = walk(data);
-      return arr
+      const primary = arr
         .map(normalizeHistoryMessage)
         .filter(m => m && typeof m.content === 'string' && m.content.trim().length > 0);
+      if (primary.length > 0) return primary;
+
+      // Fallback for unknown/changed gateway shapes.
+      const fallback = [];
+      collectMessageLikes(data, fallback, new WeakSet(), 0);
+      return fallback.filter(m => m && typeof m.content === 'string' && m.content.trim().length > 0);
     }
 
     function formatWhen(tsMs) {
@@ -829,20 +889,7 @@
         state.connected = true;
         renderConnectionStatus(true);
         if (!state.sessions.length) {
-          const countHint =
-            (data && data.payload && data.payload.count) ||
-            (data && data.count) ||
-            ((unwrapped && unwrapped.count) || 0);
-          const topKeys = data && typeof data === 'object' ? Object.keys(data).join(',') : String(data);
-          const payloadKeys = unwrapped && typeof unwrapped === 'object' ? Object.keys(unwrapped).join(',') : String(unwrapped);
-          const rawType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
-          const rawLen = typeof raw === 'string' ? raw.length : 0;
-          setStatusMessage(
-            countHint > 0
-              ? `Connected, gateway returned count=${countHint}, but panel failed to map sessions. [dbg rawType=${rawType} rawLen=${rawLen} top=${topKeys} payload=${payloadKeys}]`
-              : `Connected, but no sessions returned by OpenClaw. [dbg rawType=${rawType} rawLen=${rawLen} top=${topKeys} payload=${payloadKeys}]`,
-            false,
-          );
+          setStatusMessage('Connected, but no sessions returned by OpenClaw.', false);
         } else {
           setStatusMessage('');
         }
@@ -857,15 +904,20 @@
     }
 
     // ── Chat ───────────────────────────────────────────────────────────────────
-    async function loadSessionHistory(sessionKey) {
-      try {
-        const raw = await invokePluginTool('openclaw_chat_history', { sessionKey, limit: 200 });
-        const data = parsePluginJson(raw);
-        return extractHistoryMessages(data);
-      } catch (e) {
-        console.warn('loadSessionHistory error:', e);
-        return [];
+    async function loadSessionHistory(sessionKey, sessionId = '', limit = state.chatHistoryLimit) {
+      const raw = await invokePluginTool('openclaw_chat_history', { sessionKey, sessionId, limit });
+      const data = parsePluginJson(raw);
+      if (isPluginErrorPayload(data)) {
+        throw new Error(data.error || 'chat.history failed');
       }
+      return extractHistoryMessages(data);
+    }
+
+    function updateLoadMoreState(messageCount = 0) {
+      const canLoadOlder = Boolean(state.chatSessionKey) && messageCount >= state.chatHistoryLimit;
+      dom.btnLoadMoreChat.style.display = canLoadOlder ? 'inline-flex' : 'none';
+      dom.btnLoadMoreChat.disabled = false;
+      dom.btnLoadMoreChat.textContent = 'Load Older';
     }
 
     function stopChatLiveRefresh() {
@@ -876,10 +928,15 @@
       stopChatLiveRefresh();
       state.chatLiveTimer = setInterval(async () => {
         if (!state.chatSessionId || !state.chatSessionKey) { stopChatLiveRefresh(); return; }
-        const msgs = await loadSessionHistory(state.chatSessionKey);
-        if (msgs.length !== state.chatLastCount) {
-          state.chatLastCount = msgs.length;
-          renderChatMessages(msgs);
+        try {
+          const msgs = await loadSessionHistory(state.chatSessionKey, state.chatSessionId);
+          if (msgs.length !== state.chatLastCount) {
+            state.chatLastCount = msgs.length;
+            renderChatMessages(msgs);
+            updateLoadMoreState(msgs.length);
+          }
+        } catch (e) {
+          console.warn('chat live refresh failed:', e);
         }
       }, 3000);
     }
@@ -889,16 +946,25 @@
       state.chatSessionId = sessionId;
       state.chatSessionKey = session ? session.key : sessionId;
       state.chatLastCount = 0;
+      state.chatHistoryLimit = 200;
       dom.chatSessionKey.textContent = session ? truncate(session.key, 40) : sessionId;
       dom.chatMessages.innerHTML = `<div class="chat-empty">Loading…</div>`;
       dom.chatModal.classList.add('active');
-      const msgs = await loadSessionHistory(state.chatSessionKey);
-      if (msgs.length > 0) {
-        state.chatLastCount = msgs.length;
-        renderChatMessages(msgs);
-      } else {
-        state.chatLastCount = 0;
-        renderChatMessages(state.chatMessages || []);
+      updateLoadMoreState(0);
+      try {
+        const msgs = await loadSessionHistory(state.chatSessionKey, state.chatSessionId);
+        if (msgs.length > 0) {
+          state.chatLastCount = msgs.length;
+          renderChatMessages(msgs);
+          updateLoadMoreState(msgs.length);
+        } else {
+          state.chatLastCount = 0;
+          renderChatMessages(state.chatMessages || []);
+          updateLoadMoreState(0);
+        }
+      } catch (e) {
+        renderChatMessages([{ role: 'system', content: 'Load history failed: ' + String(e), ts: Date.now() }]);
+        updateLoadMoreState(0);
       }
       startChatLiveRefresh();
     }
@@ -907,9 +973,11 @@
       stopChatLiveRefresh();
       state.chatSessionId = null;
       state.chatSessionKey = null;
+      state.chatHistoryLimit = 200;
       state.chatMessages = [];
       dom.chatModal.classList.remove('active');
       dom.chatInput.value = '';
+      updateLoadMoreState(0);
     }
 
     function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -919,27 +987,56 @@
       if (!text || !state.chatSessionId || !state.chatSessionKey) return;
       dom.chatInput.value = '';
       dom.btnSendChat.disabled = true;
-      const baseline = state.chatMessages.length ? state.chatMessages.slice() : await loadSessionHistory(state.chatSessionKey);
+      let baseline = state.chatMessages.length ? state.chatMessages.slice() : [];
+      if (!baseline.length) {
+        try {
+          baseline = await loadSessionHistory(state.chatSessionKey, state.chatSessionId);
+        } catch {
+          baseline = [];
+        }
+      }
       const optimistic = baseline.slice();
       optimistic.push({ role: 'user', content: text, ts: Date.now() });
       state.chatMessages = optimistic.slice();
       renderChatMessages(optimistic, true);
       try {
-        await invokePluginTool('openclaw_chat_send', { sessionKey: state.chatSessionKey, message: text });
-        await sleep(800);
-        const updated = await loadSessionHistory(state.chatSessionKey);
-        if (updated.length > 0) {
-          state.chatLastCount = updated.length;
-          renderChatMessages(updated);
-        } else {
+        const sendRaw = await invokePluginTool('openclaw_chat_send', {
+          sessionKey: state.chatSessionKey,
+          sessionId: state.chatSessionId,
+          message: text,
+        });
+        const sendData = parsePluginJson(sendRaw);
+        if (isPluginErrorPayload(sendData)) {
+          throw new Error(sendData.error || 'chat.send failed');
+        }
+
+        let rendered = false;
+        for (let i = 0; i < 8; i++) {
+          await sleep(500);
+          try {
+            const updated = await loadSessionHistory(state.chatSessionKey, state.chatSessionId);
+            if (updated.length >= optimistic.length) {
+              state.chatLastCount = updated.length;
+              renderChatMessages(updated);
+              updateLoadMoreState(updated.length);
+              rendered = true;
+              break;
+            }
+          } catch {
+            // keep retrying within polling window
+          }
+        }
+        if (!rendered) {
           // Gateway may be eventually consistent right after send; keep optimistic view.
           state.chatLastCount = optimistic.length;
           renderChatMessages(optimistic);
+          updateLoadMoreState(optimistic.length);
         }
       } catch (e) {
         optimistic.push({ role: 'system', content: 'Error: ' + String(e), ts: Date.now() });
         state.chatLastCount = optimistic.length;
         renderChatMessages(optimistic);
+        updateLoadMoreState(optimistic.length);
       } finally {
         dom.btnSendChat.disabled = false;
         dom.chatInput.focus();
@@ -966,6 +1063,28 @@
       dom.btnCloseChatModal.addEventListener('click', closeChatModal);
       dom.chatModal.addEventListener('click', e => { if (e.target === dom.chatModal) closeChatModal(); });
       dom.btnSendChat.addEventListener('click', sendChatMessage);
+      dom.btnLoadMoreChat.addEventListener('click', async () => {
+        if (!state.chatSessionKey) return;
+        const previousCount = state.chatMessages.length;
+        state.chatHistoryLimit += 200;
+        dom.btnLoadMoreChat.disabled = true;
+        dom.btnLoadMoreChat.textContent = 'Loading…';
+        try {
+          const msgs = await loadSessionHistory(state.chatSessionKey, state.chatSessionId, state.chatHistoryLimit);
+          state.chatLastCount = msgs.length;
+          renderChatMessages(msgs);
+          updateLoadMoreState(msgs.length);
+          if (msgs.length <= previousCount) {
+            setStatusMessage('No older messages available for this session.', false);
+          } else {
+            setStatusMessage('');
+          }
+        } catch (e) {
+          state.chatHistoryLimit = Math.max(200, state.chatHistoryLimit - 200);
+          updateLoadMoreState(state.chatMessages.length);
+          setStatusMessage('Load older history failed: ' + String(e), true);
+        }
+      });
       dom.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); } });
       dom.configForm.addEventListener('submit', e => { e.preventDefault(); saveConfig(); });
     }
