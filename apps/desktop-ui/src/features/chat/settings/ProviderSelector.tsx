@@ -1,5 +1,6 @@
 import type { ProviderCatalog } from "@/types/agent-settings";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface ProviderSelectorProps {
   providers: ProviderCatalog[];
@@ -8,9 +9,10 @@ interface ProviderSelectorProps {
 }
 
 export function ProviderSelector({ providers, value, onChange }: ProviderSelectorProps) {
+  const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1 text-sm text-text-secondary">
-      ACP Runtime
+      {t("chatSettings.provider")}
       <div className="relative">
         <select
           value={value}

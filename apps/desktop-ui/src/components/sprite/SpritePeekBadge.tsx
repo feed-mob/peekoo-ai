@@ -10,6 +10,8 @@ import {
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 import { cn } from "@/lib/utils";
 import type { PeekBadgeItem } from "@/types/peek-badge";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 
 const BADGE_WIDTH = 188;
 const POMODORO_BADGE_WIDTH = 125;
@@ -36,7 +38,9 @@ interface BadgeRowProps {
 }
 
 function BadgeRow({ item, compact }: BadgeRowProps) {
+  const { t } = useTranslation();
   const rowHeight = compact ? PEEK_BADGE_ROW_HEIGHT : PEEK_BADGE_HEIGHT;
+  const displayLabel = displayBadgeLabel(item, t);
 
   if (!compact) {
     return (
@@ -47,7 +51,7 @@ function BadgeRow({ item, compact }: BadgeRowProps) {
         <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
           <BadgeIcon name={item.icon} className="shrink-0 text-glow-cyan/70" />
           <span className="truncate whitespace-nowrap text-[11px] font-medium leading-none text-text-primary/90">
-            {item.label}
+            {displayLabel}
           </span>
         </div>
         <span className="truncate pl-[18px] text-[11px] leading-none tabular-nums text-glow-cyan/80">
@@ -68,7 +72,7 @@ function BadgeRow({ item, compact }: BadgeRowProps) {
       <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
         <BadgeIcon name={item.icon} className="shrink-0 text-glow-cyan/70" />
         <span className="truncate whitespace-nowrap text-[11px] font-medium leading-none text-text-primary/90">
-          {item.label}
+          {displayLabel}
         </span>
       </div>
       <span className="truncate text-right text-[11px] leading-none tabular-nums text-glow-cyan/80">
@@ -91,7 +95,7 @@ interface StyledBadgeProps {
 function StyledBadge({ item }: StyledBadgeProps) {
   const isDark = useIsDarkMode();
   const isPomodoro = item.icon === "brain" || item.icon === "coffee";
-  const isPaused = item.label.includes("(Paused)");
+  const isPaused = isPomodoro && item.countdown_secs === undefined;
   
   const lightGray = "#3D3D3D";
   const darkWhite = "rgba(255, 255, 255, 0.9)";
@@ -249,6 +253,17 @@ function StyledBadge({ item }: StyledBadgeProps) {
       </div>
     </motion.div>
   );
+}
+
+function displayBadgeLabel(item: PeekBadgeItem, t: TFunction): string {
+  const isPomodoro = item.icon === "brain" || item.icon === "coffee";
+  if (!isPomodoro) return item.label;
+
+  const isPaused = item.countdown_secs === undefined;
+  if (item.icon === "brain") {
+    return isPaused ? t("badge.pomodoro.focusPaused") : t("badge.pomodoro.focus");
+  }
+  return isPaused ? t("badge.pomodoro.breakPaused") : t("badge.pomodoro.break");
 }
 
 

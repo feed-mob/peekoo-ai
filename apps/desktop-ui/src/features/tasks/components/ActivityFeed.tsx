@@ -2,13 +2,17 @@ import { useMemo } from "react";
 import type { TaskEvent } from "@/types/task";
 import { ActivityFeedItem } from "./ActivityFeedItem";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { useTranslation } from "react-i18next";
 
 interface ActivityFeedProps {
   events: TaskEvent[];
   isLoading?: boolean;
 }
 
-function groupByDay(events: TaskEvent[]): { label: string; events: TaskEvent[] }[] {
+function groupByDay(
+  events: TaskEvent[],
+  labels: { today: string; yesterday: string },
+): { label: string; events: TaskEvent[] }[] {
   const today = new Date().toISOString().slice(0, 10);
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
 
@@ -24,8 +28,8 @@ function groupByDay(events: TaskEvent[]): { label: string; events: TaskEvent[] }
 
   for (const day of sortedDays) {
     let label = day;
-    if (day === today) label = "Today";
-    else if (day === yesterday) label = "Yesterday";
+    if (day === today) label = labels.today;
+    else if (day === yesterday) label = labels.yesterday;
     result.push({ label, events: groups[day] });
   }
 
@@ -33,7 +37,15 @@ function groupByDay(events: TaskEvent[]): { label: string; events: TaskEvent[] }
 }
 
 export function ActivityFeed({ events, isLoading = false }: ActivityFeedProps) {
-  const grouped = useMemo(() => groupByDay(events), [events]);
+  const { t } = useTranslation();
+  const grouped = useMemo(
+    () =>
+      groupByDay(events, {
+        today: t("tasks.tabs.today"),
+        yesterday: t("tasks.activity.yesterday"),
+      }),
+    [events, t],
+  );
 
   if (isLoading) {
     return (
@@ -46,9 +58,9 @@ export function ActivityFeed({ events, isLoading = false }: ActivityFeedProps) {
   if (events.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p className="text-sm text-text-muted">No activity yet</p>
+        <p className="text-sm text-text-muted">{t("tasks.activity.noActivity")}</p>
         <p className="text-xs text-text-muted/60 mt-1">
-          Task events will appear here
+          {t("tasks.activity.eventsAppearHere")}
         </p>
       </div>
     );

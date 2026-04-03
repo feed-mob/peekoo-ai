@@ -1,0 +1,103 @@
+{
+  "plugin": {
+    "name": "OpenClaw 会话",
+    "description": "管理 OpenClaw 会话，支持连接配置与会话列表查看"
+  },
+  "panels": {
+    "panel-openclaw-sessions": {
+      "title": "OpenClaw 会话"
+    }
+  },
+  "config": {
+    "fields": {
+      "default_page_size": {
+        "label": "默认每页数量",
+        "description": "每页显示的会话数量",
+        "options": {
+          "5": "5",
+          "10": "10",
+          "20": "20"
+        }
+      }
+    }
+  },
+  "ui": {
+    "status": {
+      "connected": "已连接",
+      "disconnected": "未连接"
+    },
+    "actions": {
+      "refreshSessions": "刷新会话",
+      "connectionSettings": "连接设置",
+      "viewChat": "查看聊天",
+      "send": "发送",
+      "cancel": "取消",
+      "saveConfiguration": "保存配置",
+      "saving": "保存中..."
+    },
+    "search": {
+      "placeholder": "搜索会话..."
+    },
+    "table": {
+      "kind": "类型",
+      "key": "Key",
+      "age": "时间",
+      "model": "模型",
+      "tokens": "Token（上下文占比）",
+      "session": "会话",
+      "noSessionsFound": "未找到会话"
+    },
+    "pagination": {
+      "showing": "显示 {{start}}-{{end}} / 共 {{total}} 条",
+      "pageOf": "第 {{page}} / {{pages}} 页",
+      "first": "首页",
+      "prev": "上一页",
+      "next": "下一页",
+      "last": "末页"
+    },
+    "chat": {
+      "title": "OpenClaw 会话聊天",
+      "close": "关闭",
+      "inputPlaceholder": "输入消息后按 Enter 发送",
+      "empty": "该会话暂无消息。",
+      "loading": "加载中...",
+      "you": "你",
+      "assistant": "助手",
+      "typing": "正在输入..."
+    },
+    "configModal": {
+      "title": "连接设置",
+      "websocketUrl": "WebSocket 地址",
+      "websocketHint": "OpenClaw 服务的 WebSocket 地址",
+      "authentication": "认证",
+      "token": "Token",
+      "tokenPlaceholder": "输入 API Token",
+      "password": "密码",
+      "passwordPlaceholder": "输入密码",
+      "tokenOrPasswordHint": "Token 和密码至少填写一项"
+    },
+    "messages": {
+      "tauriUnavailable": "Tauri IPC 不可用",
+      "wsRequired": "WebSocket 地址不能为空。",
+      "tokenOrPasswordRequired": "请至少提供 Token 或密码。",
+      "configurationSaved": "配置已保存。",
+      "failedToSave": "保存失败：{{error}}",
+      "noConfigurationFound": "未找到配置，请先完成连接设置。",
+      "cannotConnect": "无法连接 OpenClaw 服务，请确认服务是否已启动。",
+      "authFailed": "认证失败，请检查 Token 或密码。",
+      "connectionTimedOut": "连接超时。",
+      "errorPrefix": "错误：{{error}}"
+    },
+    "time": {
+      "justNow": "刚刚",
+      "minutesAgo": "{{count}} 分钟前",
+      "hoursAgo": "{{count}} 小时前",
+      "daysAgo": "{{count}} 天前"
+    },
+    "kind": {
+      "direct": "直连",
+      "proxy": "代理",
+      "unknown": "未知"
+    }
+  }
+}

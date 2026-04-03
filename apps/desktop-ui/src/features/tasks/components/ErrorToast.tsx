@@ -1,5 +1,6 @@
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 import type { Toast } from "../hooks/use-toast";
+import { useTranslation } from "react-i18next";
 
 interface NotificationToastProps {
   toasts: Toast[];
@@ -19,6 +20,7 @@ const styles = {
 };
 
 export function NotificationToast({ toasts, onRemove }: NotificationToastProps) {
+  const { t } = useTranslation();
   if (toasts.length === 0) return null;
 
   return (
@@ -36,7 +38,7 @@ export function NotificationToast({ toasts, onRemove }: NotificationToastProps) 
             <button
               onClick={() => onRemove(toast.id)}
               className="p-1 rounded hover:bg-black/20 transition-colors"
-              aria-label="Dismiss"
+              aria-label={t("common.dismiss")}
             >
               <X size={14} />
             </button>

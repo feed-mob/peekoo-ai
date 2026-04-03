@@ -1,5 +1,6 @@
 import { AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTranslation } from "react-i18next";
 
 interface DeleteConfirmDialogProps {
   isOpen: boolean;
@@ -16,6 +17,7 @@ export function DeleteConfirmDialog({
   onCancel,
   isDeleting = false,
 }: DeleteConfirmDialogProps) {
+  const { t } = useTranslation();
   return (
     <AnimatePresence>
       {isOpen && (
@@ -43,11 +45,10 @@ export function DeleteConfirmDialog({
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-text-primary">
-                    Delete Task?
+                    {t("tasks.deleteDialog.title")}
                   </h3>
                   <p className="text-xs text-text-muted mt-1">
-                    Are you sure you want to delete "{taskTitle}"? This action
-                    cannot be undone.
+                    {t("tasks.deleteDialog.message", { title: taskTitle })}
                   </p>
                 </div>
               </div>
@@ -58,14 +59,14 @@ export function DeleteConfirmDialog({
                   disabled={isDeleting}
                   className="px-4 py-2 text-xs font-medium text-text-muted hover:text-text-primary transition-colors rounded-lg hover:bg-space-deep"
                 >
-                  Cancel
+                  {t("common.cancel")}
                 </button>
                 <button
                   onClick={onConfirm}
                   disabled={isDeleting}
                   className="px-4 py-2 text-xs font-medium text-white bg-red-500 rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isDeleting ? "Deleting..." : "Delete"}
+                  {isDeleting ? t("tasks.deleteDialog.deleting") : t("common.delete")}
                 </button>
               </div>
             </div>

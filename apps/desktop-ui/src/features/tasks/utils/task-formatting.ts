@@ -1,53 +1,49 @@
 import type { TaskStatus } from "@/types/task";
+import type { TFunction } from "i18next";
+import i18next from "i18next";
 import {
   parseISODate,
   isToday,
   isTomorrow,
 } from "./date-helpers";
 
-/**
- * Priority configuration with colors and labels
- */
 export const PRIORITY_CONFIG = {
-  high: { color: "#E9762B", label: "High", dotColor: "#E5484D" },
-  medium: { color: "#F5C842", label: "Medium", dotColor: "#F5C842" },
-  low: { color: "#7B9AC7", label: "Low", dotColor: "#30A46C" },
+  high: { color: "#E9762B", labelKey: "tasks.priority.high", dotColor: "#E5484D" },
+  medium: { color: "#F5C842", labelKey: "tasks.priority.medium", dotColor: "#F5C842" },
+  low: { color: "#7B9AC7", labelKey: "tasks.priority.low", dotColor: "#30A46C" },
 } as const;
 
-/**
- * Status configuration with colors, labels, and next status for cycling
- */
 export const STATUS_CONFIG: Record<
   TaskStatus,
-  { color: string; label: string; next: TaskStatus }
+  { color: string; labelKey: string; next: TaskStatus }
 > = {
-  todo: { color: "#7B9AC7", label: "Todo", next: "in_progress" },
-  in_progress: { color: "#F5C842", label: "In Progress", next: "done" },
-  done: { color: "#30A46C", label: "Done", next: "todo" },
+  todo: { color: "#7B9AC7", labelKey: "tasks.status.todo", next: "in_progress" },
+  in_progress: { color: "#F5C842", labelKey: "tasks.status.in_progress", next: "done" },
+  done: { color: "#30A46C", labelKey: "tasks.status.done", next: "todo" },
 };
 
-export const TASK_STATUS_OPTIONS: { value: TaskStatus; label: string }[] = [
-  { value: "todo", label: STATUS_CONFIG.todo.label },
-  { value: "in_progress", label: STATUS_CONFIG.in_progress.label },
-  { value: "done", label: STATUS_CONFIG.done.label },
-];
+export function getTaskStatusOptions(t: TFunction): { value: TaskStatus; label: string }[] {
+  return [
+    { value: "todo", label: t(STATUS_CONFIG.todo.labelKey) },
+    { value: "in_progress", label: t(STATUS_CONFIG.in_progress.labelKey) },
+    { value: "done", label: t(STATUS_CONFIG.done.labelKey) },
+  ];
+}
 
-/**
- * Recurrence rule options for dropdown
- */
 export const RECURRENCE_OPTIONS = [
-  { value: "__none__", label: "Does not repeat" },
-  { value: "FREQ=DAILY", label: "Daily" },
-  { value: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", label: "Every weekday" },
-  { value: "FREQ=WEEKLY;BYDAY=MO,WE,FR", label: "Mon / Wed / Fri" },
-  { value: "FREQ=WEEKLY;BYDAY=TU,TH", label: "Tue / Thu" },
-  { value: "FREQ=WEEKLY", label: "Weekly" },
-  { value: "FREQ=MONTHLY", label: "Monthly" },
+  { value: "__none__", labelKey: "tasks.detail.doesNotRepeat" },
+  { value: "FREQ=DAILY", labelKey: "tasks.recurrence.daily" },
+  { value: "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", labelKey: "tasks.recurrence.weekdays" },
+  { value: "FREQ=WEEKLY;BYDAY=MO,WE,FR", labelKey: "tasks.recurrence.monWedFri" },
+  { value: "FREQ=WEEKLY;BYDAY=TU,TH", labelKey: "tasks.recurrence.tueThu" },
+  { value: "FREQ=WEEKLY", labelKey: "tasks.recurrence.weekly" },
+  { value: "FREQ=MONTHLY", labelKey: "tasks.recurrence.monthly" },
 ];
 
-/**
- * Time options for recurring task time picker
- */
+export function getRecurrenceOptions(t: TFunction): { value: string; label: string }[] {
+  return RECURRENCE_OPTIONS.map(opt => ({ value: opt.value, label: t(opt.labelKey) }));
+}
+
 export const TIME_OPTIONS = [
   "06:00", "06:30", "07:00", "07:30", "08:00", "08:30",
   "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
@@ -57,84 +53,72 @@ export const TIME_OPTIONS = [
   "21:00", "21:30", "22:00",
 ];
 
-/**
- * Format recurrence time (e.g., "9:00" or "9:30")
- */
 function formatRecurrenceTime(time: string): string {
   const [h, m] = time.split(":").map(Number);
   if (m === 0) return `${h}:00`;
   return `${h}:${String(m).padStart(2, "0")}`;
 }
 
-/**
- * Format recurrence display (e.g., "9:00 daily", "9:00 Mon/Wed/Fri")
- */
 export function formatRecurrenceDisplay(
   rule: string,
-  timeOfDay: string | null
+  timeOfDay: string | null,
+  t: TFunction
 ): string {
   const time = timeOfDay ? formatRecurrenceTime(timeOfDay) : "—";
 
   switch (rule) {
     case "FREQ=DAILY":
-      return `${time} daily`;
+      return `${time} ${t("tasks.recurrence.daily").toLowerCase()}`;
     case "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR":
-      return `${time} weekdays`;
+      return `${time} ${t("tasks.recurrence.weekdays").toLowerCase()}`;
     case "FREQ=WEEKLY;BYDAY=MO,WE,FR":
-      return `${time} Mon/Wed/Fri`;
+      return `${time} ${t("tasks.recurrence.monWedFri").toLowerCase()}`;
     case "FREQ=WEEKLY;BYDAY=TU,TH":
-      return `${time} Tue/Thu`;
+      return `${time} ${t("tasks.recurrence.tueThu").toLowerCase()}`;
     case "FREQ=WEEKLY":
-      return `${time} weekly`;
+      return `${time} ${t("tasks.recurrence.weekly").toLowerCase()}`;
     case "FREQ=MONTHLY":
-      return `${time} monthly`;
+      return `${time} ${t("tasks.recurrence.monthly").toLowerCase()}`;
     default:
       return `${time} ${rule}`;
   }
 }
 
-/**
- * Format time range for display in task list
- * Handles both scheduled tasks and recurring tasks
- */
 export function formatTimeRange(
   start: string | null,
   end: string | null,
   recurrenceRule: string | null,
-  recurrenceTimeOfDay: string | null
+  recurrenceTimeOfDay: string | null,
+  t: TFunction
 ): string | null {
-  // Recurring tasks: show recurrence pattern
   if (recurrenceRule && recurrenceTimeOfDay) {
-    return formatRecurrenceDisplay(recurrenceRule, recurrenceTimeOfDay);
+    return formatRecurrenceDisplay(recurrenceRule, recurrenceTimeOfDay, t);
   }
 
-  // No schedule
   if (!start && !end) return null;
 
-  // Format helpers
+  const locale = i18next.language || "en";
+
   const fmtTime = (d: Date) =>
-    d.toLocaleTimeString("en-US", {
+    d.toLocaleTimeString(locale, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     });
 
   const dayLabel = (d: Date): string => {
-    if (isToday(d)) return "Today";
-    if (isTomorrow(d)) return "Tomorrow";
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    if (isToday(d)) return t("tasks.formatting.today");
+    if (isTomorrow(d)) return t("tasks.formatting.tomorrow");
+    return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
   };
 
-  // Only end time
   if (!start && end) {
     const endDate = parseISODate(end)!;
     return `${dayLabel(endDate)} ${fmtTime(endDate)}`;
   }
 
-  // Has start time
   const startDate = parseISODate(start)!;
 
-  // Start and end
   if (end) {
     const endDate = parseISODate(end)!;
     const startDayStr = dayLabel(startDate);
@@ -146,24 +130,17 @@ export function formatTimeRange(
     return `${startDayStr} ${fmtTime(startDate)} → ${endDayStr} ${fmtTime(endDate)}`;
   }
 
-  // Only start time
   return `${dayLabel(startDate)} ${fmtTime(startDate)}`;
 }
 
-/**
- * Format duration in minutes to human readable string
- */
-export function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
+export function formatDuration(minutes: number, t: TFunction): string {
+  if (minutes < 60) return `${minutes}${t("tasks.formatting.minutesShort")}`;
   const hours = Math.floor(minutes / 60);
   const mins = minutes % 60;
-  if (mins === 0) return `${hours}h`;
-  return `${hours}h ${mins}m`;
+  if (mins === 0) return `${hours}${t("tasks.formatting.hoursShort")}`;
+  return `${hours}${t("tasks.formatting.hoursShort")} ${mins}${t("tasks.formatting.minutesShort")}`;
 }
 
-/**
- * Get label color for custom labels (hash-based)
- */
 export function getLabelColor(label: string): string {
   let hash = 0;
   for (let i = 0; i < label.length; i++) {

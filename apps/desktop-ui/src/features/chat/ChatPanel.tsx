@@ -10,9 +10,11 @@ import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { ChatMessage } from "./ChatMessage";
 import { ChatSettingsPanel } from "./settings/ChatSettingsPanel";
 import { useChatSession } from "./chat-session";
+import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 export function ChatPanel() {
+  const { t } = useTranslation();
   const [input, setInput] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [currentModelDisplay, setCurrentModelDisplay] = useState<string | null>(null);
@@ -136,7 +138,7 @@ export function ChatPanel() {
             onClick={() => void handleNewChat()}
           >
             <MessageSquarePlus size={14} />
-            New Chat
+            {t("chat.newChat")}
           </Button>
           <Button
             type="button"
@@ -145,7 +147,7 @@ export function ChatPanel() {
             onClick={() => setShowSettings((prev) => !prev)}
           >
             <Settings2 size={14} />
-            {showSettings ? "Hide Settings" : "Settings"}
+            {showSettings ? t("chat.hideSettings") : t("chat.settings")}
           </Button>
           </div>
         </div>
@@ -153,8 +155,6 @@ export function ChatPanel() {
         {showSettings && (
           <ChatSettingsPanel
             onClose={() => setShowSettings(false)}
-            activeRuntimeName={defaultProvider?.displayName ?? null}
-            configuredModelId={defaultProvider?.config.defaultModel ?? null}
           />
         )}
       </div>
@@ -162,7 +162,7 @@ export function ChatPanel() {
       <ScrollArea className="mb-4 min-h-0 flex-1">
         {messages.length === 0 ? (
           <div className="text-center text-text-muted py-8 italic">
-            Start chatting with your Peekoo pet!
+            {t("chat.empty")}
           </div>
         ) : (
           <div className="space-y-3 pr-4">
@@ -175,7 +175,7 @@ export function ChatPanel() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex items-start gap-2"
               >
-                <span className="text-text-muted text-sm">Thinking...</span>
+                <span className="text-text-muted text-sm">{t("chat.thinking")}</span>
               </motion.div>
             )}
           </div>
@@ -188,7 +188,7 @@ export function ChatPanel() {
         <div className="mb-2 flex items-center gap-2 rounded-md border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm dark:border-yellow-500/40">
           <Lock className="h-4 w-4 shrink-0 text-yellow-700 dark:text-yellow-400" />
           <span className="flex-1 text-yellow-800 dark:text-yellow-200">
-            {authRequiredProvider?.displayName ?? authRequired.runtimeId} needs login before it can respond.
+            {authRequiredProvider?.displayName ?? authRequired.runtimeId} {t("chat.authBanner.message")}
           </span>
           <Button
             size="sm"
@@ -196,14 +196,14 @@ export function ChatPanel() {
             className="h-7 border-yellow-500/30 px-2 text-xs text-yellow-700 hover:bg-yellow-500/10 dark:border-yellow-500/50 dark:text-yellow-400 dark:hover:bg-yellow-500/10"
             onClick={() => setShowLoginDialog(true)}
           >
-            Login
+            {t("chat.authBanner.loginButton")}
           </Button>
           <Button
             size="sm"
             variant="ghost"
             className="h-7 px-2 text-xs text-text-muted hover:text-text-primary"
             onClick={() => clearAuthRequired()}
-            title="Retry"
+            title={t("common.retry")}
           >
             <RefreshCw className="h-3 w-3" />
           </Button>
@@ -215,7 +215,7 @@ export function ChatPanel() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Type a message..."
+          placeholder={t("chat.inputPlaceholder")}
           disabled={isTyping}
           className="flex-1 bg-space-deep border-glass-border text-text-primary placeholder:text-text-muted"
         />

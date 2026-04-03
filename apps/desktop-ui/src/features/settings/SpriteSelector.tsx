@@ -4,6 +4,7 @@ import SpriteAnimation from "@/components/sprite/SpriteAnimation";
 import type { SpriteInfo } from "@/types/global-settings";
 import type { SpriteManifest } from "@/types/sprite";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "react-i18next";
 
 interface SpriteSelectorProps {
   sprites: SpriteInfo[];
@@ -12,6 +13,7 @@ interface SpriteSelectorProps {
 }
 
 function SpritePreview({ spriteId }: { spriteId: string }) {
+  const { t } = useTranslation();
   const [manifest, setManifest] = useState<SpriteManifest | null>(null);
 
   useEffect(() => {
@@ -22,7 +24,11 @@ function SpritePreview({ spriteId }: { spriteId: string }) {
   }, [spriteId]);
 
   if (!manifest) {
-    return <div className="w-full h-24 flex items-center justify-center text-text-muted text-xs">Loading...</div>;
+    return (
+      <div className="w-full h-24 flex items-center justify-center text-text-muted text-xs">
+        {t("settings.sprite.loadingPreview")}
+      </div>
+    );
   }
 
   return (
@@ -42,9 +48,23 @@ function SpritePreview({ spriteId }: { spriteId: string }) {
 }
 
 export function SpriteSelector({ sprites, activeSpriteId, onSelect }: SpriteSelectorProps) {
+  const { t } = useTranslation();
+
+  const resolveSpriteName = (sprite: SpriteInfo): string => {
+    const key = `settings.spriteMeta.${sprite.id}.name`;
+    const localized = t(key);
+    return localized === key ? sprite.name : localized;
+  };
+
+  const resolveSpriteDescription = (sprite: SpriteInfo): string => {
+    const key = `settings.spriteMeta.${sprite.id}.description`;
+    const localized = t(key);
+    return localized === key ? sprite.description : localized;
+  };
+
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-text-primary">Pet Sprite</h3>
+      <h3 className="text-sm font-semibold text-text-primary">{t("settings.sprite.title")}</h3>
       <div className="grid grid-cols-2 gap-3">
         {sprites.map((sprite) => {
           const isActive = sprite.id === activeSpriteId;
@@ -66,8 +86,10 @@ export function SpriteSelector({ sprites, activeSpriteId, onSelect }: SpriteSele
               )}
               <SpritePreview spriteId={sprite.id} />
               <div className="text-center">
-                <p className="text-xs font-medium text-text-primary">{sprite.name}</p>
-                <p className="text-[10px] text-text-muted leading-tight mt-0.5">{sprite.description}</p>
+                <p className="text-xs font-medium text-text-primary">{resolveSpriteName(sprite)}</p>
+                <p className="text-[10px] text-text-muted leading-tight mt-0.5">
+                  {resolveSpriteDescription(sprite)}
+                </p>
               </div>
             </button>
           );

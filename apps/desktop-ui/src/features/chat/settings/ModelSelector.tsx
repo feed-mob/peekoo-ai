@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface ModelSelectorProps {
   models: string[];
@@ -7,9 +8,10 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ models, value, onChange }: ModelSelectorProps) {
+  const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1 text-sm text-text-secondary">
-      Model
+      {t("chatSettings.model")}
       <div className="relative">
         <select
           value={value}

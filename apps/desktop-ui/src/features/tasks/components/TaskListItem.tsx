@@ -8,6 +8,7 @@ import { getAgentWorkStatusBadge } from "../utils/task-agent-work";
 import { shouldShowAgentExecutingIndicator } from "../utils/task-agent-work-display";
 import { getDoneTaskVisualStyle } from "../utils/task-visuals";
 import { LoadingSpinner } from "./LoadingSpinner";
+import { useTranslation } from "react-i18next";
 
 interface TaskListItemProps {
   task: Task;
@@ -32,20 +33,21 @@ export function TaskListItem({
   isUpdating = false,
   isDeleting = false,
 }: TaskListItemProps) {
+  const { t } = useTranslation();
   const priority = PRIORITY_CONFIG[task.priority];
   const status = STATUS_CONFIG[task.status];
   const isDone = task.status === "done";
 
-  // FIXED: Now passing all 4 arguments correctly
   const timeLabel = formatTimeRange(
     task.scheduled_start_at,
     task.scheduled_end_at,
     task.recurrence_rule,
-    task.recurrence_time_of_day
+    task.recurrence_time_of_day,
+    t
   );
 
   const overdue = isOverdue(task.scheduled_start_at, task.status);
-  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
+  const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status, t);
   const showExecutingIndicator = shouldShowAgentExecutingIndicator(task);
   const doneTaskVisualStyle = getDoneTaskVisualStyle(isDone, isTodayTab);
 
@@ -79,7 +81,9 @@ export function TaskListItem({
           <div
             className="w-2 h-2 rounded-full shrink-0"
             style={{ backgroundColor: priority.dotColor }}
-            title={`${priority.label} priority`}
+            title={t("tasks.priorityTitle", {
+              priority: t(`tasks.priority.${task.priority}`),
+            })}
           />
           {isToggling ? (
             <LoadingSpinner size="sm" />
@@ -108,10 +112,10 @@ export function TaskListItem({
             {showExecutingIndicator && (
               <span
                 className="inline-flex items-center gap-1 rounded-full border border-blue-400/30 bg-blue-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-blue-300"
-                title="Agent is currently working on this task"
+                title={t("tasks.agentWorking")}
               >
                 <span className="h-1.5 w-1.5 rounded-full bg-blue-400 animate-pulse" />
-                Live
+                {t("tasks.live")}
               </span>
             )}
 
@@ -153,7 +157,7 @@ export function TaskListItem({
                   color: agentWorkBadge.color,
                   border: `1px solid ${agentWorkBadge.color}40`,
                 }}
-                title={`Agent work status: ${agentWorkBadge.label}`}
+                title={t("tasks.agentWorkStatus", { status: agentWorkBadge.label })}
               >
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${agentWorkBadge.animated ? "animate-pulse" : ""}`}
@@ -179,9 +183,9 @@ export function TaskListItem({
             color: status.color,
             border: `1px solid ${status.color}30`,
           }}
-          title={`Click to move to ${STATUS_CONFIG[status.next].label}`}
+          title={t("tasks.clickToMoveTo", { status: t(`tasks.status.${status.next}`) })}
         >
-          {status.label}
+          {t(`tasks.status.${task.status}`)}
         </button>
 
         {/* Delete */}
@@ -191,8 +195,8 @@ export function TaskListItem({
             onDelete();
           }}
           disabled={isDeleting}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-text-muted hover:text-accent-orange hover:bg-accent-orange/10 transition-all shrink-0 disabled:opacity-50"
-          aria-label="Delete task"
+          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-text-muted hover:text-color-danger hover:bg-color-danger/10 transition-all shrink-0 disabled:opacity-50"
+          aria-label={t("common.delete")}
         >
           {isDeleting ? (
             <LoadingSpinner size="sm" />

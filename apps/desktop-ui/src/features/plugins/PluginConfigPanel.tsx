@@ -8,6 +8,7 @@ import {
   type PluginConfigField,
   pluginConfigFieldSchema,
 } from "@/types/plugin";
+import { useTranslation } from "react-i18next";
 
 type ConfigValues = Record<string, unknown>;
 
@@ -16,6 +17,7 @@ interface PluginConfigPanelProps {
 }
 
 export function PluginConfigPanel({ pluginKey }: PluginConfigPanelProps) {
+  const { t } = useTranslation();
   const [fields, setFields] = useState<PluginConfigField[]>([]);
   const [values, setValues] = useState<ConfigValues>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -104,7 +106,7 @@ export function PluginConfigPanel({ pluginKey }: PluginConfigPanelProps) {
   };
 
   if (isLoading) {
-    return <div className="text-xs text-text-muted">Loading plugin settings...</div>;
+    return <div className="text-xs text-text-muted">{t("plugins.loadingRuntimeSettings")}</div>;
   }
 
   if (!hasFields && !error) {
@@ -116,15 +118,15 @@ export function PluginConfigPanel({ pluginKey }: PluginConfigPanelProps) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-text-muted">
-            <SlidersHorizontal size={12} /> Runtime settings
+            <SlidersHorizontal size={12} /> {t("plugins.runtimeSettings")}
           </p>
           <p className="mt-1 text-sm text-text-secondary">
-            Configure reminder timing and global quiet hours.
+            {t("plugins.runtimeSettingsHint")}
           </p>
         </div>
         <Button size="sm" variant="outline" onClick={toggleDnd}>
           <MoonStar size={14} />
-          {isDnd ? "DND on" : "DND off"}
+          {isDnd ? t("plugins.dndOn") : t("plugins.dndOff")}
         </Button>
       </div>
 
@@ -183,7 +185,7 @@ export function PluginConfigPanel({ pluginKey }: PluginConfigPanelProps) {
       {hasFields ? (
         <div className="flex justify-end">
           <Button size="sm" onClick={() => void save()} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save settings"}
+            {isSaving ? t("common.saving") : t("plugins.saveSettings")}
           </Button>
         </div>
       ) : null}

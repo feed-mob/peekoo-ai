@@ -1,0 +1,507 @@
+{
+  "common": {
+    "retry": "再試行",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "clear": "クリア",
+    "delete": "削除",
+    "dismiss": "閉じる",
+    "back": "戻る",
+    "refresh": "更新",
+    "saving": "保存中...",
+    "save": "保存"
+  },
+  "panel": {
+    "chat": "チャット",
+    "tasks": "タスク",
+    "settings": "設定",
+    "pomodoro": "ポモドーロ",
+    "plugins": "プラグイン",
+    "about": "Peekoo について"
+  },
+  "menu": {
+    "chat": "チャット",
+    "tasks": "タスク",
+    "pomodoro": "ポモドーロ",
+    "plugins": "プラグイン"
+  },
+  "settings": {
+    "loading": "設定を読み込み中...",
+    "failedLoad": "設定の読み込みに失敗しました: {{error}}",
+    "appearance": "外観",
+    "activePet": "アクティブペット",
+    "language": "言語",
+    "theme": {
+      "light": "ライト",
+      "dark": "ダーク",
+      "system": "システム"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "繁体字中国語",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "ペットスプライト",
+      "loadingPreview": "読み込み中..."
+    },
+    "logging": "ログ",
+    "loggingHelp": "トラブルシューティング用のランタイムログの詳細度を設定します。変更を適用するには再起動が必要です。",
+    "acpRuntimes": "ACP ランタイム",
+    "logLevelRestartMsg": "ログレベルを更新しました。新しいログレベルを適用するためにPeekooを再起動しますか？",
+    "restartRequired": "再起動が必要です",
+    "restartNow": "今すぐ再起動",
+    "later": "後で"
+  },
+  "chat": {
+    "newChat": "新しいチャット",
+    "settings": "設定",
+    "hideSettings": "設定を隠す",
+    "empty": "Peekoo ペットとチャットを始めましょう！",
+    "thinking": "考え中...",
+    "inputPlaceholder": "メッセージを入力...",
+    "authBanner": {
+      "message": "応答するにはログインが必要です。",
+      "loginButton": "ログイン"
+    },
+    "thinkingBlock": "考え中...",
+    "toolCall": {
+      "running": "実行中",
+      "arguments": "引数"
+    }
+  },
+  "chatSettings": {
+    "loading": "設定を読み込み中...",
+    "failedLoad": "設定の読み込みに失敗しました。",
+    "title": "エージェント設定",
+    "provider": "プロバイダー",
+    "model": "モデル",
+    "modelPlaceholder": "例: gpt-4.1-mini",
+    "baseUrl": "ベースURL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "最大ツール反復回数",
+    "providerAuthentication": "プロバイダー認証",
+    "skills": "スキル",
+    "noSkills": "まだスキルが見つかりません。",
+    "noRuntimes": "ACP ランタイムがインストールされていません。",
+    "installRuntimeHelp": "設定パネルからランタイムをインストールして始めましょう。",
+    "runtimeNotFound": "選択したランタイムが見つかりません。",
+    "runtimeUnavailable": "以前選択したランタイムは利用できなくなりました。",
+    "modelLabel": "モデル",
+    "noModelConfigured": "グローバルモデルが設定されていません",
+    "modelHelp": "グローバルランタイム設定で変更してください。",
+    "skillsHelp": "Peekooは設定されたスキルフォルダーからスキルを自動的に検出します。",
+    "auth": {
+      "mode": "認証モード",
+      "none": "なし",
+      "oauthStatus": "OAuth ステータス",
+      "connected": "接続済み",
+      "notConnected": "未接続",
+      "updateApiKey": "APIキーを更新",
+      "enterApiKey": "APIキーを入力",
+      "saveApiKey": "APIキーを保存",
+      "apiKeySaved": "APIキーを保存しました",
+      "connectOauth": "OAuth接続",
+      "reconnectOauth": "OAuth再接続",
+      "finishedLogin": "ログイン完了",
+      "browserLoginHelp": "ブラウザでログインしました。OAuthを完了してから「ログイン完了」をクリックしてください。",
+      "connectedHelp": "OAuthは接続済みです。認証情報を更新する場合は「OAuth再接続」を使用してください。",
+      "connectHelp": "「OAuth接続」をクリックしてプロバイダーアカウントでログインします。",
+      "oauthFailed": "OAuth失敗: {{error}}",
+      "oauthExpired": "OAuthセッションが期限切れです。再度お試しください。",
+      "oauthConnected": "OAuth接続に成功しました。",
+      "clearAuth": "認証をクリア"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "Peekoo に聞く...",
+    "openFullChat": "フルチャットを開く",
+    "needAttention": "確認が必要",
+    "readingMode": "閲覧モード",
+    "quickReply": "クイック返信",
+    "welcomeMessage": "ようこそ！AI デスクトップスプライトがお手伝いします！"
+  },
+  "pomodoro": {
+    "loadingSystem": "システムを読み込み中...",
+    "status": {
+      "focusing": "集中中",
+      "resting": "休憩中",
+      "ready": "準備完了",
+      "break": "休憩"
+    },
+    "readyToStart": "開始しますか？",
+    "recentSessions": "最近のセッション",
+    "noSessions": "まだセッションはありません。最近の集中と休憩のサイクルがここに表示されます。",
+    "mode": {
+      "focus": "集中",
+      "break": "休憩"
+    },
+    "focusMemo": "集中メモ",
+    "actions": {
+      "saving": "保存中...",
+      "applied": "適用済み",
+      "saveChanges": "変更を保存",
+      "synced": "同期済み"
+    },
+    "controls": {
+      "pause": "一時停止",
+      "start": "開始",
+      "reset": "リセット",
+      "switchToBreak": "休憩へ切替",
+      "switchToWork": "集中へ切替"
+    },
+    "outcome": {
+      "completed": "完了",
+      "interrupted": "中断"
+    },
+    "dateFilter": {
+      "recent6": "最近6件",
+      "today": "今日",
+      "yesterday": "昨日",
+      "last7days": "過去7日間",
+      "last30days": "過去30日間"
+    },
+    "memo": {
+      "workPlaceholder": "何を達成しましたか？",
+      "breakPlaceholder": "休憩はいかがでしたか？"
+    },
+    "settings": {
+      "longBreak": "長い休憩",
+      "cycle": "サイクル",
+      "autopilot": "オートパイロット"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "集中",
+      "focusPaused": "集中（一時停止中）",
+      "break": "休憩",
+      "breakPaused": "休憩（一時停止中）"
+    }
+  },
+  "about": {
+    "loading": "情報を読み込み中...",
+    "failedLoad": "アプリ情報の読み込みに失敗しました",
+    "checking": "確認中...",
+    "tryAgain": "再試行",
+    "tagline": "デスクトップコンパニオンとペット",
+    "updateAvailable": "更新があります",
+    "upToDate": "最新です",
+    "current": "現在のバージョン",
+    "latest": "最新バージョン",
+    "published": "公開日",
+    "devUpdateDisabled": "開発ビルドでは更新チェックは無効です。",
+    "releaseNotes": "リリースノート",
+    "checkForUpdates": "更新を確認",
+    "installing": "インストール中...",
+    "installAndRestart": "インストールして再起動",
+    "openLogs": "ログを開く",
+    "unknownError": "不明なエラー"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "インストール済み",
+      "store": "ストア"
+    },
+    "panel": {
+      "defaultTitle": "プラグイン",
+      "failedLoad": "プラグインパネルの読み込みに失敗しました: {{error}}"
+    },
+    "loadingInstalled": "プラグインを読み込み中...",
+    "loadingStore": "プラグインストアを読み込み中...",
+    "loadingRuntimeSettings": "プラグイン設定を読み込み中...",
+    "system": "プラグイン システム",
+    "installedTitle": "インストール済みプラグイン",
+    "storeLabel": "プラグインストア",
+    "availableFromGithub": "GitHub で利用可能",
+    "emptyInstalled": "まだプラグインはインストールされていません。ストアタブからインストールできます。",
+    "emptyStore": "ストアに利用可能なプラグインがありません。",
+    "enabled": "有効",
+    "disabled": "無効",
+    "enable": "有効化",
+    "disable": "無効化",
+    "installed": "インストール済み",
+    "available": "利用可能",
+    "updateAvailable": "更新あり",
+    "update": "更新",
+    "install": "インストール",
+    "removePlugin": "プラグインを削除",
+    "permissions": "権限",
+    "tools": "ツール",
+    "panels": "パネル",
+    "location": "場所",
+    "openPanels": "パネルを開く",
+    "enableHint": "このプラグインを有効化すると、パネルを開いて機能を利用できます。",
+    "runtimeSettings": "ランタイム設定",
+    "runtimeSettingsHint": "リマインダーの間隔と全体の静音時間を設定します。",
+    "dndOn": "おやすみモード ON",
+    "dndOff": "おやすみモード OFF",
+    "saveSettings": "設定を保存",
+    "permissionLabels": {
+      "bridge:fs_read": "ブリッジ読み取り",
+      "notifications": "通知",
+      "pet:mood": "ペットの気分",
+      "scheduler": "スケジューラー",
+      "state:read": "状態読み取り",
+      "state:write": "状態書き込み"
+    }
+  },
+  "tasks": {
+    "title": "タスク",
+    "loading": "タスクを読み込み中...",
+    "doneCounter": "完了 {{completed}} / {{total}}",
+    "tabs": {
+      "today": "今日",
+      "week": "今週",
+      "all": "すべて",
+      "done": "完了"
+    },
+    "mainTab": {
+      "tasks": "タスク",
+      "activity": "アクティビティ"
+    },
+    "sections": {
+      "overdue": "期限超過",
+      "unscheduled": "未設定",
+      "completedToday": "本日完了"
+    },
+    "empty": {
+      "todayTitle": "今日のタスクはありません",
+      "todaySubtitle": "タスクを予定するか、新しいタスクを追加してください",
+      "weekTitle": "今週のタスクはありません",
+      "weekSubtitle": "来週に向けてタスクを予定しましょう",
+      "allTitle": "タスクがありません",
+      "allSubtitle": "タスクを作成して始めましょう",
+      "doneTitle": "完了タスクはまだありません",
+      "doneSubtitle": "タスクを完了するとここに表示されます"
+    },
+    "quickInput": {
+      "placeholder": "タスクを追加... 例: '明日15時に1時間の会議（高優先度）'",
+      "ariaDescription": "タスク説明",
+      "ariaAdd": "タスクを追加"
+    },
+    "activity": {
+      "yesterday": "昨日",
+      "noActivity": "アクティビティはまだありません",
+      "eventsAppearHere": "タスクイベントがここに表示されます",
+      "addCommentPlaceholder": "コメントを追加...",
+      "addComment": "コメントを追加",
+      "adding": "追加中...",
+      "you": "あなた",
+      "agent": "エージェント"
+    },
+    "deleteDialog": {
+      "title": "タスクを削除しますか？",
+      "message": "「{{title}}」を削除してもよろしいですか？この操作は元に戻せません。",
+      "deleting": "削除中..."
+    },
+    "priority": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "status": {
+      "todo": "未着手",
+      "in_progress": "進行中",
+      "done": "完了"
+    },
+    "priorityTitle": "{{priority}} 優先度",
+    "agentWorking": "エージェントがこのタスクを処理中です",
+    "live": "実行中",
+    "agentWorkStatus": "エージェント状態: {{status}}",
+    "clickToMoveTo": "クリックして {{status}} に移動",
+    "detail": {
+      "title": "タスク詳細",
+      "status": "状態",
+      "priority": "優先度",
+      "assignee": "担当者",
+      "agent": "エージェント",
+      "labels": "ラベル",
+      "schedule": "スケジュール",
+      "scheduled": "予定済み",
+      "repeat": "繰り返し",
+      "doesNotRepeat": "繰り返さない",
+      "time": "時間",
+      "start": "開始",
+      "end": "終了",
+      "durationOptional": "所要時間（任意）",
+      "durationPlaceholder": "例: 30",
+      "minutes": "分",
+      "description": "説明",
+      "descriptionPlaceholder": "メモ、詳細、サブタスク一覧を追加..."
+    },
+    "recurrence": {
+      "daily": "毎日",
+      "weekdays": "平日",
+      "monWedFri": "月 / 水 / 金",
+      "tueThu": "火 / 木",
+      "weekly": "毎週",
+      "monthly": "毎月"
+    },
+    "activityFeed": {
+      "created": "作成",
+      "createdFull": "\"{{title}}\" を作成",
+      "statusChanged": "ステータス",
+      "statusChangedFull": "{{from}} → {{to}}（\"{{title}}\"）",
+      "assigned": "割り当て",
+      "assignedFull": "\"{{title}}\" を {{to}} に割り当て",
+      "labeled": "ラベル",
+      "labeledFull": "\"{{title}}\" に \"{{label}}\" を追加",
+      "unlabeled": "ラベル",
+      "unlabeledFull": "\"{{title}}\" から \"{{label}}\" を削除",
+      "deleted": "削除",
+      "deletedFull": "\"{{title}}\" を削除",
+      "updated": "更新",
+      "updatedFull": "\"{{title}}\" を更新",
+      "comment": "コメント",
+      "commentFull": "コメントを追加",
+      "unknownTask": "不明なタスク",
+      "deleteComment": "コメントを削除"
+    },
+    "agentWork": {
+      "pending": "待機中",
+      "executing": "実行中",
+      "failed": "失敗",
+      "attempts_one": "{{count}} 回の試行",
+      "attempts_other": "{{count}} 回の試行"
+    },
+    "formatting": {
+      "today": "今日",
+      "tomorrow": "明日",
+      "minutesShort": "分",
+      "hoursShort": "時間"
+    },
+    "sync": {
+      "syncing": "同期中...",
+      "waiting": "同期を待機中",
+      "updatedJustNow": "たった今更新",
+      "updatedSecondsAgo": "{{seconds}}秒前に更新",
+      "updatedMinutesAgo": "{{minutes}}分前に更新"
+    },
+    "toast": {
+      "failedToLoad": "タスクの読み込みに失敗しました",
+      "created": "タスクを作成しました",
+      "failedToCreate": "タスクの作成に失敗しました",
+      "completed": "タスクを完了しました！",
+      "failedToUpdate": "タスクの更新に失敗しました",
+      "failedToSave": "変更の保存に失敗しました",
+      "deleted": "タスクを削除しました",
+      "failedToDelete": "タスクの削除に失敗しました"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "たった今",
+    "ago": "前",
+    "daysAgo": "日前"
+  },
+  "updater": {
+    "title": "更新があります",
+    "message": "Peekoo {{version}} が利用可能です。今すぐインストールして再起動しますか？",
+    "messageWithNotes": "Peekoo {{version}} が利用可能です。\n\n{{notes}}\n\n今すぐインストールして再起動しますか？",
+    "installButton": "インストールして再起動",
+    "later": "後で"
+  },
+  "agentRuntimes": {
+    "title": "ACP ランタイム",
+    "description": "ACP エージェントと LLM 設定を管理",
+    "refresh": "更新",
+    "addRuntime": "ランタイムを追加",
+    "activeRuntime": "アクティブランタイム",
+    "activeRuntimeDescription": "新しい会話で使用する ACP ランタイム",
+    "defaultModel": "デフォルトモデル",
+    "installedRuntimes": "インストール済みランタイム",
+    "noRuntimesInstalled": "まだランタイムはインストールされていません",
+    "availableRuntimes": "利用可能なランタイム",
+    "showingRuntimes": "{{count}} 件のランタイムを表示",
+    "searchPlaceholder": "エージェントを検索（例: Gemini, Cursor, Claude）...",
+    "noRuntimesFound": "ランタイムが見つかりません",
+    "loading": "読み込み中...",
+    "loadMore": "さらにエージェントを読み込む",
+    "default": "デフォルト",
+    "modelLabel": "モデル:",
+    "setDefault": "デフォルトに設定",
+    "login": "ログイン",
+    "configure": "設定",
+    "installing": "インストール中...",
+    "install": "インストール",
+    "installed": "インストール済み",
+    "unsupported": "非対応",
+    "noRuntime": "ランタイムなし",
+    "switchRuntime": "ランタイムを切替",
+    "noRuntimesInstalledOption": "ランタイムがインストールされていません",
+    "manageRuntimes": "ランタイムを管理...",
+    "status": {
+      "ready": "準備完了",
+      "needsSetup": "セットアップが必要",
+      "error": "エラー",
+      "loginRequired": "ログインが必要",
+      "loginAvailable": "ログイン可能",
+      "installing": "インストール中...",
+      "setupRequired": "セットアップが必要",
+      "notInstalled": "未インストール",
+      "discoveringCapabilities": "機能を検出中..."
+    },
+    "installDialog": {
+      "title": "{{name}} をインストール",
+      "description": "この ACP ランタイムのインストール方法を選択してください。",
+      "customPathRequired": "カスタムインストールのパスを入力してください",
+      "checkingPrerequisites": "前提条件を確認中...",
+      "missing": "不足:",
+      "allPrerequisitesSatisfied": "すべての前提条件を満たしました",
+      "notAvailable": "利用不可",
+      "binaryPathLabel": "エージェントバイナリのパス",
+      "binaryPathPlaceholder": "/path/to/agent_binary",
+      "cancel": "キャンセル"
+    },
+    "configureDialog": {
+      "title": "{{name}} を設定",
+      "description": "ランタイム設定と認証を管理します。",
+      "statusLabel": "ステータス",
+      "authSection": "認証",
+      "loginRequired": "ログインが必要",
+      "hideLoginOptions": "ログインオプションを隠す",
+      "loginAvailable": "ログイン可能",
+      "modelSection": "モデル",
+      "selectModel": "モデルを選択",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "デフォルトモデル",
+      "defaultModelPlaceholder": "例: claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "このランタイムは ACP モデル検出を使用しません。必要に応じてモデル ID を手動で入力してください。",
+      "manualModelPlaceholder": "例: gpt-4, claude-3-5-sonnet",
+      "noModelsDiscovered": "モデルが見つかりません。モデル ID を手動で入力するか、更新して検出してください。",
+      "discoverModels": "モデルを検出",
+      "testing": "テスト中...",
+      "testConnection": "接続をテスト",
+      "versionLabel": "バージョン:",
+      "advancedSettings": "詳細設定",
+      "envVarsLabel": "環境変数",
+      "envVarNamePlaceholder": "変数名",
+      "envVarValuePlaceholder": "値",
+      "addEnvVar": "追加",
+      "customArgsLabel": "カスタム引数",
+      "customArgsPlaceholder": "--flag または値",
+      "addArgument": "引数を追加",
+      "saving": "保存中..."
+    },
+    "addCustomDialog": {
+      "title": "カスタム ACP ランタイムを追加",
+      "description": "ローカルの ACP コマンドを登録し、LLM プロバイダーとモデルを設定します。",
+      "nameRequired": "名前とコマンドが必要です。",
+      "nameLabel": "ランタイム名",
+      "namePlaceholder": "マイカスタム ACP ランタイム",
+      "descriptionLabel": "説明",
+      "descriptionPlaceholder": "任意の説明",
+      "commandLabel": "コマンド",
+      "commandPlaceholder": "例: claude-code-acp",
+      "argsLabel": "引数",
+      "argsPlaceholder": "例: --acp --experimental-acp",
+      "workingDirLabel": "作業ディレクトリ",
+      "workingDirPlaceholder": "任意の作業ディレクトリ",
+      "cancel": "キャンセル",
+      "adding": "追加中..."
+    }
+  }
+}
