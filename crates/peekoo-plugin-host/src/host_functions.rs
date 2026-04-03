@@ -602,7 +602,6 @@ fn host_oauth_start(
         },
         client_id: req["clientId"].as_str().unwrap_or_default().to_string(),
         client_secret: req["clientSecret"].as_str().map(ToString::to_string),
-        redirect_uri: req["redirectUri"].as_str().unwrap_or_default().to_string(),
         scope: req["scope"].as_str().unwrap_or_default().to_string(),
         authorize_params: json_params_to_query_params(&req["authorizeParams"]),
     };

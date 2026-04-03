@@ -10,9 +10,10 @@ use crate::url::parse_query_pairs;
 const OAUTH_CALLBACK_PORT_START: u16 = 1455;
 const OAUTH_CALLBACK_PORT_END: u16 = 1465;
 
-/// Attempts to bind to an available port in the range 1455-1465.
-/// Returns the bound listener and the port number, or None if all ports are in use.
+/// Attempts to bind to an available port in the range 1455-1465, falling back
+/// to an OS-assigned ephemeral port if all preferred ports are occupied.
 fn bind_available_port() -> Option<(TcpListener, u16)> {
+    // Try the preferred range first — these are predictable and easier to debug.
     for port in OAUTH_CALLBACK_PORT_START..=OAUTH_CALLBACK_PORT_END {
         match TcpListener::bind(format!("127.0.0.1:{port}")) {
             Ok(listener) => {
@@ -26,9 +27,21 @@ fn bind_available_port() -> Option<(TcpListener, u16)> {
         }
     }
     log::warn!(
-        "All OAuth callback ports in range {OAUTH_CALLBACK_PORT_START}-{OAUTH_CALLBACK_PORT_END} are in use"
+        "All preferred OAuth callback ports {OAUTH_CALLBACK_PORT_START}-{OAUTH_CALLBACK_PORT_END} are in use, falling back to OS-assigned port"
     );
-    None
+
+    // Fallback: let the OS pick any available port.
+    match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => {
+            let port = listener.local_addr().ok()?.port();
+            log::info!("OAuth callback listener bound to OS-assigned port {port}");
+            Some((listener, port))
+        }
+        Err(err) => {
+            log::error!("Failed to bind OAuth callback listener to any port: {err}");
+            None
+        }
+    }
 }
 
 /// Spawns a non-blocking OAuth callback listener that accepts a single request.
@@ -148,7 +161,7 @@ fn handle_callback_request(
             flow.error = Some("Missing OAuth authorization code".to_string());
             flow.status = OAuthFlowStatus::Failed;
             message = "OAuth failed. Missing authorization code.".to_string();
-        } else if state.as_deref() != Some(flow.verifier.as_str()) {
+        } else if state.as_deref() != Some(flow.state.as_str()) {
             flow.error = Some("OAuth state mismatch".to_string());
             flow.status = OAuthFlowStatus::Failed;
             message = "OAuth failed. State mismatch.".to_string();

@@ -42,6 +42,9 @@ impl OAuthService {
     pub fn start_custom(&self, config: OAuthStartConfig) -> Result<OAuthStartResult, OAuthError> {
         let flow_id = Uuid::new_v4().to_string();
         let (verifier, challenge) = generate_pkce();
+        // Separate CSRF state token — never reuse the PKCE verifier for this
+        // because `state` is exposed in the authorize URL.
+        let state = Uuid::new_v4().to_string();
 
         // Try to start the callback listener first to get an available port
         let callback_port = match spawn_callback_listener(self.flows.clone(), flow_id.clone()) {
@@ -56,7 +59,7 @@ impl OAuthService {
         // Build redirect URI dynamically with the actual port
         let redirect_uri = format!("http://127.0.0.1:{}/auth/callback", callback_port);
 
-        let authorize_url = build_authorize_url(&config, &challenge, &verifier, &redirect_uri);
+        let authorize_url = build_authorize_url(&config, &challenge, &state, &redirect_uri);
 
         let mut lock = self
             .flows
@@ -68,6 +71,7 @@ impl OAuthService {
                 provider_id: config.provider_id.clone(),
                 start_config: config,
                 verifier,
+                state,
                 auth_code: None,
                 status: OAuthFlowStatus::Pending,
                 error: None,

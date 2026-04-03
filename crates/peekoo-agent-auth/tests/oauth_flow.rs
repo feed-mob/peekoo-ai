@@ -25,7 +25,6 @@ fn custom_start_builds_authorize_url_with_standard_and_extra_params() {
             authorize_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
             client_id: "client-id".to_string(),
             client_secret: Some("client-secret".to_string()),
-            redirect_uri: "http://localhost:1455/auth/callback".to_string(),
             scope: "openid email profile".to_string(),
             authorize_params: vec![
                 OAuthQueryParam::new("access_type", "offline"),
