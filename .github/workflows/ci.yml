@@ -9,7 +9,7 @@ jobs:
   rust:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Linux system dependencies
         run: |
@@ -29,14 +29,6 @@ jobs:
 
       - name: Format check
         run: cargo fmt --all -- --check
-
-      - name: Inject platform-specific Tauri config
-        run: |
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":true}}' >> "$GITHUB_ENV"
-          else
-            echo 'TAURI_CONFIG={"app":{"macOSPrivateApi":false}}' >> "$GITHUB_ENV"
-          fi
 
       - name: Clippy
         run: |
@@ -63,7 +55,7 @@ jobs:
       run:
         working-directory: apps/desktop-ui
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

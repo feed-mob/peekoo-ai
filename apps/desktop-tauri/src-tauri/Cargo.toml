@@ -1,6 +1,6 @@
 [package]
 name = "peekoo-desktop-tauri"
-version = "0.1.14"
+version = "0.1.18"
 description = "Peekoo AI Desktop Pet - Tauri Version"
 edition = "2024"
 rust-version = "1.85"
@@ -13,7 +13,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = { version = "2", features = ["tracing"] }
 tauri-plugin-notification = "2"
@@ -28,9 +28,8 @@ tokio-util = "0.7"
 tracing = "0.1"
 
 peekoo-agent-app = { path = "../../../crates/peekoo-agent-app", default-features = false }
+peekoo-paths = { path = "../../../crates/peekoo-paths" }
+rusqlite = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dirs = "6"
-
-[target.'cfg(target_os = "macos")'.dependencies]
-tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }

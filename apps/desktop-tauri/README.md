@@ -16,8 +16,7 @@ Or directly:
 
 ```bash
 cd apps/desktop-tauri/src-tauri
-cargo tauri dev --config tauri.macos.conf.json # macOS
-# cargo tauri dev                              # non-macOS
+cargo tauri dev
 ```
 
 ## Build
@@ -30,8 +29,7 @@ Or directly:
 
 ```bash
 cd apps/desktop-tauri/src-tauri
-cargo tauri build --config tauri.macos.conf.json # macOS
-# cargo tauri build                               # non-macOS
+cargo tauri build
 ```
 
 ## Architecture

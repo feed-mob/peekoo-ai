@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 fn main() {
     prepare_acp_sidecar();
     tauri_build::build()
@@ -5,7 +7,6 @@ fn main() {
 
 fn prepare_acp_sidecar() {
     use std::fs;
-    use std::path::PathBuf;
 
     println!("cargo:rerun-if-env-changed=PROFILE");
     println!("cargo:rerun-if-env-changed=TARGET");
@@ -31,18 +32,23 @@ fn prepare_acp_sidecar() {
         "peekoo-agent-acp"
     };
 
-    let source = workspace_root
-        .join("target")
-        .join(&profile)
-        .join(binary_name);
-    println!("cargo:rerun-if-changed={}", source.display());
-    if !source.exists() {
+    let source_candidates = acp_source_candidates(workspace_root, &target, &profile, binary_name);
+    for candidate in &source_candidates {
+        println!("cargo:rerun-if-changed={}", candidate.display());
+    }
+    let source = source_candidates.iter().find(|path| path.exists()).cloned();
+    let Some(source) = source else {
+        let searched_paths = source_candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
         println!(
-            "cargo:warning=peekoo-agent-acp sidecar not found at {}",
-            source.display()
+            "cargo:warning=peekoo-agent-acp sidecar not found. looked in: {}",
+            searched_paths
         );
         return;
-    }
+    };
 
     let binaries_dir = manifest_dir.join("binaries");
     if std::fs::create_dir_all(&binaries_dir).is_err() {
@@ -80,6 +86,47 @@ fn prepare_acp_sidecar() {
             "cargo:warning=failed to write peekoo-agent-acp sidecar to {}: {}",
             destination.display(),
             err
+        );
+    }
+}
+
+fn acp_source_candidates(
+    workspace_root: &std::path::Path,
+    target: &str,
+    profile: &str,
+    binary_name: &str,
+) -> [PathBuf; 2] {
+    [
+        workspace_root
+            .join("target")
+            .join(target)
+            .join(profile)
+            .join(binary_name),
+        workspace_root
+            .join("target")
+            .join(profile)
+            .join(binary_name),
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::acp_source_candidates;
+    use std::path::Path;
+
+    #[test]
+    fn source_candidates_prefer_target_directory() {
+        let root = Path::new("/workspace");
+        let candidates =
+            acp_source_candidates(root, "aarch64-apple-darwin", "release", "peekoo-agent-acp");
+
+        assert_eq!(
+            candidates[0],
+            Path::new("/workspace/target/aarch64-apple-darwin/release/peekoo-agent-acp")
+        );
+        assert_eq!(
+            candidates[1],
+            Path::new("/workspace/target/release/peekoo-agent-acp")
         );
     }
 }

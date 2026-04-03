@@ -225,7 +225,8 @@ pub async fn authenticate_runtime(
         model: config.default_model.clone(),
         provider: Some(runtime_id.clone()),
         api_key: None,
-        environment: adapter_for_runtime(&runtime_id).build_launch_env(&config),
+        environment: adapter_for_runtime(&runtime_id)
+            .build_launch_env(&config, service.node_bin_dir()),
         mcp_servers: Vec::new(),
     };
 
@@ -269,7 +270,7 @@ pub async fn authenticate_runtime(
 
         // Build terminal env: start with the same forwarded OS vars that
         // build_launch_env provides, so the terminal session has HOME/PATH/etc.
-        let mut terminal_env = adapter.build_launch_env(&config);
+        let mut terminal_env = adapter.build_launch_env(&config, service.node_bin_dir());
         terminal_env.extend(terminal_method.env);
         let _ = backend.shutdown().await;
 
