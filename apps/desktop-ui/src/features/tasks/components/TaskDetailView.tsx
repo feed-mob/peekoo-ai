@@ -374,21 +374,7 @@ export function TaskDetailView({
                     <SelectContent className="bg-space-deep border-glass-border">
                       {RECURRENCE_OPTIONS.map((opt) => (
                         <SelectItem key={opt.value} value={opt.value}>
-                          {opt.value === "__none__"
-                            ? t("tasks.detail.doesNotRepeat")
-                            : opt.value === "FREQ=DAILY"
-                              ? t("tasks.recurrence.daily")
-                              : opt.value === "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"
-                                ? t("tasks.recurrence.weekdays")
-                                : opt.value === "FREQ=WEEKLY;BYDAY=MO,WE,FR"
-                                  ? t("tasks.recurrence.monWedFri")
-                                  : opt.value === "FREQ=WEEKLY;BYDAY=TU,TH"
-                                    ? t("tasks.recurrence.tueThu")
-                                    : opt.value === "FREQ=WEEKLY"
-                                      ? t("tasks.recurrence.weekly")
-                                      : opt.value === "FREQ=MONTHLY"
-                                        ? t("tasks.recurrence.monthly")
-                                        : t(opt.labelKey)}
+                          {t(opt.labelKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>

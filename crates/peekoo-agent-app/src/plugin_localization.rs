@@ -151,8 +151,7 @@ pub fn localize_config_field(field: &mut ConfigFieldDef, locale: &PluginLocaleBu
 
 fn read_locale_file(path: &Path) -> Result<Value, String> {
     let content = std::fs::read_to_string(path).map_err(|e| format!("Read locale error: {e}"))?;
-    serde_json::from_str::<Value>(&content)
-        .map_err(|e| format!("Parse locale json error: {e}"))
+    serde_json::from_str::<Value>(&content).map_err(|e| format!("Parse locale json error: {e}"))
 }
 
 fn locale_candidates(language: &str) -> Vec<String> {

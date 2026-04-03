@@ -36,8 +36,8 @@ use crate::plugin::{
     manifest_to_summary, plugin_notification_from_message,
 };
 use crate::plugin_localization::{
-    PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, localize_config_field,
-    load_plugin_locale_json, localize_panel_title, localize_plugin_summary, localize_store_plugin,
+    PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, load_plugin_locale_json,
+    localize_config_field, localize_panel_title, localize_plugin_summary, localize_store_plugin,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
 use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
