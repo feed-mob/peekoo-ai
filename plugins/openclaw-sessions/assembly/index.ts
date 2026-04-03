@@ -114,14 +114,19 @@ export function tool_openclaw_chat_history(): i32 {
 
   const input = Host.inputString();
   const sessionKey = extractStringField(input, "sessionKey");
+  const sessionId = extractStringField(input, "sessionId");
+  const targetSession = sessionKey != "" ? sessionKey : sessionId;
   const limit = extractIntField(input, "limit");
 
-  if (sessionKey == "") {
-    Host.outputString(errorJson("sessionKey is required"));
+  if (targetSession == "") {
+    Host.outputString(errorJson("sessionKey or sessionId is required"));
     return 0;
   }
 
-  const params = '{"sessionKey":' + quote(sessionKey) + ',"limit":' + positiveInt(limit, 200).toString() + '}';
+  let params =
+    '{"sessionKey":' + quote(targetSession) +
+    ',"limit":' + positiveInt(limit, 200).toString() +
+    "}";
   Host.outputString(gatewayRpc("chat.history", params));
   return 0;
 }
@@ -131,10 +136,12 @@ export function tool_openclaw_chat_send(): i32 {
 
   const input = Host.inputString();
   const sessionKey = extractStringField(input, "sessionKey");
+  const sessionId = extractStringField(input, "sessionId");
+  const targetSession = sessionKey != "" ? sessionKey : sessionId;
   const message = extractStringField(input, "message");
 
-  if (sessionKey == "") {
-    Host.outputString(errorJson("sessionKey is required"));
+  if (targetSession == "") {
+    Host.outputString(errorJson("sessionKey or sessionId is required"));
     return 0;
   }
   if (message == "") {
@@ -142,10 +149,11 @@ export function tool_openclaw_chat_send(): i32 {
     return 0;
   }
 
-  const params =
-    '{"sessionKey":' + quote(sessionKey) +
+  let params =
+    '{"sessionKey":' + quote(targetSession) +
     ',"message":' + quote(message) +
-    ',"idempotencyKey":' + quote(system.uuidV4()) + '}';
+    ',"idempotencyKey":' + quote(system.uuidV4()) +
+    "}";
   Host.outputString(gatewayRpc("chat.send", params));
   return 0;
 }
@@ -153,7 +161,8 @@ export function tool_openclaw_chat_send(): i32 {
 function refreshSessions(page: i32, pageSize: i32): string {
   // Keep refresh payload small and stable. Large preview/title fields can make
   // gateway responses brittle for downstream parsing in constrained runtimes.
-  const params = '{"limit":30}';
+  // Align with `openclaw sessions` default agent view as closely as gateway API allows.
+  const params = '{"agentId":"main","limit":200}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
     if (payload.length <= MAX_CACHE_PAYLOAD_CHARS) {
