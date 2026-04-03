@@ -1239,7 +1239,16 @@ async fn plugin_call_panel_tool(
 ) -> Result<String, String> {
     let result = state
         .app
-        .call_plugin_panel_tool(&plugin_key, &tool_name, &args_json)?;
+        .call_plugin_panel_tool(&plugin_key, &tool_name, &args_json)
+        .map_err(|error| {
+            tracing::error!(
+                plugin_key = %plugin_key,
+                tool_name = %tool_name,
+                error = %error,
+                "plugin_call_panel_tool failed"
+            );
+            error
+        })?;
     flush_plugin_notifications(&app, &state)?;
     Ok(result)
 }
@@ -1250,7 +1259,18 @@ async fn plugin_query_data(
     provider_name: String,
     state: State<'_, AgentState>,
 ) -> Result<String, String> {
-    state.app.query_plugin_data(&plugin_key, &provider_name)
+    state
+        .app
+        .query_plugin_data(&plugin_key, &provider_name)
+        .map_err(|error| {
+            tracing::error!(
+                plugin_key = %plugin_key,
+                provider_name = %provider_name,
+                error = %error,
+                "plugin_query_data failed"
+            );
+            error
+        })
 }
 
 #[tauri::command]

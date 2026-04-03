@@ -1,26 +1,28 @@
 # Peekoo AI Development Commands
 
+set windows-shell := ["powershell.exe", "-NoLogo", "-Command"]
+
 # Run Tauri desktop app in development mode (trace logging by default)
 dev:
     cargo build -p peekoo-agent-acp
-    RUST_LOG=trace PEEKOO_PROJECT_ROOT="$(pwd)" cd ./apps/desktop-tauri/src-tauri/ && cargo tauri dev
+    {{ if os_family() == "windows" { "$env:RUST_LOG='debug'; $env:PEEKOO_PROJECT_ROOT=(Get-Location).Path; Push-Location 'apps/desktop-tauri/src-tauri'; try { cargo tauri dev } finally { Pop-Location }" } else { "RUST_LOG=debug PEEKOO_PROJECT_ROOT=\"$PWD\"; cd apps/desktop-tauri/src-tauri && cargo tauri dev" } }}
 
 # Build Tauri desktop app for production
 build:
     cargo build --release -p peekoo-agent-acp
-    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri build
+    {{ if os_family() == "windows" { "Push-Location 'apps/desktop-tauri/src-tauri'; try { cargo tauri build } finally { Pop-Location }" } else { "cd apps/desktop-tauri/src-tauri && cargo tauri build" } }}
 
 # Build AppImage with linuxdeploy strip workaround
 build-appimage:
     cargo build --release -p peekoo-agent-acp
-    cd ./apps/desktop-tauri/src-tauri/ && NO_STRIP=true cargo tauri build --bundles appimage
+    {{ if os_family() == "windows" { "Write-Error 'build-appimage is only supported from a POSIX shell on Linux.'; exit 1" } else { "cd apps/desktop-tauri/src-tauri && NO_STRIP=true cargo tauri build --bundles appimage" } }}
 
 # Install all dependencies (frontend + Rust tools)
 setup: install install-tools
 
 # Install frontend dependencies with bun
 install:
-    cd ./apps/desktop-ui && bun install
+    bun install --cwd apps/desktop-ui
 
 # Install required Rust CLI tools
 install-tools:
@@ -54,12 +56,11 @@ lint:
 # Clean build artifacts
 clean:
     cargo clean
-    rm -rf ./apps/desktop-ui/dist
-    rm -rf ./apps/desktop-ui/node_modules
+    python -c "import shutil; shutil.rmtree('apps/desktop-ui/dist', ignore_errors=True); shutil.rmtree('apps/desktop-ui/node_modules', ignore_errors=True)"
 
 # Generate new Tauri icons from source image
 icon SOURCE:
-    cd ./apps/desktop-tauri/src-tauri/ && cargo tauri icon {{SOURCE}}
+    {{ if os_family() == "windows" { "Push-Location 'apps/desktop-tauri/src-tauri'; try { cargo tauri icon {{SOURCE}} } finally { Pop-Location }" } else { "cd apps/desktop-tauri/src-tauri && cargo tauri icon {{SOURCE}}" } }}
 
 # Check the plugin SDK (wasm32-wasip1 target)
 check-sdk:
@@ -71,7 +72,8 @@ plugin-build name:
 
 # Build an AssemblyScript plugin to WASM
 plugin-build-as name:
-    cd plugins/{{name}} && bun install && bun run build
+    bun install --cwd plugins/{{name}}
+    bun --cwd plugins/{{name}} run build
 
 # Install a plugin into the local Peekoo plugin dir
 plugin-install name:
@@ -97,9 +99,9 @@ plugin-build-all:
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)
 plugin-build-opencode-companion:
-    cd plugins/peekoo-opencode-companion/opencode-plugin && bun install && bun run build
-    mkdir -p plugins/peekoo-opencode-companion/companions
-    cp plugins/peekoo-opencode-companion/opencode-plugin/dist/peekoo-opencode-companion.js plugins/peekoo-opencode-companion/companions/
+    bun install --cwd plugins/peekoo-opencode-companion/opencode-plugin
+    bun --cwd plugins/peekoo-opencode-companion/opencode-plugin run build
+    python -c "import pathlib, shutil; dst = pathlib.Path('plugins/peekoo-opencode-companion/companions'); dst.mkdir(parents=True, exist_ok=True); shutil.copy2('plugins/peekoo-opencode-companion/opencode-plugin/dist/peekoo-opencode-companion.js', dst / 'peekoo-opencode-companion.js')"
     just plugin-build peekoo-opencode-companion
 
 # Build and install the OpenCode Companion plugin
