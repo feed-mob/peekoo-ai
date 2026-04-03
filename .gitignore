@@ -22,6 +22,8 @@ plugins/*/Cargo.lock
 .idea/
 .vscode/
 .opencode/plans/
+.codex
+.cursor
 
 # Development log files
 /logs/
