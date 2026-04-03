@@ -1657,7 +1657,10 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             {
-                tray_builder = tray_builder.icon_as_template(true);
+                // macOS template icons are intended for monochrome assets.
+                // Our bundled app icon is a full-color asset, so forcing
+                // template rendering makes the menu bar icon look distorted.
+                tray_builder = tray_builder.icon_as_template(false);
             }
 
             let _ = tray_builder.build(app)?;
