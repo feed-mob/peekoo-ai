@@ -19,8 +19,8 @@ return_type = "object"
 
 [[tools.definitions]]
 name = "health_configure"
-description = "Configure reminder intervals in minutes"
-parameters = '{"type":"object","properties":{"water_interval_min":{"type":"integer"},"eye_rest_interval_min":{"type":"integer"},"standup_interval_min":{"type":"integer"}},"required":[]}'
+description = "Configure reminder intervals in minutes and toggle status"
+parameters = '{"type":"object","properties":{"water_interval_min":{"type":"integer"},"water_enabled":{"type":"boolean"},"eye_rest_interval_min":{"type":"integer"},"eye_rest_enabled":{"type":"boolean"},"standup_interval_min":{"type":"integer"},"standup_enabled":{"type":"boolean"}},"required":[]}'
 return_type = "object"
 
 [[tools.definitions]]
@@ -69,5 +69,5 @@ schema = '{"type":"object"}'
 label = "panel-health"
 title = "Health"
 width = 360
-height = 460
+height = 400
 entry = "ui/panel.html"

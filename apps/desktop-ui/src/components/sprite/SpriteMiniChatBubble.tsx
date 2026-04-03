@@ -35,10 +35,10 @@ export function SpriteMiniChatBubble({
           initial={{ opacity: 0, scale: 0.95, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.98, y: 5 }}
-          transition={{ 
+          transition={{
             type: "spring",
             damping: 25,
-            stiffness: 150
+            stiffness: 150,
           }}
           className={cn(
             "absolute left-1/2 bottom-[calc(100%-15px)] z-30 -translate-x-1/2 pointer-events-none px-4 py-3 shadow-panel backdrop-blur-2xl border",
@@ -47,39 +47,38 @@ export function SpriteMiniChatBubble({
             thinking ? "border-glow-cyan/30" : isError ? "border-red-500/30" : "border-white/10"
           )}
         >
-          {/* Tail pointing down (left-aligned to match SpriteBubble) */}
-          <div 
+          {/* Tail pointing down */}
+          <div
             className={cn(
               "absolute bottom-[-5px] left-8 w-[10px] h-[5px] backdrop-blur-3xl",
               isDark ? "bg-black/80" : "bg-white/80"
             )}
-            style={{ 
+            style={{
               clipPath: 'polygon(0% 0%, 100% 0%, 50% 100%)',
-              filter: `drop-shadow(0px 1px 0px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'})`
+              filter: `drop-shadow(0px 1px 0px ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.2)'})`,
             }}
           />
 
           <div className={cn(
             "flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em]",
-            thinking ? "text-glow-cyan" : isError ? "text-red-400" : "text-glow-cyan/80"
+            thinking ? "text-glow-cyan" : isError ? "text-red-700 dark:text-red-400" : "text-glow-cyan/80"
           )}>
             {isError ? <AlertCircle size={10} /> : <Sparkles size={10} className={thinking ? "animate-pulse" : ""} />}
             <span>
               {thinking
                 ? t("chat.thinking")
                 : isError
-                  ? t("sprite.needAttention")
-                  : isExpanded
-                    ? t("sprite.readingMode")
-                    : t("sprite.quickReply")}
+                ? t("sprite.needAttention")
+                : isExpanded
+                  ? t("sprite.readingMode")
+                  : t("sprite.quickReply")}
             </span>
           </div>
+
           <div
             className={cn(
-              "mt-1 text-[12px] leading-[18px] text-text-primary [&_p]:m-0",
-              isExpanded
-                ? "max-h-[156px] overflow-y-auto pr-1.5"
-                : "max-h-[66px] overflow-hidden",
+              "mt-1 text-[12px] leading-[18px] text-text-primary [&_p]:m-0 pointer-events-auto",
+              isExpanded ? "max-h-[156px] overflow-y-auto pr-1.5" : "max-h-[120px] overflow-hidden",
               isDark ? "text-white/90" : "text-slate-800"
             )}
           >

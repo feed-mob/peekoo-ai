@@ -15,7 +15,7 @@ export { ActivityFeedItem } from "./components/ActivityFeedItem";
 export { TaskActivitySection } from "./components/TaskActivitySection";
 export { TaskLabelPills } from "./components/TaskLabelPills";
 export { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
-export { ErrorToast } from "./components/ErrorToast";
+export { NotificationToast } from "./components/ErrorToast";
 export { LoadingSpinner } from "./components/LoadingSpinner";
 
 // Utilities

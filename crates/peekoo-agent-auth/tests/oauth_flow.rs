@@ -25,7 +25,6 @@ fn custom_start_builds_authorize_url_with_standard_and_extra_params() {
             authorize_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
             client_id: "client-id".to_string(),
             client_secret: Some("client-secret".to_string()),
-            redirect_uri: "http://localhost:1455/auth/callback".to_string(),
             scope: "openid email profile".to_string(),
             authorize_params: vec![
                 OAuthQueryParam::new("access_type", "offline"),
@@ -45,10 +44,11 @@ fn custom_start_builds_authorize_url_with_standard_and_extra_params() {
     );
     assert!(started.authorize_url.contains("response_type=code"));
     assert!(started.authorize_url.contains("client_id=client-id"));
+    // Redirect URI should be localhost with a port between 1455-1465
     assert!(
         started
             .authorize_url
-            .contains("redirect_uri=http%3A%2F%2Flocalhost%3A1455%2Fauth%2Fcallback")
+            .contains("redirect_uri=http%3A%2F%2F127.0.0.1%3A")
     );
     assert!(
         started

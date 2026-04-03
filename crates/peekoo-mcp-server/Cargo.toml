@@ -15,7 +15,20 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 peekoo-task-domain = { path = "../peekoo-task-domain" }
 peekoo-task-app = { path = "../peekoo-task-app" }
+peekoo-pomodoro-app = { path = "../peekoo-pomodoro-app" }
+peekoo-app-settings = { path = "../peekoo-app-settings" }
+peekoo-plugin-host = { path = "../peekoo-plugin-host", optional = true }
 rustls = { version = "0.23", features = ["ring"] }
+
+[dev-dependencies]
+peekoo-notifications = { path = "../peekoo-notifications" }
+peekoo-persistence-sqlite = { path = "../persistence-sqlite" }
+rusqlite = { version = "0.39", features = ["bundled"] }
+rustls = { version = "0.23", features = ["ring"] }
+
+[features]
+default = []
+plugin-runtime = ["peekoo-plugin-host", "peekoo-plugin-host/plugin-runtime"]
 
 [lib]
 name = "peekoo_mcp_server"

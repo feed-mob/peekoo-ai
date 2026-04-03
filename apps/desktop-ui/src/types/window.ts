@@ -4,6 +4,7 @@ export const BUILTIN_PANEL_LABELS = [
   "panel-chat",
   "panel-tasks",
   "panel-pomodoro",
+  "panel-pomodoro-memo",
   "panel-plugins",
   "panel-settings",
   "panel-about",
@@ -48,6 +49,12 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
     title: "Peekoo Pomodoro",
     width: 300,
     height: 380,
+  },
+  "panel-pomodoro-memo": {
+    label: "panel-pomodoro-memo",
+    title: "Focus Memo",
+    width: 380,
+    height: 320,
   },
   "panel-plugins": {
     label: "panel-plugins",

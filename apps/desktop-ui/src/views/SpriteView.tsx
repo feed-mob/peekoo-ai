@@ -14,6 +14,7 @@ import {
   getSpriteStagePadding,
   getSpriteWindowSize,
 } from "@/lib/sprite-bubble-layout";
+import { getSpriteBubbleDurationMs } from "@/lib/sprite-notification-presentation";
 import { useSpriteState } from "@/hooks/use-sprite-state";
 import { usePanelWindows } from "@/hooks/use-panel-windows";
 import { useSpriteReactions } from "@/hooks/use-sprite-reactions";
@@ -26,7 +27,6 @@ import {
 } from "@/features/chat/chat-session";
 import { usePomodoroWatcher } from "@/hooks/use-pomodoro-watcher";
 import {
-  SPRITE_BUBBLE_DURATION_MS,
   SPRITE_BUBBLE_EVENT,
   SpriteBubblePayloadSchema,
 } from "@/types/sprite-bubble";
@@ -37,7 +37,9 @@ import type { AnimationType, SpriteState } from "@/types/sprite";
 const MOOD_OVERRIDE_DURATION_MS = 3000;
 const DRAG_THRESHOLD_PX = 8;
 /** Maximum gap (ms) between two clicks to be treated as a double-click. */
-const DOUBLE_CLICK_THRESHOLD_MS = 300;
+const DOUBLE_CLICK_THRESHOLD_MS = 250;
+/** Maximum position delta (px) between two clicks to be treated as a double-click. */
+const DOUBLE_CLICK_POSITION_TOLERANCE_PX = 10;
 
 export async function openSettingsPanelFromTray(
   openPanel: (label: PanelLabel) => Promise<void>,
@@ -88,6 +90,7 @@ export default function SpriteView() {
   const moodResetTimerRef = useRef<number | null>(null);
   const interactionRootRef = useRef<HTMLDivElement | null>(null);
   const lastClickTimeRef = useRef<number>(0);
+  const lastClickPositionRef = useRef<{ x: number; y: number } | null>(null);
   const dragStateRef = useRef<{
     startX: number;
     startY: number;
@@ -214,13 +217,14 @@ export default function SpriteView() {
       setMiniChatActiveReplyId(null);
       setMiniChatAwaitingReply(false);
       showBubble(parsed.data);
+      const durationMs = getSpriteBubbleDurationMs(parsed.data);
 
       clearMoodResetTimer();
       setMoodOverride("reminder");
       moodResetTimerRef.current = window.setTimeout(() => {
         setMoodOverride(null);
         moodResetTimerRef.current = null;
-      }, SPRITE_BUBBLE_DURATION_MS);
+      }, durationMs);
     });
 
     return () => {
@@ -315,20 +319,36 @@ export default function SpriteView() {
       setDragAnimation(null);
     }
   }, []);
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      setDragAnimation(null);
-    };
 
-    // We only listen to mouseup.
-    // We EXCLUDE 'blur' because startDragging often causes the window to lose focus on Windows,
-    // which was likely causing the premature reset to Idle animation.
-    window.addEventListener("mouseup", handleGlobalMouseUp);
+  // Listen for window move events to detect when dragging ends.
+  // On Windows, startDragging() blocks mouse events, so we use window position changes
+  // with a debounce to detect when dragging actually stops.
+  useEffect(() => {
+    if (!dragAnimation) {
+      return;
+    }
+
+    let moveTimeout: ReturnType<typeof setTimeout> | null = null;
+    const win = getCurrentWindow();
+
+    const unlistenPromise = win.listen("tauri://move", () => {
+      // Reset any existing timeout
+      if (moveTimeout) {
+        clearTimeout(moveTimeout);
+      }
+      // Set a new timeout to reset drag animation after movement stops
+      moveTimeout = setTimeout(() => {
+        setDragAnimation(null);
+      }, 100);
+    });
 
     return () => {
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
+      if (moveTimeout) {
+        clearTimeout(moveTimeout);
+      }
+      void unlistenPromise.then((unlisten: () => void) => unlisten());
     };
-  }, []);
+  }, [dragAnimation]);
 
   const handleMouseDown = useCallback(
     async (e: React.MouseEvent) => {
@@ -365,21 +385,45 @@ export default function SpriteView() {
         window.removeEventListener("mousemove", handleMouseMove);
         window.removeEventListener("mouseup", handleMouseUp);
 
-        if (!dragState?.dragging) {
-          const now = Date.now();
-          const timeSinceLastClick = now - lastClickTimeRef.current;
-          const isDoubleClick = timeSinceLastClick <= DOUBLE_CLICK_THRESHOLD_MS;
-          lastClickTimeRef.current = isDoubleClick ? 0 : now;
+        // If dragging occurred, don't trigger click actions
+        if (dragState?.dragging) {
+          lastClickPositionRef.current = null;
+          return;
+        }
 
-          if (isDoubleClick) {
+        if (!dragState) return;
+
+        const now = Date.now();
+        const currentPosition = { x: dragState.startX, y: dragState.startY };
+        const timeSinceLastClick = now - lastClickTimeRef.current;
+        
+        // Check both time and position for double-click
+        const isDoubleClick = 
+          timeSinceLastClick <= DOUBLE_CLICK_THRESHOLD_MS &&
+          lastClickPositionRef.current !== null &&
+          Math.hypot(
+            currentPosition.x - lastClickPositionRef.current.x,
+            currentPosition.y - lastClickPositionRef.current.y
+          ) <= DOUBLE_CLICK_POSITION_TOLERANCE_PX;
+
+        if (isDoubleClick) {
+          // Double-click: only open MiniChat if in default state
+          if (!menuOpen && !miniChatOpenRef.current) {
             collapseBadge();
-            setMenuOpen(false);
-            setMiniChatOpen((prev) => !prev);
-            if (miniChatOpenRef.current) {
-              setMiniChatActiveReplyId(null);
-              setMiniChatAwaitingReply(false);
-            }
+            setMiniChatOpen(true);
           }
+          lastClickTimeRef.current = 0;
+          lastClickPositionRef.current = null;
+        } else {
+          // Single-click: close any open panels to return to default state
+          if (menuOpen || miniChatOpenRef.current) {
+            setMenuOpen(false);
+            setMiniChatOpen(false);
+            setMiniChatActiveReplyId(null);
+            setMiniChatAwaitingReply(false);
+          }
+          lastClickTimeRef.current = now;
+          lastClickPositionRef.current = currentPosition;
         }
       };
 
@@ -511,6 +555,10 @@ export default function SpriteView() {
           <SpriteBubble
             payload={bubblePayload}
             visible={bubbleVisible && !miniChatOpen}
+            onOpenPanel={(panelLabel) => {
+              clearBubble();
+              void openPanel(panelLabel);
+            }}
           />
           <SpriteMiniChat
             open={miniChatOpen}

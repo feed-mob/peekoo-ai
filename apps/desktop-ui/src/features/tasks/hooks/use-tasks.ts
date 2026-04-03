@@ -157,7 +157,6 @@ export function useTasks() {
       setIsUpdating(id);
 
       try {
-        console.log("[updateTask] Sending fields:", fields);
         // Transform snake_case fields to camelCase for Tauri backend
         const payload: Record<string, unknown> = { id };
         for (const [key, value] of Object.entries(fields)) {
@@ -175,9 +174,7 @@ export function useTasks() {
             payload[key] = value;
           }
         }
-        console.log("[updateTask] Full payload:", payload);
         const result = await invoke<Task>("update_task", payload);
-        console.log("[updateTask] Received result:", result);
         setTasks((prev) => prev.map((t) => (t.id === id ? result : t)));
       } catch (err) {
         // Rollback

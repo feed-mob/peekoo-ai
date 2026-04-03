@@ -10,4 +10,6 @@ pub enum OAuthError {
     InvalidTokenResponse(String),
     #[error("flow lock error: {0}")]
     FlowLock(String),
+    #[error("failed to bind OAuth callback port: {0}")]
+    PortBindingFailed(String),
 }

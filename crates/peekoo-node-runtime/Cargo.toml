@@ -1,0 +1,37 @@
+[package]
+name = "peekoo-node-runtime"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "Node.js runtime management for Peekoo AI (ported from Zed)"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1", features = ["process", "fs", "io-util", "sync", "rt"] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
+
+# Compression and archives
+tar = "0.4"
+flate2 = "1"
+zip = "2"
+
+# Utilities
+anyhow = "1"
+async-trait = "0.1"
+bytes = "1"
+futures = "0.3"
+semver = { version = "1", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+which = "7"
+
+# Project crates
+peekoo-paths = { path = "../peekoo-paths" }
+dirs = "5"
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"

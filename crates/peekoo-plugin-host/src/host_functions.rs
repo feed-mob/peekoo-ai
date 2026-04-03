@@ -4,6 +4,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -22,6 +23,7 @@ use peekoo_task_app::TaskService;
 use rand::rngs::OsRng;
 use reqwest::Method;
 use sha2::{Digest, Sha256};
+use tungstenite::client::IntoClientRequest;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Message, WebSocket, connect};
 use url::Url;
@@ -35,6 +37,7 @@ use crate::state::PluginStateStore;
 #[derive(Clone)]
 struct HostContext {
     plugin_key: String,
+    plugin_dir: PathBuf,
     state_store: PluginStateStore,
     permissions: PermissionStore,
     declared_capabilities: Vec<String>,
@@ -63,6 +66,7 @@ struct WebSocketStore {
 #[allow(clippy::too_many_arguments)]
 pub fn build_host_functions(
     plugin_key: &str,
+    plugin_dir: &Path,
     state_store: &PluginStateStore,
     permissions: &PermissionStore,
     declared_capabilities: Vec<String>,
@@ -85,6 +89,7 @@ pub fn build_host_functions(
     ));
     let ctx = HostContext {
         plugin_key: plugin_key.to_string(),
+        plugin_dir: plugin_dir.to_path_buf(),
         state_store: state_store.clone(),
         permissions: permissions.clone(),
         declared_capabilities,
@@ -242,6 +247,13 @@ pub fn build_host_functions(
             [ValType::I64],
             UserData::new(ctx.clone()),
             host_fs_read_dir,
+        ),
+        Function::new(
+            "peekoo_process_exec",
+            [ValType::I64],
+            [ValType::I64],
+            UserData::new(ctx.clone()),
+            host_process_exec,
         ),
         Function::new(
             "peekoo_websocket_connect",
@@ -464,6 +476,9 @@ fn host_notify(
         source: ctx.plugin_key.clone(),
         title: req["title"].as_str().unwrap_or_default().to_string(),
         body: req["body"].as_str().unwrap_or_default().to_string(),
+        action_url: req["actionUrl"].as_str().map(ToString::to_string),
+        action_label: req["actionLabel"].as_str().map(ToString::to_string),
+        panel_label: req["panelLabel"].as_str().map(ToString::to_string),
     });
 
     write_output(
@@ -587,7 +602,6 @@ fn host_oauth_start(
         },
         client_id: req["clientId"].as_str().unwrap_or_default().to_string(),
         client_secret: req["clientSecret"].as_str().map(ToString::to_string),
-        redirect_uri: req["redirectUri"].as_str().unwrap_or_default().to_string(),
         scope: req["scope"].as_str().unwrap_or_default().to_string(),
         authorize_params: json_params_to_query_params(&req["authorizeParams"]),
     };
@@ -859,6 +873,60 @@ fn host_fs_read_dir(
 
     let response = serde_json::json!({ "entries": entries }).to_string();
     write_output(plugin, outputs, &response)?;
+    Ok(())
+}
+
+fn host_process_exec(
+    plugin: &mut CurrentPlugin,
+    inputs: &[Val],
+    outputs: &mut [Val],
+    user_data: UserData<HostContext>,
+) -> Result<(), Error> {
+    let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
+    let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
+    require_declared_capability(&ctx, "process:exec")?;
+    let input_str = read_input(plugin, inputs)?;
+    let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
+
+    let program = req["program"].as_str().unwrap_or_default().trim();
+    if program.is_empty() {
+        return Err(Error::msg("process program is required"));
+    }
+
+    let args = req["args"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|item| item.as_str().map(ToString::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let cwd = req["cwd"].as_str().unwrap_or(".");
+    let resolved_cwd = resolve_process_cwd(&ctx, cwd)?;
+
+    let output = Command::new(program)
+        .args(&args)
+        .current_dir(&resolved_cwd)
+        .output()
+        .map_err(|e| Error::msg(format!("Process spawn failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let status_code = output.status.code().unwrap_or(-1);
+    let ok = output.status.success();
+
+    write_output(
+        plugin,
+        outputs,
+        &serde_json::json!({
+            "ok": ok,
+            "statusCode": status_code,
+            "stdout": stdout,
+            "stderr": stderr,
+        })
+        .to_string(),
+    )?;
     Ok(())
 }
 
@@ -1135,18 +1203,95 @@ fn host_websocket_connect(
         )));
     }
 
-    let parsed = Url::parse(url).map_err(|e| Error::msg(format!("Invalid websocket url: {e}")))?;
+    let parsed = match Url::parse(url) {
+        Ok(parsed) => parsed,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Invalid websocket url: {e}")
+                })
+                .to_string(),
+            );
+        }
+    };
     match parsed.scheme() {
         "ws" | "wss" => {}
         scheme => {
-            return Err(Error::msg(format!(
-                "Unsupported websocket scheme: {scheme}"
-            )));
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Unsupported websocket scheme: {scheme}")
+                })
+                .to_string(),
+            );
         }
     }
 
-    let (socket, _) = connect(parsed.as_str())
-        .map_err(|e| Error::msg(format!("WebSocket connect error: {e}")))?;
+    // Build request with a valid HTTP Origin header so servers that validate
+    // Origin (e.g. OpenClaw gateway) don't reject the handshake.
+    // Include the port when non-default so the origin matches what the server expects.
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| Error::msg("WebSocket URL missing host"))?;
+    let origin = if let Some(port) = parsed.port() {
+        if host.contains(':') {
+            format!("http://[{}]:{}", host, port)
+        } else {
+            format!("http://{}:{}", host, port)
+        }
+    } else {
+        format!("http://{}", host)
+    };
+
+    tracing::debug!("WebSocket connection origin: {}", origin);
+    let mut request = match url.into_client_request() {
+        Ok(request) => request,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": e.to_string()
+                })
+                .to_string(),
+            );
+        }
+    };
+    let origin_header = match origin.parse() {
+        Ok(header) => header,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("Invalid origin header '{}': {}", origin, e)
+                })
+                .to_string(),
+            );
+        }
+    };
+    request.headers_mut().insert("Origin", origin_header);
+    let (socket, _) = match connect(request) {
+        Ok(result) => result,
+        Err(e) => {
+            return write_output(
+                plugin,
+                outputs,
+                &serde_json::json!({
+                    "socketId": "",
+                    "error": format!("WebSocket connect error: {e}")
+                })
+                .to_string(),
+            );
+        }
+    };
     let mut websockets = ctx
         .websockets
         .lock()
@@ -1181,13 +1326,30 @@ fn host_websocket_send(
         .websockets
         .lock()
         .map_err(|e| Error::msg(format!("{e}")))?;
-    let socket = websockets
-        .sockets
-        .get_mut(socket_id)
-        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
-    socket
-        .send(Message::Text(text.to_string().into()))
-        .map_err(|e| Error::msg(format!("WebSocket send error: {e}")))?;
+    let Some(socket) = websockets.sockets.get_mut(socket_id) else {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "ok": false,
+                "error": format!("Unknown websocket socketId: {socket_id}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    };
+    if let Err(e) = socket.send(Message::Text(text.to_string().into())) {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "ok": false,
+                "error": format!("WebSocket send error: {e}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    }
 
     write_output(plugin, outputs, r#"{"ok":true}"#)?;
     Ok(())
@@ -1210,10 +1372,18 @@ fn host_websocket_recv(
         .websockets
         .lock()
         .map_err(|e| Error::msg(format!("{e}")))?;
-    let socket = websockets
-        .sockets
-        .get_mut(socket_id)
-        .ok_or_else(|| Error::msg(format!("Unknown websocket socketId: {socket_id}")))?;
+    let Some(socket) = websockets.sockets.get_mut(socket_id) else {
+        write_output(
+            plugin,
+            outputs,
+            &serde_json::json!({
+                "text": "",
+                "error": format!("Unknown websocket socketId: {socket_id}")
+            })
+            .to_string(),
+        )?;
+        return Ok(());
+    };
 
     loop {
         match socket.read() {
@@ -1243,11 +1413,25 @@ fn host_websocket_recv(
             Ok(Message::Frame(_)) => {}
             Ok(Message::Close(_)) => {
                 websockets.sockets.remove(socket_id);
-                return Err(Error::msg("WebSocket closed by remote peer"));
+                write_output(
+                    plugin,
+                    outputs,
+                    r#"{"text":"","error":"WebSocket closed by remote peer"}"#,
+                )?;
+                return Ok(());
             }
             Err(e) => {
                 websockets.sockets.remove(socket_id);
-                return Err(Error::msg(format!("WebSocket receive error: {e}")));
+                write_output(
+                    plugin,
+                    outputs,
+                    &serde_json::json!({
+                        "text": "",
+                        "error": format!("WebSocket receive error: {e}")
+                    })
+                    .to_string(),
+                )?;
+                return Ok(());
             }
         }
     }
@@ -1409,6 +1593,20 @@ fn require_capability(ctx: &HostContext, capability: &str) -> Result<(), Error> 
     Ok(())
 }
 
+fn require_declared_capability(ctx: &HostContext, capability: &str) -> Result<(), Error> {
+    if !ctx
+        .declared_capabilities
+        .iter()
+        .any(|declared| declared == capability)
+    {
+        return Err(Error::msg(format!(
+            "Plugin '{}' must declare permission '{}' in peekoo-plugin.toml",
+            ctx.plugin_key, capability
+        )));
+    }
+    Ok(())
+}
+
 fn can_log(_ctx: &HostContext) -> Result<(), Error> {
     Ok(())
 }
@@ -1450,6 +1648,44 @@ fn resolve_allowed_path(path: &str, allowed_paths: &[PathBuf]) -> Option<PathBuf
     }
 
     Some(requested_path)
+}
+
+fn resolve_process_cwd(ctx: &HostContext, cwd: &str) -> Result<PathBuf, Error> {
+    let plugin_root = fs::canonicalize(&ctx.plugin_dir).map_err(|e| {
+        Error::msg(format!(
+            "Plugin root path is not accessible: {} ({e})",
+            ctx.plugin_dir.display()
+        ))
+    })?;
+
+    let requested = cwd.trim();
+    let requested_path = if requested.is_empty() {
+        plugin_root.clone()
+    } else {
+        let expanded = expand_tilde_path(requested);
+        let path = PathBuf::from(expanded);
+        if path.is_absolute() {
+            path
+        } else {
+            plugin_root.join(path)
+        }
+    };
+
+    let canonical = fs::canonicalize(&requested_path).map_err(|e| {
+        Error::msg(format!(
+            "Process cwd is not accessible: {} ({e})",
+            requested_path.display()
+        ))
+    })?;
+
+    if !canonical.starts_with(&plugin_root) {
+        return Err(Error::msg(format!(
+            "Process cwd must stay under plugin directory: {}",
+            plugin_root.display()
+        )));
+    }
+
+    Ok(canonical)
 }
 
 pub(crate) fn expand_tilde_path(path: &str) -> String {
@@ -2014,6 +2250,7 @@ mod tests {
 
         HostContext {
             plugin_key: "openclaw-sessions".to_string(),
+            plugin_dir: std::env::temp_dir().join("openclaw-sessions"),
             state_store: PluginStateStore::new(conn),
             permissions,
             declared_capabilities: declared_capabilities

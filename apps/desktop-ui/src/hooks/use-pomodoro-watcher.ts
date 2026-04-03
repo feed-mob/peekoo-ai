@@ -39,7 +39,9 @@ export function usePomodoroWatcher() {
                     transparent: true,
                     alwaysOnTop: true,
                     center: true,
-                    resizable: false,
+                    resizable: true,
+                    minWidth: 320,
+                    minHeight: 280,
                     shadow: true,
                   });
                 }

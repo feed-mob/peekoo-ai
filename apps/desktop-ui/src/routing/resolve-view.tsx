@@ -5,6 +5,7 @@ const SpriteView = lazy(() => import("@/views/SpriteView"));
 const ChatView = lazy(() => import("@/views/ChatView"));
 const TasksView = lazy(() => import("@/views/TasksView"));
 const PomodoroView = lazy(() => import("@/views/PomodoroView"));
+const PomodoroMemoView = lazy(() => import("@/views/PomodoroMemoView"));
 const PluginsView = lazy(() => import("@/views/PluginsView"));
 const PluginPanelView = lazy(() => import("@/views/PluginPanelView"));
 const SettingsView = lazy(() => import("@/views/SettingsView"));
@@ -37,6 +38,8 @@ function viewForLabel(label: string) {
       return <TasksView />;
     case "panel-pomodoro":
       return <PomodoroView />;
+    case "panel-pomodoro-memo":
+      return <PomodoroMemoView />;
     case "panel-plugins":
       return <PluginsView />;
     case "panel-settings":

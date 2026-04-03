@@ -95,6 +95,7 @@ export function TaskDetailView({
     onUpdate({ recurrence_time_of_day: time });
   };
 
+
   const isDone = task.status === "done";
   const agentWorkBadge = getAgentWorkStatusBadge(task.agent_work_status);
   const agentFailureDetail = getAgentFailureDetail(task);

@@ -19,8 +19,8 @@ export function TimerControls({
 }: TimerControlsProps) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-col items-center gap-3 w-full">
-      <div className="flex gap-2">
+    <div className="flex flex-col items-center gap-3 w-full shrink-0">
+      <div className="flex gap-2 shrink-0">
         <Button
           onClick={onToggle}
           variant={isActive ? "warning" : "success"}

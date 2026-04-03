@@ -40,9 +40,16 @@ pub(crate) struct EmitEventRequest {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct NotifyRequest {
     pub title: String,
     pub body: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action_label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_label: Option<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -218,6 +225,22 @@ pub(crate) struct FsReadDirResponse {
 }
 
 #[derive(Serialize, Deserialize)]
+pub(crate) struct ProcessExecRequest {
+    pub program: String,
+    pub args: Vec<String>,
+    pub cwd: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProcessExecResponse {
+    pub ok: bool,
+    pub status_code: i32,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub(crate) struct SetMoodRequest {
     pub trigger: String,
     pub sticky: bool,
@@ -325,6 +348,9 @@ extern "ExtismHost" {
     pub(crate) fn peekoo_bridge_fs_read(input: String) -> Json<BridgeFsReadResponse>;
     pub(crate) fn peekoo_fs_read(input: Json<FsReadRequest>) -> Json<FsReadResponse>;
     pub(crate) fn peekoo_fs_read_dir(input: Json<FsReadDirRequest>) -> Json<FsReadDirResponse>;
+    pub(crate) fn peekoo_process_exec(
+        input: Json<ProcessExecRequest>,
+    ) -> Json<ProcessExecResponse>;
     pub(crate) fn peekoo_websocket_connect(
         input: Json<WebSocketConnectRequest>,
     ) -> Json<WebSocketConnectResponse>;

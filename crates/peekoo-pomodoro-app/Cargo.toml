@@ -8,7 +8,7 @@ chrono = { version = "0.4", features = ["serde"] }
 peekoo-notifications = { path = "../peekoo-notifications" }
 peekoo-pomodoro-domain = { path = "../peekoo-pomodoro-domain" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
-rusqlite = { version = "0.38" }
+rusqlite = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"
 tracing = "0.1"

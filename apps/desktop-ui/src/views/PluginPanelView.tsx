@@ -6,9 +6,19 @@ import { useTranslation } from "react-i18next";
 import {
   BRIDGE_REQUEST_TYPE,
   BRIDGE_RESPONSE_TYPE,
-  injectPluginPanelBridge,
   injectPluginPanelTheme,
 } from "@/lib/plugin-panel-bridge";
+
+interface ExtractedScript {
+  src: string | null;
+  type: string | null;
+  text: string;
+}
+
+interface ParsedPanelDocument {
+  markup: string;
+  scripts: ExtractedScript[];
+}
 
 const THEME_VARIABLES = [
   "--space-void",
@@ -40,13 +50,41 @@ function currentThemeVariables(): Record<string, string> {
   );
 }
 
+function splitHtmlAndScripts(rawHtml: string): ParsedPanelDocument {
+  const parsed = new DOMParser().parseFromString(rawHtml, "text/html");
+  const scripts = Array.from(parsed.querySelectorAll("script")).map((script) => ({
+    src: script.getAttribute("src"),
+    type: script.getAttribute("type"),
+    text: script.textContent ?? "",
+  }));
+
+  for (const script of Array.from(parsed.querySelectorAll("script"))) {
+    script.remove();
+  }
+
+  const headMarkup = Array.from(parsed.head.children)
+    .filter((node) => {
+      const tagName = node.tagName.toLowerCase();
+      return tagName !== "meta" && tagName !== "title";
+    })
+    .map((node) => node.outerHTML)
+    .join("\n");
+
+  const bodyMarkup = parsed.body.innerHTML;
+
+  return {
+    markup: `${headMarkup}\n${bodyMarkup}`.trim(),
+    scripts,
+  };
+}
+
 export default function PluginPanelView() {
   const { t } = useTranslation();
   const [html, setHtml] = useState<string>("");
   const [title, setTitle] = useState<string>(t("plugins.panel.defaultTitle"));
   const [error, setError] = useState<string | null>(null);
   const label = getCurrentWebviewWindow().label;
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const panelRootRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     invoke<{ label: string; title: string; width: number; height: number }[]>(
@@ -64,8 +102,8 @@ export default function PluginPanelView() {
 
     invoke<string>("plugin_panel_html", { label })
       .then((content) => {
-        const withBridge = injectPluginPanelBridge(content);
-        setHtml(injectPluginPanelTheme(withBridge, currentThemeVariables()));
+        const finalHtml = injectPluginPanelTheme(content, currentThemeVariables());
+        setHtml(finalHtml);
         setError(null);
       })
       .catch((err) => {
@@ -74,19 +112,52 @@ export default function PluginPanelView() {
   }, [label]);
 
   useEffect(() => {
+    if (!html || !panelRootRef.current) {
+      return;
+    }
+
+    const { markup, scripts } = splitHtmlAndScripts(html);
+    const panelRoot = panelRootRef.current;
+    const blobUrls: string[] = [];
+    panelRoot.innerHTML = markup;
+
+    const scriptTarget = panelRoot;
+    for (const script of scripts) {
+      const runtimeScript = document.createElement("script");
+      runtimeScript.async = false;
+      if (script.type) {
+        runtimeScript.type = script.type;
+      }
+      if (script.src) {
+        runtimeScript.src = script.src;
+      } else {
+        const blobUrl = URL.createObjectURL(
+          new Blob([script.text], { type: "text/javascript" }),
+        );
+        blobUrls.push(blobUrl);
+        runtimeScript.src = blobUrl;
+      }
+      scriptTarget.appendChild(runtimeScript);
+    }
+
+    return () => {
+      for (const blobUrl of blobUrls) {
+        URL.revokeObjectURL(blobUrl);
+      }
+      panelRoot.innerHTML = "";
+    };
+  }, [html]);
+
+  useEffect(() => {
     const handleMessage = async (event: MessageEvent) => {
       const data = event.data;
       if (!data || data.type !== BRIDGE_REQUEST_TYPE || typeof data.command !== "string") {
         return;
       }
 
-      if (event.source !== iframeRef.current?.contentWindow) {
-        return;
-      }
-
       try {
         const result = await invoke(data.command, data.payload ?? {});
-        iframeRef.current?.contentWindow?.postMessage(
+        window.postMessage(
           {
             type: BRIDGE_RESPONSE_TYPE,
             id: data.id,
@@ -96,7 +167,7 @@ export default function PluginPanelView() {
           "*",
         );
       } catch (err) {
-        iframeRef.current?.contentWindow?.postMessage(
+        window.postMessage(
           {
             type: BRIDGE_RESPONSE_TYPE,
             id: data.id,
@@ -127,13 +198,7 @@ export default function PluginPanelView() {
 
   return (
     <PanelShell title={title}>
-      <iframe
-        ref={iframeRef}
-        title={label}
-        srcDoc={html}
-        className="h-full w-full border-0 bg-transparent"
-        sandbox="allow-scripts"
-      />
+      <div ref={panelRootRef} className="h-full w-full overflow-auto" />
     </PanelShell>
   );
 }

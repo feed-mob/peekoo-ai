@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AuthSection } from "./AuthSection";
-import { ModelSelector } from "./ModelSelector";
-import { ProviderSelector } from "./ProviderSelector";
 import { SkillToggleList } from "./SkillToggleList";
+import { ModelSelector } from "./ModelSelector";
+import { AuthSection } from "./AuthSection";
 import { useChatSettings } from "./useChatSettings";
 import { useTranslation } from "react-i18next";
+import { useAgentProviders } from "@/hooks/useAgentProviders";
 
 interface ChatSettingsPanelProps {
   onClose: () => void;
+  activeRuntimeName?: string | null;
+  configuredModelId?: string | null;
 }
 
 export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
@@ -32,69 +33,72 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
     pollOauthStatus,
   } = useChatSettings();
 
-  const [apiKey, setApiKey] = useState("");
-  const [maxIterationsInput, setMaxIterationsInput] = useState("50");
-  const [compatBaseUrl, setCompatBaseUrl] = useState("");
-  const [customModelInput, setCustomModelInput] = useState("");
+  const { defaultProvider } = useAgentProviders();
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (!settings) return;
-    setMaxIterationsInput(String(settings.maxToolIterations));
-  }, [settings?.maxToolIterations]);
-
-  const authState = useMemo(() => {
-    if (!settings) return undefined;
-    return settings.providerAuth.find((item) => item.providerId === settings.activeProviderId);
-  }, [settings]);
-
-  const activeProviderConfig = useMemo(() => {
-    if (!settings) return undefined;
-    return settings.providerConfigs.find((item) => item.providerId === settings.activeProviderId);
-  }, [settings]);
-
-  const isCompatibleProvider =
-    settings?.activeProviderId === "openai-compatible" ||
-    settings?.activeProviderId === "anthropic-compatible";
-
-  const effectiveSkills = useMemo(() => {
-    if (!settings || !catalog) return [];
-    return settings.skills.length > 0 ? settings.skills : catalog.discoveredSkills;
-  }, [catalog, settings]);
-
-  useEffect(() => {
-    if (!settings || !selectedProvider) return;
-    if (!selectedProvider.models.includes(settings.activeModelId)) {
-      const nextModel = selectedProvider.models[0];
-      if (nextModel) {
-        void updateSettings({
-          activeProviderId: settings.activeProviderId,
-          activeModelId: nextModel,
-        });
-      }
-    }
-  }, [selectedProvider, settings, updateSettings]);
-
-  useEffect(() => {
-    if (!settings) return;
-    setCompatBaseUrl(activeProviderConfig?.baseUrl ?? "");
-    setCustomModelInput(settings.activeModelId);
-  }, [activeProviderConfig?.baseUrl, settings?.activeModelId, settings?.activeProviderId]);
+  const {
+    customModelInput,
+    setCustomModelInput,
+    compatBaseUrl,
+    setCompatBaseUrl,
+    maxIterationsInput,
+    setMaxIterationsInput,
+    apiKey,
+    setApiKey,
+    authState,
+    isCompatibleProvider,
+    effectiveSkills,
+  } = useChatSettings();
 
   if (isLoading && !settings) {
     return <div className="text-sm text-text-muted">{t("chatSettings.loading")}</div>;
   }
 
-  if (!settings || !catalog || !selectedProvider) {
+  if (error) {
     return (
       <div className="space-y-2">
         <p className="text-sm text-danger">{t("chatSettings.failedLoad")}</p>
         {error ? <p className="text-xs text-text-muted">{error}</p> : null}
         <Button size="sm" onClick={() => void refresh()}>
           {t("common.retry")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!settings || !catalog) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-danger">Failed to load settings.</p>
+        <Button size="sm" onClick={() => void refresh()}>
+          {t("common.retry")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (catalog.providers.length === 0) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-muted">No ACP runtimes installed.</p>
+        <p className="text-xs text-text-secondary">
+          Install a runtime from the Settings panel to get started.
+        </p>
+        <Button size="sm" onClick={() => void refresh()}>
+          {t("common.refresh")}
+        </Button>
+      </div>
+    );
+  }
+
+  if (!defaultProvider) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm text-text-muted">Selected runtime not found.</p>
+        <p className="text-xs text-text-secondary">
+          The previously selected runtime is no longer available.
+        </p>
+        <Button size="sm" onClick={() => void refresh()}>
+          {t("common.refresh")}
         </Button>
       </div>
     );
@@ -110,18 +114,9 @@ export function ChatSettingsPanel({ onClose }: ChatSettingsPanelProps) {
       </div>
 
       <div className="grid grid-cols-1 gap-3">
-        <ProviderSelector
-          providers={catalog.providers}
-          value={settings.activeProviderId}
-          onChange={(providerId) => {
-            const provider = catalog.providers.find((entry) => entry.id === providerId);
-            const nextModel = provider?.models[0];
-            const patch = nextModel
-              ? { activeProviderId: providerId, activeModelId: nextModel }
-              : { activeProviderId: providerId };
-            void updateSettings(patch);
-          }}
-        />
+        <div className="rounded-md border border-glass-border bg-space-surface/40 px-3 py-2 text-xs text-text-muted">
+          <div>Active runtime: {defaultProvider.displayName}</div>
+        </div>
 
         {selectedProvider.models.length > 0 ? (
           <ModelSelector

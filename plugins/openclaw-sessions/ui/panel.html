@@ -140,10 +140,22 @@
         <span id="connectionStatus" class="status-indicator status-disconnected">
           <span class="status-dot"></span><span data-i18n="ui.status.disconnected">Disconnected</span>
         </span>
+<<<<<<< HEAD
         <button class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions" data-i18n-title="ui.actions.refreshSessions">
+||||||| 18198c7
+        <button class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions">
+=======
+        <button type="button" class="btn btn-icon btn-secondary" id="btnRefresh" title="Refresh Sessions">
+>>>>>>> origin/master
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
         </button>
+<<<<<<< HEAD
         <button class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings" data-i18n-title="ui.actions.connectionSettings">
+||||||| 18198c7
+        <button class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings">
+=======
+        <button type="button" class="btn btn-icon btn-secondary" id="btnSettings" title="Connection Settings">
+>>>>>>> origin/master
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
         </button>
       </div>
@@ -240,7 +252,8 @@
     const state = {
       sessions: [], filtered: [], page: 1, pageSize: 10,
       searchQuery: '', connected: false,
-      chatSessionId: null, chatLiveTimer: null, chatLastCount: 0,
+      chatSessionId: null, chatSessionKey: null, chatLiveTimer: null, chatLastCount: 0,
+      chatMessages: [],
     };
 
     // ── DOM refs ───────────────────────────────────────────────────────────────
@@ -297,9 +310,13 @@
       throw new Error(tp('ui.messages.tauriUnavailable', 'Tauri IPC not available'));
     }
 
+    const PLUGIN_KEY = 'openclaw-sessions';
+
     async function invokePluginTool(toolName, toolArgs = {}) {
-      return invokeTauri('plugin:peekoo-plugin-host|invoke_tool', {
-        toolName, toolArgs: JSON.stringify(toolArgs),
+      return invokeTauri('plugin_call_panel_tool', {
+        pluginKey: PLUGIN_KEY,
+        toolName,
+        argsJson: JSON.stringify(toolArgs),
       });
     }
 
@@ -324,7 +341,115 @@
     function parsePluginJson(raw) {
       if (raw === null || raw === undefined) return null;
       if (typeof raw === 'object') return raw;
-      return salvageTruncatedJson(String(raw));
+      let current = String(raw).trim().replace(/^\uFEFF/, '');
+      if (!current) return null;
+
+      // Prefer native JSON.parse and unwrap nested JSON-string shells.
+      for (let i = 0; i < 6; i++) {
+        try {
+          const parsed = JSON.parse(current);
+          if (typeof parsed === 'string') {
+            current = parsed.trim();
+            if (!current) return null;
+            continue;
+          }
+          return parsed;
+        } catch {}
+
+        const salvaged = salvageTruncatedJson(current);
+        if (salvaged && typeof salvaged === 'object') {
+          return salvaged;
+        }
+        if (typeof salvaged === 'string' && salvaged.trim()) {
+          current = salvaged.trim();
+          continue;
+        }
+
+        // If response is a quoted+escaped JSON blob, peel one layer manually.
+        if (current.length >= 2 && current[0] === '"' && current[current.length - 1] === '"') {
+          current = current
+            .slice(1, -1)
+            .replace(/\\"/g, '"')
+            .replace(/\\\\/g, '\\')
+            .trim();
+          continue;
+        }
+        break;
+      }
+
+      const loose = parseLooseJson(current);
+      if (loose !== null) return loose;
+      return null;
+    }
+
+    function parseLooseJson(input) {
+      if (!input) return null;
+      const candidates = [];
+      const s = String(input).trim();
+      candidates.push(s);
+
+      if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        candidates.push(s.slice(1, -1));
+      }
+
+      const firstObj = s.indexOf('{');
+      const lastObj = s.lastIndexOf('}');
+      if (firstObj >= 0 && lastObj > firstObj) {
+        candidates.push(s.slice(firstObj, lastObj + 1));
+      }
+      const firstArr = s.indexOf('[');
+      const lastArr = s.lastIndexOf(']');
+      if (firstArr >= 0 && lastArr > firstArr) {
+        candidates.push(s.slice(firstArr, lastArr + 1));
+      }
+
+      for (const c of candidates) {
+        const direct = salvageTruncatedJson(c);
+        if (direct !== null) {
+          if (typeof direct === 'string') {
+            const nested = salvageTruncatedJson(direct);
+            if (nested !== null) return nested;
+          } else {
+            return direct;
+          }
+        }
+
+        const unescaped = c
+          .replace(/\\\\n/g, '\n')
+          .replace(/\\\\r/g, '\r')
+          .replace(/\\\\t/g, '\t')
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, '\\');
+        const reparsed = salvageTruncatedJson(unescaped);
+        if (reparsed !== null) {
+          if (typeof reparsed === 'string') {
+            const nested = salvageTruncatedJson(reparsed);
+            if (nested !== null) return nested;
+          } else {
+            return reparsed;
+          }
+        }
+      }
+
+      return null;
+    }
+
+    function unwrapPayload(value) {
+      let current = value;
+      for (let i = 0; i < 4; i++) {
+        if (typeof current === 'string') {
+          const parsed = parsePluginJson(current);
+          if (!parsed || parsed === current) break;
+          current = parsed;
+          continue;
+        }
+        if (current && typeof current === 'object' && current.payload !== undefined) {
+          current = current.payload;
+          continue;
+        }
+        break;
+      }
+      return current;
     }
 
     // ── Data helpers ───────────────────────────────────────────────────────────
@@ -411,12 +536,12 @@
 
     function normalizeSession(raw) {
       if (!raw) return null;
-      const id = raw.id || raw.session_id || raw.key || '';
-      const key = raw.key || raw.session_key || raw.api_key || id;
+      const id = raw.id || raw.sessionId || raw.session_id || raw.key || '';
+      const key = raw.key || raw.sessionKey || raw.session_key || raw.api_key || id;
       const kind = (raw.kind || raw.type || raw.session_type || 'unknown').toLowerCase();
       const localizedKind = tp(`ui.kind.${kind}`, kind);
       const model = raw.model || raw.model_name || raw.llm || '—';
-      const ts = toTimestampMs(raw.created_at || raw.timestamp || raw.last_active || raw.updated_at || 0);
+      const ts = toTimestampMs(raw.created_at || raw.timestamp || raw.last_active || raw.updated_at || raw.updatedAt || 0);
       const { used, max } = extractTokenStats(raw);
       return { id, key, kind, localizedKind, model, ts, used, max, _raw: raw };
     }
@@ -436,8 +561,20 @@
 
     function extractSessions(data) {
       if (!data) return [];
+      const unwrapped = unwrapPayload(data);
+      if (Array.isArray(unwrapped)) return unwrapped.map(normalizeSession).filter(Boolean);
+      if (unwrapped && Array.isArray(unwrapped.sessions)) {
+        return unwrapped.sessions.map(normalizeSession).filter(Boolean);
+      }
+
       if (Array.isArray(data)) return data.map(normalizeSession).filter(Boolean);
       if (Array.isArray(data.sessions)) return data.sessions.map(normalizeSession).filter(Boolean);
+      if (data.payload && Array.isArray(data.payload.sessions)) {
+        return data.payload.sessions.map(normalizeSession).filter(Boolean);
+      }
+      if (data.payload && data.payload.payload && Array.isArray(data.payload.payload.sessions)) {
+        return data.payload.payload.sessions.map(normalizeSession).filter(Boolean);
+      }
       if (Array.isArray(data.data)) return data.data.map(normalizeSession).filter(Boolean);
       if (Array.isArray(data.items)) return data.items.map(normalizeSession).filter(Boolean);
       return [];
@@ -531,19 +668,61 @@
     // ── Chat render helpers ────────────────────────────────────────────────────
     function normalizeHistoryMessage(msg) {
       if (!msg) return null;
-      const role = (msg.role || 'unknown').toLowerCase();
-      const content = extractMessageContent(msg);
-      const ts = toTimestampMs(msg.created_at || msg.timestamp || 0);
+      const rawRole = (
+        msg.role ||
+        msg.sender ||
+        msg.author ||
+        msg.type ||
+        msg.kind ||
+        'unknown'
+      ).toLowerCase();
+      const role =
+        rawRole === 'assistant' || rawRole === 'agent' || rawRole === 'ai' ? 'assistant'
+          : rawRole === 'user' || rawRole === 'human' ? 'user'
+            : rawRole === 'system' ? 'system'
+              : 'assistant';
+      const content =
+        extractMessageContent(msg) ||
+        (typeof msg.text === 'string' ? msg.text : '') ||
+        (typeof msg.body === 'string' ? msg.body : '') ||
+        (typeof msg.message === 'string' ? msg.message : '') ||
+        (msg.message && typeof msg.message.content === 'string' ? msg.message.content : '');
+      const ts = toTimestampMs(
+        msg.created_at ||
+        msg.createdAt ||
+        msg.timestamp ||
+        msg.ts ||
+        msg.time ||
+        0,
+      );
       return { role, content, ts };
     }
 
     function extractHistoryMessages(data) {
       if (!data) return [];
-      const arr = Array.isArray(data) ? data
-        : Array.isArray(data.messages) ? data.messages
-        : Array.isArray(data.history) ? data.history
-        : [];
-      return arr.map(normalizeHistoryMessage).filter(m => m && m.content);
+      const walk = (node, depth = 0) => {
+        if (!node || depth > 6) return [];
+        if (Array.isArray(node)) return node;
+        if (typeof node === 'string') {
+          const parsed = parsePluginJson(node);
+          return parsed ? walk(parsed, depth + 1) : [];
+        }
+
+        if (Array.isArray(node.messages)) return node.messages;
+        if (Array.isArray(node.history)) return node.history;
+        if (Array.isArray(node.items)) return node.items;
+        if (Array.isArray(node.events)) return node.events;
+        if (Array.isArray(node.entries)) return node.entries;
+        if (node.payload !== undefined) return walk(node.payload, depth + 1);
+        if (node.data !== undefined) return walk(node.data, depth + 1);
+        if (node.result !== undefined) return walk(node.result, depth + 1);
+        return [];
+      };
+
+      const arr = walk(data);
+      return arr
+        .map(normalizeHistoryMessage)
+        .filter(m => m && typeof m.content === 'string' && m.content.trim().length > 0);
     }
 
     function formatWhen(tsMs) {
@@ -552,6 +731,9 @@
     }
 
     function renderChatMessages(messages, isLoading = false) {
+      if (Array.isArray(messages) && !isLoading) {
+        state.chatMessages = messages.slice();
+      }
       if (!messages.length && !isLoading) {
         dom.chatMessages.innerHTML = `<div class="chat-empty">${escapeHtml(tp('ui.chat.empty', 'No messages in this session yet.'))}</div>`;
         return;
@@ -612,8 +794,16 @@
       dom.btnSaveConfig.disabled = true;
       dom.btnSaveConfig.textContent = tp('ui.actions.saving', 'Saving...');
       try {
+<<<<<<< HEAD
         await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
         setModalBanner(dom.configModalSuccess, tp('ui.messages.configurationSaved', 'Configuration saved.'), 'success');
+||||||| 18198c7
+        await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
+        setModalBanner(dom.configModalSuccess, 'Configuration saved.', 'success');
+=======
+        await invokePluginTool('save_openclaw_config', { websocketUrl: wsUrl, token, password });
+        setModalBanner(dom.configModalSuccess, 'Configuration saved.', 'success');
+>>>>>>> origin/master
         setTimeout(() => { closeConfigModal(); refreshSessions(); }, 900);
       } catch (e) {
         setModalBanner(dom.configModalError, tp('ui.messages.failedToSave', 'Failed to save: {{error}}', { error: String(e) }));
@@ -625,26 +815,46 @@
 
     async function loadPersistedConfig() {
       try {
-        const raw = await invokePluginTool('openclaw_get_config', {});
+        const raw = await invokePluginTool('get_openclaw_config', {});
         const cfg = normalizeConfig(parsePluginJson(raw));
-        const isMissingConfig = !cfg || (!cfg.ws_url && !cfg.token && !cfg.password);
-        if (cfg.ws_url) dom.inputWsUrl.value = cfg.ws_url;
+        const isMissingConfig = !cfg || (!cfg.websocketUrl && !cfg.token && !cfg.password);
+        if (cfg.websocketUrl) dom.inputWsUrl.value = cfg.websocketUrl;
         if (cfg.token) dom.inputToken.value = cfg.token;
         if (cfg.password) dom.inputPassword.value = cfg.password;
         if (isMissingConfig) {
           setStatusMessage(tp('ui.messages.noConfigurationFound', 'No configuration found. Please set up your connection.'), true);
           openConfigModal();
+          return false;
         }
+        return true;
       } catch (e) {
         console.warn('loadPersistedConfig error:', e);
+        return false;
       }
     }
 
     function friendlyGatewayError(e) {
       const s = String(e);
+<<<<<<< HEAD
       if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return tp('ui.messages.cannotConnect', 'Cannot connect to OpenClaw server. Is it running?');
       if (s.includes('401') || s.includes('unauthorized')) return tp('ui.messages.authFailed', 'Authentication failed. Check your token or password.');
       if (s.includes('timeout')) return tp('ui.messages.connectionTimedOut', 'Connection timed out.');
+||||||| 18198c7
+      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return 'Cannot connect to OpenClaw server. Is it running?';
+      if (s.includes('401') || s.includes('unauthorized')) return 'Authentication failed. Check your token or password.';
+      if (s.includes('timeout')) return 'Connection timed out.';
+=======
+      if (s.toLowerCase().includes('pairing required')) {
+        return 'OpenClaw requires device pairing. Approve this device in OpenClaw first, then retry Refresh.';
+      }
+      if (s.includes('WASM runtime error')) {
+        const ws = dom.inputWsUrl.value.trim() || 'your configured WebSocket URL';
+        return `OpenClaw gateway unavailable or handshake failed (${ws}). Please confirm OpenClaw server is running and token/password is valid.`;
+      }
+      if (s.includes('connection refused') || s.includes('ECONNREFUSED')) return 'Cannot connect to OpenClaw server. Is it running?';
+      if (s.includes('401') || s.includes('unauthorized')) return 'Authentication failed. Check your token or password.';
+      if (s.includes('timeout')) return 'Connection timed out.';
+>>>>>>> origin/master
       return s;
     }
 
@@ -652,11 +862,33 @@
       dom.btnRefresh.disabled = true;
       setStatusMessage('');
       try {
-        const raw = await invokePluginTool('openclaw_list_sessions', {});
+        const raw = await invokePluginTool('list_sessions', { page: 1, pageSize: 100 });
         const data = parsePluginJson(raw);
+        if (data && data.success === false) {
+          throw new Error(data.error || 'Gateway request failed');
+        }
+        const unwrapped = unwrapPayload(data);
         state.sessions = extractSessions(data);
         state.connected = true;
         renderConnectionStatus(true);
+        if (!state.sessions.length) {
+          const countHint =
+            (data && data.payload && data.payload.count) ||
+            (data && data.count) ||
+            ((unwrapped && unwrapped.count) || 0);
+          const topKeys = data && typeof data === 'object' ? Object.keys(data).join(',') : String(data);
+          const payloadKeys = unwrapped && typeof unwrapped === 'object' ? Object.keys(unwrapped).join(',') : String(unwrapped);
+          const rawType = raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw;
+          const rawLen = typeof raw === 'string' ? raw.length : 0;
+          setStatusMessage(
+            countHint > 0
+              ? `Connected, gateway returned count=${countHint}, but panel failed to map sessions. [dbg rawType=${rawType} rawLen=${rawLen} top=${topKeys} payload=${payloadKeys}]`
+              : `Connected, but no sessions returned by OpenClaw. [dbg rawType=${rawType} rawLen=${rawLen} top=${topKeys} payload=${payloadKeys}]`,
+            false,
+          );
+        } else {
+          setStatusMessage('');
+        }
         searchSessions(state.searchQuery);
       } catch (e) {
         state.connected = false;
@@ -668,9 +900,9 @@
     }
 
     // ── Chat ───────────────────────────────────────────────────────────────────
-    async function loadSessionHistory(sessionId) {
+    async function loadSessionHistory(sessionKey) {
       try {
-        const raw = await invokePluginTool('openclaw_get_session_history', { session_id: sessionId });
+        const raw = await invokePluginTool('openclaw_chat_history', { sessionKey, limit: 200 });
         const data = parsePluginJson(raw);
         return extractHistoryMessages(data);
       } catch (e) {
@@ -683,11 +915,11 @@
       if (state.chatLiveTimer) { clearInterval(state.chatLiveTimer); state.chatLiveTimer = null; }
     }
 
-    function startChatLiveRefresh(sessionId) {
+    function startChatLiveRefresh() {
       stopChatLiveRefresh();
       state.chatLiveTimer = setInterval(async () => {
-        if (!state.chatSessionId) { stopChatLiveRefresh(); return; }
-        const msgs = await loadSessionHistory(sessionId);
+        if (!state.chatSessionId || !state.chatSessionKey) { stopChatLiveRefresh(); return; }
+        const msgs = await loadSessionHistory(state.chatSessionKey);
         if (msgs.length !== state.chatLastCount) {
           state.chatLastCount = msgs.length;
           renderChatMessages(msgs);
@@ -698,19 +930,27 @@
     async function openSessionChat(sessionId) {
       const session = state.sessions.find(s => s.id === sessionId);
       state.chatSessionId = sessionId;
+      state.chatSessionKey = session ? session.key : sessionId;
       state.chatLastCount = 0;
       dom.chatSessionKey.textContent = session ? truncate(session.key, 40) : sessionId;
       dom.chatMessages.innerHTML = `<div class="chat-empty">${escapeHtml(tp('ui.chat.loading', 'Loading...'))}</div>`;
       dom.chatModal.classList.add('active');
-      const msgs = await loadSessionHistory(sessionId);
-      state.chatLastCount = msgs.length;
-      renderChatMessages(msgs);
-      startChatLiveRefresh(sessionId);
+      const msgs = await loadSessionHistory(state.chatSessionKey);
+      if (msgs.length > 0) {
+        state.chatLastCount = msgs.length;
+        renderChatMessages(msgs);
+      } else {
+        state.chatLastCount = 0;
+        renderChatMessages(state.chatMessages || []);
+      }
+      startChatLiveRefresh();
     }
 
     function closeChatModal() {
       stopChatLiveRefresh();
       state.chatSessionId = null;
+      state.chatSessionKey = null;
+      state.chatMessages = [];
       dom.chatModal.classList.remove('active');
       dom.chatInput.value = '';
     }
@@ -719,25 +959,42 @@
 
     async function sendChatMessage() {
       const text = dom.chatInput.value.trim();
-      if (!text || !state.chatSessionId) return;
+      if (!text || !state.chatSessionId || !state.chatSessionKey) return;
       dom.chatInput.value = '';
       dom.btnSendChat.disabled = true;
-      const msgs = await loadSessionHistory(state.chatSessionId);
-      msgs.push({ role: 'user', content: text, ts: Date.now() });
-      renderChatMessages(msgs, true);
+      const baseline = state.chatMessages.length ? state.chatMessages.slice() : await loadSessionHistory(state.chatSessionKey);
+      const optimistic = baseline.slice();
+      optimistic.push({ role: 'user', content: text, ts: Date.now() });
+      state.chatMessages = optimistic.slice();
+      renderChatMessages(optimistic, true);
       try {
-        await invokePluginTool('openclaw_send_message', { session_id: state.chatSessionId, message: text });
+        await invokePluginTool('openclaw_chat_send', { sessionKey: state.chatSessionKey, message: text });
         await sleep(800);
-        const updated = await loadSessionHistory(state.chatSessionId);
-        state.chatLastCount = updated.length;
-        renderChatMessages(updated);
+        const updated = await loadSessionHistory(state.chatSessionKey);
+        if (updated.length > 0) {
+          state.chatLastCount = updated.length;
+          renderChatMessages(updated);
+        } else {
+          // Gateway may be eventually consistent right after send; keep optimistic view.
+          state.chatLastCount = optimistic.length;
+          renderChatMessages(optimistic);
+        }
       } catch (e) {
+<<<<<<< HEAD
         msgs.push({
           role: 'system',
           content: tp('ui.messages.errorPrefix', 'Error: {{error}}', { error: String(e) }),
           ts: Date.now(),
         });
         renderChatMessages(msgs);
+||||||| 18198c7
+        msgs.push({ role: 'system', content: 'Error: ' + String(e), ts: Date.now() });
+        renderChatMessages(msgs);
+=======
+        optimistic.push({ role: 'system', content: 'Error: ' + String(e), ts: Date.now() });
+        state.chatLastCount = optimistic.length;
+        renderChatMessages(optimistic);
+>>>>>>> origin/master
       } finally {
         dom.btnSendChat.disabled = false;
         dom.chatInput.focus();
@@ -774,11 +1031,30 @@
       renderConnectionStatus(false);
       renderSessions([]);
       renderPagination([]);
-      await loadPersistedConfig();
-      await refreshSessions();
+      const hasConfig = await loadPersistedConfig();
+      if (hasConfig) {
+        await refreshSessions();
+      }
     }
 
-    document.addEventListener('DOMContentLoaded', init);
+    let hasBootstrapped = false;
+
+    async function bootstrap() {
+      if (hasBootstrapped) return;
+      hasBootstrapped = true;
+      try {
+        await init();
+      } catch (e) {
+        console.error('OpenClaw panel init failed:', e);
+        setStatusMessage(`Panel initialization failed: ${String(e)}`, true);
+      }
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => { void bootstrap(); }, { once: true });
+    } else {
+      void bootstrap();
+    }
   </script>
 </body>
 </html>

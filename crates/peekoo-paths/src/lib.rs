@@ -59,6 +59,11 @@ pub fn peekoo_global_skills_dir() -> Result<PathBuf, String> {
     Ok(peekoo_global_config_dir()?.join("skills"))
 }
 
+pub fn peekoo_global_cache_dir() -> Result<PathBuf, String> {
+    let data_dir = peekoo_global_data_dir()?;
+    Ok(data_dir.join("cache"))
+}
+
 pub fn peekoo_log_dir() -> Result<PathBuf, String> {
     Ok(peekoo_global_data_dir()?.join("logs"))
 }

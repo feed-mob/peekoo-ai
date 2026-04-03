@@ -22,13 +22,25 @@ plugins/*/Cargo.lock
 .idea/
 .vscode/
 .opencode/plans/
+.codex
+.cursor
 
 # Development log files
 /logs/
+/tmp/
+*.log
 apps/desktop-tauri/src-tauri/logs/
+apps/desktop-tauri/src-tauri/LOGS.txt
+apps/desktop-tauri/src-tauri/binaries/
 
 # Peekoo runtime files
 .peekoo/
 
 # JJ workspaces
 .workspaces/
+
+# mcporter and local config
+config/
+
+# Metadata files
+metadata.json

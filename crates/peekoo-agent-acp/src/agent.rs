@@ -1,7 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use agent_client_protocol as acp;
 use agent_client_protocol::{
@@ -11,12 +10,19 @@ use agent_client_protocol::{
 use anyhow::Result;
 use async_trait::async_trait;
 use peekoo_agent::service::AgentService;
-use peekoo_agent::{AgentEvent, config::AgentServiceConfig};
+use peekoo_agent::{
+    AgentEvent, SessionType,
+    config::{
+        AgentProvider, AgentServiceConfig, PEEKOO_AGENT_PROVIDER_ARGS_ENV,
+        PEEKOO_AGENT_PROVIDER_COMMAND_ENV, PEEKOO_OPENCODE_BIN_ENV,
+    },
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use crate::context::TaskContext;
-use crate::mcp_tools::{connect_task_mcp_tools, summarize_agent_event};
+// TODO: Re-enable after MCP bridge migration
+// use crate::mcp_tools::{TaskScopedTool, summarize_agent_event};
 
 #[derive(Clone)]
 struct SessionContext {
@@ -40,6 +46,33 @@ impl PeekooAgent {
             sessions: RefCell::new(HashMap::new()),
         }
     }
+}
+
+fn extract_task_context(prompt: &[acp::ContentBlock]) -> TaskContext {
+    prompt
+        .iter()
+        .find_map(|block| {
+            if let acp::ContentBlock::Text(text) = block {
+                serde_json::from_str::<TaskContext>(&text.text).ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| {
+            tracing::warn!("No task context provided, using default");
+            TaskContext {
+                task_id: "unknown".to_string(),
+                title: "Untitled Task".to_string(),
+                description: None,
+                status: "todo".to_string(),
+                priority: "medium".to_string(),
+                labels: vec![],
+                scheduled_start_at: None,
+                scheduled_end_at: None,
+                estimated_duration_min: None,
+                comments: vec![],
+            }
+        })
 }
 
 #[async_trait(?Send)]
@@ -109,31 +142,7 @@ impl acp::Agent for PeekooAgent {
             arguments.session_id
         );
 
-        let task_context: TaskContext = arguments
-            .prompt
-            .first()
-            .and_then(|block| {
-                if let acp::ContentBlock::Text(text) = block {
-                    serde_json::from_str(&text.text).ok()
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_else(|| {
-                tracing::warn!("No task context provided, using default");
-                TaskContext {
-                    task_id: "unknown".to_string(),
-                    title: "Untitled Task".to_string(),
-                    description: None,
-                    status: "todo".to_string(),
-                    priority: "medium".to_string(),
-                    labels: vec![],
-                    scheduled_start_at: None,
-                    scheduled_end_at: None,
-                    estimated_duration_min: None,
-                    comments: vec![],
-                }
-            });
+        let task_context = extract_task_context(&arguments.prompt);
 
         let session_context = self
             .sessions
@@ -169,26 +178,14 @@ impl acp::Agent for PeekooAgent {
                 acp::Error::internal_error()
             })?;
 
-        let mut _mcp_handles = Vec::new();
-        let tools_count = if let Some(session) = &session_context {
-            let (tools, handles) =
-                connect_task_mcp_tools(&task_context.task_id, &session.mcp_servers)
-                    .await
-                    .map_err(|error| {
-                        tracing::error!("Failed to connect session MCP servers: {}", error);
-                        acp::Error::internal_error()
-                    })?;
-            let count = tools.len();
-            agent.register_native_tools(tools);
-            _mcp_handles = handles;
-            count
-        } else {
-            0
-        };
+        let mcp_server_count = session_context
+            .as_ref()
+            .map(|session| session.mcp_servers.len())
+            .unwrap_or_default();
 
         let startup_text = format!(
-            "Task received: {}\n\nMCP tools available: {}\n\nRunning agent...",
-            task_context.task_id, tools_count
+            "Task received: {}\n\nMCP servers forwarded: {}\n\nRunning agent...",
+            task_context.task_id, mcp_server_count
         );
 
         let (tx, rx) = oneshot::channel();
@@ -204,20 +201,21 @@ impl acp::Agent for PeekooAgent {
         rx.await
             .map_err(|_| anyhow::anyhow!("session update failed"))?;
 
-        let session_id = arguments.session_id.clone();
-        let session_tx = self.session_update_tx.clone();
         let final_text = agent
             .prompt(&task_prompt, move |event: AgentEvent| {
-                if let Some(summary) = summarize_agent_event(&event) {
-                    let (tx, _rx) = oneshot::channel();
-                    let _ = session_tx.send((
-                        SessionNotification::new(
-                            session_id.clone(),
-                            SessionUpdate::AgentMessageChunk(ContentChunk::new(summary.into())),
-                        ),
-                        tx,
-                    ));
-                }
+                // TODO: Re-enable after MCP bridge migration
+                // if let Some(summary) = summarize_agent_event(&event) {
+                //     let (tx, _rx) = oneshot::channel();
+                //     let _ = session_tx.send((
+                //         SessionNotification::new(
+                //             session_id.clone(),
+                //             SessionUpdate::AgentMessageChunk(ContentChunk::new(summary.into())),
+                //         ),
+                //         tx,
+                //     ));
+                // }
+                // For now, just emit the event without MCP summary
+                let _ = event; // Silence unused warning
             })
             .await
             .map_err(|error| {
@@ -267,14 +265,6 @@ impl acp::Agent for PeekooAgent {
     }
 }
 
-pub(crate) fn ensure_rustls_provider() {
-    static RUSTLS_PROVIDER: OnceLock<()> = OnceLock::new();
-
-    RUSTLS_PROVIDER.get_or_init(|| {
-        let _ = rustls::crypto::ring::default_provider().install_default();
-    });
-}
-
 #[derive(Debug, PartialEq, Eq)]
 struct TaskSessionStorage {
     session_dir: Option<PathBuf>,
@@ -314,6 +304,14 @@ async fn build_agent_service(
     task_id: &str,
     session_context: Option<&SessionContext>,
 ) -> anyhow::Result<AgentService> {
+    let config = build_agent_service_config(task_id, session_context);
+    AgentService::new(config).await
+}
+
+fn build_agent_service_config(
+    task_id: &str,
+    session_context: Option<&SessionContext>,
+) -> AgentServiceConfig {
     let cwd = session_context
         .map(|session| session.cwd.clone())
         .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
@@ -327,12 +325,18 @@ async fn build_agent_service(
         auto_discover: true,
         no_session: session_storage.no_session,
         session_dir: session_storage.session_dir,
-        session_path: session_storage.session_path,
+        mcp_servers: session_context
+            .map(|session| session.mcp_servers.clone())
+            .unwrap_or_default(),
+        session_type: SessionType::AcpTask,
         ..Default::default()
     };
 
-    if let Ok(provider) = std::env::var("PEEKOO_AGENT_PROVIDER") {
-        config.provider = Some(provider);
+    if let Ok(provider_str) = std::env::var("PEEKOO_AGENT_PROVIDER") {
+        config.provider = match provider_str.as_str() {
+            "opencode" => AgentProvider::opencode(),
+            _ => AgentProvider::from_registry(&provider_str, &provider_str, vec![]),
+        };
     }
     if let Ok(model) = std::env::var("PEEKOO_AGENT_MODEL") {
         config.model = Some(model);
@@ -340,8 +344,30 @@ async fn build_agent_service(
     if let Ok(api_key) = std::env::var("PEEKOO_AGENT_API_KEY") {
         config.api_key = Some(api_key);
     }
+    if let Ok(opencode_bin) = std::env::var(PEEKOO_OPENCODE_BIN_ENV)
+        && !opencode_bin.trim().is_empty()
+    {
+        config
+            .environment
+            .insert(PEEKOO_OPENCODE_BIN_ENV.to_string(), opencode_bin);
+    }
+    if let Ok(provider_command) = std::env::var(PEEKOO_AGENT_PROVIDER_COMMAND_ENV)
+        && !provider_command.trim().is_empty()
+    {
+        config.environment.insert(
+            PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+            provider_command,
+        );
+    }
+    if let Ok(provider_args) = std::env::var(PEEKOO_AGENT_PROVIDER_ARGS_ENV)
+        && !provider_args.trim().is_empty()
+    {
+        config
+            .environment
+            .insert(PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(), provider_args);
+    }
 
-    AgentService::new(config).await.map_err(Into::into)
+    config
 }
 
 pub async fn run_agent() -> acp::Result<()> {
@@ -397,7 +423,13 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
 
-    use super::{TaskSessionStorage, build_task_session_storage};
+    use agent_client_protocol::{McpServer, McpServerHttp, TextContent};
+
+    use super::{
+        SessionContext, TaskSessionStorage, build_agent_service_config, build_task_session_storage,
+        extract_task_context,
+    };
+    use crate::context::Comment;
 
     #[test]
     fn reuses_legacy_session_file_when_it_exists() {
@@ -442,6 +474,73 @@ mod tests {
                 session_path: None,
                 no_session: true,
             }
+        );
+    }
+
+    #[test]
+    fn build_agent_service_config_forwards_session_mcp_servers() {
+        let session_context = SessionContext {
+            cwd: PathBuf::from("/tmp/peekoo-task"),
+            mcp_servers: vec![
+                McpServer::Http(McpServerHttp::new(
+                    "peekoo-native-tools",
+                    "http://127.0.0.1:49152/mcp",
+                )),
+                McpServer::Http(McpServerHttp::new(
+                    "peekoo-plugin-tools",
+                    "http://127.0.0.1:49152/mcp/plugins",
+                )),
+            ],
+        };
+
+        let config = build_agent_service_config("task-123", Some(&session_context));
+
+        assert_eq!(config.working_directory, PathBuf::from("/tmp/peekoo-task"));
+        assert_eq!(config.mcp_servers, session_context.mcp_servers);
+    }
+
+    #[test]
+    fn extract_task_context_finds_json_after_context_prompt() {
+        let task_json = serde_json::json!({
+            "task_id": "task-123",
+            "title": "Finish task",
+            "description": "do the thing",
+            "status": "pending",
+            "priority": "high",
+            "labels": ["agent"],
+            "scheduled_start_at": null,
+            "scheduled_end_at": null,
+            "estimated_duration_min": 30,
+            "comments": [{
+                "id": "c1",
+                "author": "user",
+                "text": "please handle this",
+                "created_at": "2026-04-02T00:00:00Z"
+            }]
+        })
+        .to_string();
+
+        let prompt = vec![
+            agent_client_protocol::ContentBlock::Text(TextContent::new(
+                "workspace context goes here".to_string(),
+            )),
+            agent_client_protocol::ContentBlock::Text(TextContent::new(task_json)),
+        ];
+
+        let task_context = extract_task_context(&prompt);
+
+        assert_eq!(task_context.task_id, "task-123");
+        assert_eq!(task_context.title, "Finish task");
+        assert_eq!(task_context.comments.len(), 1);
+        assert_eq!(
+            task_context.comments[0].text,
+            Comment {
+                id: "c1".into(),
+                author: "user".into(),
+                text: "please handle this".into(),
+                created_at: "2026-04-02T00:00:00Z".into(),
+            }
+            .text
         );
     }
 }

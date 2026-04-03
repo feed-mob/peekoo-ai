@@ -1,0 +1,18 @@
+[package]
+name = "peekoo-utils"
+version = "0.1.0"
+edition = "2021"
+description = "Shared utility functions for the Peekoo AI application"
+license = "MIT"
+
+[dependencies]
+which = "7"
+
+[features]
+default = ["tokio"]
+tokio = ["dep:tokio"]
+
+[dependencies.tokio]
+version = "1"
+features = ["process"]
+optional = true

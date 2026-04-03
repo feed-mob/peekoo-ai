@@ -41,7 +41,7 @@ export function DeleteConfirmDialog({
             <div className="bg-space-surface border border-glass-border rounded-xl p-6 shadow-xl">
               <div className="flex items-start gap-3 mb-4">
                 <div className="p-2 rounded-full bg-red-500/20">
-                  <AlertTriangle size={20} className="text-red-400" />
+                  <AlertTriangle size={20} className="text-red-700 dark:text-red-400" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-text-primary">

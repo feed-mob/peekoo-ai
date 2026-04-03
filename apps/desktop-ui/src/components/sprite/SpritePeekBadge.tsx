@@ -82,6 +82,12 @@ function BadgeRow({ item, compact }: BadgeRowProps) {
   );
 }
 
+const HEALTH_THEME: Record<string, { light: string; dark: string }> = {
+  droplet: { light: "#8CCDEB", dark: "#87BAC3" },
+  eye: { light: "#67C090", dark: "#5DD3B6" },
+  "person-standing": { light: "#DDBA7D", dark: "#F7C85C" },
+};
+
 interface StyledBadgeProps {
   item: PeekBadgeItem;
 }
@@ -91,7 +97,7 @@ function StyledBadge({ item }: StyledBadgeProps) {
   const isPomodoro = item.icon === "brain" || item.icon === "coffee";
   const isPaused = isPomodoro && item.countdown_secs === undefined;
   
-  const lightGray = "#75787B";
+  const lightGray = "#3D3D3D";
   const darkWhite = "rgba(255, 255, 255, 0.9)";
   
   const handleControl = async (e: React.MouseEvent) => {
@@ -120,27 +126,25 @@ function StyledBadge({ item }: StyledBadgeProps) {
 
   const Icon = item.icon ? ICON_MAP[item.icon] : undefined;
 
-  const healthColors: Record<string, string> = {
-    droplet: "#3b82f6", // Blue
-    "person-standing": "#eab308", // Yellow
-    eye: "#22c55e", // Green
-  };
-  const iconColor = (item.icon && healthColors[item.icon]) || (isDark ? darkWhite : lightGray);
+  const theme = item.icon ? HEALTH_THEME[item.icon] : null;
+  const iconColor = theme ? (isDark ? theme.dark : theme.light) : (isDark ? darkWhite : lightGray);
   const isReminder = !isPomodoro;
 
-  const healthBgs: Record<string, string> = {
-    droplet: isDark ? "bg-blue-400/10 border-blue-400/20" : "bg-blue-500/10 border-blue-500/20",
-    "person-standing": isDark ? "bg-yellow-400/10 border-yellow-400/20" : "bg-yellow-500/10 border-yellow-500/20",
-    eye: isDark ? "bg-green-400/10 border-green-400/20" : "bg-green-500/10 border-green-500/20",
-  };
-  
   const containerStyle = isPomodoro 
-    ? (isDark ? "bg-black/60 border-white/5" : "bg-white/60 border-white/10")
-    : (item.icon && healthBgs[item.icon]) ? healthBgs[item.icon] : (isDark ? "bg-black/20 border-white/10" : "bg-white/10 border-white/20");
+    ? (isDark ? "bg-black/70 border-white/5" : "bg-white/60 border-white/10")
+    : (isDark ? "bg-black/60 border-white/6" : "bg-white/30 border-white/20");
+
+  const dynamicStyles = (isReminder && theme) ? {
+    backgroundColor: isDark 
+      ? `color-mix(in srgb, ${iconColor} 20%, black 80%)`
+      : `${iconColor}25`,
+    borderColor: isDark ? `${iconColor}30` : `${iconColor}45`,
+  } : {};
 
   return (
     <motion.div 
-      className={`flex items-center justify-between w-full h-full pl-3.5 pr-2.5 rounded-full backdrop-blur-3xl shadow-panel/10 border transition-all duration-300 ${containerStyle}`}
+      className={`flex items-center justify-between w-full h-full pl-3.5 pr-2.5 rounded-full backdrop-blur-3xl shadow-panel/10 border transition-colors duration-500 ${containerStyle}`}
+      style={dynamicStyles}
 
       animate={isReminder ? {
         scale: [1, 1.02, 1],
@@ -213,10 +217,10 @@ function StyledBadge({ item }: StyledBadgeProps) {
                     className="w-[12px] h-[12px]" 
                     style={{ 
                         color: iconColor,
-                        fill: (item.icon === "droplet" || item.icon === "eye") ? iconColor : 'none',
-                        stroke: (item.icon === "person-standing") ? iconColor : 'transparent',
-                        strokeWidth: '1.5px',
-                        filter: `drop-shadow(0 0 3px ${iconColor}88)`
+                        fill: iconColor, // Use fill for all
+                        stroke: (item.icon === "person-standing") ? iconColor : 'none',
+                        strokeWidth: (item.icon === "person-standing") ? '1.5px' : '0',
+                        filter: `drop-shadow(0 0 3px ${iconColor}cc)` // Stronger glow
                     }} 
                   />
                 )

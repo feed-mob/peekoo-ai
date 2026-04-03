@@ -23,7 +23,8 @@
 
 ## Workflows
 
-- `Release`: builds installers on tag push or manual dispatch, creates updater artifacts, drafts a GitHub Release, can publish a draft release as latest, and publishes to AUR when the release is published.
+- `Auto Tag`: watches `master` for version bumps in `Cargo.toml`, then creates the matching `v0.x.y` tag.
+- `Release`: runs after `Auto Tag` succeeds or from manual dispatch, builds installers, creates updater artifacts, drafts a GitHub Release, can publish a draft release as latest, and publishes to AUR when the release is published.
 - `PR Release Label`: fails non-draft PRs that do not have a release-note label.
 - `CI`: validates the workspace, release tooling tests, and the desktop UI build.
 
@@ -51,44 +52,55 @@ GitHub generates release notes from merged PRs. The sections come from labels in
 
 Use `.github/pull_request_template.md` as the default checklist when opening PRs.
 
-## Standard tagged release
+## Standard release PR flow
 
-1. Merge the changes you want released into `master`.
-2. Start from a clean working copy.
-3. Run:
-
-   ```bash
-   just release-bump 0.x.y
-   ```
-
-4. Review the version changes and run the checks you want, for example:
-
-   ```bash
-   python -m unittest tests.test_release
-   cargo check
-   cargo test -p peekoo-desktop-tauri
-   cd apps/desktop-ui && bun run build
-   ```
-
-5. Create and push the release commit and tag:
+1. Start from a clean working copy.
+2. Run:
 
    ```bash
    just release 0.x.y
    ```
 
-6. GitHub Actions runs the `Release` workflow automatically from the `v0.x.y` tag.
-7. The workflow:
-   - builds Windows installers (`nsis`, `msi`)
-   - builds a macOS ARM64 `dmg` plus updater archives
-   - builds Linux `AppImage` and `deb`
-   - signs updater artifacts with the Tauri private key
-   - asks GitHub to generate release notes
-   - creates a draft GitHub Release
-8. Open the draft release in GitHub.
-9. Verify the uploaded files and the generated notes.
-10. Open `Actions` -> `Release` -> `Run workflow`.
-11. Set `finalize_release_tag` to `v0.x.y` and run the workflow.
-12. The workflow publishes the draft release, marks it as GitHub's latest release, and triggers the `publish-aur` job automatically.
+   This command:
+   - creates `release/0.x.y`
+   - bumps the checked-in version files and `Cargo.lock`
+   - creates a signed commit with message `chore(release): 0.x.y`
+   - pushes the branch to `origin`
+   - opens a GitHub PR targeting `master`
+   - applies the `chore` label automatically when that label exists in the repo
+
+3. Review the version changes and run the checks you want, for example:
+   ```bash
+   python -m unittest scripts.tests.test_release
+   cargo check
+   cargo test -p peekoo-desktop-tauri
+   cd apps/desktop-ui && bun run build
+   ```
+
+4. Add the appropriate release-note label to the PR before merging.
+5. Merge the release PR into `master`.
+6. `Auto Tag` creates `v0.x.y` from the merged `master` commit.
+7. GitHub Actions runs the `Release` workflow automatically after `Auto Tag` finishes.
+8. The workflow:
+    - builds Windows installers (`nsis`, `msi`)
+    - builds a macOS ARM64 `dmg` plus updater archives
+    - builds Linux `AppImage` and `deb`
+    - signs updater artifacts with the Tauri private key
+    - asks GitHub to generate release notes
+    - creates a draft GitHub Release
+9. Open the draft release in GitHub.
+10. Verify the uploaded files and the generated notes.
+11. Open `Actions` -> `Release` -> `Run workflow`.
+12. Set `finalize_release_tag` to `v0.x.y` and run the workflow.
+13. The workflow publishes the draft release, marks it as GitHub's latest release, and triggers the `publish-aur` job automatically.
+
+## Manual release bump only
+
+Use this when you want to update the version files without creating a branch, commit, push, or PR:
+
+```bash
+just release-bump 0.x.y
+```
 
 ## Manual workflow dispatch
 
@@ -131,7 +143,7 @@ It requires one-time setup:
    - `AUR_USERNAME`: your AUR username (used as the git commit author)
    - `AUR_EMAIL`: your email (used as the git commit author)
 
-The job patches `packaging/aur/PKGBUILD` with the release version, computes
+The job patches `scripts/aur/PKGBUILD` with the release version, computes
 the AppImage SHA256 checksum automatically, and pushes to the AUR git repo.
 
 ## Updating GitHub secrets

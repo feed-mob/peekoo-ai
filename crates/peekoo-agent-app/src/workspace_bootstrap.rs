@@ -3,19 +3,26 @@ use std::path::{Path, PathBuf};
 
 use peekoo_paths::peekoo_global_config_dir;
 
-const AGENTS_TEMPLATE: &str = include_str!("../templates/persona/AGENTS.md");
-const BOOTSTRAP_TEMPLATE: &str = include_str!("../templates/persona/BOOTSTRAP.md");
-const IDENTITY_TEMPLATE: &str = include_str!("../templates/persona/IDENTITY.md");
-const MEMORY_TEMPLATE: &str = include_str!("../templates/persona/MEMORY.md");
-const SOUL_TEMPLATE: &str = include_str!("../templates/persona/SOUL.md");
-const USER_TEMPLATE: &str = include_str!("../templates/persona/USER.md");
-const MEMORY_MANAGER_SKILL_TEMPLATE: &str =
-    include_str!("../templates/persona/skills/memory-manager/SKILL.md");
+const AGENTS_TEMPLATE: &str = include_str!("../templates/workspace/AGENTS.md");
+const BOOTSTRAP_TEMPLATE: &str = include_str!("../templates/workspace/BOOTSTRAP.md");
+const IDENTITY_TEMPLATE: &str = include_str!("../templates/workspace/IDENTITY.md");
+const MEMORY_TEMPLATE: &str = include_str!("../templates/workspace/MEMORY.md");
+const SOUL_TEMPLATE: &str = include_str!("../templates/workspace/SOUL.md");
+const USER_TEMPLATE: &str = include_str!("../templates/workspace/USER.md");
+
+mod skill_templates {
+    include!(concat!(env!("OUT_DIR"), "/skill_templates.rs"));
+}
 
 const REQUIRED_USER_FIELDS: &[&str] = &["- Name: [NOT_SET]"];
 
+/// The subdirectory name under the peekoo home where the agent workspace lives.
+const WORKSPACE_SUBDIR: &str = "workspace";
+
 pub fn ensure_agent_workspace() -> Result<PathBuf, String> {
-    let workspace_dir = resolve_workspace_dir()?;
+    let peekoo_home = resolve_peekoo_home()?;
+    let workspace_dir = peekoo_home.join(WORKSPACE_SUBDIR);
+
     if !workspace_dir.exists() {
         fs::create_dir_all(&workspace_dir)
             .map_err(|e| format!("Create agent workspace error: {e}"))?;
@@ -26,17 +33,26 @@ pub fn ensure_agent_workspace() -> Result<PathBuf, String> {
     seed_if_missing(&workspace_dir, "SOUL.md", SOUL_TEMPLATE)?;
     seed_if_missing(&workspace_dir, "USER.md", USER_TEMPLATE)?;
     seed_if_missing(&workspace_dir, "MEMORY.md", MEMORY_TEMPLATE)?;
-    seed_if_missing(
-        &workspace_dir,
-        "skills/memory-manager/SKILL.md",
-        MEMORY_MANAGER_SKILL_TEMPLATE,
-    )?;
+    sync_skill_templates(&workspace_dir)?;
     reconcile_bootstrap_file(&workspace_dir)?;
 
     Ok(workspace_dir)
 }
 
-fn resolve_workspace_dir() -> Result<PathBuf, String> {
+/// Sync all bundled skill templates to the workspace.
+/// Always overwrites so users get the latest versions on app start.
+fn sync_skill_templates(workspace_dir: &Path) -> Result<(), String> {
+    for (rel_path, content) in skill_templates::SKILL_FILES {
+        let dest = workspace_dir.join(".agents/skills").join(rel_path);
+        if let Some(parent) = dest.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("Create skill dir error: {e}"))?;
+        }
+        fs::write(&dest, content).map_err(|e| format!("Write skill file {rel_path} error: {e}"))?;
+    }
+    Ok(())
+}
+
+fn resolve_peekoo_home() -> Result<PathBuf, String> {
     if let Some(local_dir) = find_local_peekoo_dir() {
         return Ok(local_dir);
     }
@@ -156,16 +172,25 @@ mod tests {
     }
 
     #[test]
-    fn seed_if_missing_creates_parent_directories_for_skill_templates() {
-        let dir = temp_test_dir("skill-template");
+    fn sync_skill_templates_writes_all_bundled_skills() {
+        let dir = temp_test_dir("skill-sync");
 
-        seed_if_missing(
-            &dir,
-            "skills/memory-manager/SKILL.md",
-            MEMORY_MANAGER_SKILL_TEMPLATE,
-        )
-        .expect("seed memory manager skill");
+        sync_skill_templates(&dir).expect("sync skill templates");
 
-        assert!(dir.join("skills/memory-manager/SKILL.md").is_file());
+        assert!(dir.join(".agents/skills/memory-manager/SKILL.md").is_file());
+    }
+
+    #[test]
+    fn sync_skill_templates_overwrites_existing_files() {
+        let dir = temp_test_dir("skill-overwrite");
+        let skill_path = dir.join(".agents/skills/memory-manager/SKILL.md");
+        fs::create_dir_all(skill_path.parent().unwrap()).expect("create dirs");
+        fs::write(&skill_path, "old content").expect("write old content");
+
+        sync_skill_templates(&dir).expect("sync skill templates");
+
+        let content = fs::read_to_string(&skill_path).expect("read skill");
+        assert_ne!(content, "old content");
+        assert!(content.contains("memory-manager"));
     }
 }

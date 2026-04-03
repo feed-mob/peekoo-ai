@@ -1,20 +1,10 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use peekoo_persistence_sqlite::{
-    MIGRATION_0001_INIT, MIGRATION_0002_AGENT_SETTINGS, MIGRATION_0003_PROVIDER_COMPAT,
-    MIGRATION_0005_PLUGINS, MIGRATION_0005_TASK_EXTENSIONS,
-    MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE, MIGRATION_0007_RECURRENCE_TIME_OF_DAY,
-    MIGRATION_0008_TASK_ORDER_INDEX, MIGRATION_0009_AGENT_TASK_ASSIGNMENT,
-    MIGRATION_0010_POMODORO_RUNTIME, MIGRATION_0011_TASK_FINISHED_AT,
-};
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
-};
 use crate::settings::dto::{
-    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
+    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto,
 };
 
 const DEFAULT_MAX_TOOL_ITERATIONS: i64 = 50;
@@ -25,8 +15,6 @@ const SQL_UPSERT_PROVIDER_AUTH: &str = concat!(
     "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, datetime('now'))",
     " ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = excluded.api_key_ref, oauth_token_ref = excluded.oauth_token_ref, oauth_expires_at = excluded.oauth_expires_at, updated_at = datetime('now')"
 );
-
-use crate::settings::skills::discover_skills;
 
 pub(crate) struct SettingsStore {
     conn: Arc<Mutex<Connection>>,
@@ -72,17 +60,15 @@ impl SettingsStore {
             .map_err(|e| format!("Settings lock error: {e}"))?;
 
         let mut stmt = conn
-            .prepare("SELECT active_provider_id, active_model_id, system_prompt, max_tool_iterations, version FROM agent_settings WHERE id = 1")
+            .prepare("SELECT system_prompt, max_tool_iterations, version FROM agent_settings WHERE id = 1")
             .map_err(|e| format!("Prepare settings query error: {e}"))?;
 
         let row = stmt
             .query_row([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
                 ))
             })
             .map_err(|e| format!("Query settings row error: {e}"))?;
@@ -106,27 +92,6 @@ impl SettingsStore {
         let provider_auth: Result<Vec<_>, _> = auth_rows.collect();
         let provider_auth = provider_auth.map_err(|e| format!("Map auth rows error: {e}"))?;
 
-        let mut skill_stmt = conn
-            .prepare(
-                "SELECT skill_id, source_type, path, enabled FROM agent_skills ORDER BY skill_id",
-            )
-            .map_err(|e| format!("Prepare skills query error: {e}"))?;
-        let skill_rows = skill_stmt
-            .query_map([], |row| {
-                Ok(SkillDto {
-                    skill_id: row.get(0)?,
-                    source_type: row.get(1)?,
-                    path: row.get(2)?,
-                    enabled: row.get::<_, i64>(3)? == 1,
-                })
-            })
-            .map_err(|e| format!("Query skill rows error: {e}"))?;
-        let skills: Result<Vec<_>, _> = skill_rows.collect();
-        let mut skills = skills.map_err(|e| format!("Map skill rows error: {e}"))?;
-        if skills.is_empty() {
-            skills = discover_skills();
-        }
-
         let mut provider_cfg_stmt = conn
             .prepare("SELECT provider_id, base_url, api, auth_header FROM agent_provider_configs")
             .map_err(|e| format!("Prepare provider config query error: {e}"))?;
@@ -145,14 +110,11 @@ impl SettingsStore {
             provider_configs.map_err(|e| format!("Map provider config rows error: {e}"))?;
 
         Ok(AgentSettingsDto {
-            active_provider_id: row.0,
-            active_model_id: row.1,
-            system_prompt: row.2,
-            max_tool_iterations: row.3 as usize,
-            version: row.4,
+            system_prompt: row.0,
+            max_tool_iterations: row.1 as usize,
+            version: row.2,
             provider_auth,
             provider_configs,
-            skills,
         })
     }
 
@@ -166,56 +128,12 @@ impl SettingsStore {
             .map_err(|e| format!("Settings lock error: {e}"))?;
 
         let AgentSettingsPatchDto {
-            active_provider_id,
-            active_model_id,
             system_prompt,
             max_tool_iterations,
-            skills,
         } = patch;
 
-        let active_provider_id = active_provider_id
-            .map(|provider_id| validate_non_empty_setting("Active provider id", provider_id))
-            .transpose()?;
-        let active_model_id = active_model_id
-            .map(|model_id| validate_non_empty_setting("Active model id", model_id))
-            .transpose()?;
         if max_tool_iterations == Some(0) {
             return Err("Max tool iterations must be greater than 0".to_string());
-        }
-
-        let current_provider: String = conn
-            .query_row(
-                "SELECT active_provider_id FROM agent_settings WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| format!("Read current provider error: {e}"))?;
-
-        let effective_provider = active_provider_id.clone().unwrap_or(current_provider);
-        let provider_changed = active_provider_id.is_some();
-
-        if let Some(provider) = active_provider_id {
-            conn.execute(
-                "UPDATE agent_settings SET active_provider_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![provider],
-            )
-            .map_err(|e| format!("Update provider error: {e}"))?;
-        }
-
-        if let Some(model) = active_model_id {
-            let normalized_model = normalize_model_for_provider(&effective_provider, &model);
-            conn.execute(
-                "UPDATE agent_settings SET active_model_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![normalized_model],
-            )
-            .map_err(|e| format!("Update model error: {e}"))?;
-        } else if provider_changed {
-            let fallback_model = default_model_for_provider(&effective_provider).to_string();
-            conn.execute(
-                "UPDATE agent_settings SET active_model_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![fallback_model],
-            )
-            .map_err(|e| format!("Reset model on provider change error: {e}"))?;
         }
 
         if let Some(system_prompt) = system_prompt {
@@ -232,23 +150,6 @@ impl SettingsStore {
                 params![max_tool_iterations as i64],
             )
             .map_err(|e| format!("Update max tool iterations error: {e}"))?;
-        }
-
-        if let Some(skills) = skills {
-            conn.execute("DELETE FROM agent_skills", [])
-                .map_err(|e| format!("Delete existing skill rows error: {e}"))?;
-            for skill in skills {
-                conn.execute(
-                    "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
-                    params![skill.skill_id, skill.source_type, skill.path, if skill.enabled { 1 } else { 0 }],
-                )
-                .map_err(|e| format!("Insert skill row error: {e}"))?;
-            }
-            conn.execute(
-                "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                [],
-            )
-            .map_err(|e| format!("Bump settings version error: {e}"))?;
         }
 
         drop(conn);
@@ -379,6 +280,19 @@ impl SettingsStore {
         .map(|v| v.flatten())
     }
 
+    pub(crate) fn bump_version(&self) -> Result<(), String> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("Settings lock error: {e}"))?;
+        conn.execute(
+            "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
+            [],
+        )
+        .map_err(|e| format!("Bump settings version error: {e}"))?;
+        Ok(())
+    }
+
     pub(crate) fn set_provider_config(
         &self,
         cfg: ProviderConfigDto,
@@ -432,268 +346,19 @@ impl SettingsStore {
 }
 
 fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS _peekoo_migrations (id TEXT PRIMARY KEY)",
-        [],
-    )
-    .map_err(|e| format!("Create migrations table error: {e}"))?;
+    peekoo_persistence_sqlite::run_all_migrations(conn)?;
 
-    apply_migration_if_needed(conn, "0001_init", "tasks", MIGRATION_0001_INIT)?;
-    apply_migration_if_needed(
-        conn,
-        "0002_agent_settings",
-        "agent_settings",
-        MIGRATION_0002_AGENT_SETTINGS,
-    )?;
-    apply_migration_if_needed(
-        conn,
-        "0003_provider_compat",
-        "agent_provider_configs",
-        MIGRATION_0003_PROVIDER_COMPAT,
-    )?;
-    apply_migration_if_needed(conn, "0005_plugins", "plugins", MIGRATION_0005_PLUGINS)?;
-
+    // Seed default agent settings (must run after schema migrations)
     conn.execute(
         &format!(
-            "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO agent_settings (id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, NULL, {}, 1, datetime('now'))",
             DEFAULT_MAX_TOOL_ITERATIONS
         ),
-        params![DEFAULT_PROVIDER, DEFAULT_MODEL],
+        [],
     )
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
 
-    // ALTER TABLE migration — sentinel table already exists, so check the
-    // migration record directly instead of the sentinel table.
-    let already_applied: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0005_task_extensions'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0005 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied {
-        conn.execute_batch(MIGRATION_0005_TASK_EXTENSIONS)
-            .map_err(|e| format!("Apply migration 0005_task_extensions error: {e}"))?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0005_task_extensions')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0005 state error: {e}"))?;
-    }
-
-    // Migration 0006 — add scheduling and recurrence columns to tasks.
-    let already_applied_0006: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0006_task_scheduling_and_recurrence'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0006 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0006 {
-        conn.execute_batch(MIGRATION_0006_TASK_SCHEDULING_AND_RECURRENCE)
-            .map_err(|e| {
-                format!("Apply migration 0006_task_scheduling_and_recurrence error: {e}")
-            })?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0006_task_scheduling_and_recurrence')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0006 state error: {e}"))?;
-    }
-
-    // Migration 0007 — add recurrence_time_of_day to tasks.
-    let already_applied_0007: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0007_recurrence_time_of_day'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0007 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0007 {
-        conn.execute_batch(MIGRATION_0007_RECURRENCE_TIME_OF_DAY)
-            .map_err(|e| format!("Apply migration 0007_recurrence_time_of_day error: {e}"))?;
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0007_recurrence_time_of_day')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0007 state error: {e}"))?;
-    }
-
-    // Migration 0008: Add created_at column to tasks
-    let already_applied_0008: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0008_task_order_index'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0008 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0008 {
-        // Migration 0008: Add created_at column
-        // Execute statements individually to handle "duplicate column" errors gracefully
-        let migration_sql = MIGRATION_0008_TASK_ORDER_INDEX;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            // Ignore "duplicate column name" errors - column already exists
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0008_task_order_index error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0008_task_order_index')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0008 state error: {e}"))?;
-    }
-
-    // Migration 0009: Agent task assignment
-    let already_applied_0009: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0009_agent_task_assignment'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0009 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0009 {
-        let migration_sql = MIGRATION_0009_AGENT_TASK_ASSIGNMENT;
-        for statement in migration_sql.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name")
-                    && !e_str.contains("table agent_registry already exists")
-                    && !e_str.contains("UNIQUE constraint failed: agent_registry.id")
-                    && !e_str.contains("index.*already exists")
-                {
-                    return Err(format!(
-                        "Apply migration 0009_agent_task_assignment error: {e}"
-                    ));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0009_agent_task_assignment')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0009 state error: {e}"))?;
-    }
-
-    apply_migration_if_needed(
-        conn,
-        "0010_pomodoro_runtime",
-        "pomodoro_state",
-        MIGRATION_0010_POMODORO_RUNTIME,
-    )?;
-
-    let already_applied_0011: bool = conn
-        .query_row(
-            "SELECT 1 FROM _peekoo_migrations WHERE id = '0011_task_finished_at'",
-            [],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration 0011 state error: {e}"))?
-        .unwrap_or(false);
-
-    if !already_applied_0011 {
-        for statement in MIGRATION_0011_TASK_FINISHED_AT.split(';') {
-            let stmt = statement.trim();
-            if stmt.is_empty() {
-                continue;
-            }
-            if let Err(e) = conn.execute(stmt, []) {
-                let e_str = e.to_string();
-                if !e_str.contains("duplicate column name") {
-                    return Err(format!("Apply migration 0011_task_finished_at error: {e}"));
-                }
-            }
-        }
-        conn.execute(
-            "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES ('0011_task_finished_at')",
-            [],
-        )
-        .map_err(|e| format!("Record migration 0011 state error: {e}"))?;
-    }
-
     Ok(())
-}
-
-fn apply_migration_if_needed(
-    conn: &Connection,
-    migration_id: &str,
-    sentinel_table: &str,
-    sql: &str,
-) -> Result<(), String> {
-    let exists: Option<String> = conn
-        .query_row(
-            "SELECT id FROM _peekoo_migrations WHERE id = ?1",
-            params![migration_id],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(|e| format!("Check migration state error: {e}"))?;
-
-    if exists.is_some() {
-        return Ok(());
-    }
-
-    let table_exists = sqlite_table_exists(conn, sentinel_table)?;
-    if !table_exists {
-        conn.execute_batch(sql)
-            .map_err(|e| format!("Apply migration {migration_id} error: {e}"))?;
-    }
-
-    conn.execute(
-        "INSERT OR IGNORE INTO _peekoo_migrations (id) VALUES (?1)",
-        params![migration_id],
-    )
-    .map_err(|e| format!("Record migration state error: {e}"))?;
-
-    Ok(())
-}
-
-fn sqlite_table_exists(conn: &Connection, table_name: &str) -> Result<bool, String> {
-    let exists = conn
-        .query_row(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1 LIMIT 1",
-            params![table_name],
-            |_| Ok(true),
-        )
-        .optional()
-        .map_err(|e| format!("Query sqlite_master error: {e}"))?
-        .unwrap_or(false);
-    Ok(exists)
-}
-
-fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(format!("{field_name} cannot be empty"));
-    }
-    Ok(trimmed.to_string())
 }
 
 #[cfg(test)]
@@ -727,61 +392,45 @@ mod tests {
     }
 
     #[test]
-    fn apply_patch_rejects_empty_provider_id() {
-        let (store, path) = new_store();
-
-        let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: Some("   ".into()),
-            active_model_id: None,
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        });
-
-        match result {
-            Ok(_) => panic!("empty provider should fail"),
-            Err(err) => assert_eq!(err, "Active provider id cannot be empty"),
-        }
-
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn apply_patch_rejects_empty_model_id() {
-        let (store, path) = new_store();
-
-        let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: None,
-            active_model_id: Some("\n\t ".into()),
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        });
-
-        match result {
-            Ok(_) => panic!("empty model should fail"),
-            Err(err) => assert_eq!(err, "Active model id cannot be empty"),
-        }
-
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
     fn apply_patch_rejects_zero_max_tool_iterations() {
         let (store, path) = new_store();
 
         let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: None,
-            active_model_id: None,
             system_prompt: None,
             max_tool_iterations: Some(0),
-            skills: None,
         });
 
         match result {
             Ok(_) => panic!("zero max tool iterations should fail"),
             Err(err) => assert_eq!(err, "Max tool iterations must be greater than 0"),
         }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn bump_version_increments_version() {
+        let (store, path) = new_store();
+
+        let before = store.load_settings().expect("load settings").version;
+        store.bump_version().expect("bump version");
+        let after = store.load_settings().expect("load settings").version;
+
+        assert_eq!(after, before + 1);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Chat settings DTOs should not surface skill state; discovery is catalog-driven.
+    #[test]
+    fn load_settings_chat_dto_omits_skills() {
+        let (store, path) = new_store();
+        let settings = store.load_settings().expect("load settings");
+        let json = serde_json::to_value(&settings).expect("serialize settings");
+        assert!(
+            json.get("skills").is_none(),
+            "AgentSettingsDto must not expose skills for chat settings; got {json:?}"
+        );
 
         let _ = std::fs::remove_file(path);
     }

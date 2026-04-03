@@ -1,12 +1,11 @@
-//! Conversation session loading — thin wrapper over pi's built-in session persistence.
+//! Conversation session loading — thin wrapper over SQLite session persistence.
 //!
-//! Uses [`SessionIndex`] to locate the most recent session file for the active
-//! workspace and [`Session`] to parse it into frontend-ready DTOs.
+//! Uses the new SessionStore to locate and load conversation history.
 
-use std::path::Path;
-
-use peekoo_agent::{Session, SessionIndex};
+use peekoo_agent::backend::{ContentBlock, Message, MessageRole};
+use peekoo_agent::session_store::{SessionStore, SessionType};
 use serde::Serialize;
+use std::path::Path;
 
 // ────────────────────────────────────────────────────────────────────────────
 // DTOs
@@ -28,287 +27,207 @@ pub struct SessionMessageDto {
 pub struct LastSessionDto {
     /// Path to the session file on disk (used to resume the session).
     pub session_path: String,
-    /// Chronological list of user/assistant messages.
+    /// Unix timestamp (milliseconds) of the most recent message.
+    pub last_message_timestamp: i64,
+    /// All messages in chronological order.
     pub messages: Vec<SessionMessageDto>,
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Public helpers
+// Functions
 // ────────────────────────────────────────────────────────────────────────────
 
-/// Load the most recent session from disk and return its messages.
-///
-/// Returns `Ok(None)` when there are no prior sessions.
-pub async fn load_last_session(session_dir: &Path) -> Result<Option<LastSessionDto>, String> {
-    let index = SessionIndex::for_sessions_root(session_dir);
-    let metas = index
-        .list_sessions(None)
-        .map_err(|e| format!("List sessions error: {e}"))?;
-
-    let meta = match metas.first() {
-        Some(m) => m,
-        None => return Ok(None),
-    };
-
-    let session = Session::open(&meta.path)
-        .await
-        .map_err(|e| format!("Open session error: {e}"))?;
-
-    let dto_messages = session_messages_to_dtos(&session);
-
-    if dto_messages.is_empty() {
-        return Ok(None);
-    }
-
-    Ok(Some(LastSessionDto {
-        session_path: meta.path.clone(),
-        messages: dto_messages,
-    }))
+/// Find the most recent non-empty session in the shared application database.
+pub fn find_last_session() -> anyhow::Result<Option<LastSessionDto>> {
+    let db_path = peekoo_paths::peekoo_settings_db_path()
+        .map_err(|e| anyhow::anyhow!("Failed to locate settings db: {e}"))?;
+    find_last_session_from_db(&db_path)
 }
 
-/// Convert in-memory agent messages (serialised as JSON values) to DTOs.
-pub fn json_messages_to_dtos(values: &[serde_json::Value]) -> Vec<SessionMessageDto> {
-    values.iter().filter_map(json_value_to_dto).collect()
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Internal helpers
-// ────────────────────────────────────────────────────────────────────────────
-
-/// Convert pi `Session` messages into DTOs.
+/// Convert a raw session into frontend-ready DTOs.
 ///
-/// The session's `to_messages_for_current_path()` returns opaque pi `Message`
-/// values. We serialise each to JSON and then extract the fields we need so
-/// that the conversion logic stays in one place ([`json_value_to_dto`]).
-fn session_messages_to_dtos(session: &Session) -> Vec<SessionMessageDto> {
-    let messages = session.to_messages_for_current_path();
+/// Filters out system/tool messages and flattens complex content blocks
+/// into plain text suitable for the chat panel.
+pub fn json_messages_to_dtos(messages: &[String]) -> Vec<SessionMessageDto> {
     messages
         .iter()
-        .filter_map(|m| {
-            let value = serde_json::to_value(m).ok()?;
-            json_value_to_dto(&value)
-        })
+        .filter_map(|raw| serde_json::from_str::<Message>(raw).ok())
+        .filter_map(message_to_dto)
         .collect()
 }
 
-/// Extract a DTO from a single serialised `Message` value.
-///
-/// The pi `Message` enum serialises with `#[serde(tag = "role", rename_all = "camelCase")]`:
-/// - `{ "role": "user", "content": "<text>" | [...blocks], ... }`
-/// - `{ "role": "assistant", "content": [...blocks], ... }`
-/// - `{ "role": "toolResult", ... }` — skipped (internal plumbing)
-/// - `{ "role": "custom", ... }` — skipped
-fn json_value_to_dto(value: &serde_json::Value) -> Option<SessionMessageDto> {
-    let role = value.get("role")?.as_str()?;
+fn find_last_session_from_db(db_path: &Path) -> anyhow::Result<Option<LastSessionDto>> {
+    let store = SessionStore::open(&db_path.to_path_buf())?;
 
-    match role {
-        "user" => {
-            let text = extract_user_text(value)?;
-            Some(SessionMessageDto {
-                role: "user".into(),
-                text,
-            })
+    for session in store.list_sessions(Some("active"))? {
+        if session.session_type != SessionType::Chat {
+            continue;
         }
-        "assistant" => {
-            let text = extract_content_block_text(value)?;
-            Some(SessionMessageDto {
-                role: "assistant".into(),
-                text,
-            })
+
+        let messages = store.load_messages(&session.id)?;
+        if messages.is_empty() {
+            continue;
         }
-        _ => None, // toolResult, custom, etc.
+
+        let message_json: Vec<String> = messages
+            .iter()
+            .map(serde_json::to_string)
+            .collect::<Result<_, _>>()?;
+        let dtos = json_messages_to_dtos(&message_json);
+        if dtos.is_empty() {
+            continue;
+        }
+
+        return Ok(Some(LastSessionDto {
+            session_path: session.id,
+            last_message_timestamp: duration_debug_to_millis(&session.updated_at),
+            messages: dtos,
+        }));
+    }
+
+    Ok(None)
+}
+
+fn message_to_dto(message: Message) -> Option<SessionMessageDto> {
+    match message.role {
+        MessageRole::User | MessageRole::Assistant => {
+            let text = flatten_content_blocks(&message.content);
+            if text.is_empty() {
+                None
+            } else {
+                Some(SessionMessageDto {
+                    role: match message.role {
+                        MessageRole::User => "user".to_string(),
+                        MessageRole::Assistant => "assistant".to_string(),
+                        _ => unreachable!(),
+                    },
+                    text,
+                })
+            }
+        }
+        MessageRole::System | MessageRole::Tool => None,
     }
 }
 
-/// Extract text from a user message.
-///
-/// `UserContent` serialises as either:
-/// - a plain string (`"content": "hello"`) via `#[serde(untagged)]` `Text` variant
-/// - an array of content blocks via the `Blocks` variant
-fn extract_user_text(value: &serde_json::Value) -> Option<String> {
-    let content = value.get("content")?;
-    if let Some(text) = content.as_str() {
-        let trimmed = text.trim();
-        if trimmed.is_empty() {
-            return None;
-        }
-        return Some(trimmed.to_string());
-    }
-    // Blocks variant
-    extract_text_from_blocks(content)
+fn flatten_content_blocks(blocks: &[ContentBlock]) -> String {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } => Some(text.trim().to_string()),
+            ContentBlock::ToolResult { content, .. } => Some(content.trim().to_string()),
+            ContentBlock::Thinking { .. }
+            | ContentBlock::ToolUse { .. }
+            | ContentBlock::Image { .. } => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
-/// Extract concatenated text from an assistant message's content blocks.
-fn extract_content_block_text(value: &serde_json::Value) -> Option<String> {
-    let content = value.get("content")?;
-    extract_text_from_blocks(content)
-}
-
-/// Concatenate all `Text` blocks from a content array.
-fn extract_text_from_blocks(content: &serde_json::Value) -> Option<String> {
-    let blocks = content.as_array()?;
-    let mut parts = Vec::new();
-    for block in blocks {
-        if block.get("type").and_then(|t| t.as_str()) == Some("text")
-            && let Some(text) = block.get("text").and_then(|t| t.as_str())
-            && !text.is_empty()
-        {
-            parts.push(text.to_string());
-        }
-    }
-    if parts.is_empty() {
-        None
-    } else {
-        Some(parts.join(""))
-    }
+fn duration_debug_to_millis(value: &str) -> i64 {
+    let trimmed = value.trim();
+    let numeric = trimmed.strip_suffix('s').unwrap_or(trimmed);
+    numeric
+        .parse::<f64>()
+        .map(|seconds| (seconds * 1000.0) as i64)
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use peekoo_agent::backend::{ContentBlock, Message, MessageRole};
+    use peekoo_agent::session_store::SessionStore;
+    use tempfile::NamedTempFile;
 
     #[test]
-    fn user_text_message_to_dto() {
-        let value = json!({
-            "role": "user",
-            "content": "Hello, world!",
-            "timestamp": 1700000000
-        });
-        let dto = json_value_to_dto(&value).expect("should produce dto");
-        assert_eq!(dto.role, "user");
-        assert_eq!(dto.text, "Hello, world!");
-    }
+    fn finds_latest_non_empty_session_from_db() {
+        let db = NamedTempFile::new().expect("temp db");
+        let store = SessionStore::open(&db.path().to_path_buf()).expect("open store");
 
-    #[test]
-    fn assistant_message_to_dto() {
-        let value = json!({
-            "role": "assistant",
-            "content": [
-                { "type": "text", "text": "Hi there!" }
-            ],
-            "api": "anthropic",
-            "provider": "anthropic",
-            "model": "claude-sonnet-4",
-            "usage": { "input": 10, "output": 5 },
-            "stopReason": "stop",
-            "timestamp": 1700000000
-        });
-        let dto = json_value_to_dto(&value).expect("should produce dto");
-        assert_eq!(dto.role, "assistant");
-        assert_eq!(dto.text, "Hi there!");
-    }
+        let old_session = store
+            .create_session(
+                Some("Old"),
+                "test-provider",
+                "npx",
+                &["test-provider".to_string()],
+                &std::env::temp_dir(),
+                None,
+                &[],
+                SessionType::Chat,
+            )
+            .expect("create old session");
+        store
+            .append_message(
+                &old_session,
+                &Message {
+                    role: MessageRole::User,
+                    content: vec![ContentBlock::Text {
+                        text: "hello".to_string(),
+                    }],
+                    tool_calls: None,
+                    tool_call_id: None,
+                },
+                Some("test-provider"),
+                Some("claude-sonnet-4-6"),
+                None,
+            )
+            .expect("append old message");
 
-    #[test]
-    fn assistant_multiple_text_blocks_concatenated() {
-        let value = json!({
-            "role": "assistant",
-            "content": [
-                { "type": "thinking", "thinking": "hmm..." },
-                { "type": "text", "text": "Part one " },
-                { "type": "text", "text": "part two." }
-            ],
-            "api": "test",
-            "provider": "test",
-            "model": "test",
-            "usage": {},
-            "stopReason": "stop",
-            "timestamp": 0
-        });
-        let dto = json_value_to_dto(&value).expect("should produce dto");
-        assert_eq!(dto.text, "Part one part two.");
-    }
-
-    #[test]
-    fn assistant_multiple_text_blocks_preserve_newlines_and_spacing() {
-        let value = json!({
-            "role": "assistant",
-            "content": [
-                { "type": "text", "text": "```rust\nfn main() {\n" },
-                { "type": "text", "text": "    println!(\"hi\");\n}\n```" }
-            ],
-            "api": "test",
-            "provider": "test",
-            "model": "test",
-            "usage": {},
-            "stopReason": "stop",
-            "timestamp": 0
-        });
-        let dto = json_value_to_dto(&value).expect("should produce dto");
+        let new_empty_session = store
+            .create_session(
+                Some("New Empty"),
+                "opencode",
+                "opencode",
+                &["acp".to_string()],
+                &std::env::temp_dir(),
+                None,
+                &[],
+                SessionType::Chat,
+            )
+            .expect("create empty session");
         assert_eq!(
-            dto.text,
-            "```rust\nfn main() {\n    println!(\"hi\");\n}\n```"
+            store.get_message_count(&new_empty_session).expect("count"),
+            0
         );
+
+        let dto = find_last_session_from_db(db.path()).expect("load last session");
+        let dto = dto.expect("expected a session dto");
+
+        assert_eq!(dto.messages.len(), 1);
+        assert_eq!(dto.messages[0].role, "user");
+        assert_eq!(dto.messages[0].text, "hello");
+        assert_eq!(dto.session_path, old_session);
     }
 
     #[test]
-    fn tool_result_is_skipped() {
-        let value = json!({
-            "role": "toolResult",
-            "toolCallId": "tc_1",
-            "toolName": "read",
-            "content": [],
-            "isError": false,
-            "timestamp": 0
-        });
-        assert!(json_value_to_dto(&value).is_none());
-    }
-
-    #[test]
-    fn custom_message_is_skipped() {
-        let value = json!({
-            "role": "custom",
-            "content": "internal",
-            "customType": "test",
-            "display": false,
-            "timestamp": 0
-        });
-        assert!(json_value_to_dto(&value).is_none());
-    }
-
-    #[test]
-    fn empty_assistant_text_is_skipped() {
-        let value = json!({
-            "role": "assistant",
-            "content": [
-                { "type": "thinking", "thinking": "only thinking" }
-            ],
-            "api": "test",
-            "provider": "test",
-            "model": "test",
-            "usage": {},
-            "stopReason": "stop",
-            "timestamp": 0
-        });
-        assert!(json_value_to_dto(&value).is_none());
-    }
-
-    #[test]
-    fn json_messages_to_dtos_filters_correctly() {
-        let values = vec![
-            json!({ "role": "user", "content": "hello", "timestamp": 0 }),
-            json!({ "role": "toolResult", "toolCallId": "t1", "toolName": "r", "content": [], "isError": false, "timestamp": 0 }),
-            json!({ "role": "assistant", "content": [{ "type": "text", "text": "world" }], "api": "t", "provider": "t", "model": "t", "usage": {}, "stopReason": "stop", "timestamp": 0 }),
+    fn flattens_text_and_tool_result_blocks() {
+        let messages = vec![
+            serde_json::to_string(&Message {
+                role: MessageRole::Assistant,
+                content: vec![
+                    ContentBlock::Thinking {
+                        thinking: "hidden".to_string(),
+                    },
+                    ContentBlock::Text {
+                        text: "Answer".to_string(),
+                    },
+                    ContentBlock::ToolResult {
+                        tool_use_id: "tool-1".to_string(),
+                        content: "done".to_string(),
+                        is_error: false,
+                    },
+                ],
+                tool_calls: None,
+                tool_call_id: None,
+            })
+            .expect("serialize"),
         ];
-        let dtos = json_messages_to_dtos(&values);
-        assert_eq!(dtos.len(), 2);
-        assert_eq!(dtos[0].role, "user");
-        assert_eq!(dtos[0].text, "hello");
-        assert_eq!(dtos[1].role, "assistant");
-        assert_eq!(dtos[1].text, "world");
-    }
 
-    #[test]
-    fn user_blocks_content_extracts_text() {
-        let value = json!({
-            "role": "user",
-            "content": [
-                { "type": "text", "text": "Block text" }
-            ],
-            "timestamp": 0
-        });
-        let dto = json_value_to_dto(&value).expect("should produce dto");
-        assert_eq!(dto.role, "user");
-        assert_eq!(dto.text, "Block text");
+        let dtos = json_messages_to_dtos(&messages);
+
+        assert_eq!(dtos.len(), 1);
+        assert_eq!(dtos[0].role, "assistant");
+        assert_eq!(dtos[0].text, "Answer\ndone");
     }
 }

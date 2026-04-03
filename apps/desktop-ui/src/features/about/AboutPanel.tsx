@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { invoke } from "@tauri-apps/api/core";
 import { useAboutPanel } from "./useAboutPanel";
 import { useTranslation } from "react-i18next";
 
@@ -99,9 +100,12 @@ export function AboutPanel() {
         </div>
       ) : null}
 
-      <div className="flex gap-3">
+      <div className="flex flex-wrap gap-3">
         <Button variant="glass" onClick={() => void refresh()} disabled={checking || installing}>
           {checking ? t("about.checking") : t("about.checkForUpdates")}
+        </Button>
+        <Button variant="glass" onClick={() => void invoke("system_open_log_dir")}>
+          Open Logs
         </Button>
         {snapshot.isUpdateAvailable ? (
           <Button variant="success" onClick={() => void installUpdate()} disabled={installing || checking}>

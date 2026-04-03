@@ -22,14 +22,11 @@ export const providerConfigSchema = z.object({
 });
 
 export const agentSettingsSchema = z.object({
-  activeProviderId: z.string(),
-  activeModelId: z.string(),
   systemPrompt: z.string().nullable().optional(),
   maxToolIterations: z.number(),
   version: z.number(),
   providerAuth: z.array(providerAuthSchema),
   providerConfigs: z.array(providerConfigSchema),
-  skills: z.array(skillSchema),
 });
 
 export const providerCatalogSchema = z.object({

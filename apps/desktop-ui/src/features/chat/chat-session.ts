@@ -10,6 +10,7 @@ import type {
   AssistantMessageEvent,
   LastSessionDto,
   Message,
+  ToolCallState,
 } from "@/types/chat";
 
 export interface SessionMessageLike {
@@ -20,27 +21,52 @@ export interface SessionMessageLike {
 export type MiniChatReplyDisplayMode = "compact" | "expanded";
 
 const CHAT_SESSION_CHANGED_EVENT = "chat-session:changed";
+const CHAT_SESSION_NEW_EVENT = "chat-session:new";
 const MINI_CHAT_EXPANDED_TEXT_LENGTH = 72;
 
-function buildStreamingText(
-  streamingText: string,
-  tools: Map<string, { name: string; done: boolean }>,
-) {
-  let text = "";
+function isRustTextDeltaEvent(event: AgentEvent): event is { TextDelta: string } {
+  return typeof (event as { TextDelta?: unknown }).TextDelta === "string";
+}
 
-  if (tools.size > 0) {
-    for (const [, tool] of tools) {
-      if (tool.done) {
-        text += `> ✅ **${tool.name}** - done\n`;
-      } else {
-        text += `> 🔧 Running **${tool.name}**...\n`;
-      }
-    }
+function isRustThinkingDeltaEvent(
+  event: AgentEvent,
+): event is { ThinkingDelta: string } {
+  return typeof (event as { ThinkingDelta?: unknown }).ThinkingDelta === "string";
+}
 
-    text += "\n";
-  }
+function isRustToolCallStartEvent(
+  event: AgentEvent,
+): event is { ToolCallStart: { id: string; name: string } } {
+  const payload = (event as { ToolCallStart?: unknown }).ToolCallStart;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string" &&
+    typeof (payload as { name?: unknown }).name === "string"
+  );
+}
 
-  return text + streamingText;
+function isRustToolCallDeltaEvent(
+  event: AgentEvent,
+): event is { ToolCallDelta: { id: string; arguments: string } } {
+  const payload = (event as { ToolCallDelta?: unknown }).ToolCallDelta;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string" &&
+    typeof (payload as { arguments?: unknown }).arguments === "string"
+  );
+}
+
+function isRustToolCallCompleteEvent(
+  event: AgentEvent,
+): event is { ToolCallComplete: { id: string } } {
+  const payload = (event as { ToolCallComplete?: unknown }).ToolCallComplete;
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as { id?: unknown }).id === "string"
+  );
 }
 
 export function mapSessionMessagesToMessages(
@@ -108,15 +134,44 @@ async function notifyChatSessionChanged() {
   }
 }
 
+async function notifyChatSessionNew() {
+  try {
+    await emit(CHAT_SESSION_NEW_EVENT);
+  } catch {
+    // Keep chat usable if cross-window sync fails.
+  }
+}
+
+/** Parse a structured auth_required error from the backend. */
+function tryParseAuthRequired(error: unknown): { runtimeId: string } | null {
+  if (typeof error !== "string") return null;
+  try {
+    const parsed = JSON.parse(error) as unknown;
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      "code" in parsed &&
+      (parsed as Record<string, unknown>).code === "auth_required" &&
+      "runtimeId" in parsed &&
+      typeof (parsed as Record<string, unknown>).runtimeId === "string"
+    ) {
+      return { runtimeId: (parsed as Record<string, unknown>).runtimeId as string };
+    }
+  } catch {
+    // Not JSON — not an auth error.
+  }
+  return null;
+}
+
 export function useChatSession() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isTyping, setIsTyping] = useState(false);
+  const [authRequired, setAuthRequired] = useState<{ runtimeId: string } | null>(null);
   const isTypingRef = useRef(false);
   const streamingTextRef = useRef("");
   const streamingIdRef = useRef<string | null>(null);
-  const toolStatusRef = useRef<Map<string, { name: string; done: boolean }>>(
-    new Map(),
-  );
+  const thinkingRef = useRef("");
+  const toolCallsRef = useRef<Map<string, ToolCallState>>(new Map());
 
   useEffect(() => {
     isTypingRef.current = isTyping;
@@ -152,22 +207,51 @@ export function useChatSession() {
     };
   }, [loadLastSession]);
 
+  useEffect(() => {
+    const unlisten = listen(CHAT_SESSION_NEW_EVENT, () => {
+      setMessages([]);
+      streamingTextRef.current = "";
+      streamingIdRef.current = null;
+      thinkingRef.current = "";
+      toolCallsRef.current = new Map();
+    });
+
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
   const flushStreaming = useCallback(() => {
     const id = streamingIdRef.current;
     if (!id) {
       return;
     }
 
-    const text = buildStreamingText(streamingTextRef.current, toolStatusRef.current);
+    const text = streamingTextRef.current;
+    const thinking = thinkingRef.current || undefined;
+    const toolCalls = Array.from(toolCallsRef.current.values());
 
     setMessages((prev) => {
       const index = prev.findIndex((message) => message.id === id);
       if (index === -1) {
-        return [...prev, { id, role: "pet", text, streaming: true }];
+        return [...prev, { 
+          id, 
+          role: "pet", 
+          text, 
+          streaming: true,
+          thinking,
+          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        }];
       }
 
       const updated = [...prev];
-      updated[index] = { ...updated[index], text, streaming: true };
+      updated[index] = { 
+        ...updated[index], 
+        text, 
+        streaming: true,
+        thinking,
+        toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      };
       return updated;
     });
   }, []);
@@ -189,19 +273,89 @@ export function useChatSession() {
 
     streamingTextRef.current = "";
     streamingIdRef.current = (Date.now() + 1).toString();
-    toolStatusRef.current = new Map();
+    thinkingRef.current = "";
+    toolCallsRef.current = new Map();
 
     void emitPetReaction("chat-message");
 
     const unlisten = await listen<AgentEvent>("agent-event", (ev) => {
       const event = ev.payload;
 
+      if (isRustTextDeltaEvent(event)) {
+        streamingTextRef.current += event.TextDelta;
+        flushStreaming();
+        return;
+      }
+
+      if (isRustThinkingDeltaEvent(event)) {
+        thinkingRef.current += event.ThinkingDelta;
+        flushStreaming();
+        return;
+      }
+
+      if (isRustToolCallStartEvent(event)) {
+        toolCallsRef.current.set(event.ToolCallStart.id, {
+          id: event.ToolCallStart.id,
+          name: event.ToolCallStart.name,
+          status: 'running',
+        });
+        flushStreaming();
+        return;
+      }
+
+      if (isRustToolCallDeltaEvent(event)) {
+        const tool = toolCallsRef.current.get(event.ToolCallDelta.id);
+        if (tool) {
+          tool.args = (tool.args || "") + event.ToolCallDelta.arguments;
+          flushStreaming();
+        }
+        return;
+      }
+
+      if (isRustToolCallCompleteEvent(event)) {
+        const tool = toolCallsRef.current.get(event.ToolCallComplete.id);
+        if (tool) {
+          tool.status = 'complete';
+          tool.result = 'success';
+        }
+        flushStreaming();
+        return;
+      }
+
+      // Handle the "Complete" string event (AgentEvent::Complete serializes as just "Complete")
+      if (typeof event === "string" && event === "Complete") {
+        // Streaming is complete, tool calls will be cleaned up in finally block
+        return;
+      }
+
+      // Defensive check for malformed events
+      if (!event || typeof event !== "object") {
+        console.warn("[chat-session] Received malformed event (not an object):", event);
+        return;
+      }
+
+      if (!("type" in event) || typeof event.type !== "string") {
+        // Only warn if it's not one of our known Rust events (which have different structure)
+        const isKnownRustEvent = 
+          isRustTextDeltaEvent(event) || 
+          isRustThinkingDeltaEvent(event) || 
+          isRustToolCallStartEvent(event) || 
+          isRustToolCallCompleteEvent(event) ||
+          isRustToolCallDeltaEvent(event);
+        
+        if (!isKnownRustEvent) {
+          console.warn("[chat-session] Received event without valid type field:", event);
+        }
+        return;
+      }
+
       switch (event.type) {
         case "tool_execution_start": {
           const toolEvent = event as AgentEventToolStart;
-          toolStatusRef.current.set(toolEvent.toolCallId, {
+          toolCallsRef.current.set(toolEvent.toolCallId, {
+            id: toolEvent.toolCallId,
             name: toolEvent.toolName,
-            done: false,
+            status: 'running',
           });
           flushStreaming();
           break;
@@ -209,11 +363,10 @@ export function useChatSession() {
 
         case "tool_execution_end": {
           const toolEvent = event as AgentEventToolEnd;
-          if (toolStatusRef.current.has(toolEvent.toolCallId)) {
-            toolStatusRef.current.set(toolEvent.toolCallId, {
-              name: toolEvent.toolName,
-              done: true,
-            });
+          const tool = toolCallsRef.current.get(toolEvent.toolCallId);
+          if (tool) {
+            tool.status = toolEvent.isError ? 'error' : 'complete';
+            tool.result = toolEvent.isError ? 'failure' : 'success';
           }
           flushStreaming();
           break;
@@ -239,15 +392,21 @@ export function useChatSession() {
         message: input,
       });
 
+      setAuthRequired(null);
+
       const finalId = streamingIdRef.current ?? (Date.now() + 2).toString();
 
       setMessages((prev) => {
         const index = prev.findIndex((message) => message.id === finalId);
+        const existingMessage = index !== -1 ? prev[index] : null;
         const finalMessage: Message = {
           id: finalId,
           role: "pet",
           text: result.response,
           streaming: false,
+          // Preserve thinking content but remove tool calls after streaming completes
+          thinking: existingMessage?.thinking,
+          // toolCalls intentionally omitted - they disappear after streaming
         };
 
         if (index === -1) {
@@ -263,20 +422,34 @@ export function useChatSession() {
       void emitPetReaction("agent-result");
       return true;
     } catch (error) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 3).toString(),
-          role: "error",
-          text: `Error: ${error}`,
-        },
-      ]);
+      // Check for structured auth_required error from the backend.
+      const authError = tryParseAuthRequired(error);
+      if (authError) {
+        setAuthRequired(authError);
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: (Date.now() + 3).toString(),
+            role: "error",
+            text: `Error: ${error}`,
+          },
+        ]);
+      }
       void emitPetReaction("agent-result");
       return false;
     } finally {
       unlisten();
       streamingIdRef.current = null;
       setIsTyping(false);
+      
+      // Clean up completed tools to prevent memory bloat
+      // Keep only running tools, remove completed/error ones
+      for (const [id, tool] of toolCallsRef.current) {
+        if (tool.status === 'complete' || tool.status === 'error') {
+          toolCallsRef.current.delete(id);
+        }
+      }
     }
   }, [flushStreaming]);
 
@@ -290,8 +463,9 @@ export function useChatSession() {
       setMessages([]);
       streamingTextRef.current = "";
       streamingIdRef.current = null;
-      toolStatusRef.current = new Map();
-      await notifyChatSessionChanged();
+      thinkingRef.current = "";
+      toolCallsRef.current = new Map();
+      await notifyChatSessionNew();
       return true;
     } catch {
       return false;
@@ -301,6 +475,8 @@ export function useChatSession() {
   return {
     messages,
     isTyping,
+    authRequired,
+    clearAuthRequired: () => setAuthRequired(null),
     loadLastSession,
     sendMessage,
     startNewChat,

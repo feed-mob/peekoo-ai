@@ -1,7 +1,6 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Trash2, User, Bot, Calendar, Repeat, Clock } from "lucide-react";
 import type { Task } from "@/types/task";
-import { motion } from "framer-motion";
 import { TaskLabelPills } from "./TaskLabelPills";
 import { PRIORITY_CONFIG, STATUS_CONFIG, formatTimeRange } from "../utils/task-formatting";
 import { isOverdue } from "../utils/date-helpers";
@@ -53,15 +52,8 @@ export function TaskListItem({
   const doneTaskVisualStyle = getDoneTaskVisualStyle(isDone, isTodayTab);
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 10, scale: 0.95 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.9, x: -20 }}
-      whileHover={{ scale: 1.01, y: -2 }}
-      whileTap={{ scale: 0.98 }}
-      transition={{ type: "spring", stiffness: 400, damping: 25 }}
-      className={`group flex items-stretch gap-2 bg-space-surface border border-glass-border rounded-sm shadow-sm hover:shadow-md hover:border-glow-green/40 overflow-hidden transition-all ${doneTaskVisualStyle} ${overdue ? "border-l-2 border-l-[#E5484D]" : ""} ${
+    <div
+      className={`group flex items-stretch gap-2 bg-space-deep dark:bg-space-deep border border-glass-border/50 dark:border-glass-border/60 rounded-sm shadow-sm hover:shadow-sm hover:border-glow-green/20 dark:hover:border-glow-olive/20 overflow-hidden transition-all ${doneTaskVisualStyle} ${overdue ? "border-l-2 border-l-[#E5484D]" : ""} ${
         isDeleting ? "opacity-50" : ""
       }`}
     >
@@ -73,7 +65,7 @@ export function TaskListItem({
 
       {/* Content */}
       <div
-        className="flex flex-1 items-start gap-2 py-3 pr-3 min-w-0 cursor-pointer"
+        className="flex flex-1 items-start gap-2 py-3.5 pr-3 min-w-0 cursor-pointer"
         onClick={onSelect}
         role="button"
         tabIndex={0}
@@ -85,7 +77,7 @@ export function TaskListItem({
         }}
       >
         {/* Priority dot + checkbox */}
-        <div className="flex flex-col items-center gap-1 shrink-0">
+        <div className="flex flex-col items-center gap-1.5 shrink-0">
           <div
             className="w-2 h-2 rounded-full shrink-0"
             style={{ backgroundColor: priority.dotColor }}
@@ -110,7 +102,7 @@ export function TaskListItem({
           {/* Title row with status badge and assignee */}
           <div className="flex items-center gap-2">
             <span
-              className={`flex-1 text-sm font-medium leading-relaxed truncate ${
+              className={`flex-1 text-[13px] font-medium leading-relaxed truncate ${
                 isDone ? "line-through text-text-muted" : "text-text-primary"
               }`}
             >
@@ -136,7 +128,7 @@ export function TaskListItem({
             {task.assignee === "user" ? (
               <User size={14} className="shrink-0 text-text-muted" />
             ) : (
-              <Bot size={14} className="shrink-0 text-purple-400" />
+              <Bot size={14} className="shrink-0 text-glow-olive dark:text-glow-mint" />
             )}
           </div>
 
@@ -145,7 +137,7 @@ export function TaskListItem({
             {timeLabel && (
               <span
                 className={`inline-flex items-center gap-1 text-[10px] font-medium ${
-                  overdue ? "text-[#E5484D]" : "text-text-muted"
+                  overdue ? "text-accent-orange" : "text-text-muted"
                 }`}
               >
                 {overdue ? <Clock size={10} /> : <Calendar size={10} />}
@@ -187,9 +179,9 @@ export function TaskListItem({
           disabled={isToggling || isUpdating}
           className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold leading-tight transition-colors hover:brightness-125 disabled:opacity-50"
           style={{
-            backgroundColor: `${status.color}20`,
+            backgroundColor: `${status.color}15`,
             color: status.color,
-            border: `1px solid ${status.color}40`,
+            border: `1px solid ${status.color}30`,
           }}
           title={t("tasks.clickToMoveTo", { status: t(`tasks.status.${status.next}`) })}
         >
@@ -213,6 +205,6 @@ export function TaskListItem({
           )}
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }

@@ -10,8 +10,12 @@ const STANDUP_KEY: &str = "standup";
 #[derive(Clone, Serialize, Deserialize)]
 struct ReminderConfig {
     water_interval_min: u32,
+    water_enabled: bool,
     eye_rest_interval_min: u32,
+    eye_rest_enabled: bool,
     standup_interval_min: u32,
+    standup_enabled: bool,
+    global_enabled: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -20,6 +24,7 @@ struct ReminderState {
     interval_min: u32,
     time_remaining_secs: u64,
     active: bool,
+    enabled: bool,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -71,19 +76,46 @@ pub fn tool_health_get_status(_input: String) -> FnResult<String> {
 #[plugin_fn]
 pub fn tool_health_configure(input: String) -> FnResult<String> {
     let patch: Value = serde_json::from_str(&input)?;
-    let mut config = load_config();
+    let old_config = load_config();
+    let mut config = old_config.clone();
 
     if let Some(value) = patch["water_interval_min"].as_u64() {
         config.water_interval_min = (value as u32).clamp(5, 180);
     }
+    if let Some(value) = patch["water_enabled"].as_bool() {
+        config.water_enabled = value;
+    }
     if let Some(value) = patch["eye_rest_interval_min"].as_u64() {
         config.eye_rest_interval_min = (value as u32).clamp(5, 120);
+    }
+    if let Some(value) = patch["eye_rest_enabled"].as_bool() {
+        config.eye_rest_enabled = value;
     }
     if let Some(value) = patch["standup_interval_min"].as_u64() {
         config.standup_interval_min = (value as u32).clamp(10, 180);
     }
+    if let Some(value) = patch["standup_enabled"].as_bool() {
+        config.standup_enabled = value;
+    }
+    if let Some(value) = patch["global_enabled"].as_bool() {
+        config.global_enabled = value;
+    }
+
     save_config(&config);
-    sync_schedules();
+    
+    // Only reset schedules if critical values changed. 
+    // This prevents timer stalling on every UI poll/update.
+    if config.global_enabled != old_config.global_enabled 
+       || config.water_enabled != old_config.water_enabled
+       || config.eye_rest_enabled != old_config.eye_rest_enabled
+       || config.standup_enabled != old_config.standup_enabled
+       || config.water_interval_min != old_config.water_interval_min
+       || config.eye_rest_interval_min != old_config.eye_rest_interval_min
+       || config.standup_interval_min != old_config.standup_interval_min
+    {
+        sync_schedules();
+    }
+
     push_peek_badges();
     Ok(serde_json::to_string(&load_status())?)
 }
@@ -125,21 +157,25 @@ fn handle_schedule_fired(key: &str) {
 }
 
 fn sync_schedules() {
-    cancel_all_schedules();
     let config = load_config();
+    cancel_all_schedules();
+
+    if !config.global_enabled {
+        return;
+    }
 
     let reminders = [
-        (WATER_KEY, u64::from(config.water_interval_min) * 60),
-        (EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60),
-        (STANDUP_KEY, u64::from(config.standup_interval_min) * 60),
+        (WATER_KEY, u64::from(config.water_interval_min) * 60, config.water_enabled),
+        (EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60, config.eye_rest_enabled),
+        (STANDUP_KEY, u64::from(config.standup_interval_min) * 60, config.standup_enabled),
     ];
 
     let now = current_epoch_secs();
-    for (key, interval_secs) in reminders {
-        // Health reminders skip missed timers rather than firing immediately
-        // on restart -- the user doesn't need a stale "drink water" alert.
-        let delay = compute_remaining_delay(key, interval_secs, now, false);
-        schedule_set_with_delay(key, interval_secs, delay);
+    for (key, interval_secs, enabled) in reminders {
+        if enabled {
+            let delay = compute_remaining_delay(key, interval_secs, now, false);
+            schedule_set_with_delay(key, interval_secs, delay);
+        }
     }
 }
 
@@ -208,14 +244,14 @@ fn load_status() -> HealthStatus {
     HealthStatus {
         config: config.clone(),
         reminders: vec![
-            load_reminder_state(WATER_KEY, config.water_interval_min),
-            load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min),
-            load_reminder_state(STANDUP_KEY, config.standup_interval_min),
+            load_reminder_state(WATER_KEY, config.water_interval_min, config.water_enabled),
+            load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min, config.eye_rest_enabled),
+            load_reminder_state(STANDUP_KEY, config.standup_interval_min, config.standup_enabled),
         ],
     }
 }
 
-fn load_reminder_state(reminder_type: &str, interval_min: u32) -> ReminderState {
+fn load_reminder_state(reminder_type: &str, interval_min: u32, enabled: bool) -> ReminderState {
     let schedule = schedule_get(reminder_type);
     ReminderState {
         reminder_type: reminder_type.to_string(),
@@ -225,6 +261,7 @@ fn load_reminder_state(reminder_type: &str, interval_min: u32) -> ReminderState 
             .map(|value| value.time_remaining_secs)
             .unwrap_or(0),
         active: schedule.is_some(),
+        enabled,
     }
 }
 
@@ -232,15 +269,23 @@ fn load_config() -> ReminderConfig {
     let config = config_get();
     ReminderConfig {
         water_interval_min: config["water_interval_min"].as_u64().unwrap_or(45) as u32,
+        water_enabled: config["water_enabled"].as_bool().unwrap_or(true),
         eye_rest_interval_min: config["eye_rest_interval_min"].as_u64().unwrap_or(20) as u32,
+        eye_rest_enabled: config["eye_rest_enabled"].as_bool().unwrap_or(true),
         standup_interval_min: config["standup_interval_min"].as_u64().unwrap_or(60) as u32,
+        standup_enabled: config["standup_enabled"].as_bool().unwrap_or(true),
+        global_enabled: config["global_enabled"].as_bool().unwrap_or(true),
     }
 }
 
 fn save_config(config: &ReminderConfig) {
-    state_set("water_interval_min", json!(config.water_interval_min));
-    state_set("eye_rest_interval_min", json!(config.eye_rest_interval_min));
-    state_set("standup_interval_min", json!(config.standup_interval_min));
+    let _ = peekoo::state::set("water_interval_min", &config.water_interval_min);
+    let _ = peekoo::state::set("water_enabled", &config.water_enabled);
+    let _ = peekoo::state::set("eye_rest_interval_min", &config.eye_rest_interval_min);
+    let _ = peekoo::state::set("eye_rest_enabled", &config.eye_rest_enabled);
+    let _ = peekoo::state::set("standup_interval_min", &config.standup_interval_min);
+    let _ = peekoo::state::set("standup_enabled", &config.standup_enabled);
+    let _ = peekoo::state::set("global_enabled", &config.global_enabled);
 }
 
 /// Persist the wall-clock epoch when the timer for `key` will next fire.
@@ -346,20 +391,11 @@ fn push_peek_badges() {
 
 fn format_countdown(seconds: u64) -> String {
     if seconds == 0 {
-        return "now".to_string();
+        return "00:00".to_string();
     }
-    let minutes = (seconds / 60).max(1); // floor, but at least 1
-    if minutes < 60 {
-        format!("~{minutes} min")
-    } else {
-        let hours = minutes / 60;
-        let remainder = minutes % 60;
-        if remainder == 0 {
-            format!("~{hours} hr")
-        } else {
-            format!("~{hours} hr {remainder} min")
-        }
-    }
+    let mins = seconds / 60;
+    let secs = seconds % 60;
+    format!("{:02}:{:02}", mins, secs)
 }
 
 fn notify(title: &str, body: &str) {

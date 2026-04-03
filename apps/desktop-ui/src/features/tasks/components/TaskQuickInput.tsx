@@ -33,7 +33,7 @@ export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProp
   };
 
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className="flex gap-2 mb-3">
       {/* Task text input - AI will parse natural language */}
       <div className="relative flex-1">
         <Plus
@@ -48,22 +48,22 @@ export function TaskQuickInput({ onAdd, isCreating = false }: TaskQuickInputProp
           onKeyDown={handleKeyDown}
           placeholder={t("tasks.quickInput.placeholder")}
           disabled={isCreating}
-          className="pl-10 h-10 bg-space-deep border-glass-border text-text-primary placeholder:text-text-muted disabled:opacity-50"
+          className="pl-10 h-11 text-sm bg-glass backdrop-blur-xl border-glass-border text-text-primary placeholder:text-text-muted disabled:opacity-50 focus:border-glow-green dark:focus:border-glow-olive transition-colors"
           aria-label={t("tasks.quickInput.ariaDescription")}
         />
       </div>
 
-      {/* Submit button */}
+      {/* Submit button - gradient variant */}
       <button
         type="submit"
         disabled={isCreating || !text.trim()}
-        className="h-10 w-10 rounded-full shrink-0 flex items-center justify-center text-white bg-[var(--glow-green)] shadow-md hover:brightness-110 active:scale-95 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+        className="h-11 w-11 rounded-full shrink-0 flex items-center justify-center text-white bg-gradient-to-br from-glow-green to-glow-sage dark:from-glow-green dark:to-glow-olive shadow-md hover:shadow-lg hover:scale-105 active:scale-95 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
         aria-label={t("tasks.quickInput.ariaAdd")}
       >
         {isCreating ? (
           <LoadingSpinner size="sm" className="text-white" />
         ) : (
-          <Plus size={18} strokeWidth={2.5} />
+          <Plus size={20} strokeWidth={2.5} />
         )}
       </button>
     </form>

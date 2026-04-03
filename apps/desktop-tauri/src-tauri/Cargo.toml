@@ -1,6 +1,6 @@
 [package]
 name = "peekoo-desktop-tauri"
-version = "0.1.4"
+version = "0.1.20"
 description = "Peekoo AI Desktop Pet - Tauri Version"
 edition = "2024"
 rust-version = "1.85"
@@ -28,6 +28,9 @@ tokio-util = "0.7"
 tracing = "0.1"
 
 peekoo-agent-app = { path = "../../../crates/peekoo-agent-app", default-features = false }
+peekoo-paths = { path = "../../../crates/peekoo-paths" }
+rusqlite = { workspace = true }
+which = "7"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 dirs = "6"
