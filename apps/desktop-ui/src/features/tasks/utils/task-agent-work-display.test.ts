@@ -5,6 +5,8 @@ import {
   shouldShowAgentExecutingIndicator,
 } from "./task-agent-work-display";
 
+const mockT = ((key: string) => key) as import("i18next").TFunction;
+
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
     id: "task-1",
@@ -49,20 +51,23 @@ describe("getAgentFailureDetail", () => {
           assignee: "peekoo-agent",
           agent_work_status: "failed",
           agent_work_attempt_count: 2,
-        })
+        }),
+        mockT,
       )
-    ).toBe("2 attempts");
+    ).toBe("tasks.agentWork.attempts_other");
   });
 
   test("returns null for non-agent or non-failed tasks", () => {
     expect(
       getAgentFailureDetail(
-        makeTask({ assignee: "user", agent_work_status: "failed", agent_work_attempt_count: 2 })
+        makeTask({ assignee: "user", agent_work_status: "failed", agent_work_attempt_count: 2 }),
+        mockT,
       )
     ).toBeNull();
     expect(
       getAgentFailureDetail(
-        makeTask({ assignee: "peekoo-agent", agent_work_status: "executing", agent_work_attempt_count: 2 })
+        makeTask({ assignee: "peekoo-agent", agent_work_status: "executing", agent_work_attempt_count: 2 }),
+        mockT,
       )
     ).toBeNull();
   });

@@ -1,0 +1,517 @@
+{
+  "common": {
+    "retry": "Réessayer",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "clear": "Effacer",
+    "delete": "Supprimer",
+    "dismiss": "Ignorer",
+    "back": "Retour",
+    "refresh": "Actualiser",
+    "saving": "Enregistrement...",
+    "save": "Enregistrer"
+  },
+  "panel": {
+    "chat": "Chat",
+    "tasks": "Tâches",
+    "settings": "Paramètres",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins",
+    "about": "À propos de Peekoo"
+  },
+  "menu": {
+    "chat": "Chat",
+    "tasks": "Tâches",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins"
+  },
+  "settings": {
+    "loading": "Chargement des paramètres...",
+    "failedLoad": "Échec du chargement des paramètres : {{error}}",
+    "appearance": "Apparence",
+    "activePet": "Animal actif",
+    "language": "Langue",
+    "theme": {
+      "light": "Clair",
+      "dark": "Sombre",
+      "system": "Système"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "Chinois traditionnel",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "Sprite de l'animal",
+      "loadingPreview": "Chargement..."
+    },
+    "spriteMeta": {
+      "dark-cat": {
+        "name": "Chat Sombre",
+        "description": "Animal IA par défaut au thème sombre."
+      },
+      "cute-dog": {
+        "name": "Chien Mignon",
+        "description": "Un animal IA alternatif et adorable."
+      }
+    },
+    "logging": "Journalisation",
+    "loggingHelp": "Définissez le niveau de détail des journaux d'exécution pour le dépannage. Un redémarrage est requis pour appliquer les modifications.",
+    "acpRuntimes": "Exécuteurs ACP",
+    "logLevelRestartMsg": "Niveau de journalisation mis à jour. Redémarrer Peekoo maintenant pour appliquer le nouveau niveau ?",
+    "restartRequired": "Redémarrage requis",
+    "restartNow": "Redémarrer maintenant",
+    "later": "Plus tard"
+  },
+  "chat": {
+    "newChat": "Nouveau chat",
+    "settings": "Paramètres",
+    "hideSettings": "Masquer les paramètres",
+    "empty": "Commencez à discuter avec votre animal Peekoo !",
+    "thinking": "Réflexion...",
+    "inputPlaceholder": "Tapez un message...",
+    "authBanner": {
+      "message": "nécessite une connexion avant de pouvoir répondre.",
+      "loginButton": "Connexion"
+    },
+    "thinkingBlock": "Réflexion...",
+    "toolCall": {
+      "running": "En cours",
+      "arguments": "Arguments"
+    }
+  },
+  "chatSettings": {
+    "loading": "Chargement des paramètres...",
+    "failedLoad": "Échec du chargement des paramètres.",
+    "title": "Paramètres de l'agent",
+    "provider": "Fournisseur",
+    "model": "Modèle",
+    "modelPlaceholder": "ex. gpt-4.1-mini",
+    "baseUrl": "URL de base",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Itérations d'outil max",
+    "providerAuthentication": "Authentification du fournisseur",
+    "skills": "Compétences",
+    "noSkills": "Aucune compétence découverte pour le moment.",
+    "noRuntimes": "Aucun exécuteur ACP installé.",
+    "installRuntimeHelp": "Installez un exécuteur depuis le panneau Paramètres pour commencer.",
+    "runtimeNotFound": "L'exécuteur sélectionné est introuvable.",
+    "runtimeUnavailable": "L'exécuteur précédemment sélectionné n'est plus disponible.",
+    "modelLabel": "Modèle",
+    "noModelConfigured": "Aucun modèle global configuré",
+    "modelHelp": "Modifiez-le dans les paramètres globaux de l'exécuteur.",
+    "skillsHelp": "Peekoo trouve automatiquement les compétences depuis les dossiers de compétences configurés.",
+    "auth": {
+      "mode": "Mode d'authentification",
+      "none": "aucun",
+      "oauthStatus": "Statut OAuth",
+      "connected": "Connecté",
+      "notConnected": "Non connecté",
+      "updateApiKey": "Mettre à jour la clé API",
+      "enterApiKey": "Saisir la clé API",
+      "saveApiKey": "Enregistrer la clé API",
+      "apiKeySaved": "Clé API enregistrée",
+      "connectOauth": "Connecter OAuth",
+      "reconnectOauth": "Reconnecter OAuth",
+      "finishedLogin": "J'ai terminé la connexion",
+      "browserLoginHelp": "La connexion par navigateur est ouverte. Terminez l'OAuth dans le navigateur, puis cliquez sur « J'ai terminé la connexion ».",
+      "connectedHelp": "OAuth est connecté pour ce fournisseur. Utilisez Reconnecter OAuth si vous souhaitez actualiser les identifiants.",
+      "connectHelp": "Cliquez sur Connecter OAuth pour vous connecter avec votre compte fournisseur.",
+      "oauthFailed": "OAuth a échoué : {{error}}",
+      "oauthExpired": "La session OAuth a expiré. Recommencez.",
+      "oauthConnected": "OAuth connecté avec succès.",
+      "clearAuth": "Effacer l'authentification"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "Demander à Peekoo...",
+    "openFullChat": "Ouvrir le chat complet",
+    "needAttention": "Attention requise",
+    "readingMode": "Mode lecture",
+    "quickReply": "Réponse rapide",
+    "welcomeMessage": "Bienvenue ! Votre animal de bureau IA est prêt à vous aider !"
+  },
+  "pomodoro": {
+    "loadingSystem": "Chargement du système...",
+    "status": {
+      "focusing": "Concentration",
+      "resting": "Pause",
+      "ready": "Prêt",
+      "break": "Pause"
+    },
+    "readyToStart": "Prêt à commencer ?",
+    "recentSessions": "Sessions récentes",
+    "noSessions": "Aucune session pour le moment. Vos cycles récents de concentration et de pause apparaîtront ici.",
+    "mode": {
+      "focus": "Concentration",
+      "break": "Pause"
+    },
+    "focusMemo": "Notes de concentration",
+    "actions": {
+      "saving": "Enregistrement...",
+      "applied": "Appliqué",
+      "saveChanges": "Enregistrer les modifications",
+      "synced": "Synchronisé"
+    },
+    "controls": {
+      "pause": "Mettre en pause",
+      "start": "Démarrer",
+      "reset": "Réinitialiser",
+      "switchToBreak": "Passer en pause",
+      "switchToWork": "Passer en concentration"
+    },
+    "outcome": {
+      "completed": "Terminé",
+      "interrupted": "Interrompu"
+    },
+    "dateFilter": {
+      "recent6": "6 récents",
+      "today": "Aujourd'hui",
+      "yesterday": "Hier",
+      "last7days": "7 derniers jours",
+      "last30days": "30 derniers jours"
+    },
+    "memo": {
+      "workPlaceholder": "Qu'avez-vous accompli ?",
+      "breakPlaceholder": "Comment était votre pause ?"
+    },
+    "settings": {
+      "longBreak": "Pause longue",
+      "cycle": "Cycle",
+      "autopilot": "Pilote automatique"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Concentration",
+      "focusPaused": "Concentration (En pause)",
+      "break": "Pause",
+      "breakPaused": "Pause (En pause)"
+    }
+  },
+  "about": {
+    "loading": "Chargement des informations...",
+    "failedLoad": "Échec du chargement des détails de l'application",
+    "checking": "Vérification...",
+    "tryAgain": "Réessayer",
+    "tagline": "Compagnon et animal de bureau",
+    "updateAvailable": "Mise à jour disponible",
+    "upToDate": "À jour",
+    "current": "Actuelle",
+    "latest": "Dernière",
+    "published": "Publiée",
+    "devUpdateDisabled": "La vérification des mises à jour est désactivée en mode développement.",
+    "releaseNotes": "Notes de version",
+    "checkForUpdates": "Vérifier les mises à jour",
+    "installing": "Installation...",
+    "installAndRestart": "Installer et redémarrer",
+    "openLogs": "Ouvrir les journaux",
+    "unknownError": "Erreur inconnue"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "Installés",
+      "store": "Boutique"
+    },
+    "panel": {
+      "defaultTitle": "Plugin",
+      "failedLoad": "Échec du chargement du panneau du plugin : {{error}}"
+    },
+    "loadingInstalled": "Chargement des plugins...",
+    "loadingStore": "Chargement de la boutique de plugins...",
+    "loadingRuntimeSettings": "Chargement des paramètres du plugin...",
+    "system": "Système de plugins",
+    "installedTitle": "Plugins installés",
+    "storeLabel": "Boutique de plugins",
+    "availableFromGithub": "Disponibles depuis GitHub",
+    "emptyInstalled": "Aucun plugin installé pour le moment. Ouvrez l'onglet Boutique pour en installer.",
+    "emptyStore": "Aucun plugin disponible dans la boutique.",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "enable": "Activer",
+    "disable": "Désactiver",
+    "installed": "Installé",
+    "available": "Disponible",
+    "updateAvailable": "Mise à jour disponible",
+    "update": "Mettre à jour",
+    "install": "Installer",
+    "removePlugin": "Supprimer le plugin",
+    "permissions": "Autorisations",
+    "tools": "Outils",
+    "panels": "Panneaux",
+    "location": "Emplacement",
+    "openPanels": "Ouvrir les panneaux",
+    "enableHint": "Activez ce plugin pour ouvrir ses panneaux et utiliser ses capacités.",
+    "runtimeSettings": "Paramètres d'exécution",
+    "runtimeSettingsHint": "Configurez les rappels et les heures de silence globales.",
+    "dndOn": "Ne pas déranger activé",
+    "dndOff": "Ne pas déranger désactivé",
+    "saveSettings": "Enregistrer les paramètres",
+    "permissionLabels": {
+      "bridge:fs_read": "Lecture bridge",
+      "notifications": "Notifications",
+      "pet:mood": "Humeur de l'animal",
+      "scheduler": "Planificateur",
+      "state:read": "Lecture d'état",
+      "state:write": "Écriture d'état"
+    }
+  },
+  "tasks": {
+    "title": "Tâches",
+    "loading": "Chargement des tâches...",
+    "doneCounter": "{{completed}} / {{total}} terminées",
+    "tabs": {
+      "today": "Aujourd'hui",
+      "week": "Cette semaine",
+      "all": "Toutes",
+      "done": "Terminées"
+    },
+    "mainTab": {
+      "tasks": "Tâches",
+      "activity": "Activité"
+    },
+    "sections": {
+      "overdue": "En retard",
+      "unscheduled": "Non planifiées",
+      "completedToday": "Terminées aujourd'hui"
+    },
+    "empty": {
+      "todayTitle": "Aucune tâche pour aujourd'hui",
+      "todaySubtitle": "Planifiez une tâche ou créez-en une nouvelle",
+      "weekTitle": "Rien cette semaine",
+      "weekSubtitle": "Planifiez des tâches pour la semaine à venir",
+      "allTitle": "Aucune tâche",
+      "allSubtitle": "Créez une tâche pour commencer",
+      "doneTitle": "Aucune tâche terminée pour le moment",
+      "doneSubtitle": "Terminez des tâches pour les voir ici"
+    },
+    "quickInput": {
+      "placeholder": "Ajouter une tâche... ex. 'Réunion demain à 15h pendant 1h, priorité haute'",
+      "ariaDescription": "Description de la tâche",
+      "ariaAdd": "Ajouter une tâche"
+    },
+    "activity": {
+      "yesterday": "Hier",
+      "noActivity": "Aucune activité pour le moment",
+      "eventsAppearHere": "Les événements de tâche apparaîtront ici",
+      "addCommentPlaceholder": "Ajouter un commentaire...",
+      "addComment": "Ajouter un commentaire",
+      "adding": "Ajout...",
+      "you": "Vous",
+      "agent": "Agent"
+    },
+    "deleteDialog": {
+      "title": "Supprimer la tâche ?",
+      "message": "Voulez-vous vraiment supprimer \"{{title}}\" ? Cette action est irréversible.",
+      "deleting": "Suppression..."
+    },
+    "priority": {
+      "high": "Haute",
+      "medium": "Moyenne",
+      "low": "Basse"
+    },
+    "status": {
+      "todo": "À faire",
+      "in_progress": "En cours",
+      "done": "Terminée"
+    },
+    "priorityTitle": "Priorité {{priority}}",
+    "agentWorking": "L'agent travaille actuellement sur cette tâche",
+    "live": "En direct",
+    "agentWorkStatus": "Statut de l'agent : {{status}}",
+    "clickToMoveTo": "Cliquez pour passer à {{status}}",
+    "detail": {
+      "title": "Détails de la tâche",
+      "status": "Statut",
+      "priority": "Priorité",
+      "assignee": "Responsable",
+      "agent": "Assistant",
+      "labels": "Étiquettes",
+      "schedule": "Planification",
+      "scheduled": "Planifiée",
+      "repeat": "Répéter",
+      "doesNotRepeat": "Ne se répète pas",
+      "time": "Heure",
+      "start": "Début",
+      "end": "Fin",
+      "durationOptional": "Durée (optionnelle)",
+      "durationPlaceholder": "ex. 30",
+      "minutes": "min",
+      "description": "Détails",
+      "descriptionPlaceholder": "Ajoutez des notes, des détails ou une liste de sous-tâches..."
+    },
+    "recurrence": {
+      "daily": "Quotidien",
+      "weekdays": "Jours ouvrés",
+      "monWedFri": "Lun / Mer / Ven",
+      "tueThu": "Mar / Jeu",
+      "weekly": "Hebdomadaire",
+      "monthly": "Mensuel"
+    },
+    "activityFeed": {
+      "created": "Créé",
+      "createdFull": "A créé « {{title}} »",
+      "statusChanged": "Statut",
+      "statusChangedFull": "{{from}} → {{to}} pour « {{title}} »",
+      "assigned": "Attribution",
+      "assignedFull": "« {{title}} » attribué à {{to}}",
+      "labeled": "Étiquette",
+      "labeledFull": "Étiquette « {{label}} » ajoutée à « {{title}} »",
+      "unlabeled": "Étiquette",
+      "unlabeledFull": "Étiquette « {{label}} » retirée de « {{title}} »",
+      "deleted": "Supprimé",
+      "deletedFull": "A supprimé « {{title}} »",
+      "updated": "Mis à jour",
+      "updatedFull": "A mis à jour « {{title}} »",
+      "comment": "Commentaire",
+      "commentFull": "A ajouté un commentaire",
+      "unknownTask": "Tâche inconnue",
+      "deleteComment": "Supprimer le commentaire"
+    },
+    "agentWork": {
+      "pending": "En attente",
+      "executing": "En cours d'exécution",
+      "failed": "Échoué",
+      "attempts_one": "{{count}} tentative",
+      "attempts_other": "{{count}} tentatives"
+    },
+    "formatting": {
+      "today": "Aujourd'hui",
+      "tomorrow": "Demain",
+      "minutesShort": "min",
+      "hoursShort": "h"
+    },
+    "sync": {
+      "syncing": "Synchronisation...",
+      "waiting": "En attente de synchronisation",
+      "updatedJustNow": "Mis à jour à l'instant",
+      "updatedSecondsAgo": "Mis à jour il y a {{seconds}}s",
+      "updatedMinutesAgo": "Mis à jour il y a {{minutes}}min"
+    },
+    "toast": {
+      "failedToLoad": "Échec du chargement des tâches",
+      "created": "Tâche créée",
+      "failedToCreate": "Échec de la création de la tâche",
+      "completed": "Tâche terminée !",
+      "failedToUpdate": "Échec de la mise à jour de la tâche",
+      "failedToSave": "Échec de l'enregistrement des modifications",
+      "deleted": "Tâche supprimée",
+      "failedToDelete": "Échec de la suppression de la tâche"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "à l'instant",
+    "ago": "il y a",
+    "daysAgo": "jours"
+  },
+  "updater": {
+    "title": "Mise à jour disponible",
+    "message": "Peekoo {{version}} est disponible. L'installer maintenant et redémarrer ?",
+    "messageWithNotes": "Peekoo {{version}} est disponible.\n\n{{notes}}\n\nL'installer maintenant et redémarrer ?",
+    "installButton": "Installer et redémarrer",
+    "later": "Plus tard"
+  },
+  "agentRuntimes": {
+    "title": "Exécuteurs ACP",
+    "description": "Gérez les agents ACP et leurs paramètres LLM",
+    "refresh": "Actualiser",
+    "addRuntime": "Ajouter un exécuteur",
+    "activeRuntime": "Exécuteur actif",
+    "activeRuntimeDescription": "L'exécuteur ACP actuellement utilisé pour les nouvelles conversations",
+    "defaultModel": "Modèle par défaut",
+    "installedRuntimes": "Exécuteurs installés",
+    "noRuntimesInstalled": "Aucun exécuteur installé pour le moment",
+    "availableRuntimes": "Exécuteurs disponibles",
+    "showingRuntimes": "Affichage de {{count}} exécuteurs",
+    "searchPlaceholder": "Rechercher des agents (ex. Gemini, Cursor, Claude)...",
+    "noRuntimesFound": "Aucun exécuteur trouvé",
+    "loading": "Chargement...",
+    "loadMore": "Charger plus d'agents",
+    "default": "Par défaut",
+    "modelLabel": "Modèle :",
+    "setDefault": "Définir par défaut",
+    "login": "Connexion",
+    "configure": "Configurer",
+    "installing": "Installation...",
+    "install": "Installer",
+    "installed": "Installé",
+    "unsupported": "Non pris en charge",
+    "noRuntime": "Aucun exécuteur",
+    "switchRuntime": "Changer d'exécuteur",
+    "noRuntimesInstalledOption": "Aucun exécuteur installé",
+    "manageRuntimes": "Gérer les exécuteurs...",
+    "status": {
+      "ready": "Prêt",
+      "needsSetup": "Configuration requise",
+      "error": "Erreur",
+      "loginRequired": "Connexion requise",
+      "loginAvailable": "Connexion disponible",
+      "installing": "Installation...",
+      "setupRequired": "Configuration requise",
+      "notInstalled": "Non installé",
+      "discoveringCapabilities": "Découverte des capacités..."
+    },
+    "installDialog": {
+      "title": "Installer {{name}}",
+      "description": "Choisissez comment installer cet exécuteur ACP.",
+      "customPathRequired": "Veuillez saisir un chemin pour l'installation personnalisée",
+      "checkingPrerequisites": "Vérification des prérequis...",
+      "missing": "Manquant :",
+      "allPrerequisitesSatisfied": "Tous les prérequis sont satisfaits",
+      "notAvailable": "Non disponible",
+      "binaryPathLabel": "Chemin vers le binaire de l'agent",
+      "binaryPathPlaceholder": "/chemin/vers/binaire_agent",
+      "cancel": "Annuler"
+    },
+    "configureDialog": {
+      "title": "Configurer {{name}}",
+      "description": "Gérez les paramètres et l'authentification de l'exécuteur.",
+      "statusLabel": "Statut",
+      "authSection": "Authentification",
+      "loginRequired": "Connexion requise",
+      "hideLoginOptions": "Masquer les options de connexion",
+      "loginAvailable": "Connexion disponible",
+      "modelSection": "Modèle",
+      "selectModel": "Sélectionner un modèle",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "Modèle par défaut",
+      "defaultModelPlaceholder": "ex. claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "Cet exécuteur n'utilise pas la découverte de modèles ACP. Saisissez un identifiant de modèle manuellement si nécessaire.",
+      "manualModelPlaceholder": "ex. gpt-4, claude-3-5-sonnet",
+      "noModelsDiscovered": "Aucun modèle découvert. Saisissez un identifiant de modèle manuellement ou actualisez pour découvrir.",
+      "discoverModels": "Découvrir les modèles",
+      "testing": "Test en cours...",
+      "testConnection": "Tester la connexion",
+      "versionLabel": "Version :",
+      "advancedSettings": "Paramètres avancés",
+      "envVarsLabel": "Variables d'environnement",
+      "envVarNamePlaceholder": "Nom de la variable",
+      "envVarValuePlaceholder": "Valeur",
+      "addEnvVar": "Ajouter",
+      "customArgsLabel": "Arguments personnalisés",
+      "customArgsPlaceholder": "--option ou valeur",
+      "addArgument": "Ajouter un argument",
+      "saving": "Enregistrement..."
+    },
+    "addCustomDialog": {
+      "title": "Ajouter un exécuteur ACP personnalisé",
+      "description": "Enregistrez une commande ACP locale, puis configurez son fournisseur LLM et ses modèles.",
+      "nameRequired": "Le nom et la commande sont requis.",
+      "nameLabel": "Nom de l'exécuteur",
+      "namePlaceholder": "Mon exécuteur ACP personnalisé",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Description optionnelle",
+      "commandLabel": "Commande",
+      "commandPlaceholder": "ex. claude-code-acp",
+      "argsLabel": "Arguments",
+      "argsPlaceholder": "ex. --acp --experimental-acp",
+      "workingDirLabel": "Répertoire de travail",
+      "workingDirPlaceholder": "Répertoire de travail optionnel",
+      "cancel": "Annuler",
+      "adding": "Ajout..."
+    }
+  }
+}

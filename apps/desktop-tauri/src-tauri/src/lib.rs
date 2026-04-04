@@ -27,6 +27,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_posthog::PostHogExt;
 use tauri_plugin_shell::ShellExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
@@ -38,10 +39,14 @@ const TRAY_TOGGLE_MENU_ID: &str = "toggle_visible";
 const TRAY_SETTINGS_MENU_ID: &str = "open_settings";
 const TRAY_ABOUT_MENU_ID: &str = "open_about";
 const TRAY_QUIT_MENU_ID: &str = "quit";
-const TRAY_TOOLTIP: &str = "Peekoo";
 const TASKS_CHANGED_EVENT: &str = "tasks-changed";
+const SETTING_APP_LANGUAGE: &str = "app_language";
 const AGENT_SETTINGS_CHANGED_EVENT: &str = "agent-settings-changed";
 const SETTING_LOG_LEVEL: &str = "log_level";
+
+mod tray_i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
 
 #[cfg(target_os = "macos")]
 fn quote_posix_shell(arg: &str) -> String {
@@ -214,6 +219,27 @@ enum TrayMenuAction {
     OpenSettings,
     OpenAbout,
     Quit,
+}
+
+fn apply_tray_menu_language(app: &AppHandle, language: &str) -> Result<(), String> {
+    tray_i18n::set_tray_locale(language);
+    let tray_menu = MenuBuilder::new(app)
+        .text(TRAY_TOGGLE_MENU_ID, tray_i18n::tray_toggle())
+        .text(TRAY_SETTINGS_MENU_ID, tray_i18n::tray_settings())
+        .text(TRAY_ABOUT_MENU_ID, tray_i18n::tray_about())
+        .separator()
+        .text(TRAY_QUIT_MENU_ID, tray_i18n::tray_quit())
+        .build()
+        .map_err(|e| format!("Build tray menu error: {e}"))?;
+
+    if let Some(tray) = app.tray_by_id(TRAY_ICON_ID) {
+        tray.set_menu(Some(tray_menu))
+            .map_err(|e| format!("Set tray menu error: {e}"))?;
+        tray.set_tooltip(Some("Peekoo"))
+            .map_err(|e| format!("Set tray tooltip error: {e}"))?;
+    }
+
+    Ok(())
 }
 
 fn tray_menu_action(menu_id: &str) -> Option<TrayMenuAction> {
@@ -962,9 +988,14 @@ async fn app_settings_get(
 async fn app_settings_set(
     key: String,
     value: String,
+    app: AppHandle,
     state: State<'_, AgentState>,
 ) -> Result<(), String> {
-    state.app.set_app_setting(&key, &value)
+    state.app.set_app_setting(&key, &value)?;
+    if key == SETTING_APP_LANGUAGE {
+        apply_tray_menu_language(&app, &value)?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -973,6 +1004,23 @@ async fn app_settings_list_sprites(
 ) -> Result<Vec<SpriteInfo>, String> {
     Ok(state.app.list_sprites())
 }
+
+#[tauri::command]
+async fn app_settings_get_language(state: State<'_, AgentState>) -> Result<String, String> {
+    state.app.get_app_language()
+}
+
+#[tauri::command]
+async fn app_settings_set_language(
+    language: String,
+    app: AppHandle,
+    state: State<'_, AgentState>,
+) -> Result<(), String> {
+    state.app.set_app_language(&language)?;
+    apply_tray_menu_language(&app, &language)?;
+    Ok(())
+}
+
 #[tauri::command]
 async fn agent_set_model(
     provider: String,
@@ -1608,6 +1656,16 @@ pub fn run() {
         Target::new(TargetKind::LogDir { file_name: None })
     };
 
+    // Sentry must be initialised before the Tauri builder to capture
+    // panics during startup and allow minidump crash reporter to fork early.
+    peekoo_analytics::sentry::init();
+
+    // Minidump crash reporter captures native crashes (segfaults, etc.)
+    // via a separate process. Only active when Sentry is configured.
+    #[cfg(not(target_os = "ios"))]
+    let _minidump_guard =
+        peekoo_analytics::sentry::guard().map(|guard| tauri_plugin_sentry::minidump::init(guard));
+
     tauri::Builder::default()
         .setup(|app| {
             let needs_opencode = AgentState::needs_opencode_download(app.handle());
@@ -1617,17 +1675,47 @@ pub fn run() {
                 spawn_opencode_registry_install(app.handle().clone());
             }
 
+            // Fire app_started analytics event (non-blocking).
+            if peekoo_analytics::posthog::config_from_env().is_some() {
+                let analytics_handle = app.handle().clone();
+                let version = app.package_info().version.to_string();
+                let os = std::env::consts::OS.to_string();
+                let arch = std::env::consts::ARCH.to_string();
+                tauri::async_runtime::spawn(async move {
+                    let props =
+                        peekoo_analytics::events::app_started_properties(&version, &os, &arch);
+                    let _ = analytics_handle
+                        .posthog()
+                        .capture(tauri_plugin_posthog::CaptureRequest {
+                            event: peekoo_analytics::events::APP_STARTED.to_string(),
+                            properties: Some(props),
+                            distinct_id: None,
+                            groups: None,
+                            timestamp: None,
+                            anonymous: false,
+                        })
+                        .await;
+                });
+            }
+
+            let initial_language = app
+                .state::<AgentState>()
+                .app
+                .get_app_language()
+                .unwrap_or_else(|_| "en".to_string());
+            tray_i18n::set_tray_locale(&initial_language);
+
             let tray_menu = MenuBuilder::new(app)
-                .text(TRAY_TOGGLE_MENU_ID, "Show/Hide Pet")
-                .text(TRAY_SETTINGS_MENU_ID, "Settings")
-                .text(TRAY_ABOUT_MENU_ID, "About Peekoo")
+                .text(TRAY_TOGGLE_MENU_ID, tray_i18n::tray_toggle())
+                .text(TRAY_SETTINGS_MENU_ID, tray_i18n::tray_settings())
+                .text(TRAY_ABOUT_MENU_ID, tray_i18n::tray_about())
                 .separator()
-                .text(TRAY_QUIT_MENU_ID, "Quit Peekoo")
+                .text(TRAY_QUIT_MENU_ID, tray_i18n::tray_quit())
                 .build()?;
 
             let mut tray_builder = tauri::tray::TrayIconBuilder::with_id(TRAY_ICON_ID)
                 .menu(&tray_menu)
-                .tooltip(TRAY_TOOLTIP)
+                .tooltip("Peekoo")
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| handle_tray_menu_event(app, event.id().as_ref()))
                 .on_tray_icon_event(|tray, event| {
@@ -1735,6 +1823,19 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin({
+            let config = peekoo_analytics::posthog::config_from_env();
+            let (api_key, api_host) = match &config {
+                Some(c) => (c.api_key().to_string(), c.api_host().to_string()),
+                None => (String::new(), String::new()),
+            };
+            tauri_plugin_posthog::init(tauri_plugin_posthog::PostHogConfig {
+                api_key,
+                api_host,
+                ..Default::default()
+            })
+        })
+        .plugin(tauri_plugin_sentry::init(peekoo_analytics::sentry::client()))
         .invoke_handler(tauri::generate_handler![
             ui_ready,
             resize_sprite_window,
@@ -1782,6 +1883,8 @@ pub fn run() {
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
+            app_settings_get_language,
+            app_settings_set_language,
             create_task,
             create_task_from_text,
             list_tasks,

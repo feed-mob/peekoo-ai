@@ -1,0 +1,510 @@
+{
+  "common": {
+    "retry": "Retry",
+    "close": "Close",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "delete": "Delete",
+    "dismiss": "Dismiss",
+    "back": "Back",
+    "refresh": "Refresh",
+    "saving": "Saving...",
+    "save": "Save"
+  },
+  "panel": {
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "settings": "Settings",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins",
+    "about": "About Peekoo"
+  },
+  "menu": {
+    "chat": "Chat",
+    "tasks": "Tasks",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins"
+  },
+  "settings": {
+    "loading": "Loading settings...",
+    "failedLoad": "Failed to load settings: {{error}}",
+    "appearance": "Appearance",
+    "activePet": "Active Pet",
+    "language": "Language",
+    "theme": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "Pet Sprite",
+      "loadingPreview": "Loading..."
+    },
+    "logging": "Logging",
+    "loggingHelp": "Set runtime log detail for troubleshooting. Restart required to apply changes.",
+    "acpRuntimes": "ACP Runtimes",
+    "logLevelRestartMsg": "Log level updated. Restart Peekoo now to apply the new logging level?",
+    "restartRequired": "Restart Required",
+    "restartNow": "Restart Now",
+    "later": "Later"
+  },
+  "chat": {
+    "newChat": "New Chat",
+    "settings": "Settings",
+    "hideSettings": "Hide Settings",
+    "empty": "Start chatting with your Peekoo pet!",
+    "thinking": "Thinking...",
+    "inputPlaceholder": "Type a message...",
+    "authBanner": {
+      "message": "needs login before it can respond.",
+      "loginButton": "Login"
+    },
+    "thinkingBlock": "Thinking...",
+    "toolCall": {
+      "running": "Running",
+      "arguments": "Arguments"
+    }
+  },
+  "chatSettings": {
+    "loading": "Loading settings...",
+    "failedLoad": "Failed to load settings.",
+    "title": "Agent Settings",
+    "provider": "Provider",
+    "model": "Model",
+    "modelPlaceholder": "e.g. gpt-4.1-mini",
+    "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Max Tool Iterations",
+    "providerAuthentication": "Provider Authentication",
+    "skills": "Skills",
+    "noSkills": "No skills discovered yet.",
+    "noRuntimes": "No ACP runtimes installed.",
+    "installRuntimeHelp": "Install a runtime from the Settings panel to get started.",
+    "runtimeNotFound": "Selected runtime not found.",
+    "runtimeUnavailable": "The previously selected runtime is no longer available.",
+    "modelLabel": "Model",
+    "noModelConfigured": "No global model configured",
+    "modelHelp": "Change this in global runtime settings.",
+    "skillsHelp": "Peekoo finds skills automatically from configured skill folders.",
+    "auth": {
+      "mode": "Auth mode",
+      "none": "none",
+      "oauthStatus": "OAuth status",
+      "connected": "Connected",
+      "notConnected": "Not connected",
+      "updateApiKey": "Update API Key",
+      "enterApiKey": "Enter API key",
+      "saveApiKey": "Save API Key",
+      "apiKeySaved": "API key saved",
+      "connectOauth": "Connect OAuth",
+      "reconnectOauth": "Reconnect OAuth",
+      "finishedLogin": "I Finished Login",
+      "browserLoginHelp": "Browser login is open. Finish OAuth in the browser, then click \"I Finished Login\".",
+      "connectedHelp": "OAuth is connected for this provider. Use Reconnect OAuth if you want to refresh credentials.",
+      "connectHelp": "Click Connect OAuth to sign in with your provider account.",
+      "oauthFailed": "OAuth failed: {{error}}",
+      "oauthExpired": "OAuth session expired. Start again.",
+      "oauthConnected": "OAuth connected successfully.",
+      "clearAuth": "Clear Auth"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "Ask Peekoo...",
+    "openFullChat": "Open full chat",
+    "needAttention": "Need attention",
+    "readingMode": "Reading mode",
+    "quickReply": "Quick reply",
+    "welcomeMessage": "Welcome! Your AI desktop sprite is ready to help you!"
+  },
+  "pomodoro": {
+    "loadingSystem": "Loading System...",
+    "status": {
+      "focusing": "Focusing",
+      "resting": "Resting",
+      "ready": "Ready",
+      "break": "Break"
+    },
+    "readyToStart": "Ready to Start?",
+    "recentSessions": "Recent Sessions",
+    "noSessions": "No sessions yet. Your recent focus and break cycles will appear here.",
+    "mode": {
+      "focus": "Focus",
+      "break": "Break"
+    },
+    "focusMemo": "Focus Memo",
+    "actions": {
+      "saving": "Saving...",
+      "applied": "Applied",
+      "saveChanges": "Save Changes",
+      "synced": "Synced"
+    },
+    "controls": {
+      "pause": "Pause",
+      "start": "Start",
+      "reset": "Reset",
+      "switchToBreak": "Switch to Break",
+      "switchToWork": "Switch to Work"
+    },
+    "outcome": {
+      "completed": "Completed",
+      "interrupted": "Interrupted"
+    },
+    "dateFilter": {
+      "recent6": "Recent 6",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "last7days": "Last 7 Days",
+      "last30days": "Last 30 Days"
+    },
+    "memo": {
+      "workPlaceholder": "What did you accomplish?",
+      "breakPlaceholder": "How was your break?"
+    },
+    "settings": {
+      "longBreak": "Long Break",
+      "cycle": "Cycle",
+      "autopilot": "Autopilot"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Focus",
+      "focusPaused": "Focus (Paused)",
+      "break": "Break",
+      "breakPaused": "Break (Paused)"
+    }
+  },
+  "about": {
+    "loading": "Loading about info...",
+    "failedLoad": "Failed to load app details",
+    "checking": "Checking...",
+    "tryAgain": "Try Again",
+    "tagline": "Desktop companion and pet",
+    "updateAvailable": "Update available",
+    "upToDate": "Up to date",
+    "current": "Current",
+    "latest": "Latest",
+    "published": "Published",
+    "devUpdateDisabled": "Update checks are disabled in development builds.",
+    "releaseNotes": "Release notes",
+    "checkForUpdates": "Check for Updates",
+    "installing": "Installing...",
+    "installAndRestart": "Install and Restart",
+    "openLogs": "Open Logs",
+    "unknownError": "Unknown error"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "Installed",
+      "store": "Store"
+    },
+    "panel": {
+      "defaultTitle": "Plugin",
+      "failedLoad": "Failed to load plugin panel: {{error}}"
+    },
+    "loadingInstalled": "Loading plugins...",
+    "loadingStore": "Loading plugin store...",
+    "loadingRuntimeSettings": "Loading plugin settings...",
+    "system": "Plugin System",
+    "installedTitle": "Installed Plugins",
+    "storeLabel": "Plugin Store",
+    "availableFromGithub": "Available from GitHub",
+    "emptyInstalled": "No plugins installed yet. Browse the Store tab to install plugins.",
+    "emptyStore": "No plugins available in the store.",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "enable": "Enable",
+    "disable": "Disable",
+    "installed": "Installed",
+    "available": "Available",
+    "updateAvailable": "Update available",
+    "update": "Update",
+    "install": "Install",
+    "removePlugin": "Remove plugin",
+    "permissions": "Permissions",
+    "tools": "Tools",
+    "panels": "Panels",
+    "location": "Location",
+    "openPanels": "Open panels",
+    "enableHint": "Enable this plugin to open its panels and use its runtime capabilities.",
+    "runtimeSettings": "Runtime settings",
+    "runtimeSettingsHint": "Configure reminder timing and global quiet hours.",
+    "dndOn": "DND on",
+    "dndOff": "DND off",
+    "saveSettings": "Save settings",
+    "permissionLabels": {
+      "bridge:fs_read": "Bridge read",
+      "notifications": "Notifications",
+      "pet:mood": "Pet mood",
+      "scheduler": "Scheduler",
+      "state:read": "State read",
+      "state:write": "State write"
+    }
+  },
+  "tasks": {
+    "title": "Tasks",
+    "loading": "Loading tasks...",
+    "doneCounter": "{{completed}} / {{total}} done",
+    "tabs": {
+      "today": "Today",
+      "week": "This Week",
+      "all": "All",
+      "done": "Done"
+    },
+    "mainTab": {
+      "tasks": "Tasks",
+      "activity": "Activity"
+    },
+    "sections": {
+      "overdue": "Overdue",
+      "unscheduled": "Unscheduled",
+      "completedToday": "Completed today"
+    },
+    "empty": {
+      "todayTitle": "No tasks for today",
+      "todaySubtitle": "Schedule a task or add a new one",
+      "weekTitle": "Nothing this week",
+      "weekSubtitle": "Schedule tasks for the upcoming week",
+      "allTitle": "No tasks",
+      "allSubtitle": "Create a task to get started",
+      "doneTitle": "No completed tasks yet",
+      "doneSubtitle": "Finish some tasks to see them here"
+    },
+    "quickInput": {
+      "placeholder": "Add a task... e.g., 'Meeting tomorrow at 3pm for 1 hour high priority'",
+      "ariaDescription": "Task description",
+      "ariaAdd": "Add task"
+    },
+    "activity": {
+      "yesterday": "Yesterday",
+      "noActivity": "No activity yet",
+      "eventsAppearHere": "Task events will appear here",
+      "addCommentPlaceholder": "Add a comment...",
+      "addComment": "Add Comment",
+      "adding": "Adding...",
+      "you": "You",
+      "agent": "Agent"
+    },
+    "deleteDialog": {
+      "title": "Delete Task?",
+      "message": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
+      "deleting": "Deleting..."
+    },
+    "priority": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
+    "status": {
+      "todo": "Todo",
+      "in_progress": "In Progress",
+      "done": "Done"
+    },
+    "priorityTitle": "{{priority}} priority",
+    "agentWorking": "Agent is currently working on this task",
+    "live": "Live",
+    "agentWorkStatus": "Agent work status: {{status}}",
+    "clickToMoveTo": "Click to move to {{status}}",
+    "detail": {
+      "title": "Task Details",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "Assignee",
+      "agent": "Agent",
+      "labels": "Labels",
+      "schedule": "Schedule",
+      "scheduled": "Scheduled",
+      "repeat": "Repeat",
+      "doesNotRepeat": "Does not repeat",
+      "time": "Time",
+      "start": "Start",
+      "end": "End",
+      "durationOptional": "Duration (optional)",
+      "durationPlaceholder": "e.g. 30",
+      "minutes": "minutes",
+      "description": "Description",
+      "descriptionPlaceholder": "Add notes, details, or a sub-task list..."
+    },
+    "recurrence": {
+      "daily": "Daily",
+      "weekdays": "Every weekday",
+      "monWedFri": "Mon / Wed / Fri",
+      "tueThu": "Tue / Thu",
+      "weekly": "Weekly",
+      "monthly": "Monthly"
+    },
+    "activityFeed": {
+      "created": "Created",
+      "createdFull": "Created \"{{title}}\"",
+      "statusChanged": "Status",
+      "statusChangedFull": "{{from}} → {{to}} for \"{{title}}\"",
+      "assigned": "Assignment",
+      "assignedFull": "Assigned \"{{title}}\" to {{to}}",
+      "labeled": "Label",
+      "labeledFull": "Added \"{{label}}\" to \"{{title}}\"",
+      "unlabeled": "Label",
+      "unlabeledFull": "Removed \"{{label}}\" from \"{{title}}\"",
+      "deleted": "Deleted",
+      "deletedFull": "Deleted \"{{title}}\"",
+      "updated": "Updated",
+      "updatedFull": "Updated \"{{title}}\"",
+      "comment": "Comment",
+      "commentFull": "Added a comment",
+      "unknownTask": "Unknown task",
+      "deleteComment": "Delete comment"
+    },
+    "agentWork": {
+      "pending": "Pending",
+      "executing": "Executing",
+      "failed": "Failed",
+      "attempts_one": "{{count}} attempt",
+      "attempts_other": "{{count}} attempts"
+    },
+    "formatting": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "minutesShort": "m",
+      "hoursShort": "h"
+    },
+    "sync": {
+      "syncing": "Syncing...",
+      "waiting": "Waiting for sync",
+      "updatedJustNow": "Updated just now",
+      "updatedSecondsAgo": "Updated {{seconds}}s ago",
+      "updatedMinutesAgo": "Updated {{minutes}}m ago"
+    },
+    "toast": {
+      "failedToLoad": "Failed to load tasks",
+      "created": "Task created",
+      "failedToCreate": "Failed to create task",
+      "completed": "Task completed!",
+      "failedToUpdate": "Failed to update task",
+      "failedToSave": "Failed to save changes",
+      "deleted": "Task deleted",
+      "failedToDelete": "Failed to delete task"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "just now",
+    "ago": "ago",
+    "daysAgo": "days ago"
+  },
+  "updater": {
+    "title": "Update Available",
+    "message": "Peekoo {{version}} is available. Install it now and restart?",
+    "messageWithNotes": "Peekoo {{version}} is available.\n\n{{notes}}\n\nInstall it now and restart?",
+    "installButton": "Install and Restart",
+    "later": "Later"
+  },
+  "agentRuntimes": {
+    "title": "ACP Runtimes",
+    "description": "Manage ACP agents and their LLM settings",
+    "refresh": "Refresh",
+    "addRuntime": "Add Runtime",
+    "activeRuntime": "Active Runtime",
+    "activeRuntimeDescription": "The ACP runtime currently used for new conversations",
+    "defaultModel": "Default model",
+    "installedRuntimes": "Installed Runtimes",
+    "noRuntimesInstalled": "No runtimes installed yet",
+    "availableRuntimes": "Available Runtimes",
+    "showingRuntimes": "Showing {{count}} runtimes",
+    "searchPlaceholder": "Search agents (e.g., Gemini, Cursor, Claude)...",
+    "noRuntimesFound": "No runtimes found",
+    "loading": "Loading...",
+    "loadMore": "Load more agents",
+    "default": "Default",
+    "modelLabel": "Model:",
+    "setDefault": "Set Default",
+    "login": "Login",
+    "configure": "Configure",
+    "installing": "Installing...",
+    "install": "Install",
+    "installed": "Installed",
+    "unsupported": "Unsupported",
+    "noRuntime": "No runtime",
+    "switchRuntime": "Switch Runtime",
+    "noRuntimesInstalledOption": "No runtimes installed",
+    "manageRuntimes": "Manage Runtimes...",
+    "status": {
+      "ready": "Ready",
+      "needsSetup": "Needs Setup",
+      "error": "Error",
+      "loginRequired": "Login Required",
+      "loginAvailable": "Login available",
+      "installing": "Installing...",
+      "setupRequired": "Setup Required",
+      "notInstalled": "Not Installed",
+      "discoveringCapabilities": "Discovering capabilities..."
+    },
+    "installDialog": {
+      "title": "Install {{name}}",
+      "description": "Choose how you want to install this ACP runtime.",
+      "customPathRequired": "Please enter a path for the custom installation",
+      "checkingPrerequisites": "Checking prerequisites...",
+      "missing": "Missing:",
+      "allPrerequisitesSatisfied": "All prerequisites satisfied",
+      "notAvailable": "Not Available",
+      "binaryPathLabel": "Path to Agent Binary",
+      "binaryPathPlaceholder": "/path/to/agent_binary",
+      "cancel": "Cancel"
+    },
+    "configureDialog": {
+      "title": "Configure {{name}}",
+      "description": "Manage runtime settings and authentication.",
+      "statusLabel": "Status",
+      "authSection": "Authentication",
+      "loginRequired": "Login required",
+      "hideLoginOptions": "Hide login options",
+      "loginAvailable": "Login available",
+      "modelSection": "Model",
+      "selectModel": "Select a model",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "Default Model",
+      "defaultModelPlaceholder": "e.g., claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "This runtime does not use ACP model discovery. Enter a model ID manually if needed.",
+      "manualModelPlaceholder": "e.g., gpt-4, claude-3-5-sonnet",
+      "noModelsDiscovered": "No models discovered. Enter a model ID manually or refresh to discover.",
+      "discoverModels": "Discover Models",
+      "testing": "Testing...",
+      "testConnection": "Test Connection",
+      "versionLabel": "Version:",
+      "advancedSettings": "Advanced Settings",
+      "envVarsLabel": "Environment Variables",
+      "envVarNamePlaceholder": "Variable name",
+      "envVarValuePlaceholder": "Value",
+      "addEnvVar": "Add",
+      "customArgsLabel": "Custom Arguments",
+      "customArgsPlaceholder": "--flag or value",
+      "addArgument": "Add Argument",
+      "saving": "Saving...",
+      "saveChanges": "Save Changes",
+      "cancel": "Cancel"
+    },
+    "addCustomDialog": {
+      "title": "Add Custom ACP Runtime",
+      "description": "Register a local ACP command and then configure its LLM provider and models.",
+      "nameRequired": "Name and command are required.",
+      "nameLabel": "Runtime Name",
+      "namePlaceholder": "My Custom ACP Runtime",
+      "descriptionLabel": "Description",
+      "descriptionPlaceholder": "Optional description",
+      "commandLabel": "Command",
+      "commandPlaceholder": "e.g. claude-code-acp",
+      "argsLabel": "Arguments",
+      "argsPlaceholder": "e.g. --acp --experimental-acp",
+      "workingDirLabel": "Working Directory",
+      "workingDirPlaceholder": "Optional working directory",
+      "cancel": "Cancel",
+      "adding": "Adding...",
+      "addRuntime": "Add Runtime"
+    }
+  }
+}

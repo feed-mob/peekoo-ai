@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import type { TaskEvent } from "@/types/task";
 import { getCommentAuthorDisplayName } from "./task-activity";
 
+const mockT = ((key: string) => key) as import("i18next").TFunction;
+
 function makeCommentEvent(payload: Record<string, unknown>): TaskEvent {
   return {
     id: "event-1",
@@ -16,18 +18,18 @@ describe("getCommentAuthorDisplayName", () => {
   test("shows known agent names for agent comments", () => {
     const event = makeCommentEvent({ author: "peekoo-agent", text: "Done" });
 
-    expect(getCommentAuthorDisplayName(event)).toBe("Peekoo Agent");
+    expect(getCommentAuthorDisplayName(event, mockT)).toBe("Peekoo Agent");
   });
 
   test("falls back to raw author name for unknown agents", () => {
     const event = makeCommentEvent({ author: "builder-agent", text: "Done" });
 
-    expect(getCommentAuthorDisplayName(event)).toBe("builder-agent");
+    expect(getCommentAuthorDisplayName(event, mockT)).toBe("builder-agent");
   });
 
-  test("shows You for user comments", () => {
+  test("shows translated key for user comments", () => {
     const event = makeCommentEvent({ author: "user", text: "Please retry" });
 
-    expect(getCommentAuthorDisplayName(event)).toBe("You");
+    expect(getCommentAuthorDisplayName(event, mockT)).toBe("tasks.activity.you");
   });
 });

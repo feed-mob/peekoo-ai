@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,6 +29,7 @@ export function AddCustomRuntimeDialog({
   onClose,
   onSubmit,
 }: AddCustomRuntimeDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [command, setCommand] = useState("");
@@ -52,7 +54,7 @@ export function AddCustomRuntimeDialog({
 
   const handleSubmit = async () => {
     if (!name.trim() || !command.trim()) {
-      setError("Name and command are required.");
+      setError(t("agentRuntimes.addCustomDialog.nameRequired"));
       return;
     }
 
@@ -81,47 +83,47 @@ export function AddCustomRuntimeDialog({
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && handleClose()}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add Custom ACP Runtime</DialogTitle>
+          <DialogTitle>{t("agentRuntimes.addCustomDialog.title")}</DialogTitle>
           <DialogDescription>
-            Register a local ACP command and then configure its LLM provider and models.
+            {t("agentRuntimes.addCustomDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            <Label>Runtime Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Custom ACP Runtime" />
+            <Label>{t("agentRuntimes.addCustomDialog.nameLabel")}</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("agentRuntimes.addCustomDialog.namePlaceholder")} />
           </label>
 
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            <Label>Description</Label>
+            <Label>{t("agentRuntimes.addCustomDialog.descriptionLabel")}</Label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional description"
+              placeholder={t("agentRuntimes.addCustomDialog.descriptionPlaceholder")}
             />
           </label>
 
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            <Label>Command</Label>
-            <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="e.g. claude-code-acp" />
+            <Label>{t("agentRuntimes.addCustomDialog.commandLabel")}</Label>
+            <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder={t("agentRuntimes.addCustomDialog.commandPlaceholder")} />
           </label>
 
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            <Label>Arguments</Label>
+            <Label>{t("agentRuntimes.addCustomDialog.argsLabel")}</Label>
             <Input
               value={args}
               onChange={(e) => setArgs(e.target.value)}
-              placeholder="e.g. --acp --experimental-acp"
+              placeholder={t("agentRuntimes.addCustomDialog.argsPlaceholder")}
             />
           </label>
 
           <label className="flex flex-col gap-1 text-sm text-text-secondary">
-            <Label>Working Directory</Label>
+            <Label>{t("agentRuntimes.addCustomDialog.workingDirLabel")}</Label>
             <Input
               value={workingDir}
               onChange={(e) => setWorkingDir(e.target.value)}
-              placeholder="Optional working directory"
+              placeholder={t("agentRuntimes.addCustomDialog.workingDirPlaceholder")}
             />
           </label>
 
@@ -130,10 +132,10 @@ export function AddCustomRuntimeDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={isSaving}>
-            Cancel
+            {t("agentRuntimes.addCustomDialog.cancel")}
           </Button>
           <Button onClick={() => void handleSubmit()} disabled={isSaving}>
-            {isSaving ? "Adding..." : "Add Runtime"}
+            {isSaving ? t("agentRuntimes.addCustomDialog.adding") : t("agentRuntimes.addCustomDialog.addRuntime")}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   type RuntimeInfo,
@@ -45,6 +46,7 @@ export function ProviderCard({
   onConfigure,
   onUninstall,
 }: ProviderCardProps) {
+  const { t } = useTranslation();
   const [inspection, setInspection] = useState<RuntimeInspectionResult | null>(null);
   const [isInspecting, setIsInspecting] = useState(false);
 
@@ -82,8 +84,8 @@ export function ProviderCard({
 
   const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
   const statusIcon = getStatusIcon(provider.status, requiresAuth);
-  const statusText = getProviderStatusText(provider.status, inspection, provider.statusMessage);
-  const currentModel = provider.config.defaultModel || inspection?.currentModelId || "Default";
+  const statusText = getProviderStatusText(provider.status, inspection, provider.statusMessage, t);
+  const currentModel = provider.config.defaultModel || inspection?.currentModelId || t("agentRuntimes.default");
 
   const handleQuickRefresh = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -164,7 +166,7 @@ export function ProviderCard({
         
         {provider.isInstalled && (
           <div className="flex items-center justify-between text-xs">
-            <span className="text-text-muted">Model: </span>
+            <span className="text-text-muted">{t("agentRuntimes.modelLabel")} </span>
             <div className="flex items-center gap-2">
               <span className="text-text-secondary truncate max-w-[150px]">{currentModel}</span>
               <Button
@@ -192,7 +194,7 @@ export function ProviderCard({
                 className="flex-1"
                 onClick={() => onSetDefault(provider.providerId)}
               >
-                Set Default
+                {t("agentRuntimes.setDefault")}
               </Button>
             )}
             {requiresAuth && (
@@ -203,7 +205,7 @@ export function ProviderCard({
                 onClick={() => onConfigure(provider)}
               >
                 <Lock className="mr-1 h-3 w-3" />
-                Login
+                {t("agentRuntimes.login")}
               </Button>
             )}
             <Button
@@ -213,7 +215,7 @@ export function ProviderCard({
               onClick={() => onConfigure(provider)}
             >
               <Settings className="mr-1 h-3 w-3" />
-              Configure
+              {t("agentRuntimes.configure")}
             </Button>
             {!provider.isBundled && (
               <Button
@@ -236,12 +238,12 @@ export function ProviderCard({
             {isInstalling ? (
               <>
                 <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-                Installing...
+                {t("agentRuntimes.installing")}
               </>
             ) : (
               <>
                 <Download className="mr-2 h-3 w-3" />
-                Install
+                {t("agentRuntimes.install")}
               </>
             )}
           </Button>
