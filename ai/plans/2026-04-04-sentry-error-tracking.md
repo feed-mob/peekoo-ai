@@ -20,9 +20,12 @@ peekoo-analytics
   ├── posthog.rs      # PostHog config helpers
   └── sentry.rs       # Sentry init/client/guard helpers
 
+peekoo-analytics-tauri
+  ├── posthog.rs      # Tauri PostHog adapter helpers
+  └── sentry.rs       # Tauri Sentry adapter helpers
+
 desktop-tauri (transport)
-  └── lib.rs          # Calls peekoo_analytics::sentry::init()
-                      # Registers tauri plugins only
+  └── lib.rs          # Calls adapter crate helpers only
 ```
 
 Key ordering:
@@ -86,3 +89,4 @@ sentry = { version = "0.42", default-features = false, features = [
 
 - Self-hosted Sentry does not need a separate host env var. The DSN already embeds the host, for example `https://<key>@sentry.example.com/<project>`.
 - SRP refactor: provider orchestration now lives in `peekoo-analytics`, leaving `desktop-tauri` responsible only for transport wiring.
+- Tauri plugin registration now lives in `peekoo-analytics-tauri`. `desktop-tauri` still keeps the direct plugin dependencies so Tauri can discover `sentry:default` permission metadata at build time.

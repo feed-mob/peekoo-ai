@@ -20,3 +20,4 @@ These values are injected during release builds from GitHub Actions secrets:
 - PostHog tracks the `app_started` event with `app_version`, `os`, and `arch`.
 - Install counts are derived in PostHog using the built-in "First time" filter.
 - Self-hosted Sentry is configured entirely through `SENTRY_DSN`; the DSN already includes the host.
+- The Tauri adapter layer lives in `crates/peekoo-analytics-tauri/`. The app crate still keeps direct Tauri plugin dependencies so capability permissions like `posthog:default` and `sentry:default` remain discoverable at build time.

@@ -9,18 +9,21 @@ Track active users per app version and total installs using PostHog's free tier 
 - **Single event approach:** Only `app_started` is sent. PostHog's built-in "First time" filter provides total installs without a separate `app_installed` event or local persistence flag.
 - **No timestamp override:** PostHog server timestamps are more reliable than client clocks.
 - **No user ID management:** The plugin auto-generates a stable `$device:{machine_uid}` distinct ID.
-- **Dedicated `peekoo-analytics` crate:** Owns event definitions and provider config. Keeps analytics concerns out of `desktop-tauri` (transport layer) and positions for future Sentry integration.
+- **Dedicated `peekoo-analytics` crate:** Owns event definitions, provider config, and provider-owned capture payload construction. Keeps analytics concerns out of `desktop-tauri` (transport layer) and positions for future Sentry integration.
 - **PostHog API key embedded directly:** It is a public project key, not a secret.
 
 ## Architecture
 
 ```
 peekoo-analytics (crate)
-  ├── events.rs      # Event names + property builders (testable, no Tauri dep)
-  └── posthog.rs     # PostHog config (api_key, api_host)
+  ├── events.rs      # Shared event names + property builders
+  └── posthog.rs     # PostHog config + provider-owned capture payloads
+
+peekoo-analytics-tauri (crate)
+  └── posthog.rs     # Tauri plugin registration + request translation
 
 desktop-tauri (transport)
-  └── lib.rs          # Plugin registration + fire app_started in setup()
+  └── lib.rs          # Calls adapter crate helpers only
 ```
 
 Dependency flow: `desktop-tauri` -> `peekoo-analytics` (event definitions) + `tauri-plugin-posthog` (plugin wiring).
@@ -43,3 +46,9 @@ Dependency flow: `desktop-tauri` -> `peekoo-analytics` (event definitions) + `ta
 - Add Sentry error tracking to `peekoo-analytics` crate
 - Add frontend event tracking via `tauri-plugin-posthog-api` JS bindings (already installed)
 - Add heartbeat events for session duration if needed
+
+## Follow-up Refactor
+
+- SRP follow-up moved PostHog payload construction into `peekoo-analytics::posthog::app_started_capture()` so `desktop-tauri` no longer assembles analytics event contents directly.
+- Tauri-specific PostHog plugin glue now lives in `peekoo-analytics-tauri`, not `desktop-tauri`.
+- `desktop-tauri` still keeps `tauri-plugin-posthog` as a direct dependency because Tauri permission discovery only sees direct plugin dependencies when resolving `posthog:default`.

@@ -9,6 +9,14 @@
 
 const DEFAULT_API_HOST: &str = "https://us.i.posthog.com";
 
+/// Provider-owned capture payload that transport layers can map onto their
+/// specific client SDK request types.
+#[derive(Debug, Clone)]
+pub struct PostHogCapture {
+    event: String,
+    properties: std::collections::HashMap<String, serde_json::Value>,
+}
+
 /// Configuration needed to initialise a PostHog analytics provider.
 #[derive(Debug, Clone)]
 pub struct PostHogAnalyticsConfig {
@@ -63,6 +71,26 @@ impl PostHogAnalyticsConfig {
     }
 }
 
+impl PostHogCapture {
+    /// The event name to send to PostHog.
+    pub fn event(&self) -> &str {
+        &self.event
+    }
+
+    /// Event properties to include with the capture request.
+    pub fn properties(&self) -> &std::collections::HashMap<String, serde_json::Value> {
+        &self.properties
+    }
+}
+
+/// Build the standard PostHog payload for the app startup event.
+pub fn app_started_capture(version: &str, os: &str, arch: &str) -> PostHogCapture {
+    PostHogCapture {
+        event: crate::events::APP_STARTED.to_string(),
+        properties: crate::events::app_started_properties(version, os, arch),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -83,5 +111,29 @@ mod tests {
     fn custom_host_overrides_default() {
         let config = PostHogAnalyticsConfig::with_host("phc_test_key", "https://eu.posthog.com");
         assert_eq!(config.api_host(), "https://eu.posthog.com");
+    }
+
+    #[test]
+    fn app_started_capture_uses_app_started_event() {
+        let capture = app_started_capture("0.1.21", "linux", "x86_64");
+        assert_eq!(capture.event(), crate::events::APP_STARTED);
+    }
+
+    #[test]
+    fn app_started_capture_includes_expected_properties() {
+        let capture = app_started_capture("0.1.21", "linux", "x86_64");
+        assert_eq!(capture.properties().len(), 3);
+        assert_eq!(
+            capture.properties().get("app_version"),
+            Some(&serde_json::json!("0.1.21"))
+        );
+        assert_eq!(
+            capture.properties().get("os"),
+            Some(&serde_json::json!("linux"))
+        );
+        assert_eq!(
+            capture.properties().get("arch"),
+            Some(&serde_json::json!("x86_64"))
+        );
     }
 }
