@@ -1656,6 +1656,16 @@ pub fn run() {
         Target::new(TargetKind::LogDir { file_name: None })
     };
 
+    // Sentry must be initialised before the Tauri builder to capture
+    // panics during startup and allow minidump crash reporter to fork early.
+    peekoo_analytics::sentry::init();
+
+    // Minidump crash reporter captures native crashes (segfaults, etc.)
+    // via a separate process. Only active when Sentry is configured.
+    #[cfg(not(target_os = "ios"))]
+    let _minidump_guard =
+        peekoo_analytics::sentry::guard().map(|guard| tauri_plugin_sentry::minidump::init(guard));
+
     tauri::Builder::default()
         .setup(|app| {
             let needs_opencode = AgentState::needs_opencode_download(app.handle());
@@ -1825,6 +1835,7 @@ pub fn run() {
                 ..Default::default()
             })
         })
+        .plugin(tauri_plugin_sentry::init(peekoo_analytics::sentry::client()))
         .invoke_handler(tauri::generate_handler![
             ui_ready,
             resize_sprite_window,
