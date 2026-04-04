@@ -2721,6 +2721,48 @@
           "markdownDescription": "Denies the restart command without any pre-configured scope."
         },
         {
+          "description": "Allows all required permissions (envelope, breadcrumb)\n#### This default permission set includes:\n\n- `allow-envelope`\n- `allow-breadcrumb`",
+          "type": "string",
+          "const": "sentry:default",
+          "markdownDescription": "Allows all required permissions (envelope, breadcrumb)\n#### This default permission set includes:\n\n- `allow-envelope`\n- `allow-breadcrumb`"
+        },
+        {
+          "description": "Enables the breadcrumb command.",
+          "type": "string",
+          "const": "sentry:allow-breadcrumb",
+          "markdownDescription": "Enables the breadcrumb command."
+        },
+        {
+          "description": "Enables the envelope command.",
+          "type": "string",
+          "const": "sentry:allow-envelope",
+          "markdownDescription": "Enables the envelope command."
+        },
+        {
+          "description": "Enables the event command without any pre-configured scope.",
+          "type": "string",
+          "const": "sentry:allow-event",
+          "markdownDescription": "Enables the event command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the breadcrumb command.",
+          "type": "string",
+          "const": "sentry:deny-breadcrumb",
+          "markdownDescription": "Denies the breadcrumb command."
+        },
+        {
+          "description": "Denies the envelope command.",
+          "type": "string",
+          "const": "sentry:deny-envelope",
+          "markdownDescription": "Denies the envelope command."
+        },
+        {
+          "description": "Denies the event command without any pre-configured scope.",
+          "type": "string",
+          "const": "sentry:deny-event",
+          "markdownDescription": "Denies the event command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality with a reasonable\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n\n#### This default permission set includes:\n\n- `allow-open`",
           "type": "string",
           "const": "shell:default",
