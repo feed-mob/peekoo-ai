@@ -20,6 +20,7 @@ members = [
   "crates/peekoo-node-runtime",
   "crates/acp-registry-client",
   "crates/peekoo-mcp-server",
+  "crates/peekoo-analytics",
   "apps/desktop-tauri/src-tauri",
 ]
 resolver = "2"
