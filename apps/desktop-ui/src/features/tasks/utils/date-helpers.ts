@@ -153,10 +153,11 @@ export function toTimeInputValue(isoString: string | null): string {
  */
 export function isOverdue(
   startAt: string | null,
-  status: string
+  status: string,
+  referenceDate: Date = new Date(),
 ): boolean {
   if (!startAt || status === "done") return false;
   const start = parseISODate(startAt);
   if (!start) return false;
-  return start.getTime() < Date.now();
+  return start.getTime() < referenceDate.getTime();
 }
