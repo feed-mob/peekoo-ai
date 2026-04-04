@@ -4620,6 +4620,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "peekoo-analytics-tauri"
+version = "0.1.0"
+dependencies = [
+ "peekoo-analytics",
+ "tauri",
+ "tauri-plugin-posthog",
+ "tauri-plugin-sentry",
+]
+
+[[package]]
 name = "peekoo-app-settings"
 version = "0.1.0"
 dependencies = [
@@ -4636,7 +4646,7 @@ dependencies = [
  "dirs 6.0.0",
  "log",
  "peekoo-agent-app",
- "peekoo-analytics",
+ "peekoo-analytics-tauri",
  "peekoo-paths",
  "rusqlite",
  "rust-i18n",

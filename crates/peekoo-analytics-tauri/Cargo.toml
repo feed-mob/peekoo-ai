@@ -1,0 +1,11 @@
+[package]
+name = "peekoo-analytics-tauri"
+version = "0.1.0"
+edition = "2024"
+description = "Tauri adapter layer for Peekoo analytics providers"
+
+[dependencies]
+peekoo-analytics = { path = "../peekoo-analytics", features = ["sentry"] }
+tauri = { version = "2" }
+tauri-plugin-posthog = "0.2"
+tauri-plugin-sentry = { version = "0.5", features = ["minidump"] }

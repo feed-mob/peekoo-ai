@@ -18,12 +18,15 @@ Integrated Sentry error tracking to capture Rust panics, handled errors, and fro
 - `src/lib.rs`: gated the `sentry` module behind the `sentry` feature
 
 ### Modified: `apps/desktop-tauri/src-tauri/`
-- `Cargo.toml`: kept only `tauri-plugin-sentry` locally and enabled the `peekoo-analytics` `sentry` feature
+- `Cargo.toml`: keeps direct Tauri plugin dependencies for permission discovery, but no longer contains analytics provider orchestration logic
 - `capabilities/default.json`: Added `sentry:default` permission
 - `src/lib.rs`: 
-  - simplified to call `peekoo_analytics::sentry::init()` before Tauri builder
-  - uses `peekoo_analytics::sentry::guard()` for minidump setup
-  - uses `peekoo_analytics::sentry::client()` for browser plugin registration
+  - simplified to call adapter-layer Sentry startup before the Tauri builder
+  - no longer references `tauri-plugin-sentry` APIs directly
+
+### Follow-up adapter extraction
+- added `crates/peekoo-analytics-tauri/` so `desktop-tauri` no longer directly references `tauri-plugin-sentry` or `tauri-plugin-posthog` APIs in code
+- kept the plugin crates as direct `desktop-tauri` dependencies because Tauri permission discovery only sees direct plugin dependencies
 
 ### Modified: `.github/workflows/release.yml`
 - Added `SENTRY_DSN` env from GitHub Secrets

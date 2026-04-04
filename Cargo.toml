@@ -21,6 +21,7 @@ members = [
   "crates/acp-registry-client",
   "crates/peekoo-mcp-server",
   "crates/peekoo-analytics",
+  "crates/peekoo-analytics-tauri",
   "apps/desktop-tauri/src-tauri",
 ]
 resolver = "2"
@@ -39,7 +40,6 @@ lto = true
 codegen-units = 1
 opt-level = "s"
 strip = true
-
 
 
 
