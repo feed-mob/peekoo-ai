@@ -30,7 +30,7 @@ export function splitTodayTasks(
       (task) =>
         task.status !== "done" &&
         !!task.scheduled_start_at &&
-        isOverdue(task.scheduled_start_at, task.status)
+        isOverdue(task.scheduled_start_at, task.status, today)
     ),
     today: tasks.filter((task) => {
       if (task.status === "done" || !task.scheduled_start_at) return false;
