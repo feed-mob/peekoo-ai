@@ -27,6 +27,7 @@ use tauri::{
 };
 use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
+use tauri_plugin_posthog::PostHogExt;
 use tauri_plugin_shell::ShellExt;
 // ============================================================================
 // Agent State — lazily initialized on first prompt
@@ -1664,6 +1665,29 @@ pub fn run() {
                 spawn_opencode_registry_install(app.handle().clone());
             }
 
+            // Fire app_started analytics event (non-blocking).
+            if peekoo_analytics::posthog::config_from_env().is_some() {
+                let analytics_handle = app.handle().clone();
+                let version = app.package_info().version.to_string();
+                let os = std::env::consts::OS.to_string();
+                let arch = std::env::consts::ARCH.to_string();
+                tauri::async_runtime::spawn(async move {
+                    let props =
+                        peekoo_analytics::events::app_started_properties(&version, &os, &arch);
+                    let _ = analytics_handle
+                        .posthog()
+                        .capture(tauri_plugin_posthog::CaptureRequest {
+                            event: peekoo_analytics::events::APP_STARTED.to_string(),
+                            properties: Some(props),
+                            distinct_id: None,
+                            groups: None,
+                            timestamp: None,
+                            anonymous: false,
+                        })
+                        .await;
+                });
+            }
+
             let initial_language = app
                 .state::<AgentState>()
                 .app
@@ -1789,6 +1813,18 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin({
+            let config = peekoo_analytics::posthog::config_from_env();
+            let (api_key, api_host) = match &config {
+                Some(c) => (c.api_key().to_string(), c.api_host().to_string()),
+                None => (String::new(), String::new()),
+            };
+            tauri_plugin_posthog::init(tauri_plugin_posthog::PostHogConfig {
+                api_key,
+                api_host,
+                ..Default::default()
+            })
+        })
         .invoke_handler(tauri::generate_handler![
             ui_ready,
             resize_sprite_window,
