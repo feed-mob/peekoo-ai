@@ -11,12 +11,10 @@ const CONFIG_WEBSOCKET_URL = "websocketUrl";
 const CONFIG_TOKEN = "token";
 const CONFIG_PASSWORD = "password";
 const STATE_CONFIG_EXISTS = "configExists";
-const STATE_SESSIONS_CACHE = "sessionsCache";
 const CONFIG_DEFAULT_PAGE_SIZE = "default_page_size";
 const DEVICE_KEY_ALIAS = "openclaw-device-v2";
 const DEFAULT_WEBSOCKET_URL = "ws://127.0.0.1:18789";
 const DEFAULT_PAGE_SIZE: i32 = 10;
-const MAX_CACHE_PAYLOAD_CHARS: i32 = 200000;
 
 class OpenClawConfig {
   constructor(
@@ -87,28 +85,13 @@ export function tool_save_openclaw_config(): i32 {
 
 export function tool_list_sessions(): i32 {
   initializeDefaults();
-
-  const input = Host.inputString();
-  const page = extractIntField(input, "page");
-  const pageSize = extractIntField(input, "pageSize");
-  const force = extractRawField(input, "force") == "true";
-  const resolvedPage = page > 0 ? page : 1;
-  const resolvedPageSize = pageSize > 0 ? pageSize : resolveDefaultPageSize();
-  if (!force) {
-    const cached = readCachedSessions(resolvedPage, resolvedPageSize);
-    if (cached != "") {
-      Host.outputString(cached);
-      return 0;
-    }
-  }
-
-  Host.outputString(refreshSessions(resolvedPage, resolvedPageSize));
+  Host.outputString(refreshSessions());
   return 0;
 }
 
 export function tool_refresh_sessions(): i32 {
   initializeDefaults();
-  Host.outputString(refreshSessions(1, resolveDefaultPageSize()));
+  Host.outputString(refreshSessions());
   return 0;
 }
 
@@ -161,18 +144,13 @@ export function tool_openclaw_chat_send(): i32 {
   return 0;
 }
 
-function refreshSessions(page: i32, pageSize: i32): string {
+function refreshSessions(): string {
   // Keep refresh payload small and stable. Large preview/title fields can make
   // gateway responses brittle for downstream parsing in constrained runtimes.
   // Align with `openclaw sessions` default agent view as closely as gateway API allows.
   const params = '{"agentId":"main","limit":200}';
   const payload = gatewayRpc("sessions.list", params);
   if (!isErrorPayload(payload)) {
-    if (payload.length <= MAX_CACHE_PAYLOAD_CHARS) {
-      state.set(STATE_SESSIONS_CACHE, buildCachedSessions(page, pageSize, payload));
-    } else {
-      state.del(STATE_SESSIONS_CACHE);
-    }
     notify.send("OpenClaw Sessions", "Sessions refreshed successfully");
   }
   return payload;
@@ -356,30 +334,6 @@ function initializeDefaults(): void {
   if (state.get(STATE_CONFIG_EXISTS) == "") {
     state.set(STATE_CONFIG_EXISTS, "false");
   }
-}
-
-function readCachedSessions(page: i32, pageSize: i32): string {
-  const cached = state.get(STATE_SESSIONS_CACHE);
-  if (cached == "") {
-    return "";
-  }
-
-  if (extractIntField(cached, "page") != page) {
-    return "";
-  }
-  if (extractIntField(cached, "pageSize") != pageSize) {
-    return "";
-  }
-
-  return extractRawField(cached, "payload");
-}
-
-function buildCachedSessions(page: i32, pageSize: i32, payload: string): string {
-  return (
-    '{"page":' + page.toString() +
-    ',"pageSize":' + pageSize.toString() +
-    ',"payload":' + payload + "}"
-  );
 }
 
 function resolveDefaultPageSize(): i32 {

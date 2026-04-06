@@ -885,9 +885,9 @@
       dom.btnSaveConfig.disabled = true;
       dom.btnSaveConfig.textContent = tp('ui.actions.saving', 'Saving...');
       try {
-        await invokePluginTool('openclaw_set_config', { ws_url: wsUrl, token, password });
+        await invokePluginTool('save_openclaw_config', { websocketUrl: wsUrl, token, password });
         setModalBanner(dom.configModalSuccess, tp('ui.messages.configurationSaved', 'Configuration saved.'), 'success');
-        setTimeout(() => { closeConfigModal(); refreshSessions(); }, 900);
+        setTimeout(() => { closeConfigModal(); refreshSessions(true); }, 900);
       } catch (e) {
         setModalBanner(dom.configModalError, tp('ui.messages.failedToSave', 'Failed to save: {{error}}', { error: String(e) }));
       } finally {
@@ -935,7 +935,9 @@
       dom.btnRefresh.disabled = true;
       setStatusMessage('');
       try {
-        const raw = await invokePluginTool('list_sessions', { page: 1, pageSize: 100, force });
+        const raw = force
+          ? await invokePluginTool('refresh_sessions', {})
+          : await invokePluginTool('list_sessions', { page: 1, pageSize: 100 });
         const data = parsePluginJson(raw);
         if (data && data.success === false) {
           throw new Error(data.error || 'Gateway request failed');
@@ -952,7 +954,12 @@
         searchSessions(state.searchQuery);
       } catch (e) {
         state.connected = false;
+        state.sessions = [];
+        state.filtered = [];
+        state.page = 1;
         renderConnectionStatus(false);
+        renderSessions([]);
+        renderPagination([]);
         setStatusMessage(friendlyGatewayError(e), true);
       } finally {
         dom.btnRefresh.disabled = false;
