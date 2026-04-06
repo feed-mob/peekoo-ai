@@ -9,8 +9,8 @@ use peekoo_agent_app::{
     PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
     ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
     RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo, RuntimeInspectionResult,
-    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SkillInstallOutcome,
+    SpriteInfo, StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
 };
 use rusqlite::Connection;
 use serde::Serialize;
@@ -635,6 +635,20 @@ async fn agent_settings_catalog(
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsCatalogDto, String> {
     state.app.settings_catalog().await
+}
+
+#[tauri::command]
+async fn skill_install_from_zip(
+    zip_path: String,
+    force: bool,
+    state: State<'_, AgentState>,
+) -> Result<SkillInstallOutcome, String> {
+    state.app.install_skill_from_zip(&zip_path, force)
+}
+
+#[tauri::command]
+async fn skill_delete(skill_md_path: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_skill(&skill_md_path)
 }
 
 #[tauri::command]
@@ -1849,6 +1863,8 @@ pub fn run() {
             agent_settings_get,
             agent_settings_update,
             agent_settings_catalog,
+            skill_install_from_zip,
+            skill_delete,
             agent_provider_auth_set_api_key,
             agent_provider_auth_clear,
             agent_provider_config_set,

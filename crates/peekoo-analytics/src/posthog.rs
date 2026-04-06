@@ -84,4 +84,21 @@ mod tests {
         let config = PostHogAnalyticsConfig::with_host("phc_test_key", "https://eu.posthog.com");
         assert_eq!(config.api_host(), "https://eu.posthog.com");
     }
+
+    #[test]
+    fn config_from_env_matches_compile_time_key_presence() {
+        let config = config_from_env();
+        match option_env!("POSTHOG_API_KEY") {
+            Some(api_key) if !api_key.is_empty() => {
+                let config = config.expect("config should be Some when POSTHOG_API_KEY is set");
+                assert_eq!(config.api_key(), api_key);
+            }
+            _ => {
+                assert!(
+                    config.is_none(),
+                    "config should be None when POSTHOG_API_KEY is unset or empty"
+                );
+            }
+        }
+    }
 }

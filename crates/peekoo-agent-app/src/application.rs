@@ -46,7 +46,7 @@ use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
-    SettingsService, skill_discovery_roots,
+    SettingsService, SkillInstallOutcome, skill_discovery_roots,
 };
 use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
@@ -456,6 +456,18 @@ impl AgentApplication {
 
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
+    }
+
+    pub fn install_skill_from_zip(
+        &self,
+        zip_path: &str,
+        force: bool,
+    ) -> Result<SkillInstallOutcome, String> {
+        self.settings.install_skill_from_zip(zip_path, force)
+    }
+
+    pub fn delete_skill(&self, skill_md_path: &str) -> Result<(), String> {
+        self.settings.delete_skill(skill_md_path)
     }
 
     pub fn list_agent_providers(&self) -> Result<Vec<ProviderInfo>, String> {

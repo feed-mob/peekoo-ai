@@ -12,7 +12,13 @@ export const skillSchema = z.object({
   sourceType: z.string(),
   path: z.string(),
   enabled: z.boolean(),
+  locked: z.boolean(),
 });
+
+export const skillInstallOutcomeSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("installed"), skill: skillSchema }),
+  z.object({ type: z.literal("conflict"), skillId: z.string() }),
+]);
 
 export const providerConfigSchema = z.object({
   providerId: z.string(),
@@ -44,6 +50,7 @@ export const agentSettingsCatalogSchema = z.object({
 export type ProviderAuth = z.infer<typeof providerAuthSchema>;
 export type ProviderConfig = z.infer<typeof providerConfigSchema>;
 export type SkillSettings = z.infer<typeof skillSchema>;
+export type SkillInstallOutcome = z.infer<typeof skillInstallOutcomeSchema>;
 export type AgentSettings = z.infer<typeof agentSettingsSchema>;
 export type ProviderCatalog = z.infer<typeof providerCatalogSchema>;
 export type AgentSettingsCatalog = z.infer<typeof agentSettingsCatalogSchema>;

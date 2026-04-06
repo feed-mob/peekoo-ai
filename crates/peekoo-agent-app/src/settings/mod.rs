@@ -22,7 +22,7 @@ pub use dto::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, SkillDto,
+    SetProviderConfigRequest, SkillDto, SkillInstallOutcome,
 };
 pub(crate) use skills::skill_discovery_roots;
 
@@ -266,6 +266,18 @@ impl SettingsService {
                 .cancel(&req.flow_id)
                 .map_err(|e| format!("OAuth cancel error: {e}"))?,
         })
+    }
+
+    pub fn install_skill_from_zip(
+        &self,
+        zip_path: &str,
+        force: bool,
+    ) -> Result<SkillInstallOutcome, String> {
+        skills::install_skill_from_zip(std::path::Path::new(zip_path), force)
+    }
+
+    pub fn delete_skill(&self, skill_md_path: &str) -> Result<(), String> {
+        skills::delete_skill_by_path(skill_md_path)
     }
 
     pub fn to_agent_config(
