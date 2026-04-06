@@ -2637,6 +2637,60 @@
           "markdownDescription": "Denies the show command without any pre-configured scope."
         },
         {
+          "description": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-capture`\n- `allow-identify`\n- `allow-alias`\n- `allow-reset`\n- `allow-get-distinct-id`\n- `allow-get-config`",
+          "type": "string",
+          "const": "posthog:default",
+          "markdownDescription": "Default permissions for the plugin\n#### This default permission set includes:\n\n- `allow-capture`\n- `allow-identify`\n- `allow-alias`\n- `allow-reset`\n- `allow-get-distinct-id`\n- `allow-get-config`"
+        },
+        {
+          "description": "Allows creating user aliases in PostHog",
+          "type": "string",
+          "const": "posthog:allow-alias",
+          "markdownDescription": "Allows creating user aliases in PostHog"
+        },
+        {
+          "description": "Allows capturing PostHog events",
+          "type": "string",
+          "const": "posthog:allow-capture",
+          "markdownDescription": "Allows capturing PostHog events"
+        },
+        {
+          "description": "Allows getting PostHog configuration for frontend initialization",
+          "type": "string",
+          "const": "posthog:allow-get-config",
+          "markdownDescription": "Allows getting PostHog configuration for frontend initialization"
+        },
+        {
+          "description": "Allows getting the current distinct ID",
+          "type": "string",
+          "const": "posthog:allow-get-distinct-id",
+          "markdownDescription": "Allows getting the current distinct ID"
+        },
+        {
+          "description": "Allows identifying users in PostHog",
+          "type": "string",
+          "const": "posthog:allow-identify",
+          "markdownDescription": "Allows identifying users in PostHog"
+        },
+        {
+          "description": "Enables the ping command without any pre-configured scope.",
+          "type": "string",
+          "const": "posthog:allow-ping",
+          "markdownDescription": "Enables the ping command without any pre-configured scope."
+        },
+        {
+          "description": "Allows resetting user data in PostHog",
+          "type": "string",
+          "const": "posthog:allow-reset",
+          "markdownDescription": "Allows resetting user data in PostHog"
+        },
+        {
+          "description": "Denies the ping command without any pre-configured scope.",
+          "type": "string",
+          "const": "posthog:deny-ping",
+          "markdownDescription": "Denies the ping command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures which\nprocess features are by default exposed.\n\n#### Granted Permissions\n\nThis enables to quit via `allow-exit` and restart via `allow-restart`\nthe application.\n\n#### This default permission set includes:\n\n- `allow-exit`\n- `allow-restart`",
           "type": "string",
           "const": "process:default",
@@ -2665,6 +2719,48 @@
           "type": "string",
           "const": "process:deny-restart",
           "markdownDescription": "Denies the restart command without any pre-configured scope."
+        },
+        {
+          "description": "Allows all required permissions (envelope, breadcrumb)\n#### This default permission set includes:\n\n- `allow-envelope`\n- `allow-breadcrumb`",
+          "type": "string",
+          "const": "sentry:default",
+          "markdownDescription": "Allows all required permissions (envelope, breadcrumb)\n#### This default permission set includes:\n\n- `allow-envelope`\n- `allow-breadcrumb`"
+        },
+        {
+          "description": "Enables the breadcrumb command.",
+          "type": "string",
+          "const": "sentry:allow-breadcrumb",
+          "markdownDescription": "Enables the breadcrumb command."
+        },
+        {
+          "description": "Enables the envelope command.",
+          "type": "string",
+          "const": "sentry:allow-envelope",
+          "markdownDescription": "Enables the envelope command."
+        },
+        {
+          "description": "Enables the event command without any pre-configured scope.",
+          "type": "string",
+          "const": "sentry:allow-event",
+          "markdownDescription": "Enables the event command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the breadcrumb command.",
+          "type": "string",
+          "const": "sentry:deny-breadcrumb",
+          "markdownDescription": "Denies the breadcrumb command."
+        },
+        {
+          "description": "Denies the envelope command.",
+          "type": "string",
+          "const": "sentry:deny-envelope",
+          "markdownDescription": "Denies the envelope command."
+        },
+        {
+          "description": "Denies the event command without any pre-configured scope.",
+          "type": "string",
+          "const": "sentry:deny-event",
+          "markdownDescription": "Denies the event command without any pre-configured scope."
         },
         {
           "description": "This permission set configures which\nshell functionality is exposed by default.\n\n#### Granted Permissions\n\nIt allows to use the `open` functionality with a reasonable\nscope pre-configured. It will allow opening `http(s)://`,\n`tel:` and `mailto:` links.\n\n#### This default permission set includes:\n\n- `allow-open`",
