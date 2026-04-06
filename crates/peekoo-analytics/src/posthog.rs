@@ -86,18 +86,19 @@ mod tests {
     }
 
     #[test]
-    fn config_always_returns_some_with_hardcoded_key() {
+    fn config_from_env_matches_compile_time_key_presence() {
         let config = config_from_env();
-        assert!(config.is_some());
-        assert!(!config.unwrap().api_key().is_empty());
-    }
-
-    #[test]
-    fn hardcoded_api_key_is_peekoo_desktop_key() {
-        let config = config_from_env().expect("config should always be Some");
-        assert_eq!(
-            config.api_key(),
-            "phc_vuYPGRXEAhNo9jGwiicJqxhYHfVSjojqkLoFnZegGRii"
-        );
+        match option_env!("POSTHOG_API_KEY") {
+            Some(api_key) if !api_key.is_empty() => {
+                let config = config.expect("config should be Some when POSTHOG_API_KEY is set");
+                assert_eq!(config.api_key(), api_key);
+            }
+            _ => {
+                assert!(
+                    config.is_none(),
+                    "config should be None when POSTHOG_API_KEY is unset or empty"
+                );
+            }
+        }
     }
 }
