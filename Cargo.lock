@@ -4803,6 +4803,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "peekoo-python-sdk"
+version = "0.1.0"
+
+[[package]]
 name = "peekoo-scheduler"
 version = "0.1.0"
 dependencies = [

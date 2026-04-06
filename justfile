@@ -82,6 +82,8 @@ plugin-install name:
     python -c "import pathlib, shutil, tomllib; src = pathlib.Path('plugins/{{name}}'); manifest = tomllib.loads((src / 'peekoo-plugin.toml').read_text()); wasm_rel = pathlib.Path(manifest['plugin']['wasm']); wasm_src = src / wasm_rel; wasm_dst = pathlib.Path.home() / '.peekoo' / 'plugins' / '{{name}}' / wasm_rel; wasm_dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(wasm_src, wasm_dst)"
     if [ -d plugins/{{name}}/ui ]; then cp -r plugins/{{name}}/ui ~/.peekoo/plugins/{{name}}/; fi
     if [ -d plugins/{{name}}/companions ]; then cp -r plugins/{{name}}/companions ~/.peekoo/plugins/{{name}}/; fi
+    if [ -d plugins/{{name}}/runtime ]; then cp -r plugins/{{name}}/runtime ~/.peekoo/plugins/{{name}}/; fi
+    if [ -d plugins/{{name}}/vendor ]; then cp -r plugins/{{name}}/vendor ~/.peekoo/plugins/{{name}}/; fi
 
 # Install an AssemblyScript plugin into the local Peekoo plugin dir
 plugin-install-as name:
@@ -91,6 +93,34 @@ plugin-install-as name:
 
 # Build and install a Rust plugin
 plugin name: (plugin-build name) (plugin-install name)
+
+# Build a reusable Python SDK runtime package from requirements
+python-sdk-package requirements output:
+    bash crates/peekoo-python-sdk/scripts/build_runtime_package.sh {{requirements}} {{output}}
+
+# Install a packaged Python SDK runtime into a target directory
+python-sdk-install package target_dir:
+    bash crates/peekoo-python-sdk/scripts/install_runtime_package.sh {{package}} {{target_dir}}
+
+# Install a packaged Python SDK runtime into default shared Peekoo directory
+python-sdk-install-default package:
+    bash crates/peekoo-python-sdk/scripts/install_runtime_package.sh {{package}} "$HOME/.peekoo/python-sdk"
+
+# Build and install shared Python SDK runtime for Mijia plugin
+plugin-install-mijia-python-sdk:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pkg="$(mktemp -t peekoo-mijia-python-sdk.XXXXXX).tar.gz"
+    bash crates/peekoo-python-sdk/scripts/build_runtime_package.sh \
+      plugins/mijia-smart-home/companions/requirements.txt \
+      "$pkg"
+    bash crates/peekoo-python-sdk/scripts/install_runtime_package.sh \
+      "$pkg" \
+      "$HOME/.peekoo/python-sdk"
+    rm -f "$pkg"
+
+# Build runtime, compile WASM, then install Mijia plugin
+plugin-mijia-smart-home: plugin-install-mijia-python-sdk (plugin-build "mijia-smart-home") (plugin-install "mijia-smart-home")
 
 # Build all maintained first-party plugins
 plugin-build-all:
