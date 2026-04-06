@@ -84,4 +84,20 @@ mod tests {
         let config = PostHogAnalyticsConfig::with_host("phc_test_key", "https://eu.posthog.com");
         assert_eq!(config.api_host(), "https://eu.posthog.com");
     }
+
+    #[test]
+    fn config_always_returns_some_with_hardcoded_key() {
+        let config = config_from_env();
+        assert!(config.is_some());
+        assert!(!config.unwrap().api_key().is_empty());
+    }
+
+    #[test]
+    fn hardcoded_api_key_is_peekoo_desktop_key() {
+        let config = config_from_env().expect("config should always be Some");
+        assert_eq!(
+            config.api_key(),
+            "phc_vuYPGRXEAhNo9jGwiicJqxhYHfVSjojqkLoFnZegGRii"
+        );
+    }
 }

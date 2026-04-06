@@ -40,5 +40,5 @@ pub use settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, SettingsService, SkillDto,
+    SetProviderConfigRequest, SettingsService, SkillDto, SkillInstallOutcome,
 };

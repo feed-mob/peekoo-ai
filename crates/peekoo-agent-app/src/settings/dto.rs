@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SkillInstallOutcome {
+    Installed {
+        skill: SkillDto,
+    },
+    Conflict {
+        #[serde(rename = "skillId")]
+        skill_id: String,
+    },
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthDto {
@@ -9,13 +21,14 @@ pub struct ProviderAuthDto {
     pub oauth_expires_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillDto {
     pub skill_id: String,
     pub source_type: String,
     pub path: String,
     pub enabled: bool,
+    pub locked: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
