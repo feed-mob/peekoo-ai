@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Brain } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface ThinkingBlockProps {
   content: string;
@@ -8,6 +9,7 @@ interface ThinkingBlockProps {
 }
 
 export function ThinkingBlock({ content, defaultExpanded = false }: ThinkingBlockProps) {
+  const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   
   // Don't render if content is empty or just whitespace
@@ -27,7 +29,7 @@ export function ThinkingBlock({ content, defaultExpanded = false }: ThinkingBloc
           <ChevronRight size={16} className="flex-shrink-0" />
         )}
         <Brain size={14} className="flex-shrink-0 opacity-70" />
-        <span className="italic font-medium">Thinking...</span>
+        <span className="italic font-medium">{t("chat.thinkingBlock")}</span>
       </button>
       
       <AnimatePresence initial={false}>

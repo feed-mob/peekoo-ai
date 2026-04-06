@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -68,6 +69,7 @@ export function ConfigureProviderDialog({
   onRefreshCapabilities,
   onTest,
 }: ConfigureProviderDialogProps) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<RuntimeConfig>({
     defaultModel: "",
     envVars: {},
@@ -305,9 +307,9 @@ export function ConfigureProviderDialog({
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Configure {provider.displayName}</DialogTitle>
+          <DialogTitle>{t("agentRuntimes.configureDialog.title", { name: provider.displayName })}</DialogTitle>
           <DialogDescription>
-            Manage runtime settings and authentication.
+            {t("agentRuntimes.configureDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -315,24 +317,24 @@ export function ConfigureProviderDialog({
           {/* Status Section */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <Label>Status</Label>
+              <Label>{t("agentRuntimes.configureDialog.statusLabel")}</Label>
               <div className="flex items-center gap-2">
                 {provider.status === "ready" && (
                   <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-500/20 dark:text-green-400">
                     <Check className="mr-1 h-3 w-3" />
-                    Ready
+                    {t("agentRuntimes.status.ready")}
                   </span>
                 )}
                 {provider.status === "needs_setup" && (
                   <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-1 text-xs font-medium text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400">
                     <AlertCircle className="mr-1 h-3 w-3" />
-                    Needs Setup
+                    {t("agentRuntimes.status.needsSetup")}
                   </span>
                 )}
                 {provider.status === "error" && (
                   <span className="inline-flex items-center rounded-full bg-red-500/15 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-400">
                     <AlertCircle className="mr-1 h-3 w-3" />
-                    Error
+                    {t("agentRuntimes.status.error")}
                   </span>
                 )}
               </div>
@@ -341,7 +343,7 @@ export function ConfigureProviderDialog({
             {isInspecting && (
               <div className="flex items-center gap-2 text-sm text-text-muted">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Discovering capabilities...
+                {t("agentRuntimes.status.discoveringCapabilities")}
               </div>
             )}
           </div>
@@ -352,10 +354,10 @@ export function ConfigureProviderDialog({
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
                   <Lock className="h-4 w-4" />
-                  Authentication
+                  {t("agentRuntimes.configureDialog.authSection")}
                 </Label>
                 {requiresAuth && (
-                  <span className="text-xs text-yellow-700 dark:text-yellow-400">Login required</span>
+                  <span className="text-xs text-yellow-700 dark:text-yellow-400">{t("agentRuntimes.configureDialog.loginRequired")}</span>
                 )}
                 {loginAvailable && (
                   <Button
@@ -364,7 +366,7 @@ export function ConfigureProviderDialog({
                     className="h-auto px-2 py-1 text-xs text-text-muted hover:text-text-primary"
                     onClick={() => setShowAuthMethods((current) => !current)}
                   >
-                    {authMethodsVisible ? "Hide login options" : "Login available"}
+                    {authMethodsVisible ? t("agentRuntimes.configureDialog.hideLoginOptions") : t("agentRuntimes.configureDialog.loginAvailable")}
                   </Button>
                 )}
               </div>
@@ -389,7 +391,7 @@ export function ConfigureProviderDialog({
                           {isAuthenticating ? (
                             <Loader2 className="mr-2 h-3 w-3 animate-spin" />
                           ) : null}
-                          Login
+                          {t("agentRuntimes.login")}
                         </Button>
                       </div>
                       {method.manualLoginCommand && (
@@ -416,7 +418,7 @@ export function ConfigureProviderDialog({
                 </div>
               ) : (
                 <p className="text-xs text-text-muted">
-                  This runtime has optional login methods available.
+                  {t("agentRuntimes.configureDialog.loginAvailable")}
                 </p>
               )}
             </div>
@@ -426,7 +428,7 @@ export function ConfigureProviderDialog({
           {discoveredModels.length > 0 && !provider.isBundled && (
             <div className="space-y-3 border-t border-glass-border pt-4">
               <div className="flex items-center justify-between">
-                <Label>Model</Label>
+                <Label>{t("agentRuntimes.configureDialog.modelSection")}</Label>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -438,13 +440,13 @@ export function ConfigureProviderDialog({
                   ) : (
                     <RefreshCw className="mr-2 h-3 w-3" />
                   )}
-                  Refresh
+                  {t("agentRuntimes.configureDialog.discoverModels")}
                 </Button>
               </div>
               
               <Select value={selectedModel} onValueChange={handleModelChange}>
                 <SelectTrigger className="bg-space-deep border-glass-border">
-                  <SelectValue placeholder="Select a model" />
+                  <SelectValue placeholder={t("agentRuntimes.configureDialog.selectModel")} />
                 </SelectTrigger>
                 <SelectContent>
                   {discoveredModels.map((model) => (
@@ -452,7 +454,7 @@ export function ConfigureProviderDialog({
                       {model.name}
                       {model.description && (
                         <span className="ml-2 text-xs text-text-muted">
-                          - {model.description}
+                          {t("agentRuntimes.configureDialog.modelDescriptionPrefix", { description: model.description })}
                         </span>
                       )}
                     </SelectItem>
@@ -464,9 +466,9 @@ export function ConfigureProviderDialog({
 
           {provider.isBundled ? (
             <div className="space-y-3 border-t border-glass-border pt-4">
-              <Label>Default Model</Label>
+              <Label>{t("agentRuntimes.configureDialog.defaultModelLabel")}</Label>
               <Input
-                placeholder="e.g., claude-sonnet-4-6"
+                placeholder={t("agentRuntimes.configureDialog.defaultModelPlaceholder")}
                 value={config.defaultModel ?? ""}
                 onChange={(e) =>
                   setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
@@ -474,14 +476,13 @@ export function ConfigureProviderDialog({
                 className="bg-space-deep border-glass-border"
               />
               <p className="text-xs text-text-muted">
-                This runtime does not use ACP model discovery. Enter a model ID manually if
-                needed.
+                {t("agentRuntimes.configureDialog.noModelDiscoveryHelp")}
               </p>
             </div>
           ) : discoveredModels.length === 0 && !isInspecting && (
             <div className="space-y-3 border-t border-glass-border pt-4">
               <div className="flex items-center justify-between">
-                <Label>Default Model</Label>
+                <Label>{t("agentRuntimes.configureDialog.defaultModelLabel")}</Label>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -493,11 +494,11 @@ export function ConfigureProviderDialog({
                   ) : (
                     <RefreshCw className="mr-2 h-3 w-3" />
                   )}
-                  Discover Models
+                  {t("agentRuntimes.configureDialog.discoverModels")}
                 </Button>
               </div>
               <Input
-                placeholder="e.g., gpt-4, claude-3-5-sonnet"
+                placeholder={t("agentRuntimes.configureDialog.manualModelPlaceholder")}
                 value={config.defaultModel ?? ""}
                 onChange={(e) =>
                   setConfig((prev) => ({ ...prev, defaultModel: e.target.value }))
@@ -505,7 +506,7 @@ export function ConfigureProviderDialog({
                 className="bg-space-deep border-glass-border"
               />
               <p className="text-xs text-text-muted">
-                No models discovered. Enter a model ID manually or refresh to discover.
+                {t("agentRuntimes.configureDialog.noModelsDiscovered")}
               </p>
             </div>
           )}
@@ -521,10 +522,10 @@ export function ConfigureProviderDialog({
                 {isTesting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Testing...
+                    {t("agentRuntimes.configureDialog.testing")}
                   </>
                 ) : (
-                  "Test Connection"
+                  t("agentRuntimes.configureDialog.testConnection")
                 )}
               </Button>
 
@@ -546,7 +547,7 @@ export function ConfigureProviderDialog({
                   >
                     {testResult.message}
                     {testResult.providerVersion && (
-                      <div className="mt-1 text-xs">Version: {testResult.providerVersion}</div>
+                      <div className="mt-1 text-xs">{t("agentRuntimes.configureDialog.versionLabel")} {testResult.providerVersion}</div>
                     )}
                   </AlertDescription>
                 </Alert>
@@ -558,7 +559,7 @@ export function ConfigureProviderDialog({
           <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
             <CollapsibleTrigger asChild>
               <Button variant="ghost" className="w-full justify-between">
-                <span>Advanced Settings</span>
+                <span>{t("agentRuntimes.configureDialog.advancedSettings")}</span>
                 {showAdvanced ? (
                   <ChevronUp className="h-4 w-4" />
                 ) : (
@@ -569,7 +570,7 @@ export function ConfigureProviderDialog({
             <CollapsibleContent className="space-y-4 pt-2">
               {/* Environment Variables */}
               <div className="space-y-3">
-                <Label>Environment Variables</Label>
+                <Label>{t("agentRuntimes.configureDialog.envVarsLabel")}</Label>
 
                 {/* Existing env vars */}
                 {Object.entries(config.envVars).map(([key, value]) => (
@@ -599,31 +600,31 @@ export function ConfigureProviderDialog({
                 {/* Add new env var */}
                 <div className="flex items-center gap-2">
                   <Input
-                    placeholder="Variable name"
+                    placeholder={t("agentRuntimes.configureDialog.envVarNamePlaceholder")}
                     value={newEnvKey}
                     onChange={(e) => setNewEnvKey(e.target.value)}
                     className="flex-1 bg-space-deep border-glass-border"
                   />
                   <Input
                     type="password"
-                    placeholder="Value"
+                    placeholder={t("agentRuntimes.configureDialog.envVarValuePlaceholder")}
                     value={newEnvValue}
                     onChange={(e) => setNewEnvValue(e.target.value)}
                     className="flex-1 bg-space-deep border-glass-border"
                   />
                   <Button size="sm" variant="outline" onClick={addEnvVar}>
-                    Add
+                    {t("agentRuntimes.configureDialog.addEnvVar")}
                   </Button>
                 </div>
               </div>
 
               {/* Custom Arguments */}
               <div className="space-y-3">
-                <Label>Custom Arguments</Label>
+                <Label>{t("agentRuntimes.configureDialog.customArgsLabel")}</Label>
                 {config.customArgs.map((arg, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      placeholder="--flag or value"
+                      placeholder={t("agentRuntimes.configureDialog.customArgsPlaceholder")}
                       value={arg}
                       onChange={(e) => updateCustomArg(index, e.target.value)}
                       className="flex-1 bg-space-deep border-glass-border"
@@ -639,7 +640,7 @@ export function ConfigureProviderDialog({
                   </div>
                 ))}
                 <Button size="sm" variant="outline" onClick={addCustomArg}>
-                  Add Argument
+                  {t("agentRuntimes.configureDialog.addArgument")}
                 </Button>
               </div>
             </CollapsibleContent>
@@ -656,16 +657,16 @@ export function ConfigureProviderDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isLoading}>
-            Cancel
+            {t("agentRuntimes.configureDialog.cancel")}
           </Button>
           <Button onClick={handleSave} disabled={isLoading}>
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t("agentRuntimes.configureDialog.saving")}
               </>
             ) : (
-              "Save Changes"
+              t("agentRuntimes.configureDialog.saveChanges")
             )}
           </Button>
         </DialogFooter>

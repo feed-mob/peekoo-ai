@@ -6,6 +6,7 @@ import type { SpriteInfo } from "@/types/global-settings";
 interface GlobalSettingsState {
   activeSpriteId: string | null;
   themeMode: string | null;
+  appLanguage: string | null;
   logLevel: string | null;
   sprites: SpriteInfo[];
   loading: boolean;
@@ -16,6 +17,7 @@ export function useGlobalSettings() {
   const [state, setState] = useState<GlobalSettingsState>({
     activeSpriteId: null,
     themeMode: null,
+    appLanguage: null,
     logLevel: null,
     sprites: [],
     loading: true,
@@ -31,7 +33,8 @@ export function useGlobalSettings() {
       setState({
         activeSpriteId: settings.active_sprite_id ?? "dark-cat",
         themeMode: settings.theme_mode ?? "system",
-        logLevel: settings.log_level ?? "info",
+        appLanguage: settings.app_language ?? "en",
+        logLevel: settings.log_level ?? "error",
         sprites,
         loading: false,
         error: null,
@@ -81,6 +84,19 @@ export function useGlobalSettings() {
     [],
   );
 
+  const setAppLanguage = useCallback(
+    async (language: string) => {
+      try {
+        await invoke("app_settings_set_language", { language });
+        setState((prev) => ({ ...prev, appLanguage: language }));
+        await emit("language:changed", { language });
+      } catch (err) {
+        setState((prev) => ({ ...prev, error: String(err) }));
+      }
+    },
+    [],
+  );
+
   const setLogLevel = useCallback(
     async (level: string) => {
       try {
@@ -99,12 +115,14 @@ export function useGlobalSettings() {
   return {
     activeSpriteId: state.activeSpriteId,
     themeMode: state.themeMode,
+    appLanguage: state.appLanguage,
     logLevel: state.logLevel,
     sprites: state.sprites,
     loading: state.loading,
     error: state.error,
     setActiveSpriteId,
     setThemeMode,
+    setAppLanguage,
     setLogLevel,
   };
 }

@@ -1,0 +1,507 @@
+{
+  "common": {
+    "retry": "Reintentar",
+    "close": "Cerrar",
+    "cancel": "Cancelar",
+    "clear": "Limpiar",
+    "delete": "Eliminar",
+    "dismiss": "Descartar",
+    "back": "Volver",
+    "refresh": "Actualizar",
+    "saving": "Guardando...",
+    "save": "Guardar"
+  },
+  "panel": {
+    "chat": "Chat",
+    "tasks": "Tareas",
+    "settings": "Configuración",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins",
+    "about": "Acerca de Peekoo"
+  },
+  "menu": {
+    "chat": "Chat",
+    "tasks": "Tareas",
+    "pomodoro": "Pomodoro",
+    "plugins": "Plugins"
+  },
+  "settings": {
+    "loading": "Cargando configuración...",
+    "failedLoad": "No se pudo cargar la configuración: {{error}}",
+    "appearance": "Apariencia",
+    "activePet": "Mascota activa",
+    "language": "Idioma",
+    "theme": {
+      "light": "Claro",
+      "dark": "Oscuro",
+      "system": "Sistema"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "Chino tradicional",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "Sprite de mascota",
+      "loadingPreview": "Cargando..."
+    },
+    "logging": "Registro",
+    "loggingHelp": "Define el nivel de detalle del registro para solucionar problemas. Se requiere reiniciar para aplicar los cambios.",
+    "acpRuntimes": "Runtimes ACP",
+    "logLevelRestartMsg": "Nivel de registro actualizado. ¿Reiniciar Peekoo ahora para aplicar el nuevo nivel?",
+    "restartRequired": "Reinicio requerido",
+    "restartNow": "Reiniciar ahora",
+    "later": "Más tarde"
+  },
+  "chat": {
+    "newChat": "Nuevo chat",
+    "settings": "Configuración",
+    "hideSettings": "Ocultar configuración",
+    "empty": "¡Empieza a chatear con tu mascota Peekoo!",
+    "thinking": "Pensando...",
+    "inputPlaceholder": "Escribe un mensaje...",
+    "authBanner": {
+      "message": "necesita iniciar sesión antes de poder responder.",
+      "loginButton": "Iniciar sesión"
+    },
+    "thinkingBlock": "Pensando...",
+    "toolCall": {
+      "running": "Ejecutando",
+      "arguments": "Argumentos"
+    }
+  },
+  "chatSettings": {
+    "loading": "Cargando configuración...",
+    "failedLoad": "No se pudo cargar la configuración.",
+    "title": "Configuración del Agente",
+    "provider": "Proveedor",
+    "model": "Modelo",
+    "modelPlaceholder": "ej. gpt-4.1-mini",
+    "baseUrl": "URL Base",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "Iteraciones Máximas de Herramienta",
+    "providerAuthentication": "Autenticación del Proveedor",
+    "skills": "Habilidades",
+    "noSkills": "Aún no se descubrieron habilidades.",
+    "noRuntimes": "No hay runtimes ACP instalados.",
+    "installRuntimeHelp": "Instala un runtime desde el panel de Configuración para empezar.",
+    "runtimeNotFound": "Runtime seleccionado no encontrado.",
+    "runtimeUnavailable": "El runtime seleccionado ya no está disponible.",
+    "modelLabel": "Modelo",
+    "noModelConfigured": "No hay un modelo global configurado",
+    "modelHelp": "Cambia esto en la configuración global del runtime.",
+    "skillsHelp": "Peekoo encuentra habilidades automáticamente desde las carpetas de habilidades configuradas.",
+    "auth": {
+      "mode": "Modo de autenticación",
+      "none": "ninguno",
+      "oauthStatus": "Estado OAuth",
+      "connected": "Conectado",
+      "notConnected": "No conectado",
+      "updateApiKey": "Actualizar clave API",
+      "enterApiKey": "Ingresar clave API",
+      "saveApiKey": "Guardar clave API",
+      "apiKeySaved": "Clave API guardada",
+      "connectOauth": "Conectar OAuth",
+      "reconnectOauth": "Reconectar OAuth",
+      "finishedLogin": "Terminé de iniciar sesión",
+      "browserLoginHelp": "El inicio de sesión del navegador está abierto. Termine OAuth en el navegador, luego haga clic en \"Terminé de iniciar sesión\".",
+      "connectedHelp": "OAuth está conectado para este proveedor. Use Reconectar OAuth si desea actualizar las credenciales.",
+      "connectHelp": "Haga clic en Conectar OAuth para iniciar sesión con su cuenta de proveedor.",
+      "oauthFailed": "OAuth falló: {{error}}",
+      "oauthExpired": "La sesión OAuth expiró. Comience de nuevo.",
+      "oauthConnected": "OAuth conectado exitosamente.",
+      "clearAuth": "Limpiar autenticación"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "Pregúntale a Peekoo...",
+    "openFullChat": "Abrir chat completo",
+    "needAttention": "Necesita atención",
+    "readingMode": "Modo lectura",
+    "quickReply": "Respuesta rápida",
+    "welcomeMessage": "¡Bienvenido! ¡Tu sprite de escritorio con IA está listo para ayudarte!"
+  },
+  "pomodoro": {
+    "loadingSystem": "Cargando sistema...",
+    "status": {
+      "focusing": "Concentrado",
+      "resting": "Descansando",
+      "ready": "Listo",
+      "break": "Descanso"
+    },
+    "readyToStart": "¿Listo para empezar?",
+    "recentSessions": "Sesiones recientes",
+    "noSessions": "Aún no hay sesiones. Tus ciclos recientes de enfoque y descanso aparecerán aquí.",
+    "mode": {
+      "focus": "Enfoque",
+      "break": "Descanso"
+    },
+    "focusMemo": "Notas de enfoque",
+    "actions": {
+      "saving": "Guardando...",
+      "applied": "Aplicado",
+      "saveChanges": "Guardar cambios",
+      "synced": "Sincronizado"
+    },
+    "controls": {
+      "pause": "Pausar",
+      "start": "Iniciar",
+      "reset": "Reiniciar",
+      "switchToBreak": "Pasar a descanso",
+      "switchToWork": "Pasar a enfoque"
+    },
+    "outcome": {
+      "completed": "Completado",
+      "interrupted": "Interrumpido"
+    },
+    "dateFilter": {
+      "recent6": "Últimos 6",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "last7days": "Últimos 7 días",
+      "last30days": "Últimos 30 días"
+    },
+    "memo": {
+      "workPlaceholder": "¿Qué lograste?",
+      "breakPlaceholder": "¿Qué tal tu descanso?"
+    },
+    "settings": {
+      "longBreak": "Descanso largo",
+      "cycle": "Ciclo",
+      "autopilot": "Piloto automático"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "Enfoque",
+      "focusPaused": "Enfoque (Pausado)",
+      "break": "Descanso",
+      "breakPaused": "Descanso (Pausado)"
+    }
+  },
+  "about": {
+    "loading": "Cargando información...",
+    "failedLoad": "No se pudieron cargar los detalles de la app",
+    "checking": "Comprobando...",
+    "tryAgain": "Intentar de nuevo",
+    "tagline": "Compañero y mascota de escritorio",
+    "updateAvailable": "Actualización disponible",
+    "upToDate": "Actualizado",
+    "current": "Actual",
+    "latest": "Última",
+    "published": "Publicada",
+    "devUpdateDisabled": "Las comprobaciones de actualización están deshabilitadas en compilaciones de desarrollo.",
+    "releaseNotes": "Notas de la versión",
+    "checkForUpdates": "Buscar actualizaciones",
+    "installing": "Instalando...",
+    "installAndRestart": "Instalar y reiniciar",
+    "openLogs": "Abrir registros",
+    "unknownError": "Error desconocido"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "Instalados",
+      "store": "Tienda"
+    },
+    "panel": {
+      "defaultTitle": "Plugins",
+      "failedLoad": "No se pudo cargar el panel del plugin: {{error}}"
+    },
+    "loadingInstalled": "Cargando plugins...",
+    "loadingStore": "Cargando tienda de plugins...",
+    "loadingRuntimeSettings": "Cargando configuración del plugin...",
+    "system": "Sistema de plugins",
+    "installedTitle": "Plugins instalados",
+    "storeLabel": "Tienda de plugins",
+    "availableFromGithub": "Disponibles desde GitHub",
+    "emptyInstalled": "Aún no hay plugins instalados. Ve a la pestaña Tienda para instalarlos.",
+    "emptyStore": "No hay plugins disponibles en la tienda.",
+    "enabled": "Habilitado",
+    "disabled": "Deshabilitado",
+    "enable": "Habilitar",
+    "disable": "Deshabilitar",
+    "installed": "Instalado",
+    "available": "Disponible",
+    "updateAvailable": "Actualización disponible",
+    "update": "Actualizar",
+    "install": "Instalar",
+    "removePlugin": "Eliminar plugin",
+    "permissions": "Permisos",
+    "tools": "Herramientas",
+    "panels": "Paneles",
+    "location": "Ubicación",
+    "openPanels": "Abrir paneles",
+    "enableHint": "Activa este plugin para abrir sus paneles y usar sus capacidades.",
+    "runtimeSettings": "Configuración en tiempo de ejecución",
+    "runtimeSettingsHint": "Configura tiempos de recordatorio y horas globales de silencio.",
+    "dndOn": "No molestar activado",
+    "dndOff": "No molestar desactivado",
+    "saveSettings": "Guardar configuración",
+    "permissionLabels": {
+      "bridge:fs_read": "Lectura de bridge",
+      "notifications": "Notificaciones",
+      "pet:mood": "Estado de ánimo",
+      "scheduler": "Programador",
+      "state:read": "Lectura de estado",
+      "state:write": "Escritura de estado"
+    }
+  },
+  "tasks": {
+    "title": "Tareas",
+    "loading": "Cargando tareas...",
+    "doneCounter": "{{completed}} / {{total}} completadas",
+    "tabs": {
+      "today": "Hoy",
+      "week": "Esta semana",
+      "all": "Todas",
+      "done": "Completadas"
+    },
+    "mainTab": {
+      "tasks": "Tareas",
+      "activity": "Actividad"
+    },
+    "sections": {
+      "overdue": "Atrasadas",
+      "unscheduled": "Sin programar",
+      "completedToday": "Completadas hoy"
+    },
+    "empty": {
+      "todayTitle": "No hay tareas para hoy",
+      "todaySubtitle": "Programa una tarea o crea una nueva",
+      "weekTitle": "Nada para esta semana",
+      "weekSubtitle": "Programa tareas para la próxima semana",
+      "allTitle": "Sin tareas",
+      "allSubtitle": "Crea una tarea para empezar",
+      "doneTitle": "Aún no hay tareas completadas",
+      "doneSubtitle": "Completa tareas para verlas aquí"
+    },
+    "quickInput": {
+      "placeholder": "Añadir tarea... p. ej. 'Reunión mañana a las 15:00 por 1 hora, prioridad alta'",
+      "ariaDescription": "Descripción de la tarea",
+      "ariaAdd": "Añadir tarea"
+    },
+    "activity": {
+      "yesterday": "Ayer",
+      "noActivity": "Aún no hay actividad",
+      "eventsAppearHere": "Los eventos de tareas aparecerán aquí",
+      "addCommentPlaceholder": "Añadir comentario...",
+      "addComment": "Añadir comentario",
+      "adding": "Añadiendo...",
+      "you": "Tú",
+      "agent": "Agente"
+    },
+    "deleteDialog": {
+      "title": "¿Eliminar tarea?",
+      "message": "¿Seguro que quieres eliminar \"{{title}}\"? Esta acción no se puede deshacer.",
+      "deleting": "Eliminando..."
+    },
+    "priority": {
+      "high": "Alta",
+      "medium": "Media",
+      "low": "Baja"
+    },
+    "status": {
+      "todo": "Por hacer",
+      "in_progress": "En progreso",
+      "done": "Completada"
+    },
+    "priorityTitle": "Prioridad {{priority}}",
+    "agentWorking": "El agente está trabajando en esta tarea",
+    "live": "Activo",
+    "agentWorkStatus": "Estado del agente: {{status}}",
+    "clickToMoveTo": "Haz clic para pasar a {{status}}",
+    "detail": {
+      "title": "Detalles de la tarea",
+      "status": "Estado",
+      "priority": "Prioridad",
+      "assignee": "Responsable",
+      "agent": "Agente",
+      "labels": "Etiquetas",
+      "schedule": "Programación",
+      "scheduled": "Programada",
+      "repeat": "Repetir",
+      "doesNotRepeat": "No se repite",
+      "time": "Hora",
+      "start": "Inicio",
+      "end": "Fin",
+      "durationOptional": "Duración (opcional)",
+      "durationPlaceholder": "p. ej. 30",
+      "minutes": "minutos",
+      "description": "Descripción",
+      "descriptionPlaceholder": "Añade notas, detalles o una lista de subtareas..."
+    },
+    "recurrence": {
+      "daily": "Diario",
+      "weekdays": "Días laborables",
+      "monWedFri": "Lun / Mié / Vie",
+      "tueThu": "Mar / Jue",
+      "weekly": "Semanal",
+      "monthly": "Mensual"
+    },
+    "activityFeed": {
+      "created": "Creado",
+      "createdFull": "Creado \"{{title}}\"",
+      "statusChanged": "Estado",
+      "statusChangedFull": "{{from}} → {{to}} para \"{{title}}\"",
+      "assigned": "Asignación",
+      "assignedFull": "Asignado \"{{title}}\" a {{to}}",
+      "labeled": "Etiqueta",
+      "labeledFull": "Añadida etiqueta \"{{label}}\" a \"{{title}}\"",
+      "unlabeled": "Etiqueta",
+      "unlabeledFull": "Eliminada etiqueta \"{{label}}\" de \"{{title}}\"",
+      "deleted": "Eliminado",
+      "deletedFull": "Eliminado \"{{title}}\"",
+      "updated": "Actualizado",
+      "updatedFull": "Actualizado \"{{title}}\"",
+      "comment": "Comentario",
+      "commentFull": "Añadido un comentario",
+      "unknownTask": "Tarea desconocida",
+      "deleteComment": "Eliminar comentario"
+    },
+    "agentWork": {
+      "pending": "Pendiente",
+      "executing": "Ejecutando",
+      "failed": "Fallido",
+      "attempts_one": "{{count}} intento",
+      "attempts_other": "{{count}} intentos"
+    },
+    "formatting": {
+      "today": "Hoy",
+      "tomorrow": "Mañana",
+      "minutesShort": "min",
+      "hoursShort": "h"
+    },
+    "sync": {
+      "syncing": "Sincronizando...",
+      "waiting": "Esperando sincronización",
+      "updatedJustNow": "Actualizado hace un momento",
+      "updatedSecondsAgo": "Actualizado hace {{seconds}}s",
+      "updatedMinutesAgo": "Actualizado hace {{minutes}}min"
+    },
+    "toast": {
+      "failedToLoad": "No se pudieron cargar las tareas",
+      "created": "Tarea creada",
+      "failedToCreate": "No se pudo crear la tarea",
+      "completed": "¡Tarea completada!",
+      "failedToUpdate": "No se pudo actualizar la tarea",
+      "failedToSave": "No se pudieron guardar los cambios",
+      "deleted": "Tarea eliminada",
+      "failedToDelete": "No se pudo eliminar la tarea"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "ahora mismo",
+    "ago": "hace",
+    "daysAgo": "días atrás"
+  },
+  "updater": {
+    "title": "Actualización disponible",
+    "message": "Peekoo {{version}} está disponible. ¿Instalarla ahora y reiniciar?",
+    "messageWithNotes": "Peekoo {{version}} está disponible.\n\n{{notes}}\n\n¿Instalarla ahora y reiniciar?",
+    "installButton": "Instalar y reiniciar",
+    "later": "Más tarde"
+  },
+  "agentRuntimes": {
+    "title": "Runtimes ACP",
+    "description": "Gestiona agentes ACP y sus configuraciones de LLM",
+    "refresh": "Actualizar",
+    "addRuntime": "Añadir runtime",
+    "activeRuntime": "Runtime activo",
+    "activeRuntimeDescription": "El runtime ACP utilizado actualmente para nuevas conversaciones",
+    "defaultModel": "Modelo predeterminado",
+    "installedRuntimes": "Runtimes instalados",
+    "noRuntimesInstalled": "Aún no hay runtimes instalados",
+    "availableRuntimes": "Runtimes disponibles",
+    "showingRuntimes": "Mostrando {{count}} runtimes",
+    "searchPlaceholder": "Buscar agentes (ej. Gemini, Cursor, Claude)...",
+    "noRuntimesFound": "No se encontraron runtimes",
+    "loading": "Cargando...",
+    "loadMore": "Cargar más agentes",
+    "default": "Predeterminado",
+    "modelLabel": "Modelo:",
+    "setDefault": "Establecer como predeterminado",
+    "login": "Iniciar sesión",
+    "configure": "Configurar",
+    "installing": "Instalando...",
+    "install": "Instalar",
+    "installed": "Instalado",
+    "unsupported": "No soportado",
+    "noRuntime": "Sin runtime",
+    "switchRuntime": "Cambiar runtime",
+    "noRuntimesInstalledOption": "No hay runtimes instalados",
+    "manageRuntimes": "Gestionar runtimes...",
+    "status": {
+      "ready": "Listo",
+      "needsSetup": "Requiere configuración",
+      "error": "Error",
+      "loginRequired": "Inicio de sesión requerido",
+      "loginAvailable": "Inicio de sesión disponible",
+      "installing": "Instalando...",
+      "setupRequired": "Configuración requerida",
+      "notInstalled": "No instalado",
+      "discoveringCapabilities": "Descubriendo capacidades..."
+    },
+    "installDialog": {
+      "title": "Instalar {{name}}",
+      "description": "Elige cómo quieres instalar este runtime ACP.",
+      "customPathRequired": "Ingresa una ruta para la instalación personalizada",
+      "checkingPrerequisites": "Comprobando requisitos previos...",
+      "missing": "Falta:",
+      "allPrerequisitesSatisfied": "Todos los requisitos previos cumplidos",
+      "notAvailable": "No disponible",
+      "binaryPathLabel": "Ruta del binario del agente",
+      "binaryPathPlaceholder": "/ruta/al/binario_agente",
+      "cancel": "Cancelar"
+    },
+    "configureDialog": {
+      "title": "Configurar {{name}}",
+      "description": "Gestiona la configuración y autenticación del runtime.",
+      "statusLabel": "Estado",
+      "authSection": "Autenticación",
+      "loginRequired": "Inicio de sesión requerido",
+      "hideLoginOptions": "Ocultar opciones de inicio de sesión",
+      "loginAvailable": "Inicio de sesión disponible",
+      "modelSection": "Modelo",
+      "selectModel": "Seleccionar un modelo",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "Modelo predeterminado",
+      "defaultModelPlaceholder": "ej. claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "Este runtime no usa descubrimiento de modelos ACP. Ingresa un ID de modelo manualmente si es necesario.",
+      "manualModelPlaceholder": "ej. gpt-4, claude-3-5-sonnet",
+      "noModelsDiscovered": "No se descubrieron modelos. Ingresa un ID de modelo manualmente o actualiza para descubrir.",
+      "discoverModels": "Descubrir modelos",
+      "testing": "Probando...",
+      "testConnection": "Probar conexión",
+      "versionLabel": "Versión:",
+      "advancedSettings": "Configuración avanzada",
+      "envVarsLabel": "Variables de entorno",
+      "envVarNamePlaceholder": "Nombre de variable",
+      "envVarValuePlaceholder": "Valor",
+      "addEnvVar": "Añadir",
+      "customArgsLabel": "Argumentos personalizados",
+      "customArgsPlaceholder": "--flag o valor",
+      "addArgument": "Añadir argumento",
+      "saving": "Guardando..."
+    },
+    "addCustomDialog": {
+      "title": "Añadir runtime ACP personalizado",
+      "description": "Registra un comando ACP local y luego configura su proveedor LLM y modelos.",
+      "nameRequired": "El nombre y comando son obligatorios.",
+      "nameLabel": "Nombre del runtime",
+      "namePlaceholder": "Mi runtime ACP personalizado",
+      "descriptionLabel": "Descripción",
+      "descriptionPlaceholder": "Descripción opcional",
+      "commandLabel": "Comando",
+      "commandPlaceholder": "ej. claude-code-acp",
+      "argsLabel": "Argumentos",
+      "argsPlaceholder": "ej. --acp --experimental-acp",
+      "workingDirLabel": "Directorio de trabajo",
+      "workingDirPlaceholder": "Directorio de trabajo opcional",
+      "cancel": "Cancelar",
+      "adding": "Añadiendo..."
+    }
+  }
+}

@@ -23,7 +23,10 @@ export function filterTasksByTab(
         if (!t.scheduled_start_at) return true;
         const start = parseISODate(t.scheduled_start_at);
         if (!start) return true;
-        return toDateString(start) === todayKey || isOverdue(t.scheduled_start_at, t.status);
+        return (
+          toDateString(start) === todayKey ||
+          isOverdue(t.scheduled_start_at, t.status, today)
+        );
       });
 
     case "week":

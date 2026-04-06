@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,6 +39,7 @@ export function InstallProviderDialog({
   onInstall,
   onCheckPrerequisites,
 }: InstallProviderDialogProps) {
+  const { t } = useTranslation();
   const [selectedMethod, setSelectedMethod] = useState<InstallationMethod>("npx");
   const [customPath, setCustomPath] = useState("");
   const [isChecking, setIsChecking] = useState(false);
@@ -84,7 +86,7 @@ export function InstallProviderDialog({
 
     // Validate custom path if needed
     if (selectedMethod === "custom" && !customPath.trim()) {
-      setError("Please enter a path for the custom installation");
+      setError(t("agentRuntimes.installDialog.customPathRequired"));
       return;
     }
 
@@ -110,9 +112,9 @@ export function InstallProviderDialog({
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Install {provider.displayName}</DialogTitle>
+          <DialogTitle>{t("agentRuntimes.installDialog.title", { name: provider.displayName })}</DialogTitle>
           <DialogDescription>
-            Choose how you want to install this ACP runtime.
+            {t("agentRuntimes.installDialog.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -121,13 +123,13 @@ export function InstallProviderDialog({
           {isChecking ? (
             <Alert className="bg-space-surface border-glass-border">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <AlertDescription>Checking prerequisites...</AlertDescription>
+              <AlertDescription>{t("agentRuntimes.installDialog.checkingPrerequisites")}</AlertDescription>
             </Alert>
           ) : prerequisites && !prerequisites.available ? (
             <Alert className="border-yellow-500/30 bg-yellow-500/10 dark:border-yellow-500/50 dark:bg-yellow-500/10">
               <AlertCircle className="h-4 w-4 text-yellow-700 dark:text-yellow-500" />
               <AlertDescription className="text-yellow-800 dark:text-yellow-200">
-                Missing: {prerequisites.missingComponents.join(", ")}
+                {t("agentRuntimes.installDialog.missing")} {prerequisites.missingComponents.join(", ")}
                 {prerequisites.instructions && (
                   <div className="mt-2 text-xs">{prerequisites.instructions}</div>
                 )}
@@ -137,7 +139,7 @@ export function InstallProviderDialog({
             <Alert className="border-green-500/30 bg-green-500/10 dark:border-green-500/50 dark:bg-green-500/10">
               <Check className="h-4 w-4 text-green-700 dark:text-green-500" />
               <AlertDescription className="text-green-800 dark:text-green-200">
-                All prerequisites satisfied
+                {t("agentRuntimes.installDialog.allPrerequisitesSatisfied")}
               </AlertDescription>
             </Alert>
           ) : null}
@@ -173,9 +175,9 @@ export function InstallProviderDialog({
                       {method.sizeMb && ` (~${method.sizeMb}MB)`}
                     </div>
                   </div>
-                  {!method.isAvailable && (
-                     <span className="text-xs text-red-700 dark:text-red-400">Not Available</span>
-                  )}
+                   {!method.isAvailable && (
+                      <span className="text-xs text-red-700 dark:text-red-400">{t("agentRuntimes.installDialog.notAvailable")}</span>
+                   )}
                 </Label>
               </div>
             ))}
@@ -184,10 +186,10 @@ export function InstallProviderDialog({
           {/* Custom Path Input */}
           {selectedMethod === "custom" && (
             <div className="space-y-2">
-              <Label htmlFor="custom-path">Path to Agent Binary</Label>
+              <Label htmlFor="custom-path">{t("agentRuntimes.installDialog.binaryPathLabel")}</Label>
               <Input
                 id="custom-path"
-                placeholder="/path/to/agent-binary"
+                placeholder={t("agentRuntimes.installDialog.binaryPathPlaceholder")}
                 value={customPath}
                 onChange={(e) => setCustomPath(e.target.value)}
                 className="bg-space-deep border-glass-border"
@@ -206,7 +208,7 @@ export function InstallProviderDialog({
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={isInstalling}>
-            Cancel
+            {t("agentRuntimes.installDialog.cancel")}
           </Button>
           <Button
             onClick={handleInstall}
@@ -215,12 +217,12 @@ export function InstallProviderDialog({
             {isInstalling ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Installing...
+                {t("agentRuntimes.installing")}
               </>
             ) : (
               <>
                 <Download className="mr-2 h-4 w-4" />
-                Install
+                {t("agentRuntimes.install")}
               </>
             )}
           </Button>

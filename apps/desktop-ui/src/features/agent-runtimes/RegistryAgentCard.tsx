@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Download, Check, ExternalLink } from "lucide-react";
@@ -11,6 +12,7 @@ interface RegistryAgentCardProps {
 }
 
 export function RegistryAgentCard({ agent, onInstall, isInstalling = false }: RegistryAgentCardProps) {
+  const { t } = useTranslation();
   // Get icon URL or use a default
   const iconUrl = agent.iconUrl || `https://cdn.agentclientprotocol.com/registry/v1/latest/${agent.registryId}.svg`;
 
@@ -45,11 +47,11 @@ export function RegistryAgentCard({ agent, onInstall, isInstalling = false }: Re
           {agent.isInstalled ? (
             <Badge variant="default" className="shrink-0 bg-green-500/15 text-green-700 border-green-500/30 dark:bg-green-500/20 dark:text-green-400 dark:border-green-500/30">
               <Check className="mr-1 h-3 w-3" />
-              Installed
+              {t("agentRuntimes.installed")}
             </Badge>
           ) : !agent.isSupportedOnCurrentPlatform ? (
             <Badge variant="secondary" className="shrink-0">
-              Unsupported
+              {t("agentRuntimes.unsupported")}
             </Badge>
           ) : null}
         </div>
@@ -100,10 +102,10 @@ export function RegistryAgentCard({ agent, onInstall, isInstalling = false }: Re
               {agent.isSupportedOnCurrentPlatform ? (
                 <>
                   <Download className="mr-1 h-3 w-3" />
-                  {isInstalling ? "Installing..." : "Install"}
+                  {isInstalling ? t("agentRuntimes.installing") : t("agentRuntimes.install")}
                 </>
               ) : (
-                "Unsupported"
+                t("agentRuntimes.unsupported")
               )}
             </Button>
           )}

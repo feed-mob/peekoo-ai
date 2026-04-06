@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { getProviderAuthState, getProviderStatusText } from "./provider-auth-state";
 
+const mockT = ((key: string) => key) as import("i18next").TFunction;
+
 describe("getProviderAuthState", () => {
   test("treats authRequired as the only login-required signal", () => {
     const state = getProviderAuthState({
@@ -29,8 +31,8 @@ describe("getProviderStatusText", () => {
       getProviderStatusText("ready", {
         authRequired: false,
         authMethods: [{ id: "browser", name: "Browser Login" }],
-      }),
-    ).toBe("Login Available");
+      }, null, mockT),
+    ).toBe("agentRuntimes.status.loginAvailable");
   });
 
   test("keeps login required wording when auth is required", () => {
@@ -38,7 +40,7 @@ describe("getProviderStatusText", () => {
       getProviderStatusText("ready", {
         authRequired: true,
         authMethods: [{ id: "browser", name: "Browser Login" }],
-      }),
-    ).toBe("Login Required");
+      }, null, mockT),
+    ).toBe("agentRuntimes.status.loginRequired");
   });
 });

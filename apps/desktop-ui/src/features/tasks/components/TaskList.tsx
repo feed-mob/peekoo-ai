@@ -3,6 +3,7 @@ import type { Task, TaskStatus } from "@/types/task";
 import { splitTodayTasks } from "../utils/task-grouping";
 import { TaskListItem } from "./TaskListItem";
 import { DeleteConfirmDialog } from "./DeleteConfirmDialog";
+import { useTranslation } from "react-i18next";
 
 interface TaskListProps {
   tasks: Task[];
@@ -27,6 +28,7 @@ export function TaskList({
   isUpdating,
   isDeleting,
 }: TaskListProps) {
+  const { t } = useTranslation();
   const [deleteDialog, setDeleteDialog] = useState<{
     isOpen: boolean;
     taskId: string | null;
@@ -79,7 +81,7 @@ export function TaskList({
                 <div className="flex items-center gap-2 px-1 pb-1">
                   <div className="h-px flex-1 bg-[#E5484D]/30" />
                   <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-[#E5484D]/80">
-                    Overdue
+                    {t("tasks.sections.overdue")}
                   </span>
                   <div className="h-px flex-1 bg-[#E5484D]/30" />
                 </div>
@@ -91,7 +93,7 @@ export function TaskList({
               <div className="flex items-center gap-2 px-1 pb-1 pt-1">
                 <div className="h-px flex-1 bg-glass-border/60" />
                 <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted/70">
-                  Today
+                  {t("tasks.tabs.today")}
                 </span>
                 <div className="h-px flex-1 bg-glass-border/60" />
               </div>
@@ -104,7 +106,7 @@ export function TaskList({
                   <div className="flex items-center gap-2 px-1 pb-1">
                     <div className="h-px flex-1 bg-glass-border/60" />
                     <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted/70">
-                      Unscheduled
+                      {t("tasks.sections.unscheduled")}
                     </span>
                     <div className="h-px flex-1 bg-glass-border/60" />
                   </div>
@@ -118,7 +120,7 @@ export function TaskList({
                 <div className="flex items-center gap-2 px-1 pb-1">
                   <div className="h-px flex-1 bg-glass-border/60" />
                   <span className="text-[10px] font-medium uppercase tracking-[0.18em] text-text-muted/70">
-                    Completed today
+                    {t("tasks.sections.completedToday")}
                   </span>
                   <div className="h-px flex-1 bg-glass-border/60" />
                 </div>

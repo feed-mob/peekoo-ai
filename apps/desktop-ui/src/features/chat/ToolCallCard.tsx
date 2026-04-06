@@ -1,12 +1,14 @@
 import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, XCircle, Wrench } from "lucide-react";
 import type { ToolCallState } from "@/types/chat";
+import { useTranslation } from "react-i18next";
 
 interface ToolCallCardProps {
   tool: ToolCallState;
 }
 
 export function ToolCallCard({ tool }: ToolCallCardProps) {
+  const { t } = useTranslation();
   const isRunning = tool.status === 'running';
   const isError = tool.status === 'error';
   
@@ -24,7 +26,7 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
     if (isRunning) {
       return (
         <>
-          Running <strong className="font-semibold">{tool.name}</strong>
+          {t("chat.toolCall.running")} <strong className="font-semibold">{tool.name}</strong>
         </>
       );
     }
@@ -62,7 +64,7 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
         <details className="mt-2 text-xs group">
           <summary className="text-muted-foreground cursor-pointer hover:text-foreground transition-colors flex items-center gap-1 select-none">
             <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
-            Arguments
+            {t("chat.toolCall.arguments")}
           </summary>
           <div className="mt-1 p-2 bg-muted rounded overflow-x-auto">
             <pre className="text-muted-foreground font-mono text-xs whitespace-pre">

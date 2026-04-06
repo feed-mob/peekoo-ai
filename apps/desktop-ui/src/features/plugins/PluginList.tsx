@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { PluginPanel, PluginSummary } from "@/types/plugin";
 import { PluginConfigPanel } from "./PluginConfigPanel";
+import { useTranslation } from "react-i18next";
 
 interface PluginListProps {
   plugins: PluginSummary[];
@@ -27,22 +28,23 @@ export function PluginList({
   isToggling,
   onRemove,
 }: PluginListProps) {
+  const { t } = useTranslation();
   if (isLoading && plugins.length === 0) {
-    return <div className="text-sm text-text-muted">Loading plugins...</div>;
+    return <div className="text-sm text-text-muted">{t("plugins.loadingInstalled")}</div>;
   }
 
   return (
     <div className="space-y-4 min-w-0">
       <div className="flex items-center justify-between rounded-2xl border border-glass-border bg-glass/60 px-4 py-3">
         <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Plugin System</p>
+          <p className="text-xs uppercase tracking-[0.2em] text-text-muted">{t("plugins.system")}</p>
           <h2 className="mt-1 text-base font-semibold text-text-primary">
-            Installed Plugins
+            {t("plugins.installedTitle")}
           </h2>
         </div>
         <Button size="sm" variant="ghost" onClick={onRefresh}>
           <RefreshCcw size={14} />
-          Refresh
+          {t("common.refresh")}
         </Button>
       </div>
 
@@ -54,7 +56,7 @@ export function PluginList({
 
       {plugins.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-glass-border bg-glass/30 px-4 py-6 text-sm text-text-secondary">
-          No plugins installed yet. Browse the Store tab to install plugins.
+          {t("plugins.emptyInstalled")}
         </div>
       ) : (
         <div className="space-y-3">
@@ -76,7 +78,7 @@ export function PluginList({
                       <div className="flex items-center gap-2">
                         <h3 className="truncate text-sm font-semibold text-text-primary">{plugin.name}</h3>
                         <Badge variant={plugin.enabled ? "default" : "outline"}>
-                          {plugin.enabled ? "Enabled" : "Disabled"}
+                          {plugin.enabled ? t("plugins.enabled") : t("plugins.disabled")}
                         </Badge>
                       </div>
                       <p className="mt-1 truncate text-xs text-text-muted">
@@ -95,14 +97,14 @@ export function PluginList({
                       disabled={toggling}
                     >
                       {toggling ? <Loader2 size={14} className="animate-spin" /> : null}
-                      {plugin.enabled ? "Disable" : "Enable"}
+                      {plugin.enabled ? t("plugins.disable") : t("plugins.enable")}
                     </Button>
                     {onRemove ? (
                       <Button
                         size="icon"
                         variant="outline"
                         className="text-danger border-danger/30 hover:bg-danger/10 shrink-0"
-                        title="Remove plugin"
+                        title={t("plugins.removePlugin")}
                         onClick={() => void onRemove(plugin.pluginKey)}
                         disabled={toggling}
                       >
@@ -119,18 +121,18 @@ export function PluginList({
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-text-muted md:grid-cols-3">
                   <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2">
                     <div className="flex items-center gap-2 text-text-secondary">
-                      <Wrench size={12} /> Tools
+                      <Wrench size={12} /> {t("plugins.tools")}
                     </div>
                     <div className="mt-1 text-sm font-medium text-text-primary">{plugin.toolCount}</div>
                   </div>
                   <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2">
                     <div className="flex items-center gap-2 text-text-secondary">
-                      <LayoutPanelTop size={12} /> Panels
+                      <LayoutPanelTop size={12} /> {t("plugins.panels")}
                     </div>
                     <div className="mt-1 text-sm font-medium text-text-primary">{plugin.panelCount}</div>
                   </div>
                   <div className="rounded-xl border border-glass-border bg-space-deep/50 px-3 py-2 col-span-2 md:col-span-1 min-w-0">
-                     <div className="text-text-secondary">Location</div>
+                     <div className="text-text-secondary">{t("plugins.location")}</div>
                      <div className="mt-1 text-sm font-medium text-text-primary break-all">
                        {plugin.pluginDir}
                      </div>
@@ -140,7 +142,7 @@ export function PluginList({
                 {pluginPanels.length > 0 ? (
                   <div className="mt-4 space-y-2">
                     <p className="text-xs uppercase tracking-[0.16em] text-text-muted">
-                      Open panels
+                      {t("plugins.openPanels")}
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {pluginPanels.map((panel) => (
@@ -159,7 +161,7 @@ export function PluginList({
                 ) : null}
                 {!plugin.enabled ? (
                   <p className="mt-4 text-xs text-text-muted">
-                    Enable this plugin to open its panels and use its runtime capabilities.
+                    {t("plugins.enableHint")}
                   </p>
                 ) : null}
 

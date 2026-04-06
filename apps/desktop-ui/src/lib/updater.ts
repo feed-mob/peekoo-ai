@@ -1,17 +1,19 @@
 import { ask } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check } from "@tauri-apps/plugin-updater";
+import i18next from "i18next";
 
 const UPDATE_CHECK_DELAY_MS = 3_000;
 
 function formatUpdateMessage(version: string, notes?: string): string {
   const trimmedNotes = notes?.trim();
+  const t = i18next.t.bind(i18next);
 
   if (!trimmedNotes) {
-    return `Peekoo ${version} is available. Install it now and restart?`;
+    return t("updater.message", { version });
   }
 
-  return `Peekoo ${version} is available.\n\n${trimmedNotes}\n\nInstall it now and restart?`;
+  return t("updater.messageWithNotes", { version, notes: trimmedNotes });
 }
 
 export async function checkForAppUpdates(): Promise<void> {
@@ -29,10 +31,10 @@ export async function checkForAppUpdates(): Promise<void> {
     }
 
     const shouldInstall = await ask(formatUpdateMessage(update.version, update.body), {
-      title: "Update Available",
+      title: i18next.t("updater.title"),
       kind: "info",
-      okLabel: "Install and Restart",
-      cancelLabel: "Later",
+      okLabel: i18next.t("updater.installButton"),
+      cancelLabel: i18next.t("updater.later"),
     });
 
     if (!shouldInstall) {

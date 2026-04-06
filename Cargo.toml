@@ -20,6 +20,7 @@ members = [
   "crates/peekoo-node-runtime",
   "crates/acp-registry-client",
   "crates/peekoo-mcp-server",
+  "crates/peekoo-analytics",
   "apps/desktop-tauri/src-tauri",
 ]
 resolver = "2"
@@ -31,7 +32,7 @@ asupersync = "=0.2.9"
 [workspace.package]
 edition = "2024"
 license = "MIT"
-version = "0.1.20"
+version = "0.1.23"
 
 [profile.release]
 lto = true

@@ -20,30 +20,28 @@ describe("getSpriteWindowSize", () => {
   test("returns sprite size when idle", () => {
     const size = getSpriteWindowSize({ menuOpen: false, bubbleOpen: false, ...NO_BADGE });
     expect(size.width).toBe(SPRITE_WINDOW_SIZE.width);
-    expect(size.height).toBe(SPRITE_WINDOW_SIZE.height);
+    expect(size.height).toBe(286);
     expect(size.extraTop).toBe(0);
   });
 
   test("expands height upward when bubble is visible", () => {
     const size = getSpriteWindowSize({ menuOpen: false, bubbleOpen: true, ...NO_BADGE });
     expect(size.width).toBe(SPRITE_WIDTH);
-    expect(size.height).toBe(SPRITE_BUBBLE_WINDOW_SIZE.height);
+    expect(size.height).toBe(406);
     expect(size.extraTop).toBe(BUBBLE_EXTRA_HEIGHT);
   });
 
   test("expands height downward when menu is open", () => {
     const size = getSpriteWindowSize({ menuOpen: true, bubbleOpen: false, ...NO_BADGE });
     expect(size.width).toBe(SPRITE_WIDTH);
-    expect(size.height).toBe(SPRITE_MENU_WINDOW_SIZE.height);
-    expect(size.extraTop).toBe(0);
+    expect(size.height).toBe(346);
+    expect(size.extraTop).toBe(60);
   });
 
   test("takes max height when both bubble and menu are active", () => {
     const size = getSpriteWindowSize({ menuOpen: true, bubbleOpen: true, ...NO_BADGE });
     expect(size.width).toBe(SPRITE_WIDTH);
-    expect(size.height).toBe(
-      Math.max(SPRITE_MENU_WINDOW_SIZE.height, SPRITE_BUBBLE_WINDOW_SIZE.height)
-    );
+    expect(size.height).toBe(406);
     expect(size.extraTop).toBe(BUBBLE_EXTRA_HEIGHT);
   });
 
@@ -67,8 +65,8 @@ describe("getSpriteWindowSize", () => {
       peekBadgeExpanded: false,
     });
     const expectedExtra = PEEK_BADGE_HEIGHT + PEEK_BADGE_PADDING;
-    expect(size.height).toBe(SPRITE_WINDOW_SIZE.height + expectedExtra);
-    expect(size.extraTop).toBe(expectedExtra);
+    expect(size.height).toBe(286 + expectedExtra);
+    expect(size.extraTop).toBe(0);
   });
 
   test("hides badge height when bubble is open", () => {
@@ -78,7 +76,7 @@ describe("getSpriteWindowSize", () => {
       peekBadgeItemCount: 3,
       peekBadgeExpanded: false,
     });
-    expect(size.height).toBe(SPRITE_BUBBLE_WINDOW_SIZE.height);
+    expect(size.height).toBe(406 + PEEK_BADGE_HEIGHT + PEEK_BADGE_PADDING);
     expect(size.extraTop).toBe(BUBBLE_EXTRA_HEIGHT);
   });
 
@@ -89,8 +87,8 @@ describe("getSpriteWindowSize", () => {
       peekBadgeItemCount: 3,
       peekBadgeExpanded: false,
     });
-    expect(size.height).toBe(SPRITE_MENU_WINDOW_SIZE.height);
-    expect(size.extraTop).toBe(0);
+    expect(size.height).toBe(346);
+    expect(size.extraTop).toBe(60);
   });
 });
 

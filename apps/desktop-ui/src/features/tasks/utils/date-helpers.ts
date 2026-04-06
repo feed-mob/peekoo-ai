@@ -78,7 +78,10 @@ export function compareDates(
 /**
  * Format relative time (e.g., "just now", "5m ago", "2h ago")
  */
-export function formatRelativeTime(isoString: string): string {
+import type { TFunction } from "i18next";
+import i18next from "i18next";
+
+export function formatRelativeTime(isoString: string, t: TFunction): string {
   const date = parseISODate(isoString);
   if (!date) return "";
 
@@ -88,13 +91,13 @@ export function formatRelativeTime(isoString: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays === 1) return "yesterday";
-  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffMins < 1) return t("dateHelpers.justNow", "just now");
+  if (diffMins < 60) return `${diffMins}${t("tasks.formatting.minutesShort")} ${t("dateHelpers.ago", "ago")}`;
+  if (diffHours < 24) return `${diffHours}${t("tasks.formatting.hoursShort")} ${t("dateHelpers.ago", "ago")}`;
+  if (diffDays === 1) return t("tasks.activity.yesterday");
+  if (diffDays < 7) return `${diffDays} ${t("dateHelpers.daysAgo", "days ago")}`;
 
-  return date.toLocaleDateString("en-US", {
+  return date.toLocaleDateString(i18next.language || "en", {
     month: "short",
     day: "numeric",
   });
@@ -107,7 +110,7 @@ export function formatTime(isoString: string): string {
   const date = parseISODate(isoString);
   if (!date) return "";
 
-  return date.toLocaleTimeString("en-US", {
+  return date.toLocaleTimeString(i18next.language || "en", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
@@ -150,10 +153,11 @@ export function toTimeInputValue(isoString: string | null): string {
  */
 export function isOverdue(
   startAt: string | null,
-  status: string
+  status: string,
+  referenceDate: Date = new Date(),
 ): boolean {
   if (!startAt || status === "done") return false;
   const start = parseISODate(startAt);
   if (!start) return false;
-  return start.getTime() < Date.now();
+  return start.getTime() < referenceDate.getTime();
 }

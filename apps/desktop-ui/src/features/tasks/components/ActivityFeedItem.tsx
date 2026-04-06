@@ -7,6 +7,7 @@ import {
   getCommentText,
   isUserComment,
 } from "../utils/task-activity";
+import { useTranslation } from "react-i18next";
 
 interface ActivityFeedItemProps {
   event: TaskEvent;
@@ -37,51 +38,55 @@ const eventColors = {
   comment: "text-cyan-700 dark:text-cyan-400",
 };
 
-function getEventDescription(event: TaskEvent, compact: boolean): string {
+function getEventDescription(event: TaskEvent, compact: boolean, t: (key: string, vars?: Record<string, string>) => string): string {
   const payload = event.payload as Record<string, unknown>;
-  const title = (payload?.title as string) ?? "Unknown task";
+  const title = (payload?.title as string) ?? t("tasks.activityFeed.unknownTask");
 
   switch (event.event_type) {
     case "created":
-      return compact ? "Created" : `Created "${title}"`;
+      return compact
+        ? t("tasks.activityFeed.created")
+        : t("tasks.activityFeed.createdFull", { title });
 
     case "status_changed": {
       const from = (payload?.from as string) ?? "?";
       const to = (payload?.to as string) ?? "?";
       return compact
         ? `${from} → ${to}`
-        : `${from} → ${to} for "${title}"`;
+        : t("tasks.activityFeed.statusChangedFull", { from, to, title });
     }
 
     case "assigned": {
       const to = (payload?.to as string) ?? "?";
       return compact
-        ? `Assigned to ${to}`
-        : `Assigned "${title}" to ${to}`;
+        ? `${t("tasks.activityFeed.assigned")} → ${to}`
+        : t("tasks.activityFeed.assignedFull", { title, to });
     }
 
     case "labeled": {
       const label = (payload?.label as string) ?? "?";
-      return compact
-        ? `Added "${label}" label`
-        : `Added "${label}" to "${title}"`;
+      return t("tasks.activityFeed.labeledFull", { label, title });
     }
 
     case "unlabeled": {
       const label = (payload?.label as string) ?? "?";
-      return compact
-        ? `Removed "${label}" label`
-        : `Removed "${label}" from "${title}"`;
+      return t("tasks.activityFeed.unlabeledFull", { label, title });
     }
 
     case "deleted":
-      return compact ? "Deleted" : `Deleted "${title}"`;
+      return compact
+        ? t("tasks.activityFeed.deleted")
+        : t("tasks.activityFeed.deletedFull", { title });
 
     case "updated":
-      return compact ? "Updated" : `Updated "${title}"`;
+      return compact
+        ? t("tasks.activityFeed.updated")
+        : t("tasks.activityFeed.updatedFull", { title });
 
     case "comment":
-      return compact ? "Comment" : "Added a comment";
+      return compact
+        ? t("tasks.activityFeed.comment")
+        : t("tasks.activityFeed.commentFull");
 
     default:
       return compact
@@ -90,24 +95,24 @@ function getEventDescription(event: TaskEvent, compact: boolean): string {
   }
 }
 
-function getEventLabel(event: TaskEvent): string {
+function getEventLabel(event: TaskEvent, t: (key: string) => string): string {
   switch (event.event_type) {
     case "created":
-      return "Created";
+      return t("tasks.activityFeed.created");
     case "status_changed":
-      return "Status";
+      return t("tasks.activityFeed.statusChanged");
     case "assigned":
-      return "Assignment";
+      return t("tasks.activityFeed.assigned");
     case "labeled":
-      return "Label";
+      return t("tasks.activityFeed.labeled");
     case "unlabeled":
-      return "Label";
+      return t("tasks.activityFeed.unlabeled");
     case "deleted":
-      return "Deleted";
+      return t("tasks.activityFeed.deleted");
     case "updated":
-      return "Updated";
+      return t("tasks.activityFeed.updated");
     case "comment":
-      return "Comment";
+      return t("tasks.activityFeed.comment");
     default:
       return event.event_type;
   }
@@ -123,14 +128,14 @@ function isCommentEvent(event: TaskEvent): boolean {
 }
 
 export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting = false }: ActivityFeedItemProps) {
+  const { t } = useTranslation();
   const Icon = eventIcons[event.event_type as keyof typeof eventIcons] ?? User;
   const colorClass = eventColors[event.event_type as keyof typeof eventColors] ?? "text-text-muted";
-  const eventLabel = getEventLabel(event);
+  const eventLabel = getEventLabel(event, t);
   const eventTitle = getEventTitle(event);
 
-  // Render comments as chat bubbles
   if (isCommentEvent(event)) {
-    const authorLabel = getCommentAuthorDisplayName(event);
+    const authorLabel = getCommentAuthorDisplayName(event, t);
     const text = getCommentText(event);
     const isUser = isUserComment(event);
 
@@ -142,7 +147,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
               onClick={() => onDelete(event.id)}
               disabled={isDeleting}
               className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-color-danger/10 text-text-muted hover:text-color-danger transition-all disabled:opacity-50"
-              aria-label="Delete comment"
+              aria-label={t("tasks.activityFeed.deleteComment")}
             >
               <Trash2 size={10} />
             </button>
@@ -162,7 +167,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
             </div>
           </div>
           <span className="text-[10px] text-text-muted shrink-0">
-            {formatRelativeTime(event.created_at)}
+            {formatRelativeTime(event.created_at, t)}
           </span>
         </div>
       );
@@ -175,7 +180,7 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
             onClick={() => onDelete(event.id)}
             disabled={isDeleting}
             className="mt-1 opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-color-danger/10 text-text-muted hover:text-color-danger transition-all disabled:opacity-50 shrink-0"
-            aria-label="Delete comment"
+            aria-label={t("tasks.activityFeed.deleteComment")}
           >
             <Trash2 size={12} />
           </button>
@@ -194,14 +199,13 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
             <Streamdown>{text}</Streamdown>
           </div>
           <span className="text-[10px] text-text-muted mt-1">
-            {formatRelativeTime(event.created_at)}
+            {formatRelativeTime(event.created_at, t)}
           </span>
         </div>
       </div>
     );
   }
 
-  // Render other events normally
   if (compact) {
     return (
       <div className="flex items-center gap-2 py-1.5">
@@ -213,10 +217,10 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
           {eventLabel}
         </span>
         <span className="flex-1 text-xs text-text-primary truncate">
-          {getEventDescription(event, true)}
+          {getEventDescription(event, true, t)}
         </span>
         <span className="text-[10px] text-text-muted">
-          {formatRelativeTime(event.created_at)}
+          {formatRelativeTime(event.created_at, t)}
         </span>
       </div>
     );
@@ -242,11 +246,11 @@ export function ActivityFeedItem({ event, compact = false, onDelete, isDeleting 
           )}
         </div>
         <p className="text-xs text-text-primary leading-relaxed">
-          {getEventDescription(event, false)}
+          {getEventDescription(event, false, t)}
         </p>
       </div>
       <span className="text-[10px] text-text-muted shrink-0 mt-0.5">
-        {formatRelativeTime(event.created_at)}
+        {formatRelativeTime(event.created_at, t)}
       </span>
     </div>
   );

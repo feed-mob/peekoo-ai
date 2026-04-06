@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -27,6 +28,7 @@ export function QuickProviderSwitcher({
   onSwitch,
   onOpenSettings,
 }: QuickProviderSwitcherProps) {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   const installedProviders = providers.filter((p) => p.isInstalled);
@@ -54,7 +56,7 @@ export function QuickProviderSwitcher({
           ) : (
             <>
               <AlertCircle className="h-3 w-3 text-yellow-700 dark:text-yellow-500" />
-              <span>No runtime</span>
+              <span>{t("agentRuntimes.noRuntime")}</span>
             </>
           )}
           <ChevronDown className="h-3 w-3" />
@@ -62,11 +64,11 @@ export function QuickProviderSwitcher({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Switch Runtime</DropdownMenuLabel>
+        <DropdownMenuLabel>{t("agentRuntimes.switchRuntime")}</DropdownMenuLabel>
         <DropdownMenuSeparator />
 
         {installedProviders.length === 0 ? (
-          <DropdownMenuItem disabled>No runtimes installed</DropdownMenuItem>
+          <DropdownMenuItem disabled>{t("agentRuntimes.noRuntimesInstalledOption")}</DropdownMenuItem>
         ) : (
           installedProviders.map((provider) => (
             <DropdownMenuItem
@@ -83,7 +85,7 @@ export function QuickProviderSwitcher({
               <div className="flex items-center gap-1">
                 {provider.isDefault && (
                   <Badge variant="outline" className="h-4 px-1 text-[10px]">
-                    Default
+                    {t("agentRuntimes.default")}
                   </Badge>
                 )}
                 {provider.providerId === currentProvider?.providerId && (
@@ -96,7 +98,7 @@ export function QuickProviderSwitcher({
 
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onOpenSettings} className="text-text-muted">
-          Manage Runtimes...
+          {t("agentRuntimes.manageRuntimes")}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
