@@ -96,6 +96,7 @@ pub mod log;
 pub mod mood;
 pub mod notify;
 pub mod oauth;
+pub mod process;
 pub mod schedule;
 pub mod secrets;
 pub mod state;
@@ -125,6 +126,7 @@ pub mod peekoo {
     pub use crate::mood;
     pub use crate::notify;
     pub use crate::oauth;
+    pub use crate::process;
     pub use crate::schedule;
     pub use crate::secrets;
     pub use crate::state;

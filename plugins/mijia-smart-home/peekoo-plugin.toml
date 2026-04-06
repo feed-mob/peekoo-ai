@@ -8,8 +8,8 @@ min_peekoo_version = "0.1.0"
 wasm = "target/wasm32-wasip1/release/mijia_smart_home.wasm"
 
 [permissions]
-required = []
-optional = ["process:exec"]
+required = ["process:exec"]
+optional = []
 
 [[tools.definitions]]
 name = "mijia_bridge"
