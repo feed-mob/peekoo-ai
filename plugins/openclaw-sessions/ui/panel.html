@@ -243,6 +243,7 @@
     const state = {
       sessions: [], filtered: [], page: 1, pageSize: 10,
       searchQuery: '', connected: false,
+      ageTicker: null,
       chatSessionId: null, chatSessionKey: null, chatLiveTimer: null, chatLastCount: 0,
       chatHistoryLimit: 200,
       chatMessages: [],
@@ -497,10 +498,10 @@
       return 0;
     }
 
-    function formatCompactToken(n) {
+    function formatCompactToken(n, decimals = 1) {
       n = toNumber(n);
-      if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-      if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
+      if (n >= 1e6) return (n / 1e6).toFixed(decimals) + 'M';
+      if (n >= 1e3) return (n / 1e3).toFixed(decimals) + 'k';
       return String(n);
     }
 
@@ -532,6 +533,48 @@
       return Math.floor(n / 86400000) + 'd ago';
     }
 
+    function parseDurationLikeToMs(value, defaultUnit = 'ms') {
+      if (value === null || value === undefined || value === '') return 0;
+      if (typeof value === 'number') {
+        if (!isFinite(value) || value <= 0) return 0;
+        return defaultUnit === 's' ? Math.floor(value * 1000) : Math.floor(value);
+      }
+      const text = String(value).trim().toLowerCase();
+      if (!text) return 0;
+      if (/^\d+(\.\d+)?$/.test(text)) {
+        const n = parseFloat(text);
+        return defaultUnit === 's' ? Math.floor(n * 1000) : Math.floor(n);
+      }
+      const m = text.match(/^(\d+(?:\.\d+)?)\s*(ms|msec|millisecond|milliseconds|s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/);
+      if (!m) return 0;
+      const n = parseFloat(m[1]);
+      const unit = m[2];
+      if (!isFinite(n) || n <= 0) return 0;
+      if (unit === 'ms' || unit === 'msec' || unit === 'millisecond' || unit === 'milliseconds') return Math.floor(n);
+      if (unit === 's' || unit === 'sec' || unit === 'secs' || unit === 'second' || unit === 'seconds') return Math.floor(n * 1000);
+      if (unit === 'm' || unit === 'min' || unit === 'mins' || unit === 'minute' || unit === 'minutes') return Math.floor(n * 60000);
+      if (unit === 'h' || unit === 'hr' || unit === 'hrs' || unit === 'hour' || unit === 'hours') return Math.floor(n * 3600000);
+      if (unit === 'd' || unit === 'day' || unit === 'days') return Math.floor(n * 86400000);
+      return 0;
+    }
+
+    function computeSessionAgeMs(raw, ts) {
+      const ageMsFromMsField = parseDurationLikeToMs(raw.ageMs ?? raw.age_ms ?? raw.age_millis ?? raw.ageMilliseconds, 'ms');
+      const ageMsFromSecField = parseDurationLikeToMs(raw.ageSec ?? raw.ageSecs ?? raw.ageSecond ?? raw.ageSeconds ?? raw.age_s, 's');
+      const ageMsFromGeneric = parseDurationLikeToMs(raw.age, 'ms')
+        || parseDurationLikeToMs(raw.age, 's');
+      const fromField = ageMsFromMsField || ageMsFromSecField || ageMsFromGeneric;
+      const fromTimestamp = ts > 0 ? Math.max(0, Date.now() - ts) : 0;
+
+      if (fromField > 0 && fromTimestamp > 0) {
+        // If values are wildly different, trust timestamp-derived age.
+        const hi = Math.max(fromField, fromTimestamp);
+        const lo = Math.max(1, Math.min(fromField, fromTimestamp));
+        if (hi / lo > 4) return fromTimestamp;
+      }
+      return fromField || fromTimestamp;
+    }
+
     function formatRelativeTime(tsMs) {
       if (!tsMs) return '—';
       const diff = Date.now() - tsMs;
@@ -549,9 +592,9 @@
       const localizedKind = tp(`ui.kind.${kind}`, kind);
       const model = raw.model || raw.model_name || raw.llm || '—';
       const ts = toTimestampMs(raw.created_at || raw.timestamp || raw.last_active || raw.updated_at || raw.updatedAt || 0);
-      const ageMs = toNumber(raw.ageMs || raw.age_ms || 0);
+      const ageMs = computeSessionAgeMs(raw, ts);
       const { used, max, input, output, total } = extractTokenStats(raw);
-      return { id, key, kind, model, ts, ageMs, used, max, input, output, total, _raw: raw };
+      return { id, key, kind, localizedKind, model, ts, ageMs, used, max, input, output, total, _raw: raw };
     }
 
     function extractMessageContent(msg) {
@@ -629,12 +672,12 @@
       dom.sessionsTableBody.innerHTML = sessions.map(s => {
         const pct = s.max > 0 ? Math.min(100, Math.round(s.used / s.max * 100)) : 0;
         const tokenLabel = s.total
-          ? `${formatCompactToken(s.total)}${s.max ? ' / ' + formatCompactToken(s.max) : ''}${s.max ? ' (' + pct + '%)' : ''}${(s.input || s.output) ? ` · in ${formatCompactToken(s.input)} out ${formatCompactToken(s.output)}` : ''}`
+          ? `${formatCompactToken(s.total)}${s.max ? ' / ' + formatCompactToken(s.max) : ''}${s.max ? ' (' + pct + '%)' : ''}`
           : '—';
         const ageLabel = s.ageMs > 0 ? formatDurationMs(s.ageMs) : formatRelativeTime(s.ts);
         return `<tr>
           <td><span class="cell-kind ${getSessionKindClass(s.kind)}">${escapeHtml(s.localizedKind)}</span></td>
-          <td><span class="cell-key">${escapeHtml(truncate(s.key, 20))}</span></td>
+          <td><span class="cell-key" title="${escapeHtml(s.key)}">${escapeHtml(truncate(s.key, 20))}</span></td>
           <td style="color:var(--text-muted);font-size:12px;">${ageLabel}</td>
           <td style="font-size:12px;">${escapeHtml(truncate(s.model, 22))}</td>
           <td><div class="cell-tokens">
@@ -888,11 +931,11 @@
       return s;
     }
 
-    async function refreshSessions() {
+    async function refreshSessions(force = false) {
       dom.btnRefresh.disabled = true;
       setStatusMessage('');
       try {
-        const raw = await invokePluginTool('list_sessions', { page: 1, pageSize: 100 });
+        const raw = await invokePluginTool('list_sessions', { page: 1, pageSize: 100, force });
         const data = parsePluginJson(raw);
         if (data && data.success === false) {
           throw new Error(data.error || 'Gateway request failed');
@@ -1058,7 +1101,7 @@
 
     // ── Event listeners ────────────────────────────────────────────────────────
     function initEventListeners() {
-      dom.btnRefresh.addEventListener('click', refreshSessions);
+      dom.btnRefresh.addEventListener('click', () => refreshSessions(true));
       dom.btnSettings.addEventListener('click', openConfigModal);
       dom.searchInput.addEventListener('input', e => searchSessions(e.target.value));
       dom.btnFirst.addEventListener('click', () => goToPage(1));
@@ -1108,9 +1151,14 @@
       renderConnectionStatus(false);
       renderSessions([]);
       renderPagination([]);
+      if (!state.ageTicker) {
+        state.ageTicker = setInterval(() => {
+          renderSessions(getPaginatedSessions(getFilteredSessions()));
+        }, 30000);
+      }
       const hasConfig = await loadPersistedConfig();
       if (hasConfig) {
-        await refreshSessions();
+        await refreshSessions(true);
       }
     }
 

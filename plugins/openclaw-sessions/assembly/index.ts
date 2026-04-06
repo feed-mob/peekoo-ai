@@ -91,12 +91,15 @@ export function tool_list_sessions(): i32 {
   const input = Host.inputString();
   const page = extractIntField(input, "page");
   const pageSize = extractIntField(input, "pageSize");
+  const force = extractRawField(input, "force") == "true";
   const resolvedPage = page > 0 ? page : 1;
   const resolvedPageSize = pageSize > 0 ? pageSize : resolveDefaultPageSize();
-  const cached = readCachedSessions(resolvedPage, resolvedPageSize);
-  if (cached != "") {
-    Host.outputString(cached);
-    return 0;
+  if (!force) {
+    const cached = readCachedSessions(resolvedPage, resolvedPageSize);
+    if (cached != "") {
+      Host.outputString(cached);
+      return 0;
+    }
   }
 
   Host.outputString(refreshSessions(resolvedPage, resolvedPageSize));
