@@ -30,6 +30,24 @@ parameters = '{"type":"object","properties":{},"required":[]}'
 return_type = "object"
 
 [[tools.definitions]]
+name = "linear_sync_linear"
+description = "Pull issues from Linear into Peekoo tasks"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_sync_local"
+description = "Push local Peekoo tasks to Linear issues"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
+name = "linear_sync_preview"
+description = "Preview how many local tasks are pending for push to Linear"
+parameters = '{"type":"object","properties":{},"required":[]}'
+return_type = "object"
+
+[[tools.definitions]]
 name = "linear_set_sync_settings"
 description = "Update Linear sync settings"
 parameters = '{"type":"object","properties":{"defaultTeamId":{"type":"string"},"autoPushNewTasks":{"type":"boolean"}},"required":[]}'

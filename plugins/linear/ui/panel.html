@@ -18,20 +18,24 @@
       <p id="userLine" class="muted"></p>
 
       <section class="section">
+        <h2>Connection</h2>
+        <div class="row">
+          <button id="disconnectButton" class="btn">Disconnect</button>
+          <button id="syncLinearButton" class="btn">Sync Linear</button>
+          <button id="syncLocalButton" class="btn">Sync Local</button>
+        </div>
+        <p id="lastSyncLine" class="muted"></p>
+        <p id="successBanner" class="success hidden"></p>
+        <p id="errorBanner" class="error hidden"></p>
+      </section>
+
+      <section class="section">
         <h2>API Key</h2>
         <label class="field">
           <span>Linear API Key</span>
           <input id="apiKeyInput" type="password" placeholder="lin_api_..." />
         </label>
         <p id="apiKeyHint" class="muted">API key will be stored securely and auto-saved.</p>
-      </section>
-
-      <section class="section">
-        <h2>Connection</h2>
-        <div class="row">
-          <button id="disconnectButton" class="btn">Disconnect</button>
-          <button id="syncButton" class="btn">Sync Now</button>
-        </div>
       </section>
 
       <section class="section">
@@ -50,9 +54,6 @@
         </label>
       </section>
 
-      <p id="lastSyncLine" class="muted"></p>
-      <p id="successBanner" class="success hidden"></p>
-      <p id="errorBanner" class="error hidden"></p>
     </main>
 
     <script src="panel.js"></script>

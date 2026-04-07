@@ -132,6 +132,17 @@ struct SyncSummaryDto {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct SyncPreviewDto {
+    pending_local_task_count: usize,
+    target_team_id: Option<String>,
+    target_team_name: Option<String>,
+    target_assignee_id: Option<String>,
+    target_assignee_name: Option<String>,
+    target_assignee_email: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ConnectionStatusDto {
     plugin_key: String,
     plugin_enabled: bool,
@@ -341,6 +352,13 @@ struct TeamStateMap {
     cancelled_state_id: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum SyncMode {
+    Bidirectional,
+    PullOnly,
+    PushOnly,
+}
+
 #[plugin_fn]
 pub fn plugin_init(_: String) -> FnResult<String> {
     ensure_sync_schedule().map_err(Error::msg)?;
@@ -355,7 +373,7 @@ pub fn on_event(input: String) -> FnResult<String> {
     let key = event["payload"]["key"].as_str().unwrap_or_default();
 
     if event_name == "schedule:fired" && key == SYNC_SCHEDULE_KEY {
-        let _ = sync_once(false);
+        let _ = sync_once(false, SyncMode::Bidirectional);
     }
 
     Ok(r#"{"ok":true}"#.to_string())
@@ -396,13 +414,40 @@ pub fn tool_linear_disconnect(_: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn tool_linear_sync_now(_: String) -> FnResult<String> {
-    let summary = sync_once(true).map_err(Error::msg)?;
+    let summary = sync_once(true, SyncMode::Bidirectional).map_err(Error::msg)?;
     Ok(serde_json::to_string(&SyncSummaryDto {
         pulled: summary.pulled,
         pushed: summary.pushed,
         linked: summary.linked,
         last_sync_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
     })?)
+}
+
+#[plugin_fn]
+pub fn tool_linear_sync_linear(_: String) -> FnResult<String> {
+    let summary = sync_once(true, SyncMode::PullOnly).map_err(Error::msg)?;
+    Ok(serde_json::to_string(&SyncSummaryDto {
+        pulled: summary.pulled,
+        pushed: summary.pushed,
+        linked: summary.linked,
+        last_sync_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    })?)
+}
+
+#[plugin_fn]
+pub fn tool_linear_sync_local(_: String) -> FnResult<String> {
+    let summary = sync_once(true, SyncMode::PushOnly).map_err(Error::msg)?;
+    Ok(serde_json::to_string(&SyncSummaryDto {
+        pulled: summary.pulled,
+        pushed: summary.pushed,
+        linked: summary.linked,
+        last_sync_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    })?)
+}
+
+#[plugin_fn]
+pub fn tool_linear_sync_preview(_: String) -> FnResult<String> {
+    Ok(serde_json::to_string(&sync_preview().map_err(Error::msg)?)?)
 }
 
 #[plugin_fn]
@@ -531,6 +576,42 @@ fn connection_status() -> Result<ConnectionStatusDto, String> {
     })
 }
 
+fn sync_preview() -> Result<SyncPreviewDto, String> {
+    let mut state = load_state()?;
+    let api_key = load_api_key()?;
+    if state.cached_teams.is_empty() || state.connection.viewer_id.is_none() {
+        if let Some(api_key) = api_key.as_deref() {
+            let _ = refresh_viewer_context(api_key, &mut state);
+        }
+    }
+
+    let local_tasks = peekoo::tasks::list::<LocalTask>(None).map_err(|e| e.to_string())?;
+    let pending_local_task_count = local_tasks
+        .iter()
+        .filter(|task| is_local_task_eligible_for_create(task, state.mappings.as_slice()))
+        .count();
+
+    let target_team_id = resolve_default_team_id(&state);
+    let target_team_name = target_team_id
+        .as_deref()
+        .and_then(|id| state.cached_teams.iter().find(|team| team.id == id))
+        .map(|team| team.name.clone());
+
+    let target_assignee_id = resolve_default_assignee_id(&state);
+    let target_assignee = target_assignee_id
+        .as_deref()
+        .and_then(|id| state.cached_users.iter().find(|user| user.id == id));
+
+    Ok(SyncPreviewDto {
+        pending_local_task_count,
+        target_team_id,
+        target_team_name,
+        target_assignee_id,
+        target_assignee_name: target_assignee.and_then(|user| user.name.clone()),
+        target_assignee_email: target_assignee.and_then(|user| user.email.clone()),
+    })
+}
+
 fn bootstrap_connection_status() -> Result<(), String> {
     let mut state = load_state()?;
     let connected = load_api_key()?.is_some();
@@ -551,7 +632,7 @@ fn bootstrap_connection_status() -> Result<(), String> {
     Ok(())
 }
 
-fn sync_once(force: bool) -> Result<SyncSummary, String> {
+fn sync_once(force: bool, mode: SyncMode) -> Result<SyncSummary, String> {
     ensure_sync_schedule()?;
 
     let Some(api_key) = load_api_key()? else {
@@ -567,7 +648,7 @@ fn sync_once(force: bool) -> Result<SyncSummary, String> {
     state.connection.last_error = None;
     save_state(&state)?;
 
-    let sync_result = run_sync_cycle(force, &api_key, &mut state);
+    let sync_result = run_sync_cycle(force, mode, &api_key, &mut state);
     match sync_result {
         Ok(summary) => {
             let now = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
@@ -594,55 +675,61 @@ fn sync_once(force: bool) -> Result<SyncSummary, String> {
     }
 }
 
-fn run_sync_cycle(force: bool, api_key: &str, state: &mut LinearState) -> Result<SyncSummary, String> {
+fn run_sync_cycle(
+    force: bool,
+    mode: SyncMode,
+    api_key: &str,
+    state: &mut LinearState,
+) -> Result<SyncSummary, String> {
     if state.cached_teams.is_empty() || state.connection.workspace_name.is_none() {
         refresh_viewer_context(api_key, state)?;
     }
 
-    let page_limit = if force {
-        MANUAL_SYNC_REMOTE_PAGES
-    } else {
-        MAX_REMOTE_PAGES_PER_RUN
-    };
-    let issue_limit = if force {
-        MANUAL_SYNC_REMOTE_ISSUES
-    } else {
-        MAX_REMOTE_ISSUES_PER_RUN
-    };
-
-    let remote_issues = fetch_remote_issues(
-        api_key,
-        state
-            .preferences
-            .assignee_id
-            .as_deref()
-            .or(state.connection.viewer_id.as_deref()),
-        state.preferences.default_team_id.as_deref(),
-        page_limit,
-        issue_limit,
-    )?;
-    let state_filtered_issues = remote_issues
-        .into_iter()
-        .filter(|issue| issue_matches_sync_state(issue, &state.preferences.sync_state_names))
-        .collect::<Vec<_>>();
-    let filtered_issues = if force {
-        state_filtered_issues
-    } else if let Some(cursor) = state.sync.last_pull_cursor.as_deref() {
-        state_filtered_issues
-            .into_iter()
-            .filter(|issue| is_after_cursor(&issue.updated_at, cursor))
-            .collect()
-    } else {
-        state_filtered_issues
-    };
-
     let mut local_tasks = peekoo::tasks::list::<LocalTask>(None).map_err(|e| e.to_string())?;
-
     let mut summary = SyncSummary::default();
-    summary.pulled = pull_remote_into_local(&filtered_issues, state, &mut local_tasks)?;
+    if matches!(mode, SyncMode::Bidirectional | SyncMode::PullOnly) {
+        let page_limit = if force {
+            MANUAL_SYNC_REMOTE_PAGES
+        } else {
+            MAX_REMOTE_PAGES_PER_RUN
+        };
+        let issue_limit = if force {
+            MANUAL_SYNC_REMOTE_ISSUES
+        } else {
+            MAX_REMOTE_ISSUES_PER_RUN
+        };
 
-    if !force {
-        let push_summary = push_local_to_remote(api_key, state, &mut local_tasks)?;
+        let remote_issues = fetch_remote_issues(
+            api_key,
+            state
+                .preferences
+                .assignee_id
+                .as_deref()
+                .or(state.connection.viewer_id.as_deref()),
+            state.preferences.default_team_id.as_deref(),
+            page_limit,
+            issue_limit,
+        )?;
+        let state_filtered_issues = remote_issues
+            .into_iter()
+            .filter(|issue| issue_matches_sync_state(issue, &state.preferences.sync_state_names))
+            .collect::<Vec<_>>();
+        let filtered_issues = if force {
+            state_filtered_issues
+        } else if let Some(cursor) = state.sync.last_pull_cursor.as_deref() {
+            state_filtered_issues
+                .into_iter()
+                .filter(|issue| is_after_cursor(&issue.updated_at, cursor))
+                .collect()
+        } else {
+            state_filtered_issues
+        };
+
+        summary.pulled = pull_remote_into_local(&filtered_issues, state, &mut local_tasks)?;
+    }
+
+    if matches!(mode, SyncMode::Bidirectional | SyncMode::PushOnly) {
+        let push_summary = push_local_to_remote(api_key, state, &mut local_tasks, force)?;
         summary.pushed = push_summary.pushed;
         summary.linked = push_summary.linked;
     }
@@ -724,6 +811,7 @@ fn push_local_to_remote(
     api_key: &str,
     state: &mut LinearState,
     local_tasks: &mut [LocalTask],
+    allow_create_when_manual_sync: bool,
 ) -> Result<SyncSummary, String> {
     let mut summary = SyncSummary::default();
     let mut state_maps = std::collections::HashMap::<String, TeamStateMap>::new();
@@ -769,13 +857,14 @@ fn push_local_to_remote(
         update_budget = update_budget.saturating_sub(1);
     }
 
-    if !state.preferences.auto_push_new_tasks {
+    if !state.preferences.auto_push_new_tasks && !allow_create_when_manual_sync {
         return Ok(summary);
     }
 
-    let Some(default_team_id) = state.preferences.default_team_id.clone() else {
+    let Some(default_team_id) = resolve_default_team_id(state) else {
         return Ok(summary);
     };
+    let default_assignee_id = resolve_default_assignee_id(state);
 
     let state_map = state_maps
         .entry(default_team_id.clone())
@@ -786,19 +875,18 @@ fn push_local_to_remote(
             break;
         }
 
-        if mapping_index_by_task(&state.mappings, &task.id).is_some() {
-            continue;
-        }
-        if task
-            .labels
-            .iter()
-            .any(|label| label == "linear" || label.starts_with("linear:"))
-        {
+        if !is_local_task_eligible_for_create(task, state.mappings.as_slice()) {
             continue;
         }
 
         let state_id = choose_linear_state_id(state_map, &task.status);
-        let created_issue = create_remote_issue(api_key, &default_team_id, task, state_id)?;
+        let created_issue = create_remote_issue(
+            api_key,
+            &default_team_id,
+            task,
+            state_id,
+            default_assignee_id.as_deref(),
+        )?;
 
         let mut labels = task.labels.clone();
         labels.push("linear".to_string());
@@ -992,6 +1080,7 @@ fn create_remote_issue(
     team_id: &str,
     task: &LocalTask,
     state_id: Option<String>,
+    assignee_id: Option<&str>,
 ) -> Result<MutationIssueNode, String> {
     const MUTATION: &str = r#"
       mutation CreateIssue($input: IssueCreateInput!) {
@@ -1016,6 +1105,9 @@ fn create_remote_issue(
 
     if let Some(state_id) = state_id {
         input["stateId"] = Value::String(state_id);
+    }
+    if let Some(assignee_id) = assignee_id {
+        input["assigneeId"] = Value::String(assignee_id.to_string());
     }
 
     let data: IssueCreateMutationData = linear_graphql(api_key, MUTATION, json!({ "input": input }))?;
@@ -1223,6 +1315,32 @@ fn mapping_index_by_task(mappings: &[TaskMapping], task_id: &str) -> Option<usiz
     mappings
         .iter()
         .position(|mapping| mapping.task_id == task_id)
+}
+
+fn is_local_task_eligible_for_create(task: &LocalTask, mappings: &[TaskMapping]) -> bool {
+    if mapping_index_by_task(mappings, &task.id).is_some() {
+        return false;
+    }
+    !task
+        .labels
+        .iter()
+        .any(|label| label == "linear" || label.starts_with("linear:"))
+}
+
+fn resolve_default_team_id(state: &LinearState) -> Option<String> {
+    state
+        .preferences
+        .default_team_id
+        .clone()
+        .or_else(|| state.cached_teams.first().map(|team| team.id.clone()))
+}
+
+fn resolve_default_assignee_id(state: &LinearState) -> Option<String> {
+    state
+        .preferences
+        .assignee_id
+        .clone()
+        .or_else(|| state.connection.viewer_id.clone())
 }
 
 fn local_task_updated_marker(task: &LocalTask) -> String {

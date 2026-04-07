@@ -7,7 +7,8 @@ const userLine = document.getElementById("userLine");
 const apiKeyInput = document.getElementById("apiKeyInput");
 const apiKeyHint = document.getElementById("apiKeyHint");
 const disconnectButton = document.getElementById("disconnectButton");
-const syncButton = document.getElementById("syncButton");
+const syncLinearButton = document.getElementById("syncLinearButton");
+const syncLocalButton = document.getElementById("syncLocalButton");
 const syncTargetSelect = document.getElementById("syncTargetSelect");
 const syncStateList = document.getElementById("syncStateList");
 const autoPushToggle = document.getElementById("autoPushToggle");
@@ -148,7 +149,8 @@ function applySnapshot(snapshot) {
     : "No sync yet";
 
   disconnectButton.disabled = !status.connected;
-  syncButton.disabled = !status.connected;
+  syncLinearButton.disabled = !status.connected;
+  syncLocalButton.disabled = !status.connected;
 
   if (isConnected) {
     apiKeyHint.textContent = "API key is already saved securely. You only need to enter it again when replacing it.";
@@ -183,6 +185,29 @@ async function refreshSnapshot(runSync = false) {
   } catch (error) {
     showError(String(error));
     return false;
+  }
+}
+
+async function runManualSync(toolName, button, syncingLabel, doneLabel) {
+  const previousLabel = button.textContent;
+  const wasDisabled = button.disabled;
+  button.disabled = true;
+  button.textContent = syncingLabel;
+  try {
+    await invoke("plugin_call_panel_tool", {
+      pluginKey: "linear",
+      toolName,
+      argsJson: "{}",
+    });
+    await refreshSnapshot(false);
+    showSuccess(doneLabel);
+  } catch (error) {
+    showError(String(error));
+  } finally {
+    button.textContent = previousLabel;
+    if (!wasDisabled) {
+      button.disabled = false;
+    }
   }
 }
 
@@ -273,23 +298,13 @@ disconnectButton.addEventListener("click", async () => {
   }
 });
 
-syncButton.addEventListener("click", async () => {
-  const previousLabel = syncButton.textContent;
-  const wasDisabled = syncButton.disabled;
-  syncButton.disabled = true;
-  syncButton.textContent = "Syncing...";
-  try {
-    const ok = await refreshSnapshot(true);
-    if (ok) {
-      showSuccess("Sync completed.");
-    }
-  } finally {
-    syncButton.textContent = previousLabel;
-    if (!wasDisabled) {
-      syncButton.disabled = false;
-    }
-  }
-});
+syncLinearButton.addEventListener("click", () =>
+  runManualSync("linear_sync_linear", syncLinearButton, "Syncing...", "Linear pull completed."),
+);
+
+syncLocalButton.addEventListener("click", () =>
+  runManualSync("linear_sync_local", syncLocalButton, "Syncing...", "Local push completed."),
+);
 
 function scheduleSettingsSave() {
   if (settingsSaveTimer) {
