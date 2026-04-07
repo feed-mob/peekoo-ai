@@ -95,7 +95,6 @@ plugin name: (plugin-build name) (plugin-install name)
 # Build all maintained first-party plugins
 plugin-build-all:
     just plugin-build health-reminders
-    just plugin-build linear
     just plugin-build peekoo-opencode-companion
 
 # Build the OpenCode Companion plugin (WASM + OpenCode JS companion)

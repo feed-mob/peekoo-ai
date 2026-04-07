@@ -19,7 +19,7 @@ use crate::runtime::PluginInstance;
 use crate::state::PluginStateStore;
 
 const DEFAULT_MEMORY_MAX_PAGES: u32 = 256;
-const DEFAULT_TIMEOUT: Duration = Duration::from_millis(20000);
+const DEFAULT_TIMEOUT: Duration = Duration::from_millis(5000);
 
 pub struct PluginRegistry {
     plugins: Mutex<HashMap<String, PluginInstance>>,
