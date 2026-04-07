@@ -25,6 +25,8 @@
     "notification:default",
     "log:default",
     "process:default",
-    "updater:default"
+    "updater:default",
+    "posthog:default",
+    "sentry:default"
   ]
 }

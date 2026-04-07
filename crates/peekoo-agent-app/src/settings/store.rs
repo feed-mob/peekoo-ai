@@ -3,11 +3,8 @@ use std::sync::{Arc, Mutex};
 
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::settings::catalog::{
-    DEFAULT_MODEL, DEFAULT_PROVIDER, default_model_for_provider, normalize_model_for_provider,
-};
 use crate::settings::dto::{
-    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto, SkillDto,
+    AgentSettingsDto, AgentSettingsPatchDto, ProviderAuthDto, ProviderConfigDto,
 };
 
 const DEFAULT_MAX_TOOL_ITERATIONS: i64 = 50;
@@ -18,8 +15,6 @@ const SQL_UPSERT_PROVIDER_AUTH: &str = concat!(
     "INSERT INTO agent_provider_auth (provider_id, auth_mode, api_key_ref, oauth_token_ref, oauth_expires_at, oauth_scopes_json, last_error, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, NULL, NULL, datetime('now'))",
     " ON CONFLICT(provider_id) DO UPDATE SET auth_mode = excluded.auth_mode, api_key_ref = excluded.api_key_ref, oauth_token_ref = excluded.oauth_token_ref, oauth_expires_at = excluded.oauth_expires_at, updated_at = datetime('now')"
 );
-
-use crate::settings::skills::discover_skills;
 
 pub(crate) struct SettingsStore {
     conn: Arc<Mutex<Connection>>,
@@ -65,17 +60,15 @@ impl SettingsStore {
             .map_err(|e| format!("Settings lock error: {e}"))?;
 
         let mut stmt = conn
-            .prepare("SELECT active_provider_id, active_model_id, system_prompt, max_tool_iterations, version FROM agent_settings WHERE id = 1")
+            .prepare("SELECT system_prompt, max_tool_iterations, version FROM agent_settings WHERE id = 1")
             .map_err(|e| format!("Prepare settings query error: {e}"))?;
 
         let row = stmt
             .query_row([], |row| {
                 Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, i64>(3)?,
-                    row.get::<_, i64>(4)?,
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
                 ))
             })
             .map_err(|e| format!("Query settings row error: {e}"))?;
@@ -99,27 +92,6 @@ impl SettingsStore {
         let provider_auth: Result<Vec<_>, _> = auth_rows.collect();
         let provider_auth = provider_auth.map_err(|e| format!("Map auth rows error: {e}"))?;
 
-        let mut skill_stmt = conn
-            .prepare(
-                "SELECT skill_id, source_type, path, enabled FROM agent_skills ORDER BY skill_id",
-            )
-            .map_err(|e| format!("Prepare skills query error: {e}"))?;
-        let skill_rows = skill_stmt
-            .query_map([], |row| {
-                Ok(SkillDto {
-                    skill_id: row.get(0)?,
-                    source_type: row.get(1)?,
-                    path: row.get(2)?,
-                    enabled: row.get::<_, i64>(3)? == 1,
-                })
-            })
-            .map_err(|e| format!("Query skill rows error: {e}"))?;
-        let skills: Result<Vec<_>, _> = skill_rows.collect();
-        let mut skills = skills.map_err(|e| format!("Map skill rows error: {e}"))?;
-        if skills.is_empty() {
-            skills = discover_skills();
-        }
-
         let mut provider_cfg_stmt = conn
             .prepare("SELECT provider_id, base_url, api, auth_header FROM agent_provider_configs")
             .map_err(|e| format!("Prepare provider config query error: {e}"))?;
@@ -138,14 +110,11 @@ impl SettingsStore {
             provider_configs.map_err(|e| format!("Map provider config rows error: {e}"))?;
 
         Ok(AgentSettingsDto {
-            active_provider_id: row.0,
-            active_model_id: row.1,
-            system_prompt: row.2,
-            max_tool_iterations: row.3 as usize,
-            version: row.4,
+            system_prompt: row.0,
+            max_tool_iterations: row.1 as usize,
+            version: row.2,
             provider_auth,
             provider_configs,
-            skills,
         })
     }
 
@@ -159,56 +128,12 @@ impl SettingsStore {
             .map_err(|e| format!("Settings lock error: {e}"))?;
 
         let AgentSettingsPatchDto {
-            active_provider_id,
-            active_model_id,
             system_prompt,
             max_tool_iterations,
-            skills,
         } = patch;
 
-        let active_provider_id = active_provider_id
-            .map(|provider_id| validate_non_empty_setting("Active provider id", provider_id))
-            .transpose()?;
-        let active_model_id = active_model_id
-            .map(|model_id| validate_non_empty_setting("Active model id", model_id))
-            .transpose()?;
         if max_tool_iterations == Some(0) {
             return Err("Max tool iterations must be greater than 0".to_string());
-        }
-
-        let current_provider: String = conn
-            .query_row(
-                "SELECT active_provider_id FROM agent_settings WHERE id = 1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|e| format!("Read current provider error: {e}"))?;
-
-        let effective_provider = active_provider_id.clone().unwrap_or(current_provider);
-        let provider_changed = active_provider_id.is_some();
-
-        if let Some(provider) = active_provider_id {
-            conn.execute(
-                "UPDATE agent_settings SET active_provider_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![provider],
-            )
-            .map_err(|e| format!("Update provider error: {e}"))?;
-        }
-
-        if let Some(model) = active_model_id {
-            let normalized_model = normalize_model_for_provider(&effective_provider, &model);
-            conn.execute(
-                "UPDATE agent_settings SET active_model_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![normalized_model],
-            )
-            .map_err(|e| format!("Update model error: {e}"))?;
-        } else if provider_changed {
-            let fallback_model = default_model_for_provider(&effective_provider).to_string();
-            conn.execute(
-                "UPDATE agent_settings SET active_model_id = ?1, version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                params![fallback_model],
-            )
-            .map_err(|e| format!("Reset model on provider change error: {e}"))?;
         }
 
         if let Some(system_prompt) = system_prompt {
@@ -225,23 +150,6 @@ impl SettingsStore {
                 params![max_tool_iterations as i64],
             )
             .map_err(|e| format!("Update max tool iterations error: {e}"))?;
-        }
-
-        if let Some(skills) = skills {
-            conn.execute("DELETE FROM agent_skills", [])
-                .map_err(|e| format!("Delete existing skill rows error: {e}"))?;
-            for skill in skills {
-                conn.execute(
-                    "INSERT INTO agent_skills (skill_id, source_type, path, enabled, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now'))",
-                    params![skill.skill_id, skill.source_type, skill.path, if skill.enabled { 1 } else { 0 }],
-                )
-                .map_err(|e| format!("Insert skill row error: {e}"))?;
-            }
-            conn.execute(
-                "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
-                [],
-            )
-            .map_err(|e| format!("Bump settings version error: {e}"))?;
         }
 
         drop(conn);
@@ -372,6 +280,19 @@ impl SettingsStore {
         .map(|v| v.flatten())
     }
 
+    pub(crate) fn bump_version(&self) -> Result<(), String> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|e| format!("Settings lock error: {e}"))?;
+        conn.execute(
+            "UPDATE agent_settings SET version = version + 1, updated_at = datetime('now') WHERE id = 1",
+            [],
+        )
+        .map_err(|e| format!("Bump settings version error: {e}"))?;
+        Ok(())
+    }
+
     pub(crate) fn set_provider_config(
         &self,
         cfg: ProviderConfigDto,
@@ -430,22 +351,14 @@ fn run_migrations_and_seed(conn: &Connection) -> Result<(), String> {
     // Seed default agent settings (must run after schema migrations)
     conn.execute(
         &format!(
-            "INSERT OR IGNORE INTO agent_settings (id, active_provider_id, active_model_id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, ?1, ?2, NULL, {}, 1, datetime('now'))",
+            "INSERT OR IGNORE INTO agent_settings (id, system_prompt, max_tool_iterations, version, updated_at) VALUES (1, NULL, {}, 1, datetime('now'))",
             DEFAULT_MAX_TOOL_ITERATIONS
         ),
-        params![DEFAULT_PROVIDER, DEFAULT_MODEL],
+        [],
     )
     .map_err(|e| format!("Insert default agent settings error: {e}"))?;
 
     Ok(())
-}
-
-fn validate_non_empty_setting(field_name: &str, value: String) -> Result<String, String> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Err(format!("{field_name} cannot be empty"));
-    }
-    Ok(trimmed.to_string())
 }
 
 #[cfg(test)]
@@ -479,61 +392,45 @@ mod tests {
     }
 
     #[test]
-    fn apply_patch_rejects_empty_provider_id() {
-        let (store, path) = new_store();
-
-        let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: Some("   ".into()),
-            active_model_id: None,
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        });
-
-        match result {
-            Ok(_) => panic!("empty provider should fail"),
-            Err(err) => assert_eq!(err, "Active provider id cannot be empty"),
-        }
-
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
-    fn apply_patch_rejects_empty_model_id() {
-        let (store, path) = new_store();
-
-        let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: None,
-            active_model_id: Some("\n\t ".into()),
-            system_prompt: None,
-            max_tool_iterations: None,
-            skills: None,
-        });
-
-        match result {
-            Ok(_) => panic!("empty model should fail"),
-            Err(err) => assert_eq!(err, "Active model id cannot be empty"),
-        }
-
-        let _ = std::fs::remove_file(path);
-    }
-
-    #[test]
     fn apply_patch_rejects_zero_max_tool_iterations() {
         let (store, path) = new_store();
 
         let result = store.apply_patch(AgentSettingsPatchDto {
-            active_provider_id: None,
-            active_model_id: None,
             system_prompt: None,
             max_tool_iterations: Some(0),
-            skills: None,
         });
 
         match result {
             Ok(_) => panic!("zero max tool iterations should fail"),
             Err(err) => assert_eq!(err, "Max tool iterations must be greater than 0"),
         }
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn bump_version_increments_version() {
+        let (store, path) = new_store();
+
+        let before = store.load_settings().expect("load settings").version;
+        store.bump_version().expect("bump version");
+        let after = store.load_settings().expect("load settings").version;
+
+        assert_eq!(after, before + 1);
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Chat settings DTOs should not surface skill state; discovery is catalog-driven.
+    #[test]
+    fn load_settings_chat_dto_omits_skills() {
+        let (store, path) = new_store();
+        let settings = store.load_settings().expect("load settings");
+        let json = serde_json::to_value(&settings).expect("serialize settings");
+        assert!(
+            json.get("skills").is_none(),
+            "AgentSettingsDto must not expose skills for chat settings; got {json:?}"
+        );
 
         let _ = std::fs::remove_file(path);
     }

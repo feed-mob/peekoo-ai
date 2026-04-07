@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
+import { useTranslation } from "react-i18next";
 
 interface SpriteMiniChatProps {
   open: boolean;
@@ -22,6 +23,7 @@ export function SpriteMiniChat({
   onOpenFullChat,
   onSubmit,
 }: SpriteMiniChatProps) {
+  const { t } = useTranslation();
   const isDark = useIsDarkMode();
   const [input, setInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -89,7 +91,7 @@ export function SpriteMiniChat({
                 type="text"
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder={isTyping ? "Thinking..." : "Ask Peekoo..."}
+                placeholder={isTyping ? t("chat.thinking") : t("sprite.askPeekoo")}
                 disabled={isTyping}
                 className={cn(
                   "h-7 rounded-full px-2.5 text-[11px] text-text-primary placeholder:text-text-muted",
@@ -109,8 +111,8 @@ export function SpriteMiniChat({
               <button
                 type="button"
                 onClick={() => void onOpenFullChat()}
-                aria-label="Open full chat"
-                title="Open full chat"
+                aria-label={t("sprite.openFullChat")}
+                title={t("sprite.openFullChat")}
                 className={cn(
                   "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors hover:text-glow-cyan flex-shrink-0",
                   isDark ? "text-white/40 hover:bg-white/5" : "text-black/40 hover:bg-black/5"

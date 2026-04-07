@@ -1,4 +1,5 @@
-use std::path::PathBuf;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -7,7 +8,10 @@ use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
 
 use peekoo_agent::AgentEvent;
-use peekoo_agent::config::AgentServiceConfig;
+use peekoo_agent::config::{
+    AgentServiceConfig, PEEKOO_AGENT_PROVIDER_ARGS_ENV, PEEKOO_AGENT_PROVIDER_COMMAND_ENV,
+    PEEKOO_OPENCODE_BIN_ENV,
+};
 use peekoo_agent::service::AgentService;
 use peekoo_app_settings::{AppSettingsService, SpriteInfo};
 use peekoo_notifications::{
@@ -21,10 +25,19 @@ use peekoo_pomodoro_app::{
 };
 use peekoo_scheduler::Scheduler;
 
+use crate::agent_provider_service::{
+    AgentProviderService, InstallProviderRequest, InstallProviderResponse, InstallationMethod,
+    PrerequisitesCheck, ProviderConfig, ProviderInfo, RuntimeInfo, RuntimeInspectionResult,
+    TestConnectionResult,
+};
 use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
+};
+use crate::plugin_localization::{
+    PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, load_plugin_locale_json,
+    localize_config_field, localize_panel_title, localize_plugin_summary, localize_store_plugin,
 };
 use crate::plugin_tool_impl::PluginToolProviderImpl;
 use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
@@ -33,7 +46,7 @@ use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
-    SettingsService,
+    SettingsService, SkillInstallOutcome, skill_discovery_roots,
 };
 use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
@@ -59,6 +72,29 @@ fn format_error_chain(err: &dyn std::error::Error) -> String {
     }
 }
 
+fn build_task_runtime_launch_env(config: &AgentServiceConfig) -> Vec<(String, String)> {
+    let mut env = vec![("PEEKOO_AGENT_PROVIDER".to_string(), config.provider.id())];
+
+    env.push((
+        PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+        config.provider.command.clone(),
+    ));
+
+    if let Ok(args_json) = serde_json::to_string(&config.provider.args) {
+        env.push((PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(), args_json));
+    }
+
+    if let Some(model) = &config.model {
+        env.push(("PEEKOO_AGENT_MODEL".to_string(), model.clone()));
+    }
+
+    if let Some(api_key) = &config.api_key {
+        env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key.clone()));
+    }
+
+    env
+}
+
 pub struct AgentApplication {
     agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
@@ -69,6 +105,7 @@ pub struct AgentApplication {
     plugin_registry: Arc<PluginRegistry>,
     plugin_tools: Arc<PluginToolProviderImpl>,
     plugin_store: PluginStoreService,
+    provider_service: Arc<AgentProviderService>,
     notifications: Arc<NotificationService>,
     notification_receiver: Mutex<UnboundedReceiver<Notification>>,
     task_notifications: Arc<TaskNotificationScheduler>,
@@ -78,18 +115,29 @@ pub struct AgentApplication {
     agent_config_version: Mutex<Option<i64>>,
     /// Directory where pi session files are stored.
     session_dir: PathBuf,
-    /// Workspace root used to scope session restore and resumption.
-    workspace_dir: PathBuf,
+    /// Agent workspace root (e.g. `~/.peekoo/workspace/`).
+    agent_workspace_dir: PathBuf,
     /// Path to the last session file, used to resume context on the next prompt.
     resume_session_path: Mutex<Option<PathBuf>>,
     /// Monotonic generation that invalidates in-flight agents after `new_session`.
     conversation_generation: AtomicU64,
     /// Scheduler for agent task execution.
     agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
+    bundled_opencode_path: Option<PathBuf>,
+    /// Directory containing the bundled Node.js binary (e.g. `<resources>/opencode/node/bin`).
+    bundled_node_bin_dir: Option<PathBuf>,
 }
 
 impl AgentApplication {
     pub fn new() -> Result<Self, String> {
+        Self::new_with_bundled_binaries(None, None, None)
+    }
+
+    pub fn new_with_bundled_binaries(
+        bundled_opencode_path: Option<PathBuf>,
+        bundled_acp_path: Option<PathBuf>,
+        bundled_node_bin_dir: Option<PathBuf>,
+    ) -> Result<Self, String> {
         ensure_windows_pi_agent_env()?;
 
         // Open a single shared SQLite connection for the entire application.
@@ -143,11 +191,22 @@ impl AgentApplication {
             std::fs::create_dir_all(&session_dir)
                 .map_err(|e| format!("Create session dir error: {e}"))?;
         }
-        let workspace_dir = ensure_agent_workspace()?;
+        let provider_service = Arc::new(
+            AgentProviderService::new_with_bundled_opencode(
+                &db_path,
+                peekoo_paths::peekoo_global_data_dir()?,
+                bundled_opencode_path.clone(),
+                bundled_node_bin_dir.clone(),
+            )
+            .map_err(|e| format!("Create provider service error: {e}"))?,
+        );
+        let agent_workspace_dir = ensure_agent_workspace()?;
 
         // Create agent scheduler for task execution
-        let agent_scheduler =
-            crate::agent_scheduler::AgentScheduler::new(Arc::new(sqlite_task_service.clone()));
+        let agent_scheduler = crate::agent_scheduler::AgentScheduler::new(
+            Arc::new(sqlite_task_service.clone()),
+            bundled_acp_path.clone(),
+        );
 
         Ok(Self {
             agent: Arc::new(Mutex::new(None)),
@@ -159,6 +218,7 @@ impl AgentApplication {
             plugin_tools: Arc::new(PluginToolProviderImpl::new(Arc::clone(&plugin_registry))),
             plugin_registry,
             plugin_store: PluginStoreService::new(),
+            provider_service,
             notifications,
             notification_receiver: Mutex::new(notification_receiver),
             task_notifications,
@@ -167,11 +227,19 @@ impl AgentApplication {
             shutdown_token,
             agent_config_version: Mutex::new(None),
             session_dir,
-            workspace_dir,
+            agent_workspace_dir,
             resume_session_path: Mutex::new(None),
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
+            bundled_opencode_path,
+            bundled_node_bin_dir,
         })
+    }
+
+    pub fn new_with_bundled_opencode(
+        bundled_opencode_path: Option<PathBuf>,
+    ) -> Result<Self, String> {
+        Self::new_with_bundled_binaries(bundled_opencode_path, None, None)
     }
 
     pub fn set_task_change_callback(
@@ -205,6 +273,7 @@ impl AgentApplication {
             app_settings_service,
             plugin_registry,
             mcp_shutdown,
+            self.agent_workspace_dir.clone(),
         ) {
             Ok(addr) => {
                 let url = peekoo_mcp_server::mcp_url_for(addr);
@@ -222,6 +291,13 @@ impl AgentApplication {
             && let Some(ref scheduler) = *guard
         {
             scheduler.set_agent_launch_env(self.agent_launch_env());
+            // Build context prompt for task scheduler
+            if let Ok(config) = self.resolved_config()
+                && let Ok(prompt) =
+                    peekoo_agent::service::AgentService::build_system_prompt(&config)
+            {
+                scheduler.set_context_prompt(prompt);
+            }
             scheduler.start();
         }
     }
@@ -230,6 +306,10 @@ impl AgentApplication {
     where
         F: Fn(AgentEvent) + Send + Sync + 'static,
     {
+        tracing::info!(
+            message_len = message.chars().count(),
+            "Application prompt_streaming requested"
+        );
         let generation = self.conversation_generation.load(Ordering::SeqCst);
         let mut agent = {
             let mut guard = self.agent.lock().map_err(|e| format!("Lock error: {e}"))?;
@@ -271,10 +351,17 @@ impl AgentApplication {
             tracing::error!(
                 error = %err,
                 debug = ?err,
-                sources = %format_error_chain(err),
+                sources = %format_error_chain(err.as_ref()),
                 conversation_generation = generation,
                 message_len = message.chars().count(),
                 "Agent prompt failed"
+            );
+        } else if let Ok(reply) = &result {
+            tracing::info!(
+                message_len = message.chars().count(),
+                response_len = reply.chars().count(),
+                conversation_generation = generation,
+                "Application prompt_streaming completed"
             );
         }
 
@@ -335,8 +422,10 @@ impl AgentApplication {
         self.settings.update_settings(patch)
     }
 
-    pub fn settings_catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
-        self.settings.catalog()
+    pub async fn settings_catalog(&self) -> Result<AgentSettingsCatalogDto, String> {
+        self.settings
+            .catalog_from_runtimes(&self.provider_service)
+            .await
     }
 
     pub fn set_provider_api_key(&self, req: SetApiKeyRequest) -> Result<ProviderAuthDto, String> {
@@ -369,6 +458,281 @@ impl AgentApplication {
         self.settings.cancel_oauth(req)
     }
 
+    pub fn install_skill_from_zip(
+        &self,
+        zip_path: &str,
+        force: bool,
+    ) -> Result<SkillInstallOutcome, String> {
+        self.settings.install_skill_from_zip(zip_path, force)
+    }
+
+    pub fn delete_skill(&self, skill_md_path: &str) -> Result<(), String> {
+        self.settings.delete_skill(skill_md_path)
+    }
+
+    pub fn list_agent_providers(&self) -> Result<Vec<ProviderInfo>, String> {
+        self.provider_service
+            .list_providers()
+            .map_err(|e| format!("List providers error: {e}"))
+    }
+
+    pub fn list_agent_runtimes(&self) -> Result<Vec<RuntimeInfo>, String> {
+        self.provider_service
+            .list_runtimes()
+            .map_err(|e| format!("List runtimes error: {e}"))
+    }
+
+    pub fn install_agent_provider(
+        &self,
+        req: InstallProviderRequest,
+    ) -> Result<InstallProviderResponse, String> {
+        let response = self
+            .provider_service
+            .install_provider(req.clone())
+            .map_err(|e| format!("Install provider error: {e}"))?;
+
+        if response.success {
+            // Only auto-promote runtimes that are visible in chat/runtime selection.
+            let runtime_info = self
+                .provider_service
+                .get_runtime(&req.provider_id)
+                .map_err(|e| format!("Get runtime info error: {e}"))?;
+
+            if runtime_info.map(|r| r.is_chat_visible()).unwrap_or(false) {
+                let provider = self
+                    .provider_service
+                    .get_default_provider()
+                    .map_err(|e| format!("Get default provider error: {e}"))?;
+
+                let should_promote_to_default =
+                    provider.map(|p| !p.is_chat_visible()).unwrap_or(true);
+
+                if should_promote_to_default {
+                    self.provider_service
+                        .set_default_provider(&req.provider_id)
+                        .map_err(|e| format!("Set default provider error: {e}"))?;
+                }
+            }
+        }
+
+        Ok(response)
+    }
+
+    pub fn install_agent_runtime(
+        &self,
+        req: InstallProviderRequest,
+    ) -> Result<InstallProviderResponse, String> {
+        self.install_agent_provider(req)
+    }
+
+    pub fn uninstall_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .uninstall_provider(provider_id)
+            .map_err(|e| format!("Uninstall provider error: {e}"))
+    }
+
+    pub fn uninstall_agent_runtime(&self, runtime_id: &str) -> Result<(), String> {
+        self.provider_service
+            .uninstall_runtime(runtime_id)
+            .map_err(|e| format!("Uninstall runtime error: {e}"))
+    }
+
+    pub fn set_default_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .set_default_provider(provider_id)
+            .map_err(|e| format!("Set default provider error: {e}"))?;
+
+        self.settings.bump_version()
+    }
+
+    pub fn set_default_agent_runtime(&self, runtime_id: &str) -> Result<(), String> {
+        self.set_default_agent_provider(runtime_id)
+    }
+
+    pub fn get_agent_provider_config(&self, provider_id: &str) -> Result<ProviderConfig, String> {
+        self.provider_service
+            .get_provider_config(provider_id)
+            .map_err(|e| format!("Get provider config error: {e}"))
+    }
+
+    pub fn update_agent_provider_config(
+        &self,
+        provider_id: &str,
+        config: &ProviderConfig,
+    ) -> Result<(), String> {
+        self.provider_service
+            .update_provider_config(provider_id, config)
+            .map_err(|e| format!("Update provider config error: {e}"))?;
+
+        // Bump version if this is the default runtime, so the agent recreates on next prompt.
+        let is_default = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .map(|r| r.provider_id == provider_id)
+            .unwrap_or(false);
+
+        if is_default {
+            self.settings.bump_version()?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn test_agent_provider_connection(
+        &self,
+        provider_id: &str,
+    ) -> Result<TestConnectionResult, String> {
+        self.provider_service
+            .test_connection(provider_id)
+            .await
+            .map_err(|e| format!("Test provider connection error: {e}"))
+    }
+
+    pub fn check_agent_provider_prerequisites(
+        &self,
+        method: InstallationMethod,
+    ) -> Result<PrerequisitesCheck, String> {
+        self.provider_service
+            .check_prerequisites(method)
+            .map_err(|e| format!("Check prerequisites error: {e}"))
+    }
+
+    pub fn add_custom_agent_provider(
+        &self,
+        name: &str,
+        description: Option<&str>,
+        command: &str,
+        args: &[String],
+        working_dir: Option<&str>,
+    ) -> Result<ProviderInfo, String> {
+        self.provider_service
+            .add_custom_provider(name, description, command, args, working_dir)
+            .map_err(|e| format!("Add custom provider error: {e}"))
+    }
+
+    pub fn remove_custom_agent_provider(&self, provider_id: &str) -> Result<(), String> {
+        self.provider_service
+            .remove_custom_provider(provider_id)
+            .map_err(|e| format!("Remove custom provider error: {e}"))
+    }
+
+    pub fn default_agent_provider(&self) -> Result<Option<ProviderInfo>, String> {
+        self.provider_service
+            .get_default_provider()
+            .map_err(|e| format!("Get default provider error: {e}"))
+    }
+
+    pub fn default_agent_runtime(&self) -> Result<Option<RuntimeInfo>, String> {
+        self.provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))
+    }
+
+    /// Get the default runtime for chat use.
+    /// Returns None if no chat-visible runtime is set as default.
+    pub fn default_chat_runtime(&self) -> Result<Option<RuntimeInfo>, String> {
+        match self.default_agent_runtime()? {
+            Some(runtime) if runtime.is_chat_visible() => Ok(Some(runtime)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Get the first installed chat-visible runtime, or None if none installed.
+    pub fn first_chat_runtime(&self) -> Result<Option<RuntimeInfo>, String> {
+        let runtimes = self.list_agent_runtimes()?;
+        Ok(runtimes
+            .into_iter()
+            .find(|r| r.is_installed && r.is_chat_visible()))
+    }
+
+    /// Inspect a runtime to discover its capabilities via ACP
+    pub async fn inspect_runtime(
+        &self,
+        runtime_id: &str,
+    ) -> Result<RuntimeInspectionResult, String> {
+        crate::agent_provider_commands::inspect_runtime(
+            &self.provider_service,
+            runtime_id.to_string(),
+        )
+        .await
+        .map_err(|e| format!("Runtime inspection error: {e}"))
+    }
+
+    /// Authenticate with a runtime using the specified auth method
+    pub async fn authenticate_runtime(
+        &self,
+        runtime_id: &str,
+        method_id: &str,
+    ) -> Result<crate::agent_provider_commands::RuntimeAuthenticationAction, String> {
+        crate::agent_provider_commands::authenticate_runtime(
+            &self.provider_service,
+            runtime_id.to_string(),
+            method_id.to_string(),
+        )
+        .await
+        .map_err(|e| format!("Runtime authentication error: {e}"))
+    }
+
+    /// Refresh runtime capabilities by re-inspecting
+    pub async fn refresh_runtime_capabilities(
+        &self,
+        runtime_id: &str,
+    ) -> Result<RuntimeInspectionResult, String> {
+        crate::agent_provider_commands::refresh_runtime_capabilities(
+            &self.provider_service,
+            runtime_id.to_string(),
+        )
+        .await
+        .map_err(|e| format!("Runtime refresh error: {e}"))
+    }
+
+    // =========================================================================
+    // ACP Registry Methods
+    // =========================================================================
+
+    /// Fetch agents from ACP registry with filtering and pagination
+    pub async fn fetch_registry_agents(
+        &self,
+        filter: &crate::agent_provider_service::RegistryFilterOptions,
+    ) -> Result<(Vec<crate::agent_provider_service::RegistryAgentInfo>, usize), String> {
+        self.provider_service
+            .fetch_registry_agents(filter)
+            .await
+            .map_err(|e| format!("Fetch registry agents error: {e}"))
+    }
+
+    /// Search registry agents by query
+    pub async fn search_registry_agents(
+        &self,
+        query: &str,
+    ) -> Result<Vec<crate::agent_provider_service::RegistryAgentInfo>, String> {
+        self.provider_service
+            .search_registry_agents(query)
+            .await
+            .map_err(|e| format!("Search registry agents error: {e}"))
+    }
+
+    /// Install an agent from ACP registry
+    pub async fn install_registry_agent(
+        &self,
+        registry_id: &str,
+        method: crate::agent_provider_service::InstallationMethod,
+    ) -> Result<crate::agent_provider_service::InstallProviderResponse, String> {
+        self.provider_service
+            .install_registry_agent(registry_id, method)
+            .await
+            .map_err(|e| format!("Install registry agent error: {e}"))
+    }
+
+    /// Force refresh registry from CDN
+    pub async fn refresh_registry(&self) -> Result<(), String> {
+        self.provider_service
+            .refresh_registry()
+            .await
+            .map_err(|e| format!("Refresh registry error: {e}"))
+    }
+
     // ── Global app settings ────────────────────────────────────────────
 
     pub fn get_active_sprite_id(&self) -> Result<String, String> {
@@ -389,6 +753,14 @@ impl AgentApplication {
 
     pub fn set_app_setting(&self, key: &str, value: &str) -> Result<(), String> {
         self.app_settings.set(key, value)
+    }
+
+    pub fn get_app_language(&self) -> Result<String, String> {
+        self.app_settings.get_app_language()
+    }
+
+    pub fn set_app_language(&self, language: &str) -> Result<(), String> {
+        self.app_settings.set_app_language(language)
     }
 
     // ── Tasks ───────────────────────────────────────────────────────────
@@ -571,6 +943,7 @@ impl AgentApplication {
     }
 
     pub fn list_plugins(&self) -> Result<Vec<PluginSummaryDto>, String> {
+        let app_language = self.get_app_language_or_en();
         let plugins = self
             .plugin_registry
             .discover()
@@ -584,7 +957,11 @@ impl AgentApplication {
                         .plugin_registry
                         .is_plugin_enabled(&manifest.plugin.key)
                         .map_err(|e| e.to_string())?;
-                    Ok(manifest_to_summary(&manifest, plugin_dir, enabled))
+                    let mut summary = manifest_to_summary(&manifest, plugin_dir.clone(), enabled);
+                    if let Some(locale) = load_plugin_locale(&plugin_dir, &app_language) {
+                        localize_plugin_summary(&mut summary, &locale);
+                    }
+                    Ok(summary)
                 },
             )
             .collect::<Result<Vec<_>, String>>()?;
@@ -592,11 +969,27 @@ impl AgentApplication {
     }
 
     pub fn list_plugin_panels(&self) -> Result<Vec<PluginPanelDto>, String> {
+        let app_language = self.get_app_language_or_en();
+        let discovered = self.plugin_registry.discover();
+        let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
+        let mut locale_cache: HashMap<String, Option<PluginLocaleBundle>> = HashMap::new();
+
         Ok(self
             .plugin_registry
             .all_ui_panels()
             .into_iter()
-            .map(|(plugin_key, panel)| PluginPanelDto::from_panel(plugin_key, panel))
+            .map(|(plugin_key, panel)| {
+                let mut dto = PluginPanelDto::from_panel(plugin_key.clone(), panel);
+                if let Some(plugin_dir) = plugin_dirs.get(&plugin_key) {
+                    let locale = locale_cache
+                        .entry(plugin_key.clone())
+                        .or_insert_with(|| load_plugin_locale(plugin_dir, &app_language));
+                    if let Some(locale) = locale.as_ref() {
+                        localize_panel_title(&mut dto, locale);
+                    }
+                }
+                dto
+            })
             .collect())
     }
 
@@ -694,14 +1087,25 @@ impl AgentApplication {
         &self,
         plugin_key: &str,
     ) -> Result<Vec<PluginConfigFieldDto>, String> {
+        let app_language = self.get_app_language_or_en();
+        let plugin_dir = self.plugin_dir_for_key(plugin_key);
+        let locale = plugin_dir
+            .as_ref()
+            .and_then(|dir| load_plugin_locale(dir, &app_language));
+
         self.plugin_registry
             .config_schema(plugin_key)
             .map(|fields| {
                 fields
                     .into_iter()
-                    .map(|field| PluginConfigFieldDto {
-                        plugin_key: plugin_key.to_string(),
-                        field,
+                    .map(|mut field| {
+                        if let Some(locale) = locale.as_ref() {
+                            localize_config_field(&mut field, locale);
+                        }
+                        PluginConfigFieldDto {
+                            plugin_key: plugin_key.to_string(),
+                            field,
+                        }
                     })
                     .collect()
             })
@@ -781,6 +1185,18 @@ impl AgentApplication {
             }
         }
 
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_root) = Self::plugin_root_for_panel_entry(&path)
+            && let Some(locale_json) = load_plugin_locale_json(&plugin_root, &app_language)
+        {
+            let locale_literal = serde_json::to_string(&locale_json)
+                .map_err(|e| format!("Serialize plugin locale json error: {e}"))?;
+            let lang_literal = serde_json::to_string(&app_language)
+                .map_err(|e| format!("Serialize plugin language error: {e}"))?;
+            let script = Self::plugin_locale_bootstrap_script(&locale_literal, &lang_literal);
+            html = Self::inject_panel_bootstrap_script(&html, &script);
+        }
+
         Ok(html)
     }
 
@@ -823,13 +1239,18 @@ impl AgentApplication {
                 }
                 return Ok(Some(LastSessionDto {
                     session_path: String::new(),
+                    last_message_timestamp: std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_millis() as i64,
                     messages: dtos,
                 }));
             }
         }
 
         // Slow path: load from disk.
-        let result = conversation::load_last_session(&self.session_dir).await?;
+        let result = conversation::find_last_session()
+            .map_err(|e| format!("Failed to load last session: {e}"))?;
 
         // Stash the path so the next prompt resumes this session.
         if let Some(ref dto) = result
@@ -872,21 +1293,49 @@ impl AgentApplication {
     }
 
     pub fn store_catalog(&self) -> Result<Vec<StorePluginDto>, String> {
-        self.plugin_store.fetch_catalog(&self.plugin_registry)
+        let app_language = self.get_app_language_or_en();
+        let mut catalog = self.plugin_store.fetch_catalog(&self.plugin_registry)?;
+        let discovered = self.plugin_registry.discover();
+        let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
+
+        for plugin in &mut catalog {
+            if !plugin.installed {
+                continue;
+            }
+            if let Some(plugin_dir) = plugin_dirs.get(&plugin.plugin_key)
+                && let Some(locale) = load_plugin_locale(plugin_dir, &app_language)
+            {
+                localize_store_plugin(plugin, &locale);
+            }
+        }
+
+        Ok(catalog)
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        let result = self
+        let mut result = self
             .plugin_store
             .install_plugin(plugin_key, &self.plugin_registry)?;
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
+            && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
+        {
+            localize_store_plugin(&mut result, &locale);
+        }
         self.invalidate_agent_for_plugin_change();
         Ok(result)
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
-        let result = self
+        let mut result = self
             .plugin_store
             .update_plugin(plugin_key, &self.plugin_registry)?;
+        let app_language = self.get_app_language_or_en();
+        if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
+            && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
+        {
+            localize_store_plugin(&mut result, &locale);
+        }
         self.invalidate_agent_for_plugin_change();
         Ok(result)
     }
@@ -920,16 +1369,58 @@ impl AgentApplication {
     /// Build a fresh `AgentService` from current settings + MCP-backed tools.
     fn create_agent_service(&self) -> Result<(AgentService, i64), String> {
         let config = self.resolved_config()?;
-        let (mut config, settings_version) = self.settings.to_agent_config(config)?;
+
+        // Resolve provider and model from the default runtime (single source of truth).
+        let default_runtime = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .ok_or_else(|| "No default runtime configured".to_string())?;
+
+        // Build AgentProvider from runtime metadata (bundled or registry).
+        let provider = peekoo_agent::config::AgentProvider::from_registry(
+            &default_runtime.provider_id,
+            &default_runtime.command,
+            default_runtime.args.clone(),
+        );
+
+        let model_id = default_runtime.config.default_model.as_deref();
+
+        let (mut config, settings_version) =
+            self.settings.to_agent_config(config, provider, model_id)?;
 
         // Enable session persistence.
         config.no_session = false;
         config.session_dir = Some(self.session_dir.clone());
 
+        let runtime_id = config.provider.id();
+
+        // Apply adapter-specific launch env from the runtime's ProviderConfig.
+        if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
+            let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
+            let adapter_env =
+                adapter.build_launch_env(&runtime_config, self.bundled_node_bin_dir.as_deref());
+            for (key, value) in adapter_env {
+                config.environment.entry(key).or_insert(value);
+            }
+        }
+
+        if let Some(path) = &self.bundled_opencode_path {
+            config.environment.insert(
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            );
+        }
+
+        config.mcp_servers =
+            crate::agent_scheduler::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
+
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
-        if let Ok(mut guard) = self.resume_session_path.lock() {
-            config.session_path = guard.take();
+        if let Ok(mut guard) = self.resume_session_path.lock()
+            && let Some(path) = guard.take()
+        {
+            config.resume_session_id = Some(path.to_string_lossy().into_owned());
         }
 
         let reactor = asupersync::runtime::reactor::create_reactor()
@@ -939,31 +1430,101 @@ impl AgentApplication {
             .build()
             .map_err(|e| format!("Runtime error: {e}"))?;
 
-        let service = runtime
-            .block_on(AgentService::new(config))
-            .map_err(|e| format!("Agent init error: {e}"))?;
-
-        // Spawn MCP connection in background to avoid blocking chat startup
-        // The agent will respond immediately, and tools will be added when ready
-        self.spawn_mcp_connection_task();
+        let service = runtime.block_on(AgentService::new(config)).map_err(|e| {
+            if peekoo_agent::backend::acp::is_auth_required_error(&e) {
+                // Use a structured prefix so callers (e.g. Tauri command layer)
+                // can distinguish auth failures from generic init errors.
+                format!("AUTH_REQUIRED:{runtime_id}")
+            } else {
+                format!("Agent init error: {e}")
+            }
+        })?;
 
         Ok((service, settings_version))
     }
 
+    fn get_app_language_or_en(&self) -> String {
+        self.get_app_language().unwrap_or_else(|_| "en".to_string())
+    }
+
+    fn plugin_dir_for_key(&self, plugin_key: &str) -> Option<PathBuf> {
+        self.plugin_registry
+            .discover()
+            .into_iter()
+            .find_map(|(plugin_dir, manifest)| {
+                (manifest.plugin.key == plugin_key).then_some(plugin_dir)
+            })
+    }
+
+    fn plugin_root_for_panel_entry(entry_path: &Path) -> Option<PathBuf> {
+        let mut cursor = entry_path.parent();
+        while let Some(dir) = cursor {
+            if dir.join("peekoo-plugin.toml").is_file() {
+                return Some(dir.to_path_buf());
+            }
+            cursor = dir.parent();
+        }
+        None
+    }
+
+    fn plugin_locale_bootstrap_script(locale_literal: &str, lang_literal: &str) -> String {
+        format!(
+            r#"<script>(function() {{
+  const locale = {locale_literal};
+  const language = {lang_literal};
+  const hasOwn = Object.prototype.hasOwnProperty;
+  const getByPath = (obj, path) => path.split(".").reduce((acc, key) => (
+    acc && hasOwn.call(acc, key) ? acc[key] : undefined
+  ), obj);
+  const t = (key, fallback = "") => {{
+    const value = getByPath(locale, key);
+    return typeof value === "string" ? value : (fallback || key);
+  }};
+  window.__PEEKOO_PLUGIN_LOCALE__ = locale;
+  window.__PEEKOO_PLUGIN_LANG__ = language;
+  window.peekooPluginT = t;
+  const apply = (attr, setter) => {{
+    document.querySelectorAll(`[${{attr}}]`).forEach((el) => {{
+      const key = el.getAttribute(attr);
+      if (!key) return;
+      const value = t(key, "");
+      if (!value) return;
+      setter(el, value);
+    }});
+  }};
+  const bootstrap = () => {{
+    apply("data-i18n", (el, value) => {{ el.textContent = value; }});
+    apply("data-i18n-placeholder", (el, value) => {{ el.setAttribute("placeholder", value); }});
+    apply("data-i18n-title", (el, value) => {{ el.setAttribute("title", value); }});
+  }};
+  if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", bootstrap, {{ once: true }});
+  }} else {{
+    bootstrap();
+  }}
+}})();</script>"#
+        )
+    }
+
+    fn inject_panel_bootstrap_script(html: &str, script: &str) -> String {
+        if html.contains("</head>") {
+            return html.replacen("</head>", &format!("{script}</head>"), 1);
+        }
+        if html.contains("</body>") {
+            return html.replacen("</body>", &format!("{script}</body>"), 1);
+        }
+        format!("{script}{html}")
+    }
+
     fn resolved_config(&self) -> Result<AgentServiceConfig, String> {
-        let skills_dir = self.workspace_dir.join("skills");
-        let agent_skills = if skills_dir.is_dir() {
-            vec![skills_dir]
-        } else {
-            Vec::new()
-        };
+        let agent_skills = skill_discovery_roots();
 
         // Inject task activity summary so the agent has context.
         let system_prompt = self.task_service.task_activity_summary().ok();
 
         Ok(AgentServiceConfig {
-            working_directory: self.workspace_dir.clone(),
-            persona_dir: Some(self.workspace_dir.clone()),
+            working_directory: self.agent_workspace_dir.clone(),
+            persona_dir: Some(self.agent_workspace_dir.clone()),
             agent_skills,
             system_prompt,
             auto_discover: false,
@@ -975,17 +1536,29 @@ impl AgentApplication {
         let mut env = Vec::new();
 
         if let Ok(config) = self.resolved_config()
-            && let Ok((resolved, _)) = self.settings.to_agent_config(config)
+            && let Ok(Some(runtime)) = self.provider_service.get_default_runtime()
         {
-            if let Some(provider) = resolved.provider {
-                env.push(("PEEKOO_AGENT_PROVIDER".to_string(), provider));
+            // Build AgentProvider from runtime metadata (bundled or registry).
+            let provider = peekoo_agent::config::AgentProvider::from_registry(
+                &runtime.provider_id,
+                &runtime.command,
+                runtime.args.clone(),
+            );
+
+            if let Ok((resolved, _)) = self.settings.to_agent_config(
+                config,
+                provider,
+                runtime.config.default_model.as_deref(),
+            ) {
+                env.extend(build_task_runtime_launch_env(&resolved));
             }
-            if let Some(model) = resolved.model {
-                env.push(("PEEKOO_AGENT_MODEL".to_string(), model));
-            }
-            if let Some(api_key) = resolved.api_key {
-                env.push(("PEEKOO_AGENT_API_KEY".to_string(), api_key));
-            }
+        }
+
+        if let Some(path) = &self.bundled_opencode_path {
+            env.push((
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            ));
         }
 
         if let Ok(data_dir) = peekoo_paths::peekoo_global_data_dir() {
@@ -1023,88 +1596,6 @@ impl AgentApplication {
             follow_up_trigger,
             task_change_callback,
         )
-    }
-
-    /// Spawn a background task to connect to MCP servers and add tools asynchronously.
-    /// This prevents blocking the chat startup while waiting for MCP connections.
-    fn spawn_mcp_connection_task(&self) {
-        let agent_weak = Arc::downgrade(&self.agent);
-
-        // Get URLs - if None, no need to spawn task
-        let native_url = crate::mcp_server::get_mcp_url();
-        let plugins_url = crate::mcp_server::get_mcp_plugins_url();
-
-        if native_url.is_none() && plugins_url.is_none() {
-            return;
-        }
-
-        tokio::spawn(async move {
-            // Helper to connect and add tools
-            async fn try_connect_and_add_tools(
-                url: &str,
-                agent_weak: &std::sync::Weak<Mutex<Option<AgentService>>>,
-                endpoint_type: &str,
-            ) {
-                tracing::debug!(
-                    url = url,
-                    endpoint = endpoint_type,
-                    "Connecting to MCP endpoint"
-                );
-
-                match peekoo_agent::mcp_client::connect_http_mcp_tools(url).await {
-                    Ok((tools, handle)) => {
-                        tracing::info!(
-                            tool_count = tools.len(),
-                            url = url,
-                            endpoint = endpoint_type,
-                            "MCP tools connected, registering with agent"
-                        );
-
-                        // Try to get the agent and add tools
-                        if let Some(agent_arc) = agent_weak.upgrade() {
-                            if let Ok(mut guard) = agent_arc.lock() {
-                                if let Some(ref mut service) = *guard {
-                                    service.register_native_tools(tools);
-                                    service.store_mcp_handle(handle);
-                                    tracing::info!(
-                                        endpoint = endpoint_type,
-                                        "MCP tools registered successfully"
-                                    );
-                                } else {
-                                    tracing::warn!(
-                                        endpoint = endpoint_type,
-                                        "Agent service not available for tool registration"
-                                    );
-                                }
-                            } else {
-                                tracing::warn!(
-                                    endpoint = endpoint_type,
-                                    "Could not lock agent mutex to register tools"
-                                );
-                            }
-                        } else {
-                            tracing::warn!(
-                                endpoint = endpoint_type,
-                                "Agent dropped before MCP tools could be registered"
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        tracing::warn!(endpoint = endpoint_type, url = url, error = %e, "Failed to connect to MCP server");
-                    }
-                }
-            }
-
-            // Connect to native tools
-            if let Some(url) = native_url {
-                try_connect_and_add_tools(&url, &agent_weak, "native").await;
-            }
-
-            // Connect to plugin tools
-            if let Some(url) = plugins_url {
-                try_connect_and_add_tools(&url, &agent_weak, "plugins").await;
-            }
-        });
     }
 }
 
@@ -1189,6 +1680,10 @@ fn install_discovered_plugins(plugin_registry: &Arc<PluginRegistry>) {
 mod tests {
     use std::sync::{Arc, Mutex};
 
+    use peekoo_agent::config::{
+        AgentProvider, AgentServiceConfig, PEEKOO_AGENT_PROVIDER_ARGS_ENV,
+        PEEKOO_AGENT_PROVIDER_COMMAND_ENV,
+    };
     use peekoo_notifications::{MoodReactionService, NotificationService, PeekBadgeService};
     use peekoo_plugin_host::PluginRegistry;
     use peekoo_scheduler::Scheduler;
@@ -1196,7 +1691,10 @@ mod tests {
     use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
 
-    use super::{format_error_chain, install_discovered_plugins, should_restore_agent};
+    use super::{
+        build_task_runtime_launch_env, format_error_chain, install_discovered_plugins,
+        should_restore_agent,
+    };
     use std::error::Error as StdError;
     use std::fmt;
 
@@ -1308,6 +1806,34 @@ mod tests {
         fn load_task(&self, _: &str) -> Result<TaskDto, String> {
             Err("not implemented".into())
         }
+    }
+
+    #[test]
+    fn build_task_runtime_launch_env_includes_runtime_command_and_args() {
+        let config = AgentServiceConfig {
+            provider: AgentProvider::from_registry(
+                "pi-acp",
+                "/tmp/pi-acp",
+                vec!["serve".to_string(), "--json".to_string()],
+            ),
+            model: Some("test-model".to_string()),
+            api_key: Some("secret".to_string()),
+            ..Default::default()
+        };
+
+        let env = build_task_runtime_launch_env(&config);
+
+        assert!(env.contains(&("PEEKOO_AGENT_PROVIDER".to_string(), "pi-acp".to_string())));
+        assert!(env.contains(&(
+            PEEKOO_AGENT_PROVIDER_COMMAND_ENV.to_string(),
+            "/tmp/pi-acp".to_string(),
+        )));
+        assert!(env.contains(&(
+            PEEKOO_AGENT_PROVIDER_ARGS_ENV.to_string(),
+            "[\"serve\",\"--json\"]".to_string(),
+        )));
+        assert!(env.contains(&("PEEKOO_AGENT_MODEL".to_string(), "test-model".to_string())));
+        assert!(env.contains(&("PEEKOO_AGENT_API_KEY".to_string(), "secret".to_string())));
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

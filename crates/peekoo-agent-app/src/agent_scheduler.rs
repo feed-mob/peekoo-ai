@@ -21,16 +21,23 @@ pub struct AgentScheduler {
     task_service: Arc<SqliteTaskService>,
     shutdown_token: tokio_util::sync::CancellationToken,
     launch_env: Arc<Mutex<Vec<(String, String)>>>,
+    context_prompt: Arc<Mutex<Option<String>>>,
+    bundled_acp_path: Option<std::path::PathBuf>,
 }
 
 impl AgentScheduler {
-    pub fn new(task_service: Arc<SqliteTaskService>) -> Self {
+    pub fn new(
+        task_service: Arc<SqliteTaskService>,
+        bundled_acp_path: Option<std::path::PathBuf>,
+    ) -> Self {
         tracing::info!("AgentScheduler initialized");
         Self {
             scheduler: Scheduler::new(),
             task_service,
             shutdown_token: tokio_util::sync::CancellationToken::new(),
             launch_env: Arc::new(Mutex::new(Vec::new())),
+            context_prompt: Arc::new(Mutex::new(None)),
+            bundled_acp_path,
         }
     }
 
@@ -40,12 +47,20 @@ impl AgentScheduler {
         }
     }
 
+    pub fn set_context_prompt(&self, prompt: String) {
+        if let Ok(mut guard) = self.context_prompt.lock() {
+            *guard = Some(prompt);
+        }
+    }
+
     pub fn start(&self) {
         tracing::info!("AgentScheduler starting - will check for tasks every 30 seconds");
 
         let task_service = Arc::clone(&self.task_service);
         let shutdown = self.shutdown_token.clone();
         let launch_env = Arc::clone(&self.launch_env);
+        let context_prompt = Arc::clone(&self.context_prompt);
+        let bundled_acp_path = self.bundled_acp_path.clone();
 
         let _ = self
             .scheduler
@@ -58,8 +73,16 @@ impl AgentScheduler {
                 let task_service = Arc::clone(&task_service);
                 let shutdown = shutdown.clone();
                 let launch_env = Arc::clone(&launch_env);
+                let context_prompt = Arc::clone(&context_prompt);
+                let bundled_acp_path = bundled_acp_path.clone();
 
-                Self::spawn_worker(task_service, shutdown, launch_env);
+                Self::spawn_worker(
+                    task_service,
+                    shutdown,
+                    launch_env,
+                    context_prompt,
+                    bundled_acp_path,
+                );
             }
         });
 
@@ -72,6 +95,8 @@ impl AgentScheduler {
             Arc::clone(&self.task_service),
             self.shutdown_token.clone(),
             Arc::clone(&self.launch_env),
+            Arc::clone(&self.context_prompt),
+            self.bundled_acp_path.clone(),
         );
     }
 
@@ -86,6 +111,8 @@ impl AgentScheduler {
         task_service: Arc<SqliteTaskService>,
         shutdown: tokio_util::sync::CancellationToken,
         launch_env: Arc<Mutex<Vec<(String, String)>>>,
+        context_prompt: Arc<Mutex<Option<String>>>,
+        bundled_acp_path: Option<std::path::PathBuf>,
     ) {
         std::thread::spawn(move || {
             tracing::info!("AgentScheduler: Spawning worker thread for task execution");
@@ -118,8 +145,15 @@ impl AgentScheduler {
                 }
 
                 let launch_env = launch_env.lock().map(|g| g.clone()).unwrap_or_default();
-                if let Err(e) =
-                    check_and_execute_tasks(&task_service, mcp_address, &launch_env).await
+                let context_prompt = context_prompt.lock().ok().and_then(|g| g.clone());
+                if let Err(e) = check_and_execute_tasks(
+                    &task_service,
+                    mcp_address,
+                    &launch_env,
+                    context_prompt.as_deref(),
+                    bundled_acp_path.as_deref(),
+                )
+                .await
                 {
                     tracing::error!("AgentScheduler: Error during task execution: {}", e);
                 } else {
@@ -132,10 +166,32 @@ impl AgentScheduler {
     }
 }
 
+fn resolve_acp_command_path(
+    bundled_acp_path: Option<std::path::PathBuf>,
+    current_exe: Option<std::path::PathBuf>,
+) -> std::path::PathBuf {
+    if let Some(path) = bundled_acp_path.filter(|path| path.exists() && path.is_file()) {
+        return path;
+    }
+
+    let bin_name = if cfg!(windows) {
+        "peekoo-agent-acp.exe"
+    } else {
+        "peekoo-agent-acp"
+    };
+
+    current_exe
+        .and_then(|exe| exe.parent().map(|p| p.join(bin_name)))
+        .filter(|p| p.exists())
+        .unwrap_or_else(|| std::path::PathBuf::from(bin_name))
+}
+
 async fn check_and_execute_tasks(
     task_service: &SqliteTaskService,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
+    context_prompt: Option<&str>,
+    bundled_acp_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
     tracing::info!("AgentScheduler: Querying database for agent tasks");
 
@@ -201,7 +257,16 @@ async fn check_and_execute_tasks(
             "AgentScheduler: Starting ACP execution for task {}",
             task.id
         );
-        if let Err(e) = execute_task_acp(task_service, task, mcp_address, launch_env).await {
+        if let Err(e) = execute_task_acp(
+            task_service,
+            task,
+            mcp_address,
+            launch_env,
+            context_prompt,
+            bundled_acp_path,
+        )
+        .await
+        {
             tracing::error!(
                 "AgentScheduler: Failed to execute task {} via ACP: {}",
                 task.id,
@@ -253,6 +318,8 @@ async fn execute_task_acp(
     task: &peekoo_task_app::TaskDto,
     mcp_address: Option<std::net::SocketAddr>,
     launch_env: &[(String, String)],
+    context_prompt: Option<&str>,
+    bundled_acp_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
     use agent_client_protocol::Agent as _;
 
@@ -317,17 +384,10 @@ async fn execute_task_acp(
         task.id
     );
 
-    let bin_name = if cfg!(windows) {
-        "peekoo-agent-acp.exe"
-    } else {
-        "peekoo-agent-acp"
-    };
-
-    let command_path = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.parent().map(|p| p.join(bin_name)))
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from(bin_name));
+    let command_path = resolve_acp_command_path(
+        bundled_acp_path.map(std::path::Path::to_path_buf),
+        std::env::current_exe().ok(),
+    );
 
     // Pass MCP server address via environment variables
     let mut cmd = Command::new(&command_path);
@@ -461,11 +521,15 @@ async fn execute_task_acp(
                 prompt_json.len()
             );
 
+            // Build content blocks: context prompt first, then task context
+            let mut content_blocks = Vec::new();
+            if let Some(ctx) = context_prompt {
+                content_blocks.push(ContentBlock::Text(TextContent::new(ctx.to_string())));
+            }
+            content_blocks.push(ContentBlock::Text(TextContent::new(prompt_json)));
+
             let prompt_response = conn
-                .prompt(PromptRequest::new(
-                    session.session_id,
-                    vec![ContentBlock::Text(TextContent::new(prompt_json))],
-                ))
+                .prompt(PromptRequest::new(session.session_id, content_blocks))
                 .await
                 .map_err(|e| {
                     tracing::error!(
@@ -554,7 +618,9 @@ async fn execute_task_acp(
     Ok(())
 }
 
-fn build_session_mcp_servers(mcp_address: Option<std::net::SocketAddr>) -> Vec<McpServer> {
+pub(crate) fn build_session_mcp_servers(
+    mcp_address: Option<std::net::SocketAddr>,
+) -> Vec<McpServer> {
     mcp_address
         .map(|addr| {
             let base_url = peekoo_mcp_server::mcp_url_for(addr);
@@ -592,7 +658,7 @@ fn build_task_comment_context(events: &[peekoo_task_app::TaskEventDto]) -> Vec<s
 
 #[cfg(test)]
 mod tests {
-    use super::{build_session_mcp_servers, build_task_comment_context};
+    use super::{build_session_mcp_servers, build_task_comment_context, resolve_acp_command_path};
     use peekoo_task_app::TaskEventDto;
 
     #[test]
@@ -636,6 +702,36 @@ mod tests {
         assert_eq!(comments[0]["id"], "comment-1");
         assert_eq!(comments[1]["id"], "comment-2");
         assert_eq!(comments[1]["text"], "@peekoo-agent follow up");
+    }
+
+    #[test]
+    fn resolve_acp_command_path_prefers_explicit_bundled_path() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let bundled = temp.path().join("peekoo-agent-acp");
+        std::fs::write(&bundled, "").expect("create bundled binary");
+
+        let resolved =
+            resolve_acp_command_path(Some(bundled.clone()), Some(temp.path().join("desktop")));
+
+        assert_eq!(resolved, bundled);
+    }
+
+    #[test]
+    fn resolve_acp_command_path_uses_sibling_binary_when_present() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let exe_dir = temp.path().join("bin");
+        std::fs::create_dir_all(&exe_dir).expect("create bin dir");
+        let current_exe = exe_dir.join("peekoo-desktop");
+        let sibling = exe_dir.join(if cfg!(windows) {
+            "peekoo-agent-acp.exe"
+        } else {
+            "peekoo-agent-acp"
+        });
+        std::fs::write(&sibling, "").expect("create sibling binary");
+
+        let resolved = resolve_acp_command_path(None, Some(current_exe));
+
+        assert_eq!(resolved, sibling);
     }
 }
 

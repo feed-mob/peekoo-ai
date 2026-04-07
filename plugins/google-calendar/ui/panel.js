@@ -705,7 +705,7 @@ function applySnapshot(snapshot) {
   }
 
   renderAccountSection(status);
-  showError(status.lastError ?? null);
+  showError(status.connected ? (status.lastError ?? null) : null);
   renderCalendarSettings();
   renderAgenda(snapshot);
 }
@@ -713,12 +713,18 @@ function applySnapshot(snapshot) {
 async function refreshSnapshot(refresh = false) {
   try {
     if (refresh) {
+      console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+        toolName: "google_calendar_refresh",
+      });
       await invoke("plugin_call_panel_tool", {
         pluginKey: "google-calendar",
         toolName: "google_calendar_refresh",
         argsJson: "{}",
       });
     }
+    console.debug("[google-calendar-panel] invoke plugin_query_data", {
+      providerName: "panel_snapshot",
+    });
     const raw = await invoke("plugin_query_data", {
       pluginKey: "google-calendar",
       providerName: "panel_snapshot",
@@ -734,6 +740,10 @@ async function pollOauthStatus() {
     return;
   }
   try {
+    console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+      toolName: "google_calendar_connect_status",
+      flowId: oauthFlowId,
+    });
     const raw = await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_connect_status",
@@ -798,6 +808,9 @@ settingsToggleButton?.addEventListener("click", () => {
 saveCalendarSettingsButton?.addEventListener("click", async () => {
   showError(null);
   try {
+    console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+      toolName: "google_calendar_update_calendar_selection",
+    });
     const raw = await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_update_calendar_selection",
@@ -832,6 +845,9 @@ taskModal?.addEventListener("click", (event) => {
 connectButton.addEventListener("click", async () => {
   showError(null);
   try {
+    console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+      toolName: "google_calendar_connect_start",
+    });
     const raw = await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_connect_start",
@@ -853,6 +869,9 @@ refreshButton.addEventListener("click", () => {
 disconnectButton.addEventListener("click", async () => {
   showError(null);
   try {
+    console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+      toolName: "google_calendar_disconnect",
+    });
     await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_disconnect",
@@ -873,12 +892,17 @@ saveClientJsonButton.addEventListener("click", async () => {
       return;
     }
     const clientJson = await file.text();
+    console.debug("[google-calendar-panel] invoke plugin_call_panel_tool", {
+      toolName: "google_calendar_set_client_json",
+      fileName: file.name,
+    });
     await invoke("plugin_call_panel_tool", {
       pluginKey: "google-calendar",
       toolName: "google_calendar_set_client_json",
       argsJson: JSON.stringify({ clientJson }),
     });
     clientJsonInput.value = "";
+    showSuccess("Client credentials uploaded successfully. You can now connect your Google Calendar.");
     await refreshSnapshot(false);
   } catch (error) {
     showError(String(error));

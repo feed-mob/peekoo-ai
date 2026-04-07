@@ -1,0 +1,515 @@
+{
+  "common": {
+    "retry": "重試",
+    "close": "關閉",
+    "cancel": "取消",
+    "clear": "清除",
+    "delete": "刪除",
+    "dismiss": "關閉提示",
+    "back": "返回",
+    "refresh": "重新整理",
+    "saving": "儲存中...",
+    "save": "儲存"
+  },
+  "panel": {
+    "chat": "聊天",
+    "tasks": "任務",
+    "settings": "設定",
+    "pomodoro": "番茄鐘",
+    "plugins": "外掛程式",
+    "about": "關於 Peekoo"
+  },
+  "menu": {
+    "chat": "聊天",
+    "tasks": "任務",
+    "pomodoro": "番茄鐘",
+    "plugins": "外掛程式"
+  },
+  "settings": {
+    "loading": "正在載入設定...",
+    "failedLoad": "載入設定失敗：{{error}}",
+    "appearance": "外觀",
+    "activePet": "當前精靈",
+    "language": "語言",
+    "theme": {
+      "light": "淺色",
+      "dark": "深色",
+      "system": "跟隨系統"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "精靈形象",
+      "loadingPreview": "載入中..."
+    },
+    "logging": "日誌",
+    "loggingHelp": "設定執行階段日誌級別以便排查問題。更改後需重新啟動生效。",
+    "acpRuntimes": "ACP 執行階段",
+    "logLevelRestartMsg": "日誌級別已更新。立即重新啟動 Peekoo 以套用新的日誌級別？",
+    "restartRequired": "需要重新啟動",
+    "restartNow": "立即重新啟動",
+    "later": "稍後"
+  },
+  "chat": {
+    "newChat": "新增對話",
+    "settings": "設定",
+    "hideSettings": "隱藏設定",
+    "empty": "開始和你的 Peekoo 精靈聊天吧！",
+    "thinking": "思考中...",
+    "inputPlaceholder": "輸入訊息...",
+    "authBanner": {
+      "message": "需要先登入才能回覆。",
+      "loginButton": "登入"
+    },
+    "thinkingBlock": "思考中...",
+    "toolCall": {
+      "running": "執行中",
+      "arguments": "參數"
+    }
+  },
+  "chatSettings": {
+    "loading": "正在載入設定...",
+    "failedLoad": "載入設定失敗。",
+    "title": "智慧體設定",
+    "provider": "提供商",
+    "model": "模型",
+    "modelPlaceholder": "例如：gpt-4.1-mini",
+    "baseUrl": "基礎 URL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "最大工具迭代次數",
+    "providerAuthentication": "提供商認證",
+    "skills": "技能",
+    "noSkills": "暫未發現技能。",
+    "noRuntimes": "未安裝任何 ACP 執行階段。",
+    "installRuntimeHelp": "請在設定面板中安裝執行階段以開始使用。",
+    "runtimeNotFound": "未找到所選的執行階段。",
+    "runtimeUnavailable": "之前選擇的執行階段已不可用。",
+    "modelLabel": "模型",
+    "noModelConfigured": "未設定全域模型",
+    "modelHelp": "請在全域執行階段設定中修改。",
+    "skillsHelp": "Peekoo 會從已設定的技能資料夾中自動發現技能。",
+    "uploadSkill": "上傳技能",
+    "deleteSkill": "刪除",
+    "replaceSkillTitle": "替換技能",
+    "replaceSkillDescription": "名為「{{skillId}}」的技能已存在。是否替換？",
+    "replaceSkillConfirm": "替換",
+    "skillUploadError": "安裝技能失敗",
+    "skillDeleteError": "刪除技能失敗",
+    "lockedSkillCannotDelete": "內建技能不可刪除",
+    "auth": {
+      "mode": "認證方式",
+      "none": "無",
+      "oauthStatus": "OAuth 狀態",
+      "connected": "已連線",
+      "notConnected": "未連線",
+      "updateApiKey": "更新 API Key",
+      "enterApiKey": "輸入 API Key",
+      "saveApiKey": "儲存 API Key",
+      "apiKeySaved": "API Key 已儲存",
+      "connectOauth": "連線 OAuth",
+      "reconnectOauth": "重新連線 OAuth",
+      "finishedLogin": "我已完成登入",
+      "browserLoginHelp": "瀏覽器登入視窗已開啟。請先在瀏覽器完成 OAuth，再點擊\"我已完成登入\"。",
+      "connectedHelp": "該提供商的 OAuth 已連線。如需重新整理憑證，請使用\"重新連線 OAuth\"。",
+      "connectHelp": "點擊\"連線 OAuth\"使用提供商帳號登入。",
+      "oauthFailed": "OAuth 失敗：{{error}}",
+      "oauthExpired": "OAuth 工作階段已過期，請重新開始。",
+      "oauthConnected": "OAuth 連線成功。",
+      "clearAuth": "清除認證"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "問問 Peekoo...",
+    "openFullChat": "開啟完整聊天",
+    "needAttention": "需要關注",
+    "readingMode": "閱讀模式",
+    "quickReply": "快速回覆",
+    "welcomeMessage": "歡迎！你的 AI 桌面精靈已準備好為你服務！"
+  },
+  "pomodoro": {
+    "loadingSystem": "正在載入系統...",
+    "status": {
+      "focusing": "專注中",
+      "resting": "休息中",
+      "ready": "準備開始",
+      "break": "休息"
+    },
+    "readyToStart": "準備開始了嗎？",
+    "recentSessions": "最近工作階段",
+    "noSessions": "暫無工作階段記錄，最近的專注與休息週期會顯示在這裡。",
+    "mode": {
+      "focus": "專注",
+      "break": "休息"
+    },
+    "focusMemo": "專注備忘",
+    "actions": {
+      "saving": "儲存中...",
+      "applied": "已套用",
+      "saveChanges": "儲存變更",
+      "synced": "已同步"
+    },
+    "controls": {
+      "pause": "暫停",
+      "start": "開始",
+      "reset": "重設",
+      "switchToBreak": "切換到休息",
+      "switchToWork": "切換到專注"
+    },
+    "outcome": {
+      "completed": "已完成",
+      "interrupted": "已中斷"
+    },
+    "dateFilter": {
+      "recent6": "最近 6 筆",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last7days": "最近 7 天",
+      "last30days": "最近 30 天"
+    },
+    "memo": {
+      "workPlaceholder": "你完成了什麼？",
+      "breakPlaceholder": "休息得怎麼樣？"
+    },
+    "settings": {
+      "longBreak": "長休息",
+      "cycle": "週期",
+      "autopilot": "自動模式"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "專注",
+      "focusPaused": "專注（已暫停）",
+      "break": "休息",
+      "breakPaused": "休息（已暫停）"
+    }
+  },
+  "about": {
+    "loading": "正在載入關於資訊...",
+    "failedLoad": "載入應用程式資訊失敗",
+    "checking": "檢查中...",
+    "tryAgain": "重試",
+    "tagline": "桌面夥伴與精靈",
+    "updateAvailable": "有可用更新",
+    "upToDate": "已是最新",
+    "current": "目前版本",
+    "latest": "最新版本",
+    "published": "發佈日期",
+    "devUpdateDisabled": "開發環境下不執行更新檢查。",
+    "releaseNotes": "更新說明",
+    "checkForUpdates": "檢查更新",
+    "installing": "安裝中...",
+    "installAndRestart": "安裝並重新啟動",
+    "openLogs": "開啟日誌",
+    "unknownError": "未知錯誤"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "已安裝",
+      "store": "商店"
+    },
+    "panel": {
+      "defaultTitle": "外掛程式",
+      "failedLoad": "載入外掛程式面板失敗：{{error}}"
+    },
+    "loadingInstalled": "正在載入外掛程式...",
+    "loadingStore": "正在載入外掛程式商店...",
+    "loadingRuntimeSettings": "正在載入外掛程式設定...",
+    "system": "外掛程式系統",
+    "installedTitle": "已安裝外掛程式",
+    "storeLabel": "外掛程式商店",
+    "availableFromGithub": "來自 GitHub 的可用外掛程式",
+    "emptyInstalled": "目前沒有已安裝外掛程式。可在\"商店\"頁籤安裝外掛程式。",
+    "emptyStore": "商店中暫無可用外掛程式。",
+    "enabled": "已啟用",
+    "disabled": "已停用",
+    "enable": "啟用",
+    "disable": "停用",
+    "installed": "已安裝",
+    "available": "可安裝",
+    "updateAvailable": "可更新",
+    "update": "更新",
+    "install": "安裝",
+    "removePlugin": "移除外掛程式",
+    "permissions": "權限",
+    "tools": "工具",
+    "panels": "面板",
+    "location": "位置",
+    "openPanels": "開啟面板",
+    "enableHint": "啟用該外掛程式後才可開啟其面板並使用其執行階段能力。",
+    "runtimeSettings": "執行階段設定",
+    "runtimeSettingsHint": "設定提醒時間和全域免打擾時段。",
+    "dndOn": "勿擾已開",
+    "dndOff": "勿擾已關",
+    "saveSettings": "儲存設定",
+    "permissionLabels": {
+      "bridge:fs_read": "橋接讀取",
+      "notifications": "通知",
+      "pet:mood": "精靈心情",
+      "scheduler": "排程器",
+      "state:read": "狀態讀取",
+      "state:write": "狀態寫入"
+    }
+  },
+  "tasks": {
+    "title": "任務",
+    "loading": "正在載入任務...",
+    "doneCounter": "已完成 {{completed}} / {{total}}",
+    "tabs": {
+      "today": "今天",
+      "week": "本週",
+      "all": "全部",
+      "done": "已完成"
+    },
+    "mainTab": {
+      "tasks": "任務",
+      "activity": "動態"
+    },
+    "sections": {
+      "overdue": "已逾期",
+      "unscheduled": "未排程",
+      "completedToday": "今日完成"
+    },
+    "empty": {
+      "todayTitle": "今天沒有任務",
+      "todaySubtitle": "安排一個任務或新增一個任務",
+      "weekTitle": "本週暫無任務",
+      "weekSubtitle": "為接下來一週安排任務",
+      "allTitle": "暫無任務",
+      "allSubtitle": "建立一個任務開始吧",
+      "doneTitle": "還沒有已完成任務",
+      "doneSubtitle": "完成一些任務後會顯示在這裡"
+    },
+    "quickInput": {
+      "placeholder": "新增任務... 例如\"明天下午3點開會1小時，高優先級\"",
+      "ariaDescription": "任務描述",
+      "ariaAdd": "新增任務"
+    },
+    "activity": {
+      "yesterday": "昨天",
+      "noActivity": "暫無動態",
+      "eventsAppearHere": "任務事件會顯示在這裡",
+      "addCommentPlaceholder": "新增評論...",
+      "addComment": "新增評論",
+      "adding": "新增中...",
+      "you": "你",
+      "agent": "智慧體"
+    },
+    "deleteDialog": {
+      "title": "刪除任務？",
+      "message": "確定要刪除\"{{title}}\"嗎？此操作無法復原。",
+      "deleting": "刪除中..."
+    },
+    "priority": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "status": {
+      "todo": "待辦",
+      "in_progress": "進行中",
+      "done": "已完成"
+    },
+    "priorityTitle": "{{priority}}優先級",
+    "agentWorking": "智慧體正在處理該任務",
+    "live": "進行中",
+    "agentWorkStatus": "智慧體狀態：{{status}}",
+    "clickToMoveTo": "點擊切換到 {{status}}",
+    "detail": {
+      "title": "任務詳情",
+      "status": "狀態",
+      "priority": "優先級",
+      "assignee": "負責人",
+      "agent": "智慧體",
+      "labels": "標籤",
+      "schedule": "行程",
+      "scheduled": "已排程",
+      "repeat": "重複",
+      "doesNotRepeat": "不重複",
+      "time": "時間",
+      "start": "開始",
+      "end": "結束",
+      "durationOptional": "時長（可選）",
+      "durationPlaceholder": "例如 30",
+      "minutes": "分鐘",
+      "description": "描述",
+      "descriptionPlaceholder": "新增備註、細節或子任務清單..."
+    },
+    "recurrence": {
+      "daily": "每天",
+      "weekdays": "每個工作日",
+      "monWedFri": "週一 / 週三 / 週五",
+      "tueThu": "週二 / 週四",
+      "weekly": "每週",
+      "monthly": "每月"
+    },
+    "activityFeed": {
+      "created": "已建立",
+      "createdFull": "建立了\"{{title}}\"",
+      "statusChanged": "狀態",
+      "statusChangedFull": "{{from}} → {{to}}（\"{{title}}\"）",
+      "assigned": "分配",
+      "assignedFull": "將\"{{title}}\"分配給{{to}}",
+      "labeled": "標籤",
+      "labeledFull": "為\"{{title}}\"新增了\"{{label}}\"標籤",
+      "unlabeled": "標籤",
+      "unlabeledFull": "從\"{{title}}\"移除了\"{{label}}\"標籤",
+      "deleted": "已刪除",
+      "deletedFull": "刪除了\"{{title}}\"",
+      "updated": "已更新",
+      "updatedFull": "更新了\"{{title}}\"",
+      "comment": "評論",
+      "commentFull": "新增了一條評論",
+      "unknownTask": "未知任務",
+      "deleteComment": "刪除評論"
+    },
+    "agentWork": {
+      "pending": "等待中",
+      "executing": "執行中",
+      "failed": "失敗",
+      "attempts_one": "{{count}} 次嘗試",
+      "attempts_other": "{{count}} 次嘗試"
+    },
+    "formatting": {
+      "today": "今天",
+      "tomorrow": "明天",
+      "minutesShort": "分",
+      "hoursShort": "時"
+    },
+    "sync": {
+      "syncing": "同步中...",
+      "waiting": "等待同步",
+      "updatedJustNow": "剛剛更新",
+      "updatedSecondsAgo": "{{seconds}} 秒前更新",
+      "updatedMinutesAgo": "{{minutes}} 分鐘前更新"
+    },
+    "toast": {
+      "failedToLoad": "載入任務失敗",
+      "created": "任務已建立",
+      "failedToCreate": "建立任務失敗",
+      "completed": "任務已完成！",
+      "failedToUpdate": "更新任務失敗",
+      "failedToSave": "儲存變更失敗",
+      "deleted": "任務已刪除",
+      "failedToDelete": "刪除任務失敗"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "剛剛",
+    "ago": "前",
+    "daysAgo": "天前"
+  },
+  "updater": {
+    "title": "有可用更新",
+    "message": "Peekoo {{version}} 已可用。立即安裝並重新啟動？",
+    "messageWithNotes": "Peekoo {{version}} 已可用。\n\n{{notes}}\n\n立即安裝並重新啟動？",
+    "installButton": "安裝並重新啟動",
+    "later": "稍後"
+  },
+  "agentRuntimes": {
+    "title": "ACP 執行階段",
+    "description": "管理 ACP 智慧體及其 LLM 設定",
+    "refresh": "重新整理",
+    "addRuntime": "新增執行階段",
+    "activeRuntime": "目前執行階段",
+    "activeRuntimeDescription": "新工作階段使用的 ACP 執行階段",
+    "defaultModel": "預設模型",
+    "installedRuntimes": "已安裝的執行階段",
+    "noRuntimesInstalled": "尚未安裝任何執行階段",
+    "availableRuntimes": "可用執行階段",
+    "showingRuntimes": "顯示 {{count}} 個執行階段",
+    "searchPlaceholder": "搜尋智慧體（如 Gemini、Cursor、Claude）...",
+    "noRuntimesFound": "未找到執行階段",
+    "loading": "載入中...",
+    "loadMore": "載入更多智慧體",
+    "default": "預設",
+    "modelLabel": "模型：",
+    "setDefault": "設為預設",
+    "login": "登入",
+    "configure": "設定",
+    "installing": "安裝中...",
+    "install": "安裝",
+    "installed": "已安裝",
+    "unsupported": "不支援",
+    "noRuntime": "無執行階段",
+    "switchRuntime": "切換執行階段",
+    "noRuntimesInstalledOption": "未安裝任何執行階段",
+    "manageRuntimes": "管理執行階段...",
+    "status": {
+      "ready": "就緒",
+      "needsSetup": "需要設定",
+      "error": "錯誤",
+      "loginRequired": "需要登入",
+      "loginAvailable": "可登入",
+      "installing": "安裝中...",
+      "setupRequired": "需要設定",
+      "notInstalled": "未安裝",
+      "discoveringCapabilities": "正在探索能力..."
+    },
+    "installDialog": {
+      "title": "安裝 {{name}}",
+      "description": "選擇如何安裝此 ACP 執行階段。",
+      "customPathRequired": "請輸入自訂安裝路徑",
+      "checkingPrerequisites": "檢查前置條件...",
+      "missing": "缺少：",
+      "allPrerequisitesSatisfied": "所有前置條件已滿足",
+      "notAvailable": "不可用",
+      "binaryPathLabel": "智慧體二進位路徑",
+      "binaryPathPlaceholder": "/path/to/agent_binary",
+      "cancel": "取消"
+    },
+    "configureDialog": {
+      "title": "設定 {{name}}",
+      "description": "管理執行階段設定和認證。",
+      "statusLabel": "狀態",
+      "authSection": "認證",
+      "loginRequired": "需要登入",
+      "hideLoginOptions": "隱藏登入選項",
+      "loginAvailable": "可登入",
+      "modelSection": "模型",
+      "selectModel": "選擇模型",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "預設模型",
+      "defaultModelPlaceholder": "例如：claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "該執行階段不使用 ACP 模型探索。如需可手動輸入模型 ID。",
+      "manualModelPlaceholder": "例如：gpt-4、claude-3-5-sonnet",
+      "noModelsDiscovered": "未發現模型。請手動輸入模型 ID 或重新整理以探索。",
+      "discoverModels": "探索模型",
+      "testing": "測試中...",
+      "testConnection": "測試連線",
+      "versionLabel": "版本：",
+      "advancedSettings": "進階設定",
+      "envVarsLabel": "環境變數",
+      "envVarNamePlaceholder": "變數名",
+      "envVarValuePlaceholder": "值",
+      "addEnvVar": "新增",
+      "customArgsLabel": "自訂參數",
+      "customArgsPlaceholder": "--flag 或 value",
+      "addArgument": "新增參數",
+      "saving": "儲存中..."
+    },
+    "addCustomDialog": {
+      "title": "新增自訂 ACP 執行階段",
+      "description": "註冊本機 ACP 指令，然後設定其 LLM 提供商和模型。",
+      "nameRequired": "名稱和指令為必填項目。",
+      "nameLabel": "執行階段名稱",
+      "namePlaceholder": "我的自訂 ACP 執行階段",
+      "descriptionLabel": "描述",
+      "descriptionPlaceholder": "可選描述",
+      "commandLabel": "指令",
+      "commandPlaceholder": "例如：claude-code-acp",
+      "argsLabel": "參數",
+      "argsPlaceholder": "例如：--acp --experimental-acp",
+      "workingDirLabel": "工作目錄",
+      "workingDirPlaceholder": "可選工作目錄",
+      "cancel": "取消",
+      "adding": "新增中..."
+    }
+  }
+}

@@ -319,20 +319,36 @@ export default function SpriteView() {
       setDragAnimation(null);
     }
   }, []);
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      setDragAnimation(null);
-    };
 
-    // We only listen to mouseup.
-    // We EXCLUDE 'blur' because startDragging often causes the window to lose focus on Windows,
-    // which was likely causing the premature reset to Idle animation.
-    window.addEventListener("mouseup", handleGlobalMouseUp);
+  // Listen for window move events to detect when dragging ends.
+  // On Windows, startDragging() blocks mouse events, so we use window position changes
+  // with a debounce to detect when dragging actually stops.
+  useEffect(() => {
+    if (!dragAnimation) {
+      return;
+    }
+
+    let moveTimeout: ReturnType<typeof setTimeout> | null = null;
+    const win = getCurrentWindow();
+
+    const unlistenPromise = win.listen("tauri://move", () => {
+      // Reset any existing timeout
+      if (moveTimeout) {
+        clearTimeout(moveTimeout);
+      }
+      // Set a new timeout to reset drag animation after movement stops
+      moveTimeout = setTimeout(() => {
+        setDragAnimation(null);
+      }, 100);
+    });
 
     return () => {
-      window.removeEventListener("mouseup", handleGlobalMouseUp);
+      if (moveTimeout) {
+        clearTimeout(moveTimeout);
+      }
+      void unlistenPromise.then((unlisten: () => void) => unlisten());
     };
-  }, []);
+  }, [dragAnimation]);
 
   const handleMouseDown = useCallback(
     async (e: React.MouseEvent) => {

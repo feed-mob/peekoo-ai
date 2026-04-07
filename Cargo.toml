@@ -14,22 +14,25 @@ members = [
   "crates/peekoo-paths",
   "crates/peekoo-scheduler",
   "crates/peekoo-notifications",
+  "crates/peekoo-utils",
   "crates/peekoo-plugin-host",
   "crates/peekoo-plugin-store",
+  "crates/peekoo-node-runtime",
+  "crates/acp-registry-client",
   "crates/peekoo-mcp-server",
+  "crates/peekoo-analytics",
   "apps/desktop-tauri/src-tauri",
 ]
 resolver = "2"
 
 [workspace.dependencies]
-pi = { git = "https://github.com/0xRichardH/pi_agent_rust", branch = "fix/windows-tempfile-persist-retry", package = "pi_agent_rust", default-features = false, features = ["image-resize", "clipboard", "sqlite-sessions"] }
 rusqlite = { version = "0.39", features = ["bundled"] }
 asupersync = "=0.2.9"
 
 [workspace.package]
 edition = "2024"
 license = "MIT"
-version = "0.1.9"
+version = "0.1.23"
 
 [profile.release]
 lto = true

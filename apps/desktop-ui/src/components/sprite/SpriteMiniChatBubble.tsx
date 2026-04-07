@@ -5,6 +5,7 @@ import type { Message } from "@/types/chat";
 import { cn } from "@/lib/utils";
 import { useIsDarkMode } from "@/hooks/use-is-dark-mode";
 import type { MiniChatReplyDisplayMode } from "@/features/chat/chat-session";
+import { useTranslation } from "react-i18next";
 
 interface SpriteMiniChatBubbleProps {
   message: Message | null;
@@ -18,11 +19,12 @@ export function SpriteMiniChatBubble({
   visible,
   thinking = false,
   displayMode = "compact",
-}: SpriteMiniChatBubbleProps): JSX.Element | null {
+}: SpriteMiniChatBubbleProps) {
+  const { t } = useTranslation();
   const isDark = useIsDarkMode();
   const isError = message?.role === "error";
   const isExpanded = displayMode === "expanded";
-  const bubbleText = thinking ? "Thinking..." : message?.text;
+  const bubbleText = thinking ? t("chat.thinking") : message?.text;
   const bubbleKey = thinking ? "thinking" : message?.id;
 
   return (
@@ -59,17 +61,17 @@ export function SpriteMiniChatBubble({
 
           <div className={cn(
             "flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.2em]",
-            thinking ? "text-glow-cyan" : isError ? "text-red-400" : "text-glow-cyan/80"
+            thinking ? "text-glow-cyan" : isError ? "text-red-700 dark:text-red-400" : "text-glow-cyan/80"
           )}>
             {isError ? <AlertCircle size={10} /> : <Sparkles size={10} className={thinking ? "animate-pulse" : ""} />}
             <span>
               {thinking
-                ? "Thinking"
+                ? t("chat.thinking")
                 : isError
-                ? "Need attention"
+                ? t("sprite.needAttention")
                 : isExpanded
-                ? "Reading mode"
-                : "Quick reply"}
+                  ? t("sprite.readingMode")
+                  : t("sprite.quickReply")}
             </span>
           </div>
 

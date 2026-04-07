@@ -8,8 +8,9 @@ default = ["plugin-runtime"]
 plugin-runtime = ["peekoo-plugin-host/plugin-runtime"]
 
 [dependencies]
-agent-client-protocol = "0.10"
+agent-client-protocol = { version = "=0.10.2", features = ["unstable"] }
 peekoo-agent = { path = "../peekoo-agent" }
+peekoo-utils = { path = "../peekoo-utils" }
 peekoo-app-settings = { path = "../peekoo-app-settings" }
 peekoo-agent-auth = { path = "../peekoo-agent-auth" }
 peekoo-task-domain = { path = "../peekoo-task-domain" }
@@ -23,7 +24,8 @@ peekoo-plugin-host = { path = "../peekoo-plugin-host" }
 peekoo-plugin-store = { path = "../peekoo-plugin-store" }
 peekoo-scheduler = { path = "../peekoo-scheduler" }
 peekoo-mcp-server = { path = "../peekoo-mcp-server", features = ["plugin-runtime"] }
-pi = { workspace = true }
+acp-registry-client = { path = "../acp-registry-client" }
+peekoo-node-runtime = { path = "../peekoo-node-runtime" }
 async-trait = "0.1"
 asupersync = { workspace = true }
 rusqlite = { workspace = true }
@@ -38,7 +40,9 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 regex = "1"
 lazy_static = "1"
+anyhow = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
-pi = { workspace = true }
 tokio = { version = "1.50.0", features = ["macros", "rt"] }
+tempfile = "3"

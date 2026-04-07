@@ -1,0 +1,515 @@
+{
+  "common": {
+    "retry": "重试",
+    "close": "关闭",
+    "cancel": "取消",
+    "clear": "清除",
+    "delete": "删除",
+    "dismiss": "关闭提示",
+    "back": "返回",
+    "refresh": "刷新",
+    "saving": "保存中...",
+    "save": "保存"
+  },
+  "panel": {
+    "chat": "聊天",
+    "tasks": "任务",
+    "settings": "设置",
+    "pomodoro": "番茄钟",
+    "plugins": "插件",
+    "about": "关于 Peekoo"
+  },
+  "menu": {
+    "chat": "聊天",
+    "tasks": "任务",
+    "pomodoro": "番茄钟",
+    "plugins": "插件"
+  },
+  "settings": {
+    "loading": "正在加载设置...",
+    "failedLoad": "加载设置失败：{{error}}",
+    "appearance": "外观",
+    "activePet": "当前精灵",
+    "language": "语言",
+    "theme": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统"
+    },
+    "languageOptions": {
+      "en": "English",
+      "zhCN": "简体中文",
+      "zhTW": "繁體中文",
+      "ja": "日本語",
+      "es": "Español",
+      "fr": "Français"
+    },
+    "sprite": {
+      "title": "精灵形象",
+      "loadingPreview": "加载中..."
+    },
+    "logging": "日志",
+    "loggingHelp": "设置运行时日志级别以便排查问题。更改后需重启生效。",
+    "acpRuntimes": "ACP 运行时",
+    "logLevelRestartMsg": "日志级别已更新。立即重启 Peekoo 以应用新的日志级别？",
+    "restartRequired": "需要重启",
+    "restartNow": "立即重启",
+    "later": "稍后"
+  },
+  "chat": {
+    "newChat": "新建会话",
+    "settings": "设置",
+    "hideSettings": "隐藏设置",
+    "empty": "开始和你的 Peekoo 精灵聊天吧！",
+    "thinking": "思考中...",
+    "inputPlaceholder": "输入消息...",
+    "authBanner": {
+      "message": "需要先登录才能回复。",
+      "loginButton": "登录"
+    },
+    "thinkingBlock": "思考中...",
+    "toolCall": {
+      "running": "运行中",
+      "arguments": "参数"
+    }
+  },
+  "chatSettings": {
+    "loading": "正在加载设置...",
+    "failedLoad": "加载设置失败。",
+    "title": "智能体设置",
+    "provider": "提供商",
+    "model": "模型",
+    "modelPlaceholder": "例如：gpt-4.1-mini",
+    "baseUrl": "基础 URL",
+    "baseUrlPlaceholder": "https://your-provider.example/v1",
+    "maxToolIterations": "最大工具迭代次数",
+    "providerAuthentication": "提供商认证",
+    "skills": "技能",
+    "noSkills": "暂未发现技能。",
+    "noRuntimes": "未安装任何 ACP 运行时。",
+    "installRuntimeHelp": "请在设置面板中安装运行时以开始使用。",
+    "runtimeNotFound": "未找到所选的运行时。",
+    "runtimeUnavailable": "之前选择的运行时已不可用。",
+    "modelLabel": "模型",
+    "noModelConfigured": "未配置全局模型",
+    "modelHelp": "请在全局运行时设置中修改。",
+    "skillsHelp": "Peekoo 会从已配置的技能文件夹中自动发现技能。",
+    "uploadSkill": "上传技能",
+    "deleteSkill": "删除",
+    "replaceSkillTitle": "替换技能",
+    "replaceSkillDescription": "名为「{{skillId}}」的技能已存在。是否替换？",
+    "replaceSkillConfirm": "替换",
+    "skillUploadError": "安装技能失败",
+    "skillDeleteError": "删除技能失败",
+    "lockedSkillCannotDelete": "内置技能不可删除",
+    "auth": {
+      "mode": "认证方式",
+      "none": "无",
+      "oauthStatus": "OAuth 状态",
+      "connected": "已连接",
+      "notConnected": "未连接",
+      "updateApiKey": "更新 API Key",
+      "enterApiKey": "输入 API Key",
+      "saveApiKey": "保存 API Key",
+      "apiKeySaved": "API Key 已保存",
+      "connectOauth": "连接 OAuth",
+      "reconnectOauth": "重新连接 OAuth",
+      "finishedLogin": "我已完成登录",
+      "browserLoginHelp": "浏览器登录窗口已打开。请先在浏览器完成 OAuth，再点击\"我已完成登录\"。",
+      "connectedHelp": "该提供商的 OAuth 已连接。如需刷新凭证，请使用\"重新连接 OAuth\"。",
+      "connectHelp": "点击\"连接 OAuth\"使用提供商账号登录。",
+      "oauthFailed": "OAuth 失败：{{error}}",
+      "oauthExpired": "OAuth 会话已过期，请重新开始。",
+      "oauthConnected": "OAuth 连接成功。",
+      "clearAuth": "清除认证"
+    }
+  },
+  "sprite": {
+    "askPeekoo": "问问 Peekoo...",
+    "openFullChat": "打开完整聊天",
+    "needAttention": "需要关注",
+    "readingMode": "阅读模式",
+    "quickReply": "快速回复",
+    "welcomeMessage": "欢迎！你的 AI 桌面精灵已准备好为你服务！"
+  },
+  "pomodoro": {
+    "loadingSystem": "正在加载系统...",
+    "status": {
+      "focusing": "专注中",
+      "resting": "休息中",
+      "ready": "准备开始",
+      "break": "休息"
+    },
+    "readyToStart": "准备开始了吗？",
+    "recentSessions": "最近会话",
+    "noSessions": "暂无会话记录，最近的专注与休息周期会显示在这里。",
+    "mode": {
+      "focus": "专注",
+      "break": "休息"
+    },
+    "focusMemo": "专注备忘",
+    "actions": {
+      "saving": "保存中...",
+      "applied": "已应用",
+      "saveChanges": "保存更改",
+      "synced": "已同步"
+    },
+    "controls": {
+      "pause": "暂停",
+      "start": "开始",
+      "reset": "重置",
+      "switchToBreak": "切换到休息",
+      "switchToWork": "切换到专注"
+    },
+    "outcome": {
+      "completed": "已完成",
+      "interrupted": "已中断"
+    },
+    "dateFilter": {
+      "recent6": "最近 6 条",
+      "today": "今天",
+      "yesterday": "昨天",
+      "last7days": "最近 7 天",
+      "last30days": "最近 30 天"
+    },
+    "memo": {
+      "workPlaceholder": "你完成了什么？",
+      "breakPlaceholder": "休息得怎么样？"
+    },
+    "settings": {
+      "longBreak": "长休息",
+      "cycle": "周期",
+      "autopilot": "自动模式"
+    }
+  },
+  "badge": {
+    "pomodoro": {
+      "focus": "专注",
+      "focusPaused": "专注（已暂停）",
+      "break": "休息",
+      "breakPaused": "休息（已暂停）"
+    }
+  },
+  "about": {
+    "loading": "正在加载关于信息...",
+    "failedLoad": "加载应用详情失败",
+    "checking": "检查中...",
+    "tryAgain": "重试",
+    "tagline": "桌面伙伴与精灵",
+    "updateAvailable": "有可用更新",
+    "upToDate": "已是最新",
+    "current": "当前版本",
+    "latest": "最新版本",
+    "published": "发布日期",
+    "devUpdateDisabled": "开发环境下不执行更新检查。",
+    "releaseNotes": "更新说明",
+    "checkForUpdates": "检查更新",
+    "installing": "安装中...",
+    "installAndRestart": "安装并重启",
+    "openLogs": "打开日志",
+    "unknownError": "未知错误"
+  },
+  "plugins": {
+    "tabs": {
+      "installed": "已安装",
+      "store": "商店"
+    },
+    "panel": {
+      "defaultTitle": "插件",
+      "failedLoad": "加载插件面板失败：{{error}}"
+    },
+    "loadingInstalled": "正在加载插件...",
+    "loadingStore": "正在加载插件商店...",
+    "loadingRuntimeSettings": "正在加载插件设置...",
+    "system": "插件系统",
+    "installedTitle": "已安装插件",
+    "storeLabel": "插件商店",
+    "availableFromGithub": "来自 GitHub 的可用插件",
+    "emptyInstalled": "当前没有已安装插件。可在\"商店\"页签安装插件。",
+    "emptyStore": "商店中暂无可用插件。",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "enable": "启用",
+    "disable": "禁用",
+    "installed": "已安装",
+    "available": "可安装",
+    "updateAvailable": "可更新",
+    "update": "更新",
+    "install": "安装",
+    "removePlugin": "移除插件",
+    "permissions": "权限",
+    "tools": "工具",
+    "panels": "面板",
+    "location": "位置",
+    "openPanels": "打开面板",
+    "enableHint": "启用该插件后才可打开其面板并使用其运行时能力。",
+    "runtimeSettings": "运行时设置",
+    "runtimeSettingsHint": "配置提醒时间和全局免打扰时段。",
+    "dndOn": "勿扰已开",
+    "dndOff": "勿扰已关",
+    "saveSettings": "保存设置",
+    "permissionLabels": {
+      "bridge:fs_read": "桥接读取",
+      "notifications": "通知",
+      "pet:mood": "精灵心情",
+      "scheduler": "调度器",
+      "state:read": "状态读取",
+      "state:write": "状态写入"
+    }
+  },
+  "tasks": {
+    "title": "任务",
+    "loading": "正在加载任务...",
+    "doneCounter": "已完成 {{completed}} / {{total}}",
+    "tabs": {
+      "today": "今天",
+      "week": "本周",
+      "all": "全部",
+      "done": "已完成"
+    },
+    "mainTab": {
+      "tasks": "任务",
+      "activity": "动态"
+    },
+    "sections": {
+      "overdue": "已逾期",
+      "unscheduled": "未安排",
+      "completedToday": "今日完成"
+    },
+    "empty": {
+      "todayTitle": "今天没有任务",
+      "todaySubtitle": "安排一个任务或新建一个任务",
+      "weekTitle": "本周暂无任务",
+      "weekSubtitle": "为接下来一周安排任务",
+      "allTitle": "暂无任务",
+      "allSubtitle": "创建一个任务开始吧",
+      "doneTitle": "还没有已完成任务",
+      "doneSubtitle": "完成一些任务后会显示在这里"
+    },
+    "quickInput": {
+      "placeholder": "添加任务... 例如\"明天下午3点开会1小时，高优先级\"",
+      "ariaDescription": "任务描述",
+      "ariaAdd": "添加任务"
+    },
+    "activity": {
+      "yesterday": "昨天",
+      "noActivity": "暂无动态",
+      "eventsAppearHere": "任务事件会显示在这里",
+      "addCommentPlaceholder": "添加评论...",
+      "addComment": "添加评论",
+      "adding": "添加中...",
+      "you": "你",
+      "agent": "智能体"
+    },
+    "deleteDialog": {
+      "title": "删除任务？",
+      "message": "确定要删除\"{{title}}\"吗？此操作不可撤销。",
+      "deleting": "删除中..."
+    },
+    "priority": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
+    "status": {
+      "todo": "待办",
+      "in_progress": "进行中",
+      "done": "已完成"
+    },
+    "priorityTitle": "{{priority}}优先级",
+    "agentWorking": "智能体正在处理该任务",
+    "live": "进行中",
+    "agentWorkStatus": "智能体状态：{{status}}",
+    "clickToMoveTo": "点击切换到 {{status}}",
+    "detail": {
+      "title": "任务详情",
+      "status": "状态",
+      "priority": "优先级",
+      "assignee": "负责人",
+      "agent": "智能体",
+      "labels": "标签",
+      "schedule": "日程",
+      "scheduled": "已安排",
+      "repeat": "重复",
+      "doesNotRepeat": "不重复",
+      "time": "时间",
+      "start": "开始",
+      "end": "结束",
+      "durationOptional": "时长（可选）",
+      "durationPlaceholder": "例如 30",
+      "minutes": "分钟",
+      "description": "描述",
+      "descriptionPlaceholder": "添加备注、细节或子任务清单..."
+    },
+    "recurrence": {
+      "daily": "每天",
+      "weekdays": "每个工作日",
+      "monWedFri": "周一 / 周三 / 周五",
+      "tueThu": "周二 / 周四",
+      "weekly": "每周",
+      "monthly": "每月"
+    },
+    "activityFeed": {
+      "created": "已创建",
+      "createdFull": "创建了\"{{title}}\"",
+      "statusChanged": "状态",
+      "statusChangedFull": "{{from}} → {{to}}（\"{{title}}\"）",
+      "assigned": "分配",
+      "assignedFull": "将\"{{title}}\"分配给{{to}}",
+      "labeled": "标签",
+      "labeledFull": "为\"{{title}}\"添加了\"{{label}}\"标签",
+      "unlabeled": "标签",
+      "unlabeledFull": "从\"{{title}}\"移除了\"{{label}}\"标签",
+      "deleted": "已删除",
+      "deletedFull": "删除了\"{{title}}\"",
+      "updated": "已更新",
+      "updatedFull": "更新了\"{{title}}\"",
+      "comment": "评论",
+      "commentFull": "添加了一条评论",
+      "unknownTask": "未知任务",
+      "deleteComment": "删除评论"
+    },
+    "agentWork": {
+      "pending": "等待中",
+      "executing": "执行中",
+      "failed": "失败",
+      "attempts_one": "{{count}} 次尝试",
+      "attempts_other": "{{count}} 次尝试"
+    },
+    "formatting": {
+      "today": "今天",
+      "tomorrow": "明天",
+      "minutesShort": "分",
+      "hoursShort": "时"
+    },
+    "sync": {
+      "syncing": "同步中...",
+      "waiting": "等待同步",
+      "updatedJustNow": "刚刚更新",
+      "updatedSecondsAgo": "{{seconds}} 秒前更新",
+      "updatedMinutesAgo": "{{minutes}} 分钟前更新"
+    },
+    "toast": {
+      "failedToLoad": "加载任务失败",
+      "created": "任务已创建",
+      "failedToCreate": "创建任务失败",
+      "completed": "任务已完成！",
+      "failedToUpdate": "更新任务失败",
+      "failedToSave": "保存更改失败",
+      "deleted": "任务已删除",
+      "failedToDelete": "删除任务失败"
+    }
+  },
+  "dateHelpers": {
+    "justNow": "刚刚",
+    "ago": "前",
+    "daysAgo": "天前"
+  },
+  "updater": {
+    "title": "有可用更新",
+    "message": "Peekoo {{version}} 已可用。立即安装并重启？",
+    "messageWithNotes": "Peekoo {{version}} 已可用。\n\n{{notes}}\n\n立即安装并重启？",
+    "installButton": "安装并重启",
+    "later": "稍后"
+  },
+  "agentRuntimes": {
+    "title": "ACP 运行时",
+    "description": "管理 ACP 智能体及其 LLM 设置",
+    "refresh": "刷新",
+    "addRuntime": "添加运行时",
+    "activeRuntime": "当前运行时",
+    "activeRuntimeDescription": "新会话使用的 ACP 运行时",
+    "defaultModel": "默认模型",
+    "installedRuntimes": "已安装的运行时",
+    "noRuntimesInstalled": "尚未安装任何运行时",
+    "availableRuntimes": "可用运行时",
+    "showingRuntimes": "显示 {{count}} 个运行时",
+    "searchPlaceholder": "搜索智能体（如 Gemini、Cursor、Claude）...",
+    "noRuntimesFound": "未找到运行时",
+    "loading": "加载中...",
+    "loadMore": "加载更多智能体",
+    "default": "默认",
+    "modelLabel": "模型：",
+    "setDefault": "设为默认",
+    "login": "登录",
+    "configure": "配置",
+    "installing": "安装中...",
+    "install": "安装",
+    "installed": "已安装",
+    "unsupported": "不支持",
+    "noRuntime": "无运行时",
+    "switchRuntime": "切换运行时",
+    "noRuntimesInstalledOption": "未安装任何运行时",
+    "manageRuntimes": "管理运行时...",
+    "status": {
+      "ready": "就绪",
+      "needsSetup": "需要设置",
+      "error": "错误",
+      "loginRequired": "需要登录",
+      "loginAvailable": "可登录",
+      "installing": "安装中...",
+      "setupRequired": "需要设置",
+      "notInstalled": "未安装",
+      "discoveringCapabilities": "正在发现能力..."
+    },
+    "installDialog": {
+      "title": "安装 {{name}}",
+      "description": "选择如何安装此 ACP 运行时。",
+      "customPathRequired": "请输入自定义安装路径",
+      "checkingPrerequisites": "检查前置条件...",
+      "missing": "缺少：",
+      "allPrerequisitesSatisfied": "所有前置条件已满足",
+      "notAvailable": "不可用",
+      "binaryPathLabel": "智能体二进制路径",
+      "binaryPathPlaceholder": "/path/to/agent_binary",
+      "cancel": "取消"
+    },
+    "configureDialog": {
+      "title": "配置 {{name}}",
+      "description": "管理运行时设置和认证。",
+      "statusLabel": "状态",
+      "authSection": "认证",
+      "loginRequired": "需要登录",
+      "hideLoginOptions": "隐藏登录选项",
+      "loginAvailable": "可登录",
+      "modelSection": "模型",
+      "selectModel": "选择模型",
+      "modelDescriptionPrefix": "- {{description}}",
+      "defaultModelLabel": "默认模型",
+      "defaultModelPlaceholder": "例如：claude-sonnet-4-6",
+      "noModelDiscoveryHelp": "该运行时不使用 ACP 模型发现。如需可手动输入模型 ID。",
+      "manualModelPlaceholder": "例如：gpt-4、claude-3-5-sonnet",
+      "noModelsDiscovered": "未发现模型。请手动输入模型 ID 或刷新以发现。",
+      "discoverModels": "发现模型",
+      "testing": "测试中...",
+      "testConnection": "测试连接",
+      "versionLabel": "版本：",
+      "advancedSettings": "高级设置",
+      "envVarsLabel": "环境变量",
+      "envVarNamePlaceholder": "变量名",
+      "envVarValuePlaceholder": "值",
+      "addEnvVar": "添加",
+      "customArgsLabel": "自定义参数",
+      "customArgsPlaceholder": "--flag 或 value",
+      "addArgument": "添加参数",
+      "saving": "保存中..."
+    },
+    "addCustomDialog": {
+      "title": "添加自定义 ACP 运行时",
+      "description": "注册本地 ACP 命令，然后配置其 LLM 提供商和模型。",
+      "nameRequired": "名称和命令为必填项。",
+      "nameLabel": "运行时名称",
+      "namePlaceholder": "我的自定义 ACP 运行时",
+      "descriptionLabel": "描述",
+      "descriptionPlaceholder": "可选描述",
+      "commandLabel": "命令",
+      "commandPlaceholder": "例如：claude-code-acp",
+      "argsLabel": "参数",
+      "argsPlaceholder": "例如：--acp --experimental-acp",
+      "workingDirLabel": "工作目录",
+      "workingDirPlaceholder": "可选工作目录",
+      "cancel": "取消",
+      "adding": "添加中..."
+    }
+  }
+}

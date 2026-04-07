@@ -1,0 +1,2402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mijia Smart Home Manager</title>
+  <style>
+    :root {
+      --bg: #e7e1da;
+      --card-bg: #f2ede8;
+      --card-muted: #e8dfd5;
+      --text-main: #211b17;
+      --text-sub: #6f6359;
+      --accent: #2f6f46;
+      --accent-weak: #d8ead7;
+      --danger: #d65e58;
+      --border: rgba(33, 27, 23, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text-main);
+      font-family: "SF Pro Text", "Avenir Next", "Segoe UI", sans-serif;
+      background: var(--bg);
+    }
+
+    .app {
+      padding: 18px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: 700;
+      display: inline-block;
+    }
+
+    .sub {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 2px;
+    }
+
+    .btn {
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      height: 36px;
+      padding: 0 16px;
+      background: #f7f3ef;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-main);
+    }
+
+    .btn:hover { opacity: 0.92; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn.primary {
+      background: #3d7e53;
+      color: #fff;
+      border-color: transparent;
+      font-weight: 600;
+    }
+
+    .btn.warn {
+      background: #f7f3ef;
+      color: var(--danger);
+    }
+
+    #refreshWrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status {
+      display: none;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      font-size: 13px;
+    }
+
+    .status.show {
+      display: block;
+    }
+
+    .status.error {
+      border-color: rgba(234, 93, 93, 0.35);
+      color: #872828;
+      background: rgba(255, 240, 240, 0.88);
+    }
+
+    .status.ok {
+      border-color: rgba(20, 199, 154, 0.36);
+      color: #0f5e4b;
+      background: rgba(236, 253, 248, 0.9);
+    }
+
+    .main {
+      min-height: 0;
+      flex: 1;
+      display: flex;
+      gap: 12px;
+      position: relative;
+    }
+
+    .main.authenticated {
+      flex-direction: row-reverse;
+    }
+
+    .main.loading-data .left,
+    .main.loading-data .right {
+      visibility: hidden;
+    }
+
+    .main.loading-data #detailPanel,
+    .main.loading-data #featureArea {
+      display: none !important;
+    }
+
+    .main.loading-data .main-loader {
+      display: flex;
+    }
+
+    .main.auth-only {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      max-width: none;
+      margin: 0 auto;
+      width: 100%;
+      height: 100%;
+    }
+
+    .main.auth-only .left {
+      width: 100%;
+      max-width: none;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .main.auth-only #signInPanel {
+      width: 100%;
+      max-width: none;
+      height: 100%;
+      border: none;
+      background: transparent;
+      padding: 0;
+      overflow: visible;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .main.auth-only #signInPanel h3 {
+      display: none;
+    }
+
+    .main.auth-only .login-body {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .main.authenticated #signInPanel {
+      display: none;
+    }
+
+    .left {
+      width: 320px;
+      max-width: 40%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .right {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .main-loader {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .main-loader .loader-card {
+      min-width: 220px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .panel {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      padding: 14px;
+      overflow: auto;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.55);
+    }
+
+    .panel h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    .login-body {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .qr-wrap {
+      display: none;
+      margin-top: 8px;
+      margin-left: auto;
+      margin-right: auto;
+      width: 260px;
+      background: #fff;
+      border-radius: 16px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      text-align: center;
+      cursor: pointer;
+    }
+
+    .qr-wrap.show { display: block; }
+
+    .qr-wrap img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      height: auto;
+      object-fit: contain;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+
+    .qr-hint-top {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 8px;
+    }
+
+    .qr-hint-bottom {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-sub);
+      line-height: 1.5;
+    }
+
+    .room-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding-bottom: 2px;
+    }
+
+    .tab {
+      border: 1px solid var(--border);
+      background: #f7f3ef;
+      color: var(--text-sub);
+      border-radius: 999px;
+      height: 30px;
+      padding: 0 12px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .tab.active {
+      background: #fdfaf7;
+      color: var(--text-main);
+      border-color: rgba(47, 111, 70, 0.42);
+      box-shadow: inset 0 0 0 1px rgba(47, 111, 70, 0.25);
+    }
+
+    .devices {
+      flex: 1;
+      min-height: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+      grid-auto-rows: minmax(168px, auto);
+      align-items: start;
+      align-content: start;
+      gap: 12px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .devices-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 220px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      gap: 10px;
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      border: 2px solid rgba(15, 34, 51, 0.18);
+      border-top-color: var(--accent);
+      animation: spin 0.75s linear infinite;
+    }
+
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    .device-card {
+      border: 1px solid rgba(33, 27, 23, 0.12);
+      background: #fbf7f2;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-height: 168px;
+      cursor: pointer;
+      transition: transform .16s ease, box-shadow .16s ease;
+      user-select: none;
+      box-shadow: inset 3px 0 0 #5e8ec7;
+    }
+
+    .device-card:hover {
+      transform: translateY(-1px);
+      box-shadow: inset 3px 0 0 #5e8ec7, 0 3px 10px rgba(0, 0, 0, 0.06);
+    }
+
+    .device-card.offline {
+      background: var(--card-muted);
+      opacity: 0.9;
+      box-shadow: inset 3px 0 0 #b7b1aa;
+    }
+
+    .device-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .device-name {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.25;
+      word-break: break-all;
+    }
+
+    .meta {
+      font-size: 13px;
+      color: var(--text-sub);
+    }
+
+    .badge {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 2px 8px;
+      border: 1px solid var(--border);
+      background: #fffdfa;
+      color: var(--text-sub);
+      white-space: nowrap;
+    }
+
+    .toggle {
+      border: none;
+      width: 44px;
+      height: 44px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #fff;
+      background: #9db4c3;
+    }
+
+    .toggle.on { background: #24bf9a; }
+    .toggle:disabled { opacity: .5; cursor: not-allowed; }
+
+    .empty {
+      color: var(--text-sub);
+      font-size: 13px;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px dashed var(--border);
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .detail {
+      display: none;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .detail.show { display: flex; }
+
+    .detail-loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 120px;
+      color: var(--text-sub);
+      font-size: 13px;
+    }
+
+    .detail-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section {
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      background: transparent;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    #propsBox,
+    #actionsBox {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .row {
+      border: 1px solid rgba(15, 34, 51, 0.06);
+      border-radius: 20px;
+      background: rgba(248, 249, 250, 0.98);
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .row.simple {
+      gap: 12px;
+      padding: 18px;
+    }
+
+    .row-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .row-name { font-weight: 600; font-size: 13px; }
+    .row-desc { font-size: 12px; color: var(--text-sub); }
+
+    .sub-title {
+      font-size: 15px;
+      color: var(--text-sub);
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .row-control {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .row-control.stack {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+
+    .input {
+      min-width: 0;
+      flex: 1;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 0 8px;
+      font-size: 12px;
+      color: var(--text-main);
+      background: #fff;
+    }
+
+    .readonly-chip {
+      display: inline-flex;
+      align-items: center;
+      max-width: 100%;
+      min-height: 32px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text-main);
+      font-size: 12px;
+      padding: 0 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .kv-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .kv-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+      border: none;
+      border-radius: 12px;
+      padding: 8px 0;
+      background: transparent;
+      border-bottom: 1px solid rgba(15, 34, 51, 0.08);
+    }
+
+    .kv-key {
+      font-size: 12px;
+      color: var(--text-sub);
+      line-height: 1.4;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .kv-value {
+      font-size: 12px;
+      color: var(--text-main);
+      line-height: 1.4;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55%;
+    }
+
+    #detailPanel {
+      background: #ece5de;
+      border: 1px solid rgba(33, 27, 23, 0.13);
+    }
+
+    #detailPanel .panel h3,
+    #detailPanel h3 {
+      font-size: 20px;
+      margin-bottom: 14px;
+    }
+
+    #detailContent {
+      gap: 18px;
+    }
+
+    .prop-switch-btn {
+      border: none;
+      height: 34px;
+      min-width: 110px;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      padding: 0 14px;
+    }
+
+    .prop-switch-btn.on {
+      background: var(--accent);
+    }
+
+    .prop-switch-btn.off {
+      background: #9db4c3;
+    }
+
+    .range-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .range-row input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      accent-color: var(--accent);
+    }
+
+    .range-value {
+      min-width: 56px;
+      text-align: right;
+      font-size: 12px;
+      color: var(--text-main);
+      padding: 5px 8px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    .row-note {
+      font-size: 11px;
+      color: var(--text-sub);
+    }
+
+    .select-input {
+      min-width: 0;
+      width: 100%;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      padding: 0 8px;
+      font-size: 12px;
+      background: #fff;
+      color: var(--text-main);
+    }
+
+    .mi-card {
+      border-radius: 16px;
+      background: rgba(250, 250, 251, 0.98);
+      border: 1px solid rgba(15, 34, 51, 0.06);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mi-section-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: #121923;
+    }
+
+    .mi-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mi-icon {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      background: #4f8ef7;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .mi-row-main {
+      min-width: 0;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .mi-row-title {
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.2;
+      color: #121923;
+      word-break: break-word;
+    }
+
+    .mi-row-sub {
+      font-size: 11px;
+      color: #8a96a3;
+      line-height: 1.35;
+    }
+
+    .mi-power-btn {
+      border: none;
+      width: 54px;
+      height: 54px;
+      border-radius: 999px;
+      cursor: pointer;
+      background: #4f8ef7;
+      color: #fff;
+      font-size: 26px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .mi-power-btn.off {
+      background: #9db4c3;
+    }
+
+    .mi-switch-btn {
+      border: none;
+      min-width: 72px;
+      height: 32px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+      cursor: pointer;
+      background: #9db4c3;
+      padding: 0 12px;
+      flex-shrink: 0;
+    }
+
+    .mi-switch-btn.on {
+      background: #20c49f;
+    }
+
+    .mi-meter-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mi-meter {
+      min-width: 0;
+    }
+
+    .mi-meter-value {
+      font-size: 24px;
+      font-weight: 700;
+      line-height: 1.05;
+      color: #121923;
+    }
+
+    .mi-meter-label {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #8a96a3;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .mi-plain-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 4px;
+    }
+
+    .mi-plain-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 13px;
+      border-top: 1px solid rgba(15, 34, 51, 0.06);
+      padding-top: 8px;
+    }
+
+    .mi-plain-key {
+      color: #6e7f90;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .mi-plain-value {
+      color: #121923;
+      font-weight: 600;
+      text-align: right;
+      max-width: 55%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .detail.show {
+      animation: detailEnter .24s ease;
+    }
+
+    @keyframes detailEnter {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .d-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .d-block {
+      border-radius: 14px;
+      border: 1px solid rgba(33, 27, 23, 0.1);
+      background: #fdfaf7;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition: transform .18s ease, box-shadow .18s ease;
+    }
+
+    .d-block:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+    }
+
+    .d-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #2d251f;
+    }
+
+    .d-main-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .d-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 999px;
+      background: #4f8ef7;
+      color: #fff;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 17px;
+      flex-shrink: 0;
+    }
+
+    .d-main-label {
+      flex: 1;
+      min-width: 0;
+      font-size: 13px;
+      font-weight: 700;
+      color: #2a231d;
+      line-height: 1.2;
+    }
+
+    .d-power {
+      border: none;
+      width: 52px;
+      height: 52px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #fff;
+      font-size: 24px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background .2s ease, transform .16s ease;
+      flex-shrink: 0;
+    }
+
+    .d-power.off { background: #9db4c3; }
+    .d-power:active { transform: scale(0.96); }
+
+    .d-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 0;
+      border-top: 1px solid rgba(33, 27, 23, 0.08);
+    }
+
+    .d-row.right-align {
+      justify-content: space-between;
+    }
+
+    .d-row:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .d-row-label {
+      min-width: 0;
+      flex: 1;
+      font-size: 12px;
+      font-weight: 600;
+      color: #2a231d;
+      line-height: 1.2;
+    }
+
+    .d-switch {
+      border: none;
+      min-width: 72px;
+      height: 32px;
+      border-radius: 999px;
+      padding: 0 12px;
+      background: #9db4c3;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s ease;
+      flex-shrink: 0;
+    }
+
+    .d-switch.on { background: var(--accent); }
+    .d-switch:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .d-range-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      flex: 1;
+    }
+
+    .d-range-wrap input[type="range"] {
+      flex: 1;
+      min-width: 0;
+      accent-color: #20c49f;
+    }
+
+    .d-range-value {
+      min-width: 44px;
+      text-align: right;
+      font-size: 12px;
+      color: #6f6359;
+      padding: 4px 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(33, 27, 23, 0.15);
+      background: #fffdfa;
+    }
+
+    .d-metrics {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .d-metric {
+      min-width: 0;
+    }
+
+    .d-metric-value {
+      font-size: 24px;
+      line-height: 1.05;
+      font-weight: 700;
+      color: #2a231d;
+    }
+
+    .d-metric-label {
+      margin-top: 4px;
+      font-size: 10px;
+      color: #7f7368;
+      line-height: 1.3;
+      word-break: break-word;
+    }
+
+    .d-kv {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .d-kv-item {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid rgba(15, 34, 51, 0.08);
+      padding-top: 8px;
+      font-size: 12px;
+    }
+
+    .d-kv-item:first-child {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .d-kv-key {
+      color: #6f7f8f;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .d-kv-value {
+      color: #1a2633;
+      text-align: right;
+      max-width: 55%;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .temp-card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .temp-head {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .temp-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #2d251f;
+    }
+
+    .temp-now {
+      font-size: 14px;
+      color: #7b6f64;
+      font-weight: 700;
+    }
+
+    .temp-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .temp-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: none;
+      background: #ebe6df;
+      color: #84786d;
+      font-size: 28px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .temp-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .temp-track {
+      flex: 1;
+      min-width: 0;
+      height: 42px;
+      border-radius: 999px;
+      background: #ddd5cc;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      color: #7f7368;
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    .temp-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      background: #f8a620;
+      width: 0%;
+    }
+
+    .temp-track span {
+      position: relative;
+      z-index: 1;
+    }
+
+    @media (max-width: 900px) {
+      .main {
+        flex-direction: column;
+      }
+
+      .left {
+        width: 100%;
+        max-width: none;
+      }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <div>
+      <div class="title">Mijia Smart Home Manager</div>
+    </div>
+    <div id="refreshWrap" style="display:none;">
+      <button class="btn" id="refreshBtn">Refresh Devices</button>
+      <button class="btn warn" id="logoutBtn">Log Out</button>
+    </div>
+  </div>
+
+  <div class="status" id="statusBox"></div>
+
+  <div class="main loading-data">
+    <div class="left">
+      <div class="panel" id="signInPanel">
+        <h3>Sign In</h3>
+        <div class="login-body">
+          <div class="qr-wrap" id="qrWrap">
+            <div class="qr-hint-top">Tap QR code to regenerate</div>
+            <img id="qrImage" alt="Mijia sign-in QR code">
+            <div class="qr-hint-bottom">Scan with the Mijia app to authorize</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" id="detailPanel" style="display:none;">
+        <h3>Device Details</h3>
+        <div class="empty" id="detailEmpty">Click a device card to view detailed controls.</div>
+        <div class="detail" id="detailContent">
+          <div class="detail-head">
+            <div>
+              <div class="device-name" id="detailName" style="font-size: 16px;"></div>
+              <div class="meta" id="detailModel"></div>
+            </div>
+            <button class="btn warn" id="closeDetailBtn">Close</button>
+          </div>
+
+          <div class="section">
+            <div class="row-name">Device Controls</div>
+            <div id="propsBox"></div>
+          </div>
+
+          <div class="section" style="display:none;">
+            <div class="row-name">Actions</div>
+            <div id="actionsBox"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right" id="featureArea" style="display:none;">
+      <div class="panel">
+        <h3>Room Filter</h3>
+        <div class="room-tabs" id="roomTabs"></div>
+      </div>
+
+      <div class="devices" id="devicesBox"></div>
+    </div>
+
+    <div class="main-loader" id="mainLoader">
+      <div class="loader-card">
+        <span class="spinner"></span>
+        <span>Loading devices...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const state = {
+    authPath: "",
+    authenticated: false,
+    devices: [],
+    rooms: [],
+    selectedRoom: "all",
+    detailDid: "",
+    detailLoading: false,
+    loading: false,
+    devicesLoading: false,
+    loginPolling: false,
+    loginPollTimer: null,
+    detailData: null,
+    delayTimers: {},
+  };
+
+  const DEVICE_LAST_USED_KEY = "mijia_device_last_used_at";
+  const DEVICE_MANUAL_ORDER_KEY = "mijia_device_manual_order";
+  const DEVICE_DELAY_MINUTES_KEY = "mijia_delay_off_minutes";
+  const DETAIL_EMPTY_TEXT = "Click a device card to view detailed controls.";
+  const PROP_ZH_MAP = {
+    on: "Power",
+    mode: "Mode",
+    fault: "Fault",
+    voltage: "Voltage",
+    "electric-current": "Current",
+    "power-consumption": "Energy Usage",
+    "power-cost": "Energy",
+    "target-temperature": "Target Temperature",
+  };
+
+  function el(id) {
+    return document.getElementById(id);
+  }
+
+  function setStatus(message, type = "") {
+    const box = el("statusBox");
+    box.textContent = message || "";
+    box.className = "status" + (message ? " show" : "") + (type ? ` ${type}` : "");
+  }
+
+  function setLoading(active) {
+    state.loading = active;
+    ["refreshBtn", "logoutBtn"].forEach((id) => {
+      const node = el(id);
+      if (node) node.disabled = active;
+    });
+  }
+
+  function setDataLoading(active) {
+    const main = document.querySelector(".main");
+    if (!main) return;
+    if (active) {
+      main.classList.add("loading-data");
+    } else {
+      main.classList.remove("loading-data");
+    }
+  }
+
+  function setAuthView(authenticated) {
+    const main = document.querySelector(".main");
+    const signInPanel = el("signInPanel");
+    const detailPanel = el("detailPanel");
+    const featureArea = el("featureArea");
+    const refreshWrap = el("refreshWrap");
+    if (!main || !signInPanel || !detailPanel || !featureArea || !refreshWrap) return;
+
+    if (authenticated) {
+      main.classList.remove("auth-only");
+      main.classList.add("authenticated");
+      signInPanel.style.display = "none";
+      detailPanel.style.display = "";
+      featureArea.style.display = "";
+      refreshWrap.style.display = "";
+      return;
+    }
+
+    main.classList.remove("authenticated");
+    setDataLoading(false);
+    main.classList.add("auth-only");
+    signInPanel.style.display = "";
+    detailPanel.style.display = "none";
+    featureArea.style.display = "none";
+    refreshWrap.style.display = "none";
+    resetDetail();
+  }
+
+  function stopLoginPolling() {
+    state.loginPolling = false;
+    if (state.loginPollTimer) {
+      window.clearTimeout(state.loginPollTimer);
+      state.loginPollTimer = null;
+    }
+  }
+
+  function scheduleLoginPolling() {
+    stopLoginPolling();
+    state.loginPolling = true;
+
+    const run = async () => {
+      if (!state.loginPolling || state.authenticated) return;
+      try {
+        const result = await callBridge("login_finish", { timeout_secs: 20 });
+        if (result.authenticated) {
+          state.authenticated = true;
+          stopLoginPolling();
+          el("qrWrap").classList.remove("show");
+          setStatus("");
+          setDataLoading(true);
+          setAuthView(true);
+          try {
+            await refreshDevices({ showLoading: false });
+          } finally {
+            setDataLoading(false);
+          }
+          return;
+        }
+      } catch (err) {
+        const msg = err?.message || String(err);
+        // Polling timeout is expected before user confirms in app.
+        if (!msg.toLowerCase().includes("timed out")) {
+          setStatus(msg, "error");
+        }
+      }
+      if (!state.loginPolling || state.authenticated) return;
+      state.loginPollTimer = window.setTimeout(run, 3000);
+    };
+
+    run();
+  }
+
+  async function invoke(command, payload = {}) {
+    if (!window.__TAURI__?.core?.invoke) {
+      throw new Error("Tauri bridge is not available");
+    }
+    return window.__TAURI__.core.invoke(command, payload);
+  }
+
+  async function callBridge(action, payload = {}) {
+    const resultText = await invoke("plugin_call_tool", {
+      toolName: "mijia_bridge",
+      argsJson: JSON.stringify({
+        action,
+        payload: {
+          auth_path: state.authPath || undefined,
+          ...payload,
+        },
+      }),
+    });
+
+    let data;
+    try {
+      data = JSON.parse(resultText || "{}");
+    } catch {
+      throw new Error(`Bridge returned invalid JSON: ${resultText}`);
+    }
+
+    if (data.auth_path) {
+      state.authPath = data.auth_path;
+    }
+
+    if (!data.success) {
+      if (data.auth_required) {
+        state.authenticated = false;
+        setAuthView(false);
+      }
+      throw new Error(data.message || "Mijia operation failed");
+    }
+
+    return data;
+  }
+
+  function escapeHtml(text) {
+    return String(text ?? "").replace(/[&<>\"]/g, (c) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "\"": "&quot;",
+    }[c]));
+  }
+
+  function parseInputValue(raw) {
+    const t = raw.trim();
+    if (t === "") return "";
+    if (t === "true") return true;
+    if (t === "false") return false;
+    if (/^-?\d+$/.test(t)) return Number.parseInt(t, 10);
+    if (/^-?\d+\.\d+$/.test(t)) return Number.parseFloat(t);
+    try {
+      return JSON.parse(t);
+    } catch {
+      return t;
+    }
+  }
+
+  function formatValue(value) {
+    if (value === undefined || value === null || value === "") return "-";
+    if (typeof value === "object") {
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  }
+
+  function formatNumberOneDecimal(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    return n.toFixed(1);
+  }
+
+  function formatDegreeValue(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "-";
+    if (n > 0 && n < 0.1) return "<0.1";
+    return n.toFixed(1);
+  }
+
+  function extractChinese(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return "";
+    const parts = raw.split("/").map((v) => v.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (/[\u4e00-\u9fff]/.test(part)) return part;
+    }
+    if (/[\u4e00-\u9fff]/.test(raw)) return raw;
+    return "";
+  }
+
+  function extractEnglish(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return "";
+    const parts = raw.split("/").map((v) => v.trim()).filter(Boolean);
+    for (const part of parts) {
+      if (/[A-Za-z]/.test(part)) return part;
+    }
+    if (/[A-Za-z]/.test(raw)) return raw;
+    return "";
+  }
+
+  function isPropWritable(prop) {
+    return String(prop?.rw || "").includes("w");
+  }
+
+  function readRangeMeta(prop) {
+    const raw = prop?.value_range;
+    if (Array.isArray(raw) && raw.length >= 2) {
+      const min = Number(raw[0]);
+      const max = Number(raw[1]);
+      const step = Number(raw[2] ?? 1);
+      if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+        return { min, max, step: Number.isFinite(step) && step > 0 ? step : 1 };
+      }
+    }
+    if (raw && typeof raw === "object") {
+      const min = Number(raw.min ?? raw.minimum);
+      const max = Number(raw.max ?? raw.maximum);
+      const step = Number(raw.step ?? 1);
+      if (Number.isFinite(min) && Number.isFinite(max) && max >= min) {
+        return { min, max, step: Number.isFinite(step) && step > 0 ? step : 1 };
+      }
+    }
+    return null;
+  }
+
+  function readValueList(prop) {
+    const raw = prop?.value_list;
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const item of raw) {
+      if (item && typeof item === "object" && "value" in item) {
+        out.push({
+          value: item.value,
+          label: item.description || item.name || String(item.value),
+        });
+      } else {
+        out.push({ value: item, label: String(item) });
+      }
+    }
+    return out;
+  }
+
+  function inferPropUiKind(prop) {
+    const value = prop?.current_value;
+    const valueList = readValueList(prop);
+    const range = readRangeMeta(prop);
+    if (typeof value === "boolean") return "switch";
+    if (valueList.length === 2) {
+      const normalized = valueList.map((v) => String(v.value).toLowerCase());
+      if (normalized.includes("0") && normalized.includes("1")) return "switch";
+      if (normalized.includes("false") && normalized.includes("true")) return "switch";
+    }
+    if (range) return "range";
+    if (valueList.length > 0) return "select";
+    if (typeof value === "number" && Number.isFinite(value)) return "range";
+    return "readonly";
+  }
+
+  function boolLikeToBoolean(value) {
+    if (value === true || value === 1 || value === "1" || String(value).toLowerCase() === "true") return true;
+    return false;
+  }
+
+  function isBlanketDevice(device) {
+    const model = String(device?.model || "").toLowerCase();
+    return model.includes("blanket");
+  }
+
+  function isPlugDevice(device) {
+    const model = String(device?.model || "").toLowerCase();
+    return model.includes("plug");
+  }
+
+  function propDisplayLabel(prop, device = null) {
+    const fromDesc = extractEnglish(prop?.description);
+    if (fromDesc) return fromDesc;
+    const name = String(prop?.name || "").trim();
+    if (isBlanketDevice(device) && name === "mode") {
+      return "Sleep Mode";
+    }
+    return PROP_ZH_MAP[name] || "Property";
+  }
+
+  function propKeyLabel(prop) {
+    const fromDesc = extractEnglish(prop?.description);
+    if (fromDesc) return fromDesc;
+    const name = String(prop?.name || "").trim();
+    return PROP_ZH_MAP[name] || "Property";
+  }
+
+  function isOpaqueProtocolValue(value) {
+    const s = String(value ?? "").trim();
+    if (!s) return false;
+    // Examples to hide:
+    // 00/23000700/031/00/38363537
+    // 30;30;1,2,3,4,5,6;0;1439;0
+    if (/^\d{2}\/\d{8}\/\d{3}\/\d{2}\/\d+$/.test(s)) return true;
+    if (/^\d+(;\d+)*(;[\d,]+)?(;\d+)*$/.test(s) && s.includes(";")) return true;
+    return false;
+  }
+
+  function shouldHideProp(prop, device = null) {
+    const name = String(prop?.name || "").trim().toLowerCase();
+    if (isBlanketDevice(device) && name === "sleep-switch") return true;
+    if (isPlugDevice(device) && ["memory", "status", "start-time", "end-time"].includes(name)) return true;
+    const value = prop?.current_value;
+    if (isOpaqueProtocolValue(value)) return true;
+    return false;
+  }
+
+  function localizeRoomName(name) {
+    const raw = String(name || "").trim();
+    if (!raw) return "Unassigned";
+    const lower = raw.toLowerCase();
+    if (lower === "all rooms") return "All Rooms";
+    if (lower === "shared devices") return "Shared Devices";
+    const roomMap = {
+      "\u5168\u5c4b": "All Rooms",
+      "\u5367\u5ba4": "Bedroom",
+      "\u5ba2\u5385": "Living Room",
+      "\u4e66\u623f": "Study",
+      "\u53a8\u623f": "Kitchen",
+      "\u536b\u751f\u95f4": "Bathroom",
+      "\u9633\u53f0": "Balcony",
+      "\u672a\u5206\u914d": "Unassigned",
+      "\u5171\u4eab\u8bbe\u5907": "Shared Devices",
+    };
+    return roomMap[raw] || raw;
+  }
+
+  function iconForProp(name = "") {
+    const key = String(name).toLowerCase();
+    if (key.includes("on") || key.includes("switch")) return "⏻";
+    if (key.includes("delay") || key.includes("timer")) return "⏱";
+    if (key.includes("power")) return "⚡";
+    if (key.includes("temperature")) return "🌡";
+    if (key.includes("mode")) return "⚙";
+    return "●";
+  }
+
+  function isTimerProp(prop) {
+    const name = String(prop?.name || "").toLowerCase();
+    const desc = String(prop?.description || "").toLowerCase();
+    const text = `${name} ${desc}`;
+    return /timer|countdown|delay|schedule|\u5b9a\u65f6|\u5ef6\u65f6|\u5012\u8ba1\u65f6/.test(text);
+  }
+
+  function pickMetricValue(readonlyProps, patterns) {
+    for (const prop of readonlyProps) {
+      const name = String(prop?.name || "").toLowerCase();
+      const desc = String(prop?.description || "").toLowerCase();
+      const text = `${name} ${desc}`;
+      if (patterns.some((p) => text.includes(p))) {
+        return formatValue(prop.current_value);
+      }
+    }
+    return "-";
+  }
+
+  async function applyPropertyUpdate(propName, value) {
+    if (!propName || !state.detailDid) return;
+    try {
+      const result = await callBridge("set_property", {
+        did: state.detailDid,
+        prop_name: propName,
+        value,
+      });
+      const nextValue = result?.value !== undefined ? result.value : value;
+      if (state.detailData?.properties) {
+        const prop = state.detailData.properties.find((p) => String(p?.name) === String(propName));
+        if (prop) {
+          prop.current_value = nextValue;
+        }
+      }
+
+      // Only sync device list quick toggle when the changed property is the quick toggle prop.
+      let listSynced = false;
+      const device = state.devices.find((d) => String(d.did) === String(state.detailDid));
+      if (device?.quick_toggle?.supported && String(device.quick_toggle.prop_name) === String(propName)) {
+        device.quick_toggle.current = nextValue;
+        if (!boolLikeToBoolean(nextValue)) {
+          cancelDelayOff(state.detailDid);
+        }
+        listSynced = true;
+      }
+
+      setStatus(`Property updated: ${propDisplayLabel({ name: propName })}`, "ok");
+      if (state.detailData) {
+        renderDetail(state.detailData);
+      }
+      if (listSynced) {
+        renderDevices();
+      }
+    } catch (err) {
+      setStatus(err.message || String(err), "error");
+    }
+  }
+
+  function readJsonStorage(key, fallback) {
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (!raw) return fallback;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function writeJsonStorage(key, value) {
+    try {
+      window.localStorage.setItem(key, JSON.stringify(value));
+    } catch {
+      // ignore storage failures
+    }
+  }
+
+  function readLastUsedMap() {
+    return readJsonStorage(DEVICE_LAST_USED_KEY, {});
+  }
+
+  function writeLastUsedMap(map) {
+    writeJsonStorage(DEVICE_LAST_USED_KEY, map);
+  }
+
+  function markDeviceUsed(did) {
+    const map = readLastUsedMap();
+    map[did] = Date.now();
+    writeLastUsedMap(map);
+  }
+
+  function readManualOrderMap() {
+    return readJsonStorage(DEVICE_MANUAL_ORDER_KEY, {});
+  }
+
+  function writeManualOrderMap(map) {
+    writeJsonStorage(DEVICE_MANUAL_ORDER_KEY, map);
+  }
+
+  function readDelayMinutesMap() {
+    return readJsonStorage(DEVICE_DELAY_MINUTES_KEY, {});
+  }
+
+  function writeDelayMinutesMap(map) {
+    writeJsonStorage(DEVICE_DELAY_MINUTES_KEY, map);
+  }
+
+  function getDelayMinutes(did) {
+    const map = readDelayMinutesMap();
+    const n = Number(map[did]);
+    if (!Number.isFinite(n) || n <= 0) return 5;
+    return n;
+  }
+
+  function setDelayMinutes(did, minutes) {
+    const map = readDelayMinutesMap();
+    map[did] = minutes;
+    writeDelayMinutesMap(map);
+  }
+
+  function isDelayScheduled(did) {
+    return Boolean(state.delayTimers[String(did)]);
+  }
+
+  function cancelDelayOff(did) {
+    const key = String(did);
+    const timer = state.delayTimers[key];
+    if (timer) {
+      clearTimeout(timer);
+    }
+    delete state.delayTimers[key];
+  }
+
+  function clearAllDelayTimers() {
+    Object.keys(state.delayTimers).forEach((did) => cancelDelayOff(did));
+  }
+
+  function getDeviceByDid(did) {
+    return state.devices.find((d) => String(d.did) === String(did));
+  }
+
+  function scheduleDelayOff(did, minutes) {
+    const key = String(did);
+    cancelDelayOff(key);
+    const ms = Math.max(1, Number(minutes) || 5) * 60 * 1000;
+    state.delayTimers[key] = window.setTimeout(async () => {
+      try {
+        await callBridge("toggle_device", { did: key, value: false });
+        const device = getDeviceByDid(key);
+        if (device?.quick_toggle?.supported) {
+          device.quick_toggle.current = 0;
+        }
+        if (state.detailDid && String(state.detailDid) === key && state.detailData) {
+          const powerPropName = device?.quick_toggle?.prop_name;
+          if (powerPropName && state.detailData?.properties) {
+            const prop = state.detailData.properties.find((p) => String(p?.name) === String(powerPropName));
+            if (prop) prop.current_value = false;
+          }
+          renderDetail(state.detailData);
+        }
+        renderDevices();
+        setStatus("Delay off completed", "ok");
+      } catch (err) {
+        setStatus(err.message || String(err), "error");
+      } finally {
+        cancelDelayOff(key);
+      }
+    }, ms);
+  }
+
+  function currentScopeKey() {
+    return state.selectedRoom || "all";
+  }
+
+  function sortByLastUsed(devices) {
+    const used = readLastUsedMap();
+    return [...devices].sort((a, b) => {
+      const oa = a?.is_online ? 1 : 0;
+      const ob = b?.is_online ? 1 : 0;
+      if (oa !== ob) return ob - oa;
+      const ta = Number(used[a.did] || 0);
+      const tb = Number(used[b.did] || 0);
+      if (ta !== tb) return tb - ta;
+      return String(a.name || "").localeCompare(String(b.name || ""));
+    });
+  }
+
+  function applyManualOrder(devices, scope) {
+    const manualMap = readManualOrderMap();
+    const manual = Array.isArray(manualMap[scope]) ? manualMap[scope] : [];
+    if (!manual.length) return sortByLastUsed(devices);
+
+    const byDid = new Map(devices.map((d) => [d.did, d]));
+    const ordered = [];
+    for (const did of manual) {
+      const found = byDid.get(did);
+      if (found) {
+        ordered.push(found);
+        byDid.delete(did);
+      }
+    }
+    const remaining = sortByLastUsed(Array.from(byDid.values()));
+    return ordered.concat(remaining);
+  }
+
+  function pruneManualOrderForDevices(allDevices) {
+    const valid = new Set(allDevices.map((d) => d.did));
+    const map = readManualOrderMap();
+    let changed = false;
+    for (const scope of Object.keys(map)) {
+      const raw = Array.isArray(map[scope]) ? map[scope] : [];
+      const pruned = raw.filter((did) => valid.has(did));
+      if (pruned.length !== raw.length) {
+        map[scope] = pruned;
+        changed = true;
+      }
+    }
+    if (changed) writeManualOrderMap(map);
+  }
+
+  function renderRooms() {
+    const tabs = el("roomTabs");
+    const rooms = state.rooms.length ? state.rooms : [{ id: "all", name: "All Rooms" }];
+    tabs.innerHTML = rooms
+      .map((room) => {
+        const active = room.id === state.selectedRoom ? "active" : "";
+        return `<button class="tab ${active}" data-room-id="${escapeHtml(room.id)}">${escapeHtml(localizeRoomName(room.name))}</button>`;
+      })
+      .join("");
+
+    tabs.querySelectorAll(".tab").forEach((node) => {
+      node.addEventListener("click", () => {
+        state.selectedRoom = node.getAttribute("data-room-id") || "all";
+        renderRooms();
+        renderDevices();
+      });
+    });
+  }
+
+  function filteredDevices() {
+    const scoped = state.selectedRoom === "all"
+      ? state.devices
+      : state.devices.filter((d) => d.room_id === state.selectedRoom);
+    return applyManualOrder(scoped, currentScopeKey());
+  }
+
+  function quickToggleState(device) {
+    if (!device.quick_toggle?.supported) {
+      return { label: "Quick toggle unavailable", on: false, disabled: true };
+    }
+    const curr = device.quick_toggle.current;
+    const on = curr === true || curr === 1 || curr === "1";
+    return { label: on ? "On" : "Off", on, disabled: false };
+  }
+
+  function renderDevices() {
+    const box = el("devicesBox");
+    if (state.devicesLoading) {
+      box.innerHTML = `<div class="devices-loading"><span class="spinner"></span><span>Loading devices...</span></div>`;
+      return;
+    }
+
+    const devices = filteredDevices();
+
+    if (!devices.length) {
+      box.innerHTML = `<div class="empty">No devices found for this filter.</div>`;
+      return;
+    }
+
+    box.innerHTML = devices.map((device) => {
+      const toggle = quickToggleState(device);
+      const onlineText = device.is_online ? "Online" : "Offline";
+      return `
+        <div class="device-card ${device.is_online ? "" : "offline"}" data-did="${escapeHtml(device.did)}">
+          <div class="device-top">
+            <div>
+              <div class="device-name">${escapeHtml(device.name)}</div>
+              <div class="meta">${escapeHtml(localizeRoomName(device.room_name || "Unassigned"))}</div>
+            </div>
+            <span class="badge">${onlineText}</span>
+          </div>
+          <div class="meta">${escapeHtml(device.model || "")}</div>
+          <div class="device-top">
+            <span class="meta">${escapeHtml(toggle.label)}</span>
+            <button
+              class="toggle ${toggle.on ? "on" : ""}"
+              data-action="toggle"
+              data-did="${escapeHtml(device.did)}"
+              ${toggle.disabled || !device.is_online ? "disabled" : ""}
+              title="Quick Toggle"
+            >⏻</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    box.querySelectorAll(".device-card").forEach((card) => {
+      card.addEventListener("click", async (event) => {
+        const target = event.target;
+        if (target && target.closest("[data-action='toggle']")) {
+          return;
+        }
+        const did = card.getAttribute("data-did");
+        if (did) {
+          await openDetail(did);
+        }
+      });
+    });
+
+    box.querySelectorAll("[data-action='toggle']").forEach((btn) => {
+      btn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        const did = btn.getAttribute("data-did");
+        if (!did) return;
+        const prevDisabled = btn.disabled;
+        btn.disabled = true;
+        try {
+          const result = await callBridge("toggle_device", { did });
+          const targetValue = result?.value;
+          const device = state.devices.find((d) => String(d.did) === String(did));
+          if (device?.quick_toggle?.supported) {
+            if (targetValue !== undefined) {
+              device.quick_toggle.current = targetValue;
+            } else {
+              const curr = device.quick_toggle.current;
+              const on = curr === true || curr === 1 || curr === "1";
+              device.quick_toggle.current = on ? 0 : 1;
+            }
+            if (!boolLikeToBoolean(device.quick_toggle.current)) {
+              cancelDelayOff(did);
+            }
+          }
+
+          // If current detail is the same device, sync only power section state.
+          if (state.detailDid && String(state.detailDid) === String(did) && state.detailData?.properties && device?.quick_toggle?.prop_name) {
+            const powerProp = state.detailData.properties.find((p) => String(p?.name) === String(device.quick_toggle.prop_name));
+            if (powerProp) {
+              powerProp.current_value = targetValue !== undefined ? targetValue : !boolLikeToBoolean(powerProp.current_value);
+              renderDetail(state.detailData);
+            }
+          }
+
+          markDeviceUsed(did);
+          setStatus("Toggle command sent", "ok");
+          renderDevices();
+        } catch (err) {
+          setStatus(err.message || String(err), "error");
+        } finally {
+          btn.disabled = prevDisabled;
+        }
+      });
+    });
+  }
+
+  async function refreshDevices(options = {}) {
+    const showLoading = options.showLoading !== false;
+    if (showLoading) {
+      state.devicesLoading = true;
+      renderDevices();
+    }
+    try {
+      const data = await callBridge("list_devices", {
+        room_id: "all",
+      });
+
+      state.authenticated = true;
+      setAuthView(true);
+      state.rooms = data.rooms || [{ id: "all", name: "All Rooms" }];
+      state.devices = data.devices || [];
+      pruneManualOrderForDevices(state.devices);
+
+      if (!state.rooms.some((r) => r.id === state.selectedRoom)) {
+        state.selectedRoom = "all";
+      }
+
+      renderRooms();
+    } finally {
+      if (showLoading) {
+        state.devicesLoading = false;
+      }
+      renderDevices();
+    }
+  }
+
+  async function openDetail(did, options = {}) {
+    const showLoading = options.showLoading !== false;
+    const syncList = options.syncList !== false;
+    try {
+      if (showLoading) {
+        state.detailLoading = true;
+        const detailEmpty = el("detailEmpty");
+        const detailContent = el("detailContent");
+        if (detailEmpty && detailContent) {
+          detailEmpty.style.display = "block";
+          detailEmpty.innerHTML = `<div class="detail-loading"><span class="spinner"></span><span>Loading details...</span></div>`;
+          detailContent.classList.remove("show");
+        }
+      }
+      const data = await callBridge("device_detail", { did });
+      state.detailDid = did;
+      state.detailData = data;
+      markDeviceUsed(did);
+      renderDetail(data);
+      if (syncList) {
+        renderDevices();
+      }
+    } catch (err) {
+      state.detailLoading = false;
+      const detailEmpty = el("detailEmpty");
+      if (detailEmpty) {
+        detailEmpty.style.display = "block";
+        detailEmpty.innerHTML = DETAIL_EMPTY_TEXT;
+      }
+      setStatus(err.message || String(err), "error");
+    }
+  }
+
+  function renderDetail(data) {
+    state.detailLoading = false;
+    state.detailData = data;
+    const device = data.device || {};
+    el("detailName").textContent = device.name || device.did || "Device";
+    el("detailModel").textContent = `${device.model || ""} · ${device.is_online ? "Online" : "Offline"}`;
+
+    const propsBox = el("propsBox");
+    const props = data.properties || [];
+    const energySummary = data.energy_summary || {};
+    const listDevice = getDeviceByDid(device.did);
+    let isPoweredOn;
+    let disabledAttr;
+
+    if (!props.length) {
+      propsBox.innerHTML = `<div class="empty">No recognizable properties for this device.</div>`;
+    } else {
+      const visibleProps = props.filter((prop) => !shouldHideProp(prop, device));
+      const editableProps = visibleProps.filter((prop) => isPropWritable(prop));
+      const readonlyProps = visibleProps.filter((prop) => !isPropWritable(prop));
+      const commonEditable = editableProps.filter((prop) => !isTimerProp(prop));
+      const switchProps = commonEditable.filter((prop) => inferPropUiKind(prop) === "switch");
+      const nonSwitchEditable = commonEditable.filter((prop) => inferPropUiKind(prop) !== "switch");
+      const tempEditable = nonSwitchEditable.filter((prop) => {
+        const name = String(prop?.name || "").toLowerCase();
+        const desc = String(prop?.description || "").toLowerCase();
+        const text = `${name} ${desc}`;
+        return text.includes("temperature") || text.includes("\u6e29\u5ea6");
+      });
+      const nonTempEditable = nonSwitchEditable.filter((prop) => !tempEditable.includes(prop));
+      const supportsDelayOff = Boolean(listDevice?.quick_toggle?.supported);
+
+      const powerProp = switchProps.find((p) => String(p?.name || "").toLowerCase() === "on") || switchProps[0];
+      const extraSwitchProps = powerProp ? switchProps.filter((p) => p !== powerProp) : switchProps;
+      isPoweredOn = powerProp
+        ? boolLikeToBoolean(powerProp.current_value)
+        : (listDevice?.quick_toggle?.supported
+          ? boolLikeToBoolean(listDevice.quick_toggle.current)
+          : true);
+      disabledAttr = isPoweredOn ? "" : "disabled";
+
+      const blocks = [];
+
+      if (powerProp) {
+        const on = boolLikeToBoolean(powerProp.current_value);
+        blocks.push(`
+          <div class="d-block">
+            <div class="d-title">Power</div>
+            <div class="d-main-row">
+              <span class="d-icon">🔌</span>
+              <div class="d-main-label">${escapeHtml(propDisplayLabel(powerProp, device))}</div>
+              <button class="d-power ${on ? "" : "off"}" data-action="toggle-prop" data-prop-name="${escapeHtml(powerProp.name)}" data-current="${on ? "1" : "0"}">⏻</button>
+            </div>
+          </div>
+        `);
+      }
+
+      const controls = [];
+      for (const prop of extraSwitchProps) {
+        const on = boolLikeToBoolean(prop.current_value);
+        controls.push(`
+          <div class="d-row">
+            <span class="d-icon">${escapeHtml(iconForProp(prop.name))}</span>
+            <div class="d-row-label">${escapeHtml(propDisplayLabel(prop, device))}</div>
+            <button class="d-switch ${on ? "on" : ""}" data-action="toggle-prop" data-prop-name="${escapeHtml(prop.name)}" data-current="${on ? "1" : "0"}" ${disabledAttr}>${on ? "On" : "Off"}</button>
+          </div>
+        `);
+      }
+
+      if (tempEditable.length) {
+        const tprop = tempEditable[0];
+        const tr = readRangeMeta(tprop);
+        const min = tr?.min ?? 20;
+        const max = tr?.max ?? 55;
+        const step = tr?.step ?? 1;
+        const currNum = Number(tprop.current_value);
+        const curr = Number.isFinite(currNum) ? Math.min(max, Math.max(min, currNum)) : min;
+        const percent = max > min ? ((curr - min) / (max - min)) * 100 : 0;
+        blocks.push(`
+          <div class="d-block temp-card" data-prop-name="${escapeHtml(tprop.name)}" data-temp-min="${escapeHtml(String(min))}" data-temp-max="${escapeHtml(String(max))}" data-temp-step="${escapeHtml(String(step))}" data-temp-current="${escapeHtml(String(curr))}">
+            <div class="temp-head">
+              <div class="temp-title">Target Temperature</div>
+              <div class="temp-now">${escapeHtml(String(curr))}°C</div>
+            </div>
+            <div class="temp-control">
+              <button class="temp-btn" data-action="temp-dec" data-prop-name="${escapeHtml(tprop.name)}" ${disabledAttr}>−</button>
+              <div class="temp-track">
+                <div class="temp-fill" style="width:${escapeHtml(String(Math.max(0, Math.min(100, percent))))}%"></div>
+                <span>${escapeHtml(String(min))}</span>
+                <span>${escapeHtml(String(max))}</span>
+              </div>
+              <button class="temp-btn" data-action="temp-inc" data-prop-name="${escapeHtml(tprop.name)}" ${disabledAttr}>+</button>
+            </div>
+          </div>
+        `);
+      }
+
+      for (const [idx, prop] of nonTempEditable.entries()) {
+        const kind = inferPropUiKind(prop);
+        const range = readRangeMeta(prop);
+        const valueList = readValueList(prop);
+        const propValueAttr = escapeHtml(JSON.stringify(prop.current_value));
+        let control = `<span class="readonly-chip">${escapeHtml(formatValue(prop.current_value))}</span>`;
+        if (kind === "range") {
+          const current = Number(prop.current_value);
+          const min = range?.min ?? 0;
+          const max = range?.max ?? Math.max(100, Number.isFinite(current) ? Math.ceil(current) : 100);
+          const step = range?.step ?? 1;
+          const value = Number.isFinite(current) ? Math.min(max, Math.max(min, current)) : min;
+          control = `
+            <div class="d-range-wrap">
+              <input type="range" min="${escapeHtml(String(min))}" max="${escapeHtml(String(max))}" step="${escapeHtml(String(step))}" value="${escapeHtml(String(value))}" data-action="range-prop" data-prop-name="${escapeHtml(prop.name)}" ${disabledAttr}>
+              <span class="d-range-value" id="range-value-${idx}">${escapeHtml(String(value))}</span>
+            </div>
+          `;
+        } else if (kind === "select" && valueList.length) {
+          const selected = String(prop.current_value);
+          control = `
+            <select class="select-input" data-action="select-prop" data-prop-name="${escapeHtml(prop.name)}" ${disabledAttr}>
+              ${valueList.map((item) => {
+                const val = String(item.value);
+                const isSelected = val === selected ? "selected" : "";
+                return `<option value="${escapeHtml(val)}" ${isSelected}>${escapeHtml(extractEnglish(item.label) || item.label)}</option>`;
+              }).join("")}
+            </select>
+          `;
+        }
+        controls.push(`
+          <div class="d-row" data-prop-name="${escapeHtml(prop.name)}" data-prop-value="${propValueAttr}">
+            <span class="d-icon">${escapeHtml(iconForProp(prop.name))}</span>
+            <div class="d-row-label">${escapeHtml(propDisplayLabel(prop, device))}</div>
+            ${control}
+          </div>
+        `);
+      }
+
+      if (readonlyProps.length) {
+        const todayPower = energySummary.today ?? pickMetricValue(readonlyProps, ["today", "\u4eca\u65e5", "\u65e5\u7528\u7535"]);
+        const monthPower = energySummary.month ?? pickMetricValue(readonlyProps, ["month", "\u8fd1\u4e00\u6708", "\u6708\u7528\u7535", "monthly"]);
+        const currentPower = energySummary.current_power ?? pickMetricValue(readonlyProps, ["power", "\u529f\u7387", "watt"]);
+        const hasToday = Number.isFinite(Number(todayPower));
+        const hasMonth = Number.isFinite(Number(monthPower));
+        const hasCurrent = Number.isFinite(Number(currentPower));
+        if (hasToday || hasMonth || hasCurrent) {
+          const metricGrid = `
+            <div class="d-metrics">
+              <div class="d-metric">
+                <div class="d-metric-value">${hasToday ? escapeHtml(formatDegreeValue(todayPower)) : "-"}</div>
+                <div class="d-metric-label">Today's Energy (kWh)</div>
+              </div>
+              <div class="d-metric">
+                <div class="d-metric-value">${hasMonth ? escapeHtml(formatDegreeValue(monthPower)) : "-"}</div>
+                <div class="d-metric-label">Monthly Energy (kWh)</div>
+              </div>
+              <div class="d-metric">
+                <div class="d-metric-value">${hasCurrent ? escapeHtml(formatNumberOneDecimal(currentPower)) : "-"}</div>
+                <div class="d-metric-label">Current Power (W)</div>
+              </div>
+            </div>
+          `;
+          blocks.push(`
+            <div class="d-block">
+              <div class="d-title">Energy Info</div>
+              ${metricGrid}
+            </div>
+          `);
+        }
+      }
+
+      if (supportsDelayOff) {
+        const delayEnabled = isDelayScheduled(device.did);
+        const delayMinutes = getDelayMinutes(device.did);
+        blocks.push(`
+          <div class="d-block">
+            <div class="d-title">Timer</div>
+            <div class="d-row">
+              <span class="d-icon">⏱</span>
+              <div class="d-row-label">Delay Off</div>
+              <button class="d-switch ${delayEnabled ? "on" : ""}" data-action="delay-toggle" data-did="${escapeHtml(device.did)}" ${disabledAttr}>${delayEnabled ? "On" : "Off"}</button>
+            </div>
+            <div class="d-row right-align">
+              <div class="d-row-label">Delay</div>
+              <select class="select-input" style="max-width:120px; margin-left:auto;" data-action="delay-minutes" data-did="${escapeHtml(device.did)}" ${disabledAttr}>
+                ${[5, 10, 15, 30, 60, 120].map((m) => `<option value="${m}" ${m === delayMinutes ? "selected" : ""}>${m} min</option>`).join("")}
+              </select>
+            </div>
+          </div>
+        `);
+      }
+
+      if (controls.length) {
+        blocks.push(`
+          <div class="d-block">
+            <div class="d-title">Controls</div>
+            ${controls.join("")}
+          </div>
+        `);
+      }
+
+      propsBox.innerHTML = `<div class="d-stack">${blocks.join("")}</div>` || `<div class="empty">No recognizable properties for this device.</div>`;
+    }
+
+    propsBox.querySelectorAll("[data-action='toggle-prop']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const propName = btn.getAttribute("data-prop-name");
+        if (!propName) return;
+        const current = btn.getAttribute("data-current") === "1";
+        await applyPropertyUpdate(propName, !current);
+      });
+    });
+
+    propsBox.querySelectorAll("[data-action='range-prop']").forEach((slider) => {
+      const propName = slider.getAttribute("data-prop-name");
+      const valueEl = slider.closest(".d-row")?.querySelector(".d-range-value");
+      slider.addEventListener("input", () => {
+        if (valueEl) valueEl.textContent = slider.value;
+      });
+      slider.addEventListener("change", async () => {
+        if (!propName) return;
+        await applyPropertyUpdate(propName, Number(slider.value));
+      });
+    });
+
+    propsBox.querySelectorAll("[data-action='select-prop']").forEach((select) => {
+      select.addEventListener("change", async () => {
+        const propName = select.getAttribute("data-prop-name");
+        if (!propName) return;
+        const row = select.closest("[data-prop-value]");
+        const valueRaw = select.value;
+        let parsed = valueRaw;
+        if (row) {
+          const rawCurrent = row.getAttribute("data-prop-value");
+          try {
+            const current = JSON.parse(rawCurrent || "null");
+            if (typeof current === "number") {
+              parsed = Number(valueRaw);
+            } else if (typeof current === "boolean") {
+              parsed = boolLikeToBoolean(valueRaw);
+            }
+          } catch {
+            parsed = valueRaw;
+          }
+        }
+        await applyPropertyUpdate(propName, parsed);
+      });
+    });
+
+    propsBox.querySelectorAll("[data-action='temp-dec'], [data-action='temp-inc']").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const propName = btn.getAttribute("data-prop-name");
+        if (!propName) return;
+        const card = btn.closest(".temp-card");
+        if (!card) return;
+        const min = Number(card.getAttribute("data-temp-min") || 20);
+        const max = Number(card.getAttribute("data-temp-max") || 55);
+        const step = Number(card.getAttribute("data-temp-step") || 1);
+        const curr = Number(card.getAttribute("data-temp-current") || min);
+        const delta = btn.getAttribute("data-action") === "temp-dec" ? -step : step;
+        const next = Math.min(max, Math.max(min, curr + delta));
+        if (next === curr) return;
+        await applyPropertyUpdate(propName, next);
+      });
+    });
+
+    propsBox.querySelectorAll("[data-action='delay-minutes']").forEach((select) => {
+      select.addEventListener("change", () => {
+        const did = select.getAttribute("data-did");
+        if (!did) return;
+        const minutes = Number(select.value);
+        if (!Number.isFinite(minutes) || minutes <= 0) return;
+        setDelayMinutes(did, minutes);
+        if (isDelayScheduled(did)) {
+          scheduleDelayOff(did, minutes);
+          setStatus(`Delay off updated to ${minutes} min`, "ok");
+          if (state.detailData) renderDetail(state.detailData);
+        }
+      });
+    });
+
+    propsBox.querySelectorAll("[data-action='delay-toggle']").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const did = btn.getAttribute("data-did");
+        if (!did) return;
+        if (isDelayScheduled(did)) {
+          cancelDelayOff(did);
+          setStatus("Delay off canceled", "ok");
+        } else {
+          const minutes = getDelayMinutes(did);
+          scheduleDelayOff(did, minutes);
+          setStatus(`Will turn off in ${minutes} min`, "ok");
+        }
+        if (state.detailData) renderDetail(state.detailData);
+      });
+    });
+
+    el("detailEmpty").style.display = "none";
+    el("detailContent").classList.add("show");
+  }
+
+  function resetDetail() {
+    state.detailDid = "";
+    state.detailLoading = false;
+    state.detailData = null;
+    el("detailContent").classList.remove("show");
+    el("detailEmpty").innerHTML = DETAIL_EMPTY_TEXT;
+    el("detailEmpty").style.display = "block";
+  }
+
+  async function startLogin() {
+    setLoading(true);
+    try {
+      const data = await callBridge("login_start");
+      if (data.authenticated) {
+        stopLoginPolling();
+        state.authenticated = true;
+        setDataLoading(true);
+        setAuthView(true);
+        setStatus("");
+        el("qrWrap").classList.remove("show");
+        try {
+          await refreshDevices({ showLoading: false });
+        } finally {
+          setDataLoading(false);
+        }
+        return;
+      }
+
+      if (data.qr_url) {
+        el("qrImage").src = data.qr_url;
+        el("qrWrap").classList.add("show");
+      }
+      setStatus("");
+      scheduleLoginPolling();
+    } catch (err) {
+      setStatus(err.message || String(err), "error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function bootstrap() {
+    setLoading(true);
+    try {
+      const status = await callBridge("status");
+      state.authenticated = !!status.authenticated;
+
+      if (state.authenticated) {
+        stopLoginPolling();
+        setDataLoading(true);
+        setAuthView(true);
+        setStatus("");
+        try {
+          await refreshDevices({ showLoading: false });
+        } finally {
+          setDataLoading(false);
+        }
+      } else {
+        setAuthView(false);
+        await startLogin();
+      }
+    } catch (err) {
+      setStatus(err.message || String(err), "error");
+      setDataLoading(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  el("refreshBtn").addEventListener("click", async () => {
+    setLoading(true);
+    try {
+      await refreshDevices();
+      setStatus("Device list refreshed", "ok");
+    } catch (err) {
+      setStatus(err.message || String(err), "error");
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  el("logoutBtn").addEventListener("click", async () => {
+    setLoading(true);
+    try {
+      await callBridge("logout");
+      clearAllDelayTimers();
+      stopLoginPolling();
+      state.authenticated = false;
+      state.devices = [];
+      state.rooms = [];
+      state.selectedRoom = "all";
+      resetDetail();
+      setStatus("");
+      setDataLoading(false);
+      setAuthView(false);
+      await startLogin();
+    } catch (err) {
+      setStatus(err.message || String(err), "error");
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  el("qrWrap").addEventListener("click", () => {
+    void startLogin();
+  });
+  el("closeDetailBtn").addEventListener("click", resetDetail);
+
+  bootstrap();
+</script>
+</body>
+</html>

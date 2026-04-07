@@ -88,6 +88,8 @@ Each migration ID is recorded after successful application.
 | `202603250003_task_finished_at.sql` | `0011_task_finished_at` | alter | `"duplicate column name"` |
 | `202603250004_pomodoro_cycle_memo.sql` | `0012_pomo_memo_v1` | alter | `"duplicate column name"` |
 | `202603260001_pomodoro_daily_reset.sql` | `0013_pomo_daily_reset_v1` | alter | `"duplicate column name"` |
+| `202603280001_acp_runtime_v2.sql` | `0014_acp_runtime_v2` | create | `agent_sessions` |
+| `202603310001_provider_config_v2.sql` | `0015_provider_config_v2` | alter | `"no such column", "duplicate column name"` |
 
 ## Testing
 ```bash

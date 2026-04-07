@@ -33,7 +33,7 @@ jobs:
       tag_version: ${{ steps.resolve.outputs.tag_version }}
       target_sha: ${{ steps.resolve.outputs.target_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
@@ -75,7 +75,7 @@ jobs:
     outputs:
       release_body: ${{ steps.notes.outputs.release_body }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.target_sha }}
@@ -106,16 +106,19 @@ jobs:
       matrix:
         include:
           - platform: macos-14
+            rust_target: aarch64-apple-darwin
             args: --target aarch64-apple-darwin --bundles dmg,updater
           - platform: ubuntu-22.04
+            rust_target: x86_64-unknown-linux-gnu
             args: --bundles appimage,deb
           - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
             args: --bundles nsis,msi
 
     runs-on: ${{ matrix.platform }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           ref: ${{ needs.prepare-release.outputs.target_sha }}
@@ -137,7 +140,9 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             libssl-dev \
-            patchelf
+            patchelf \
+            libfuse2 \
+            fuse
 
       - name: Install nightly Rust
         uses: dtolnay/rust-toolchain@nightly
@@ -145,13 +150,45 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
+      - name: Setup Node.js for OpenCode bundling
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+
+      - name: Stage bundled OpenCode
+        if: matrix.platform != 'ubuntu-22.04'
+        shell: bash
+        run: |
+          python scripts/fetch_opencode_bundle.py \
+            --target "${{ matrix.rust_target }}" \
+            --output apps/desktop-tauri/src-tauri/resources/opencode
+
+      - name: Build ACP sidecar
+        run: cargo build --release --locked -p peekoo-agent-acp --target ${{ matrix.rust_target }}
+
+      - name: Debug Linux AppImage env
+        if: matrix.platform == 'ubuntu-22.04'
+        shell: bash
+        run: |
+          echo "matrix.platform=${{ matrix.platform }}"
+          echo "matrix.args=${{ matrix.args }}"
+          echo "APPIMAGE_EXTRACT_AND_RUN=${APPIMAGE_EXTRACT_AND_RUN}"
+          echo "NO_STRIP=${NO_STRIP}"
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: 1
+
       - name: Build and publish release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_CONFIG: ${{ matrix.platform == 'macos-14' && '{"app":{"macOSPrivateApi":true}}' || '{"app":{"macOSPrivateApi":false}}' }}
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          NO_STRIP: 1
         with:
           projectPath: apps/desktop-tauri
           tagName: ${{ needs.prepare-release.outputs.tag_name }}
@@ -175,7 +212,7 @@ jobs:
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish_aur)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve version
         id: version
@@ -200,7 +237,7 @@ jobs:
           sed -i "s/'REPLACE_WITH_APPIMAGE_SHA256'/'${SHA256}'/" PKGBUILD
 
       - name: Publish to AUR
-        uses: KSXGitHub/github-actions-deploy-aur@v4.1.1
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.2
         with:
           pkgname: peekoo-bin
           pkgbuild: scripts/aur/PKGBUILD

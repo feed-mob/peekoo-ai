@@ -384,14 +384,23 @@ pub fn on_event(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn tool_google_calendar_set_client_json(input: String) -> FnResult<String> {
-    peekoo::log::info(&format!("Received client.json upload, input length: {}", input.len()));
+    peekoo::log::info(&format!(
+        "Received client.json upload, input length: {}",
+        input.len()
+    ));
     let payload: Value = serde_json::from_str(&input)?;
     let client_json = payload["clientJson"]
         .as_str()
         .ok_or_else(|| Error::msg("Missing clientJson"))?;
-    peekoo::log::info(&format!("Parsing client.json, length: {}", client_json.len()));
+    peekoo::log::info(&format!(
+        "Parsing client.json, length: {}",
+        client_json.len()
+    ));
     let credentials = parse_google_client_json(client_json).map_err(Error::msg)?;
-    peekoo::log::info(&format!("Parsed credentials, client_id: {}", credentials.client_id));
+    peekoo::log::info(&format!(
+        "Parsed credentials, client_id: {}",
+        credentials.client_id
+    ));
     peekoo::secrets::set(CLIENT_ID_KEY, &credentials.client_id)?;
     peekoo::secrets::set(CLIENT_SECRET_KEY, &credentials.client_secret)?;
     peekoo::log::info("Client credentials saved successfully");
@@ -401,6 +410,7 @@ pub fn tool_google_calendar_set_client_json(input: String) -> FnResult<String> {
 #[plugin_fn]
 pub fn tool_google_calendar_connect_start(_: String) -> FnResult<String> {
     let credentials = load_client_credentials().map_err(Error::msg)?;
+    peekoo::log::info("Starting Google Calendar OAuth flow");
     let result = peekoo::oauth::start(peekoo::oauth::StartRequest {
         provider_id: GOOGLE_PROVIDER_ID,
         authorize_url: GOOGLE_AUTHORIZE_URL,
@@ -425,6 +435,10 @@ pub fn tool_google_calendar_connect_start(_: String) -> FnResult<String> {
 pub fn tool_google_calendar_connect_status(input: String) -> FnResult<String> {
     let payload: FlowIdInput = serde_json::from_str(&input)?;
     let status = peekoo::oauth::status(&payload.flow_id)?;
+    peekoo::log::info(&format!(
+        "Google Calendar OAuth status for flow {}: {}",
+        payload.flow_id, status.status
+    ));
     if status.status == "completed" {
         let bundle = TokenBundle {
             access_token: status
@@ -435,12 +449,15 @@ pub fn tool_google_calendar_connect_status(input: String) -> FnResult<String> {
                 .expires_at
                 .and_then(|value| value.parse::<i64>().ok()),
         };
-        save_token_bundle(&bundle).map_err(Error::msg)?;
+        peekoo::log::info("Fetching Google account profile after OAuth completion");
         let connected_account = fetch_account_profile(&bundle.access_token).map_err(Error::msg)?;
+        peekoo::log::info("Google Calendar OAuth completed; saving token bundle");
+        save_token_bundle(&bundle).map_err(Error::msg)?;
         save_connected_account(Some(&connected_account)).map_err(Error::msg)?;
         let mut state = load_calendar_state().map_err(Error::msg)?;
         state.oauth_flow_id = None;
         save_calendar_state(&state).map_err(Error::msg)?;
+        peekoo::log::info("Refreshing Google Calendar snapshot after OAuth completion");
         refresh_snapshot(true).map_err(Error::msg)?;
     }
 
@@ -596,28 +613,72 @@ pub fn tool_google_calendar_update_calendar_selection(input: String) -> FnResult
 
 #[plugin_fn]
 pub fn data_panel_snapshot(_: String) -> FnResult<String> {
-    let snapshot = panel_snapshot().map_err(Error::msg)?;
+    let snapshot = panel_snapshot_consume_error().map_err(Error::msg)?;
     Ok(serde_json::to_string(&snapshot)?)
 }
 
 fn panel_snapshot() -> Result<GoogleCalendarPanelDto, String> {
     let state = load_calendar_state()?;
     let client_credentials = load_client_credentials_optional()?;
+    let connected_account = load_connected_account()?;
+    let connected = load_token_bundle()?.is_some() && connected_account.is_some();
     let now_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
     let bucketed = bucket_events(&state.cached_events, &now_iso, DEFAULT_UPCOMING_LIMIT)?;
 
     Ok(GoogleCalendarPanelDto {
         status: GoogleCalendarStatusDto {
-            connected: load_token_bundle()?.is_some(),
+            connected,
             client_configured: client_credentials.is_some(),
             client_json_uploaded: client_credentials.is_some(),
             effective_client_id: client_credentials
                 .as_ref()
                 .map(|value| value.client_id.clone())
                 .unwrap_or_default(),
-            connected_account: load_connected_account()?,
+            connected_account,
             last_sync_at: state.last_sync_at,
-            last_error: state.last_error,
+            last_error: visible_last_error(connected, state.last_error),
+        },
+        calendars: state.calendars.clone(),
+        upcoming: bucketed.upcoming,
+        today: bucketed.today,
+        week: bucketed.week,
+        event_link_statuses: build_event_link_statuses(&state.task_links),
+    })
+}
+
+fn visible_last_error(connected: bool, last_error: Option<String>) -> Option<String> {
+    if connected {
+        last_error
+    } else {
+        None
+    }
+}
+
+fn panel_snapshot_consume_error() -> Result<GoogleCalendarPanelDto, String> {
+    let mut state = load_calendar_state()?;
+    let transient_error = state.last_error.take();
+    if transient_error.is_some() {
+        save_calendar_state(&state)?;
+    }
+
+    let client_credentials = load_client_credentials_optional()?;
+    let connected_account = load_connected_account()?;
+    let connected = load_token_bundle()?.is_some() && connected_account.is_some();
+    let now_iso = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    let bucketed = bucket_events(&state.cached_events, &now_iso, DEFAULT_UPCOMING_LIMIT)?;
+
+    Ok(GoogleCalendarPanelDto {
+        status: GoogleCalendarStatusDto {
+            connected,
+            client_configured: client_credentials.is_some(),
+            client_json_uploaded: client_credentials.is_some(),
+            effective_client_id: client_credentials
+                .as_ref()
+                .map(|value| value.client_id.clone())
+                .unwrap_or_default(),
+            connected_account,
+            last_sync_at: state.last_sync_at,
+            last_error: visible_last_error(connected, transient_error),
         },
         calendars: state.calendars.clone(),
         upcoming: bucketed.upcoming,
@@ -703,8 +764,15 @@ fn bucket_to_event(bucket: CalendarEventBucket) -> CalendarEvent {
 }
 
 fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
+    peekoo::log::info(&format!(
+        "Refreshing Google Calendar snapshot (force={force})"
+    ));
     ensure_sync_schedule()?;
     let Some(mut bundle) = load_token_bundle()? else {
+        peekoo::log::info("Google Calendar refresh skipped: no token bundle present");
+        let mut state = load_calendar_state()?;
+        state.last_error = None;
+        save_calendar_state(&state)?;
         return panel_snapshot();
     };
 
@@ -722,6 +790,7 @@ fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
     }
 
     if token_expired_soon(&bundle) {
+        peekoo::log::info("Google Calendar access token is expiring soon; refreshing token");
         bundle = refresh_token_bundle(&bundle)?;
         save_token_bundle(&bundle)?;
     }
@@ -729,6 +798,11 @@ fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
     let mut state = load_calendar_state()?;
     match fetch_events(&bundle.access_token, &state.calendars) {
         Ok((events, calendars, errors)) => {
+            peekoo::log::info(&format!(
+                "Google Calendar refresh fetched {} events across {} calendars",
+                events.len(),
+                calendars.len()
+            ));
             state.cached_events = events;
             state.calendars = calendars;
             state.last_sync_at = Some(Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true));
@@ -743,6 +817,7 @@ fn refresh_snapshot(force: bool) -> Result<GoogleCalendarPanelDto, String> {
             notify_due_events(&mut state)?;
         }
         Err(err) => {
+            peekoo::log::error(&format!("Google Calendar refresh failed: {err}"));
             state.last_error = Some(err);
         }
     }
@@ -875,6 +950,10 @@ fn refresh_token_bundle(bundle: &TokenBundle) -> Result<TokenBundle, String> {
         body: Some(&body),
     })
     .map_err(|e| e.to_string())?;
+    peekoo::log::info(&format!(
+        "Google token refresh response status: {}",
+        response.status
+    ));
     if response.status >= 400 {
         return Err(format!(
             "Google Calendar token refresh failed ({}): {}",
@@ -936,17 +1015,21 @@ fn default_sync_window() -> (DateTime<Utc>, DateTime<Utc>) {
 }
 
 fn fetch_google_calendar_list(access_token: &str) -> Result<Vec<GoogleCalendarListEntry>, String> {
+    peekoo::log::info("Fetching Google Calendar list");
     let response = peekoo::http::request(peekoo::http::Request {
         method: "GET",
         url: "https://www.googleapis.com/calendar/v3/users/me/calendarList",
         headers: vec![
             ("Authorization", &format!("Bearer {access_token}")),
             ("User-Agent", "Peekoo-Desktop/0.1.0"),
-            ("Origin", "http://localhost:1455"),
         ],
         body: None,
     })
     .map_err(|e| e.to_string())?;
+    peekoo::log::info(&format!(
+        "Google Calendar list response status: {}",
+        response.status
+    ));
 
     if response.status >= 400 {
         let err_msg = format!(
@@ -982,6 +1065,10 @@ fn fetch_calendar_events(
         body: None,
     })
     .map_err(|e| e.to_string())?;
+    peekoo::log::info(&format!(
+        "Google Calendar events response for '{}' status: {}",
+        calendar.name, response.status
+    ));
     if response.status >= 400 {
         return Err(format!(
             "Google Calendar fetch failed for '{}' ({}): {}",
@@ -1023,7 +1110,6 @@ fn create_google_event(
             ("Content-Type", "application/json"),
             ("Accept", "application/json"),
             ("User-Agent", "Peekoo-Desktop/0.1.0"),
-            ("Origin", "http://localhost:1455"),
         ],
         body: Some(&body),
     })
@@ -1041,6 +1127,7 @@ fn create_google_event(
 }
 
 fn fetch_account_profile(access_token: &str) -> Result<GoogleAccountProfile, String> {
+    peekoo::log::info("Fetching Google account profile");
     let response = peekoo::http::request(peekoo::http::Request {
         method: "GET",
         url: "https://www.googleapis.com/oauth2/v2/userinfo",
@@ -1051,6 +1138,10 @@ fn fetch_account_profile(access_token: &str) -> Result<GoogleAccountProfile, Str
         body: None,
     })
     .map_err(|e| e.to_string())?;
+    peekoo::log::info(&format!(
+        "Google account profile response status: {}",
+        response.status
+    ));
     if response.status >= 400 {
         return Err(format!(
             "Google account profile fetch failed ({}): {}",
@@ -1836,6 +1927,12 @@ mod tests {
     fn reminder_schedule_key_uses_event_id() {
         let key = reminder_schedule_key("evt-abc");
         assert_eq!(key, "reminder:evt-abc");
+    }
+
+    #[test]
+    fn disconnected_panel_snapshot_hides_stale_last_error() {
+        let last_error = visible_last_error(false, Some("Previous sync failed".to_string()));
+        assert_eq!(last_error, None);
     }
 
     #[test]

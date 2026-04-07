@@ -1,5 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum SkillInstallOutcome {
+    Installed {
+        skill: SkillDto,
+    },
+    Conflict {
+        #[serde(rename = "skillId")]
+        skill_id: String,
+    },
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderAuthDto {
@@ -9,13 +21,14 @@ pub struct ProviderAuthDto {
     pub oauth_expires_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SkillDto {
     pub skill_id: String,
     pub source_type: String,
     pub path: String,
     pub enabled: bool,
+    pub locked: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -30,24 +43,18 @@ pub struct ProviderConfigDto {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettingsDto {
-    pub active_provider_id: String,
-    pub active_model_id: String,
     pub system_prompt: Option<String>,
     pub max_tool_iterations: usize,
     pub version: i64,
     pub provider_auth: Vec<ProviderAuthDto>,
     pub provider_configs: Vec<ProviderConfigDto>,
-    pub skills: Vec<SkillDto>,
 }
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentSettingsPatchDto {
-    pub active_provider_id: Option<String>,
-    pub active_model_id: Option<String>,
     pub system_prompt: Option<String>,
     pub max_tool_iterations: Option<usize>,
-    pub skills: Option<Vec<SkillDto>>,
 }
 
 #[derive(Serialize)]

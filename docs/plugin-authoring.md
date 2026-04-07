@@ -247,6 +247,100 @@ height = 460
 entry = "ui/panel.html"
 ```
 
+### Plugin locales
+
+Each plugin can ship localized strings under a `locales/` folder:
+
+```text
+my-plugin/
+  locales/
+    en.json
+    zh-CN.json
+    ja.json
+    es.json
+    fr.json
+```
+
+Runtime behavior:
+
+1. Peekoo loads `locales/<app_language>.json` based on the app setting.
+2. If that file is missing, it falls back to `locales/en.json`.
+3. If no locale file exists, manifest defaults (usually English) are used.
+
+Supported structured keys consumed by the host:
+
+```json
+{
+  "plugin": {
+    "name": "Localized plugin name",
+    "description": "Localized plugin description"
+  },
+  "panels": {
+    "panel-my-plugin": {
+      "title": "Localized panel title"
+    }
+  },
+  "ui": {
+    "panels": {
+      "panel-my-plugin": {
+        "title": "Localized panel title (alternative path)"
+      }
+    }
+  },
+  "config": {
+    "fields": {
+      "interval_min": {
+        "label": "Localized label",
+        "description": "Localized field description",
+        "options": {
+          "fast": "Localized option label"
+        }
+      }
+    }
+  }
+}
+```
+
+For panel HTML, Peekoo injects:
+
+- `window.__PEEKOO_PLUGIN_LOCALE__`
+- `window.__PEEKOO_PLUGIN_LANG__`
+- `window.peekooPluginT(key, fallback?)`
+
+It also auto-applies translations for DOM attributes:
+
+- `data-i18n` (text content)
+- `data-i18n-placeholder`
+- `data-i18n-title`
+
+### Plugin i18n checklist
+
+Use this checklist when making a plugin localization-ready:
+
+1. Create `locales/en.json` first (baseline source of truth).
+2. Add `locales/<lang>.json` for each supported language (`zh-CN`, `ja`, `es`, `fr`, ...).
+3. Localize manifest-facing keys:
+   - `plugin.name`
+   - `plugin.description`
+   - `panels.<panel_label>.title`
+4. Localize config schema keys when used:
+   - `config.fields.<field_key>.label`
+   - `config.fields.<field_key>.description`
+   - `config.fields.<field_key>.options.<value>`
+5. In panel HTML:
+   - static text => `data-i18n`
+   - placeholders => `data-i18n-placeholder`
+   - tooltip/title => `data-i18n-title`
+6. In panel JS:
+   - dynamic strings => `window.peekooPluginT(key, fallback)`
+   - parameterized text => replace `{{var}}` placeholders in your own helper
+7. Verify fallback behavior:
+   - remove one non-English file and confirm it falls back to `en.json`
+8. Verify runtime:
+   - switch app language in Settings
+   - reopen plugin panel
+   - confirm list card, panel title, config labels, and panel content are localized
+
 ## Export Conventions
 
 | Export name | Purpose | Required? |

@@ -8,6 +8,7 @@ import type { PluginPanel, PluginSummary } from "@/types/plugin";
 import { cn } from "@/lib/utils";
 import { getSpriteActionMenuItems } from "./spriteActionMenuLayout";
 import { computePluginsPopupPosition } from "./spriteActionMenuPopupPosition";
+import { useTranslation } from "react-i18next";
 
 interface MenuItemConfig {
   label: PanelLabel;
@@ -44,6 +45,7 @@ export function SpriteActionMenu({
   pluginPanels = [],
   installedPlugins = [],
 }: SpriteActionMenuProps) {
+  const { t } = useTranslation();
   const [pluginsPopupOpen, setPluginsPopupOpen] = useState(false);
   const enabledPlugins = installedPlugins.filter((plugin) => {
     if (plugin.pluginKey === "linear") {
@@ -58,8 +60,18 @@ export function SpriteActionMenu({
   });
 
   const items: MenuItemConfig[] = getSpriteActionMenuItems().map((item) => {
+    const translatedName =
+      item.label === "panel-chat"
+        ? t("menu.chat")
+        : item.label === "panel-tasks"
+          ? t("menu.tasks")
+          : item.label === "panel-pomodoro"
+            ? t("menu.pomodoro")
+            : t("menu.plugins");
+
     return {
       ...item,
+      name: translatedName,
       icon:
         item.label === "panel-chat"
           ? MessageSquare
@@ -150,7 +162,7 @@ export function SpriteActionMenu({
                       )}
                     >
                       <Blocks size={16} className="shrink-0" />
-                      <span className="text-xs font-medium whitespace-nowrap">Plugins</span>
+                      <span className="text-xs font-medium whitespace-nowrap">{t("menu.plugins")}</span>
                     </button>
 
                     {enabledPlugins.map((plugin) => {

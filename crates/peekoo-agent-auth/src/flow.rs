@@ -22,9 +22,13 @@ pub struct OAuthFlow {
     pub provider_id: String,
     pub start_config: OAuthStartConfig,
     pub verifier: String,
+    /// CSRF token sent as the OAuth `state` parameter. Must be distinct from the
+    /// PKCE verifier so the verifier is never exposed in the authorize URL.
+    pub state: String,
     pub auth_code: Option<String>,
     pub status: OAuthFlowStatus,
     pub error: Option<String>,
+    pub redirect_uri: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +58,6 @@ pub struct OAuthStartConfig {
     pub authorize_url: String,
     pub client_id: String,
     pub client_secret: Option<String>,
-    pub redirect_uri: String,
     pub scope: String,
     pub authorize_params: Vec<OAuthQueryParam>,
     pub token_exchange: OAuthTokenExchangeConfig,

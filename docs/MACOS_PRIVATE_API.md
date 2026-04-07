@@ -1,6 +1,6 @@
 # macOS private API usage note
 
-`app.macOSPrivateApi` is enabled via macOS-specific config injection, not in the base config.
+`app.macOSPrivateApi` is enabled directly in the base Tauri config.
 
 Why:
 - This app uses a frameless + transparent main window on macOS.
@@ -14,10 +14,8 @@ Current policy:
 - If we adopt a non-private-API rendering path in the future, remove this setting and related dependency feature.
 
 Configuration model:
-- Base config (`tauri.conf.json`) keeps `app.macOSPrivateApi = false` to avoid static warnings.
-- macOS-only overrides set `app.macOSPrivateApi = true`:
-  - local dev/build via `tauri.macos.conf.json`
-  - CI/release via `TAURI_CONFIG` environment injection on macOS runners
+- Base config (`tauri.conf.json`) sets `app.macOSPrivateApi = true`.
+- We keep a single config source to avoid local/CI packaging mismatches.
 
 Operational guardrail:
 - Failures when applying transparent background are logged via `tracing::warn!` in `src/lib.rs` (`apply_macos_transparent_background`).
