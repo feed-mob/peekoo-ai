@@ -74,10 +74,6 @@ export function TasksPanel() {
   } = useTasks();
 
   const [mainTab, setMainTab] = useState<MainTab>("tasks");
-  const linearPlugin = plugins.find((plugin) => plugin.pluginKey === "linear");
-  const linearPanel = pluginPanels.find((panel) => panel.pluginKey === "linear");
-  const showLinearButton = Boolean(linearPlugin && linearPanel);
-  const canOpenLinearPanel = Boolean(linearPanel);
 
   if (isLoading) {
     return (

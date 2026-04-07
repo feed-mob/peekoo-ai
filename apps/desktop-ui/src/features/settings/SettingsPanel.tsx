@@ -1,5 +1,4 @@
 import { useGlobalSettings } from "./useGlobalSettings";
-import { useLinearIntegrationStatus } from "./useLinearIntegrationStatus";
 import { SpriteSelector } from "./SpriteSelector";
 import { AgentProviderPanel } from "@/features/agent-runtimes/AgentProviderPanel";
 import { Button } from "@/components/ui/button";
@@ -31,13 +30,6 @@ export function SettingsPanel() {
     setAppLanguage,
     setLogLevel,
   } = useGlobalSettings();
-  const {
-    status: linearStatus,
-    isLoading: linearLoading,
-    error: linearError,
-    refresh: refreshLinearStatus,
-  } = useLinearIntegrationStatus();
-
   if (loading) {
     return (
       <div className="flex items-center justify-center h-32 text-text-muted text-sm">

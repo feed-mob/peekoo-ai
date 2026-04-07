@@ -48,10 +48,6 @@ export function SpriteActionMenu({
   const { t } = useTranslation();
   const [pluginsPopupOpen, setPluginsPopupOpen] = useState(false);
   const enabledPlugins = installedPlugins.filter((plugin) => {
-    if (plugin.pluginKey === "linear") {
-      return false;
-    }
-
     if (!plugin.enabled) {
       return false;
     }
