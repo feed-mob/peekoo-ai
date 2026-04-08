@@ -44,7 +44,15 @@ async function callHealthTool(toolName, args = {}) {
 }
 
 function normalizeReminderStatus(status) {
-  return Object.fromEntries((status?.reminders || []).map(reminder => [reminder.reminder_type, reminder]));
+  if (Array.isArray(status?.reminders)) {
+    return Object.fromEntries(status.reminders.map(reminder => [reminder.reminder_type, reminder]));
+  }
+
+  return {
+    water: status?.water,
+    eye_rest: status?.eye_rest,
+    standup: status?.standup,
+  };
 }
 
 async function refreshStatus() {
@@ -180,6 +188,7 @@ document.getElementById("btnMuteAll").onclick = async () => {
       currentStatusSnapshot = status;
       renderStatus(status);
       syncSettingsFromBackend(status.config);
+      await refreshStatus();
    } catch(e) {}
 };
 
