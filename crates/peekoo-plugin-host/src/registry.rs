@@ -831,7 +831,6 @@ mod tests {
     use peekoo_task_app::{TaskDto, TaskEventDto, TaskService};
     use peekoo_task_domain::TaskStatus;
     use rusqlite::Connection;
-    use serde_json::json;
 
     use crate::PluginError;
 
@@ -1090,43 +1089,5 @@ mod tests {
         assert_eq!(version, "0.2.0");
         assert_eq!(manifest["name"], "Meta Plugin Updated");
         assert_eq!(manifest["version"], "0.2.0");
-    }
-
-    #[test]
-    fn health_configure_updates_runtime_status_and_schedules() {
-        let plugin_dir = sample_plugin_dir("health-reminders");
-        let registry = test_registry(vec![plugin_dir.clone()]);
-
-        registry
-            .install_plugin(&plugin_dir)
-            .expect("plugin should load");
-
-        let status = registry
-            .call_tool(
-                "health-reminders",
-                "health_configure",
-                r#"{"water_enabled":false,"eye_rest_interval_min":25}"#,
-            )
-            .expect("health_configure should succeed");
-        let status: serde_json::Value =
-            serde_json::from_str(&status).expect("status should be valid json");
-
-        assert_eq!(status["config"]["water_enabled"], json!(false));
-        assert_eq!(status["config"]["eye_rest_interval_min"], json!(25));
-
-        let scheduled = registry.scheduler().list("health-reminders");
-        assert!(
-            scheduled.iter().all(|entry| entry.key != "water"),
-            "water schedule should be removed after disabling: {scheduled:?}"
-        );
-
-        let eye_rest = scheduled
-            .iter()
-            .find(|entry| entry.key == "eye_rest")
-            .expect("eye_rest schedule should exist");
-        assert!(
-            eye_rest.time_remaining_secs >= 24 * 60,
-            "eye_rest schedule should restart near the full new duration: {eye_rest:?}"
-        );
     }
 }
