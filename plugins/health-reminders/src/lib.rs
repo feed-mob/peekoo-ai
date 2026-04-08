@@ -102,16 +102,16 @@ pub fn tool_health_configure(input: String) -> FnResult<String> {
     }
 
     save_config(&config);
-    
-    // Only reset schedules if critical values changed. 
+
+    // Only reset schedules if critical values changed.
     // This prevents timer stalling on every UI poll/update.
-    if config.global_enabled != old_config.global_enabled 
-       || config.water_enabled != old_config.water_enabled
-       || config.eye_rest_enabled != old_config.eye_rest_enabled
-       || config.standup_enabled != old_config.standup_enabled
-       || config.water_interval_min != old_config.water_interval_min
-       || config.eye_rest_interval_min != old_config.eye_rest_interval_min
-       || config.standup_interval_min != old_config.standup_interval_min
+    if config.global_enabled != old_config.global_enabled
+        || config.water_enabled != old_config.water_enabled
+        || config.eye_rest_enabled != old_config.eye_rest_enabled
+        || config.standup_enabled != old_config.standup_enabled
+        || config.water_interval_min != old_config.water_interval_min
+        || config.eye_rest_interval_min != old_config.eye_rest_interval_min
+        || config.standup_interval_min != old_config.standup_interval_min
     {
         sync_schedules();
     }
@@ -165,9 +165,21 @@ fn sync_schedules() {
     }
 
     let reminders = [
-        (WATER_KEY, u64::from(config.water_interval_min) * 60, config.water_enabled),
-        (EYE_REST_KEY, u64::from(config.eye_rest_interval_min) * 60, config.eye_rest_enabled),
-        (STANDUP_KEY, u64::from(config.standup_interval_min) * 60, config.standup_enabled),
+        (
+            WATER_KEY,
+            u64::from(config.water_interval_min) * 60,
+            config.water_enabled,
+        ),
+        (
+            EYE_REST_KEY,
+            u64::from(config.eye_rest_interval_min) * 60,
+            config.eye_rest_enabled,
+        ),
+        (
+            STANDUP_KEY,
+            u64::from(config.standup_interval_min) * 60,
+            config.standup_enabled,
+        ),
     ];
 
     let now = current_epoch_secs();
@@ -245,8 +257,16 @@ fn load_status() -> HealthStatus {
         config: config.clone(),
         reminders: vec![
             load_reminder_state(WATER_KEY, config.water_interval_min, config.water_enabled),
-            load_reminder_state(EYE_REST_KEY, config.eye_rest_interval_min, config.eye_rest_enabled),
-            load_reminder_state(STANDUP_KEY, config.standup_interval_min, config.standup_enabled),
+            load_reminder_state(
+                EYE_REST_KEY,
+                config.eye_rest_interval_min,
+                config.eye_rest_enabled,
+            ),
+            load_reminder_state(
+                STANDUP_KEY,
+                config.standup_interval_min,
+                config.standup_enabled,
+            ),
         ],
     }
 }
@@ -266,15 +286,14 @@ fn load_reminder_state(reminder_type: &str, interval_min: u32, enabled: bool) ->
 }
 
 fn load_config() -> ReminderConfig {
-    let config = config_get();
     ReminderConfig {
-        water_interval_min: config["water_interval_min"].as_u64().unwrap_or(45) as u32,
-        water_enabled: config["water_enabled"].as_bool().unwrap_or(true),
-        eye_rest_interval_min: config["eye_rest_interval_min"].as_u64().unwrap_or(20) as u32,
-        eye_rest_enabled: config["eye_rest_enabled"].as_bool().unwrap_or(true),
-        standup_interval_min: config["standup_interval_min"].as_u64().unwrap_or(60) as u32,
-        standup_enabled: config["standup_enabled"].as_bool().unwrap_or(true),
-        global_enabled: config["global_enabled"].as_bool().unwrap_or(true),
+        water_interval_min: state_get_u32("water_interval_min").unwrap_or(45),
+        water_enabled: state_get_bool("water_enabled").unwrap_or(true),
+        eye_rest_interval_min: state_get_u32("eye_rest_interval_min").unwrap_or(20),
+        eye_rest_enabled: state_get_bool("eye_rest_enabled").unwrap_or(true),
+        standup_interval_min: state_get_u32("standup_interval_min").unwrap_or(60),
+        standup_enabled: state_get_bool("standup_enabled").unwrap_or(true),
+        global_enabled: state_get_bool("global_enabled").unwrap_or(true),
     }
 }
 
@@ -314,10 +333,6 @@ fn current_epoch_secs() -> u64 {
         .as_secs()
 }
 
-fn config_get() -> Value {
-    peekoo::config::get_all().ok().unwrap_or_else(|| json!({}))
-}
-
 fn schedule_get(key: &str) -> Option<ScheduleInfo> {
     peekoo::schedule::get(key).ok().flatten()
 }
@@ -337,6 +352,16 @@ fn schedule_cancel(key: &str) {
 
 fn state_get(key: &str) -> Option<Value> {
     peekoo::state::get::<Value>(key).ok().flatten()
+}
+
+fn state_get_u32(key: &str) -> Option<u32> {
+    state_get(key)
+        .and_then(|value| value.as_u64())
+        .map(|value| value as u32)
+}
+
+fn state_get_bool(key: &str) -> Option<bool> {
+    state_get(key).and_then(|value| value.as_bool())
 }
 
 fn state_set(key: &str, value: Value) {

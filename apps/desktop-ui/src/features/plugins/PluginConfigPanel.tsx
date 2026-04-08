@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import { SlidersHorizontal, MoonStar } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -8,7 +9,7 @@ import {
   type PluginConfigField,
   pluginConfigFieldSchema,
 } from "@/types/plugin";
-import { useTranslation } from "react-i18next";
+import { buildPluginSaveRequests } from "./plugin-config-save";
 
 type ConfigValues = Record<string, unknown>;
 
@@ -78,15 +79,8 @@ export function PluginConfigPanel({ pluginKey }: PluginConfigPanelProps) {
     setIsSaving(true);
     setError(null);
     try {
-      await Promise.all(
-        sortedFields.map((field) =>
-          invoke("plugin_config_set", {
-            pluginKey,
-            key: field.key,
-            value: values[field.key] ?? field.default,
-          }),
-        ),
-      );
+      const requests = buildPluginSaveRequests(pluginKey, sortedFields, values);
+      await Promise.all(requests.map((request) => invoke(request.command, request.payload)));
     } catch (err) {
       setError(String(err));
     } finally {
