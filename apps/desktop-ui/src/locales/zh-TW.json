@@ -409,7 +409,17 @@
     "title": "有可用更新",
     "message": "Peekoo {{version}} 已可用。立即安裝並重新啟動？",
     "messageWithNotes": "Peekoo {{version}} 已可用。\n\n{{notes}}\n\n立即安裝並重新啟動？",
+    "versionAvailable": "Peekoo {{version}} 已可用。",
     "installButton": "安裝並重新啟動",
+    "installing": "安裝中...",
+    "downloading": "正在下載更新",
+    "installingFiles": "正在安裝更新",
+    "calculating": "計算中...",
+    "downloadedDetail": "已下載 {{downloaded}} / {{total}}",
+    "downloadedOnly": "已下載 {{downloaded}}",
+    "eta": "預估剩餘時間：{{eta}}",
+    "restartSoon": "安裝完成後將自動重新啟動應用程式。",
+    "viewFullChangelog": "查看完整更新日誌",
     "later": "稍後"
   },
   "agentRuntimes": {

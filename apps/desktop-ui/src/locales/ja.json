@@ -409,7 +409,17 @@
     "title": "更新があります",
     "message": "Peekoo {{version}} が利用可能です。今すぐインストールして再起動しますか？",
     "messageWithNotes": "Peekoo {{version}} が利用可能です。\n\n{{notes}}\n\n今すぐインストールして再起動しますか？",
+    "versionAvailable": "Peekoo {{version}} が利用可能です。",
     "installButton": "インストールして再起動",
+    "installing": "インストール中...",
+    "downloading": "更新をダウンロード中",
+    "installingFiles": "更新をインストール中",
+    "calculating": "計算中...",
+    "downloadedDetail": "{{downloaded}} / {{total}} をダウンロード済み",
+    "downloadedOnly": "{{downloaded}} をダウンロード済み",
+    "eta": "残り時間の目安: {{eta}}",
+    "restartSoon": "インストール完了後にアプリを再起動します。",
+    "viewFullChangelog": "完全なリリースノートを表示",
     "later": "後で"
   },
   "agentRuntimes": {
