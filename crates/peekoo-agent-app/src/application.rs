@@ -56,6 +56,7 @@ use peekoo_task_app::SqliteTaskService;
 use crate::workspace_bootstrap::ensure_agent_workspace;
 
 type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
+const TASK_PARSE_ACP_TIMEOUT_SECS: u64 = 12;
 
 fn format_error_chain(err: &dyn std::error::Error) -> String {
     let mut chain = Vec::new();
@@ -95,6 +96,54 @@ fn build_task_runtime_launch_env(config: &AgentServiceConfig) -> Vec<(String, St
     env
 }
 
+fn normalize_priority(priority: Option<String>) -> Option<String> {
+    match priority.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some("high") | Some("medium") | Some("low") => priority,
+        _ => None,
+    }
+}
+
+fn normalize_assignee(assignee: Option<String>) -> Option<String> {
+    match assignee.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some("user") | Some("agent") => assignee,
+        _ => None,
+    }
+}
+
+fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+fn parse_rfc3339_or_none(value: Option<String>) -> Option<String> {
+    let trimmed = normalize_optional_trimmed(value)?;
+    chrono::DateTime::parse_from_rfc3339(&trimmed)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
+}
+
+fn extract_json_object(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    (start < end).then(|| &text[start..=end])
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AcpParsedTask {
+    title: String,
+    priority: Option<String>,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<u32>,
+    recurrence_rule: Option<String>,
+    recurrence_time_of_day: Option<String>,
+}
+
 pub struct AgentApplication {
     agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
@@ -124,6 +173,7 @@ pub struct AgentApplication {
     /// Scheduler for agent task execution.
     agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
     bundled_opencode_path: Option<PathBuf>,
+    bundled_acp_path: Option<PathBuf>,
     /// Directory containing the bundled Node.js binary (e.g. `<resources>/opencode/node/bin`).
     bundled_node_bin_dir: Option<PathBuf>,
 }
@@ -232,6 +282,7 @@ impl AgentApplication {
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
             bundled_opencode_path,
+            bundled_acp_path,
             bundled_node_bin_dir,
         })
     }
@@ -843,7 +894,9 @@ impl AgentApplication {
     pub fn create_task_from_text(&self, text: &str) -> Result<TaskDto, String> {
         use crate::task_parser::parse_task_text;
 
-        let parsed = parse_task_text(text);
+        let parsed = self
+            .parse_task_from_text_via_acp(text)
+            .unwrap_or_else(|_| parse_task_text(text));
 
         self.task_runtime_service().create_task(
             &parsed.title,
@@ -857,6 +910,66 @@ impl AgentApplication {
             parsed.recurrence_rule.as_deref(),
             parsed.recurrence_time_of_day.as_deref(),
         )
+    }
+
+    fn parse_task_from_text_via_acp(
+        &self,
+        text: &str,
+    ) -> Result<crate::task_parser::ParsedTask, String> {
+        let parse_payload = serde_json::json!({
+            "request_type": "task_creation_parse",
+            "raw_text": text,
+            "locale": self.get_app_language().ok(),
+            "timezone": std::env::var("TZ").ok(),
+        });
+
+        let parse_payload = serde_json::to_string(&parse_payload)
+            .map_err(|e| format!("Serialize parse payload error: {e}"))?;
+
+        let prompt_result = crate::acp_client::run_prompt_and_collect_blocking(
+            "task-creation-parse",
+            vec![agent_client_protocol::ContentBlock::Text(
+                agent_client_protocol::TextContent::new(parse_payload),
+            )],
+            self.agent_launch_env(),
+            crate::mcp_server::get_mcp_address(),
+            self.bundled_acp_path.clone(),
+            Some(std::time::Duration::from_secs(TASK_PARSE_ACP_TIMEOUT_SECS)),
+        )?;
+
+        let raw = prompt_result.text;
+        let json_blob = extract_json_object(&raw)
+            .ok_or_else(|| "ACP parser returned no JSON object".to_string())?;
+        let acp_parsed: AcpParsedTask =
+            serde_json::from_str(json_blob).map_err(|e| format!("Parse task JSON error: {e}"))?;
+
+        let title = acp_parsed.title.trim();
+        if title.is_empty() {
+            return Err("ACP parser returned empty title".to_string());
+        }
+
+        let mut labels = acp_parsed
+            .labels
+            .unwrap_or_default()
+            .into_iter()
+            .map(|label| label.trim().to_lowercase())
+            .filter(|label| !label.is_empty())
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+
+        Ok(crate::task_parser::ParsedTask {
+            title: title.to_string(),
+            priority: normalize_priority(acp_parsed.priority),
+            assignee: normalize_assignee(acp_parsed.assignee),
+            labels,
+            description: normalize_optional_trimmed(acp_parsed.description),
+            scheduled_start_at: parse_rfc3339_or_none(acp_parsed.scheduled_start_at),
+            scheduled_end_at: parse_rfc3339_or_none(acp_parsed.scheduled_end_at),
+            estimated_duration_min: acp_parsed.estimated_duration_min,
+            recurrence_rule: normalize_optional_trimmed(acp_parsed.recurrence_rule),
+            recurrence_time_of_day: normalize_optional_trimmed(acp_parsed.recurrence_time_of_day),
+        })
     }
 
     pub fn get_task_activity(
@@ -1413,7 +1526,7 @@ impl AgentApplication {
         }
 
         config.mcp_servers =
-            crate::agent_scheduler::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
+            crate::acp_client::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
 
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
@@ -1693,6 +1806,7 @@ mod tests {
 
     use super::{
         build_task_runtime_launch_env, format_error_chain, install_discovered_plugins,
+        normalize_assignee, normalize_optional_trimmed, normalize_priority, parse_rfc3339_or_none,
         should_restore_agent,
     };
     use std::error::Error as StdError;
@@ -1834,6 +1948,42 @@ mod tests {
         )));
         assert!(env.contains(&("PEEKOO_AGENT_MODEL".to_string(), "test-model".to_string())));
         assert!(env.contains(&("PEEKOO_AGENT_API_KEY".to_string(), "secret".to_string())));
+    }
+
+    #[test]
+    fn normalize_priority_accepts_only_known_values() {
+        assert_eq!(normalize_priority(Some("high".into())), Some("high".into()));
+        assert_eq!(normalize_priority(Some("urgent".into())), None);
+        assert_eq!(normalize_priority(Some("".into())), None);
+    }
+
+    #[test]
+    fn normalize_assignee_accepts_only_user_or_agent() {
+        assert_eq!(normalize_assignee(Some("user".into())), Some("user".into()));
+        assert_eq!(
+            normalize_assignee(Some("agent".into())),
+            Some("agent".into())
+        );
+        assert_eq!(normalize_assignee(Some("team".into())), None);
+    }
+
+    #[test]
+    fn normalize_optional_trimmed_drops_empty_values() {
+        assert_eq!(
+            normalize_optional_trimmed(Some("  hello  ".into())),
+            Some("hello".into())
+        );
+        assert_eq!(normalize_optional_trimmed(Some("   ".into())), None);
+        assert_eq!(normalize_optional_trimmed(None), None);
+    }
+
+    #[test]
+    fn parse_rfc3339_or_none_normalizes_valid_timestamp() {
+        assert_eq!(
+            parse_rfc3339_or_none(Some("2026-04-11T10:00:00+02:00".into())),
+            Some("2026-04-11T08:00:00+00:00".into())
+        );
+        assert_eq!(parse_rfc3339_or_none(Some("not-a-date".into())), None);
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

@@ -15,6 +15,14 @@ pub struct TaskContext {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskCreationContext {
+    pub request_type: String,
+    pub raw_text: String,
+    pub locale: Option<String>,
+    pub timezone: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Comment {
     pub id: String,
     pub author: String,
@@ -89,6 +97,42 @@ impl TaskContext {
         prompt.push_str("Example completion sequence: first call `task_comment` with the result, then call `update_task_status` with `done`.\n\n");
 
         prompt
+    }
+}
+
+impl TaskCreationContext {
+    pub fn to_prompt(&self) -> String {
+        format!(
+            r#"You are a task parsing assistant. Convert the user input into a single JSON object only.
+
+Return ONLY valid JSON with this exact shape (no markdown, no explanation):
+{{
+  "title": string,
+  "priority": "high" | "medium" | "low" | null,
+  "assignee": "user" | "agent" | null,
+  "labels": string[],
+  "description": string | null,
+  "scheduled_start_at": string | null,
+  "scheduled_end_at": string | null,
+  "estimated_duration_min": number | null,
+  "recurrence_rule": string | null,
+  "recurrence_time_of_day": string | null
+}}
+
+Rules:
+- Preserve user intent in title.
+- If uncertain, use null instead of guessing.
+- Use RFC3339 timestamps when extracting dates/times.
+- Keep labels short and lowercase.
+- Do not add any keys.
+
+Locale: {}
+Timezone: {}
+User input: {}"#,
+            self.locale.as_deref().unwrap_or("en"),
+            self.timezone.as_deref().unwrap_or("UTC"),
+            self.raw_text
+        )
     }
 }
 

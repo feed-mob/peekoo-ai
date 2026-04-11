@@ -1,3 +1,4 @@
+pub mod acp_client;
 pub mod agent_provider_commands;
 pub mod agent_provider_service;
 pub mod agent_runtime_commands;
