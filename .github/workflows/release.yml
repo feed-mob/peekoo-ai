@@ -187,6 +187,7 @@ jobs:
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           POSTHOG_API_HOST: ${{ secrets.POSTHOG_API_HOST }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          TAURI_BUNDLER_DMG_IGNORE_CI: false
           APPIMAGE_EXTRACT_AND_RUN: 1
           NO_STRIP: 1
         with:
