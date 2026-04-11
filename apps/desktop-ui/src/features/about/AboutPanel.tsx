@@ -1,5 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InstallProgressCard } from "@/components/update/InstallProgressCard";
+import { ReleaseNotesMarkdown } from "@/components/update/ReleaseNotesMarkdown";
 import { normalizeReleaseNotes } from "@/lib/release-notes";
 import { InstallProgressCard } from "@/components/update/InstallProgressCard";
 import { ReleaseNotesMarkdown } from "@/components/update/ReleaseNotesMarkdown";
