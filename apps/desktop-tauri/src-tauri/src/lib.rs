@@ -435,13 +435,10 @@ struct TaskChangeEvent {
 }
 
 fn emit_tasks_changed(app: &AppHandle, task_id: Option<&str>) {
-    let _ = app.emit_to(
-        MAIN_WINDOW_LABEL,
-        TASKS_CHANGED_EVENT,
-        TaskChangeEvent {
-            task_id: task_id.map(|id| id.to_string()),
-        },
-    );
+    let payload = TaskChangeEvent {
+        task_id: task_id.map(|id| id.to_string()),
+    };
+    let _ = app.emit(TASKS_CHANGED_EVENT, payload);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1323,10 +1320,12 @@ async fn pomodoro_history_by_date_range(
 async fn pomodoro_save_memo(
     id: Option<String>,
     memo: String,
+    #[allow(non_snake_case)] taskId: Option<String>,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<PomodoroStatusDto, String> {
-    let status = state.app.save_pomodoro_memo(id, memo)?;
+    let status = state.app.save_pomodoro_memo(id, memo, taskId)?;
+
     flush_plugin_notifications(&app, &state)?;
     Ok(status)
 }

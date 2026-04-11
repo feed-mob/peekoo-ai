@@ -1,18 +1,102 @@
 import { useState, useEffect, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { X, Send } from "lucide-react";
 import { pomodoroSaveMemo } from "@/features/pomodoro/tool-client";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Task } from "@/types/task";
+
+function taskSortBucket(task: Task): number {
+  if (task.status === "in_progress") return 0;
+  if (task.status === "todo") return 1;
+  return 2;
+}
+
+function taskTimeRank(task: Task): number {
+  const primary = Date.parse(task.updated_at ?? task.created_at);
+  if (!Number.isNaN(primary)) return primary;
+
+  const fallback = Date.parse(task.created_at);
+  return Number.isNaN(fallback) ? 0 : fallback;
+}
+
+function scheduleProximityRank(task: Task, nowMs: number): number {
+  if (!task.scheduled_start_at) return Number.POSITIVE_INFINITY;
+
+  const scheduledMs = Date.parse(task.scheduled_start_at);
+  if (Number.isNaN(scheduledMs)) return Number.POSITIVE_INFINITY;
+
+  return Math.abs(scheduledMs - nowMs);
+}
+
+export function prepareMemoTaskChoices(
+  tasks: Task[],
+  nowMs: number = Date.now(),
+): {
+  tasks: Task[];
+  defaultTaskId: string | null;
+} {
+  const sorted = tasks
+    .filter((task) => task.status !== "done")
+    .sort((a: Task, b: Task) => {
+      const bucketDiff = taskSortBucket(a) - taskSortBucket(b);
+      if (bucketDiff !== 0) return bucketDiff;
+
+      const scheduleDiff = scheduleProximityRank(a, nowMs) - scheduleProximityRank(b, nowMs);
+      if (scheduleDiff !== 0) return scheduleDiff;
+
+      const timeDiff = taskTimeRank(b) - taskTimeRank(a);
+      if (timeDiff !== 0) return timeDiff;
+
+      return a.title.localeCompare(b.title);
+    });
+
+  return {
+    tasks: sorted,
+    defaultTaskId: sorted[0]?.id ?? null,
+  };
+}
+
+type SubmitPomodoroMemoInput = {
+  memo: string;
+  taskId: string | null;
+  saveMemo: (id: string | null, memo: string, taskId: string | null) => Promise<unknown>;
+  closeWindow: () => Promise<unknown>;
+};
+
+export async function submitPomodoroMemo({
+  memo,
+  taskId,
+  saveMemo,
+  closeWindow,
+}: SubmitPomodoroMemoInput) {
+  await saveMemo(null, memo, taskId);
+
+  await closeWindow();
+}
 
 export default function PomodoroMemoView() {
   const [memo, setMemo] = useState("");
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await pomodoroSaveMemo(null, memo);
-      await getCurrentWebviewWindow().close();
+      await submitPomodoroMemo({
+        memo,
+        taskId: selectedTaskId,
+        saveMemo: pomodoroSaveMemo,
+        closeWindow: () => getCurrentWebviewWindow().close(),
+      });
     } catch (err) {
       console.error("Failed to save memo:", err);
       setIsSaving(false);
@@ -25,6 +109,16 @@ export default function PomodoroMemoView() {
 
   useEffect(() => {
     textareaRef.current?.focus();
+
+    void invoke<Task[]>("list_tasks")
+      .then((loadedTasks) => {
+        const choices = prepareMemoTaskChoices(loadedTasks);
+        setTasks(choices.tasks);
+        setSelectedTaskId((prev) => prev ?? choices.defaultTaskId);
+      })
+      .catch((err) => {
+        console.error("Failed to load tasks for pomodoro memo:", err);
+      });
   }, []);
 
   return (
@@ -47,8 +141,27 @@ export default function PomodoroMemoView() {
         </button>
       </div>
 
+      <div className="px-4 pb-3">
+        <div className="mb-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-text-muted">
+          Link to Task
+        </div>
+        <Select value={selectedTaskId ?? "__none__"} onValueChange={(value) => setSelectedTaskId(value === "__none__" ? null : value)}>
+          <SelectTrigger className="h-10 rounded-2xl bg-space-deep/60 border-glass-border text-sm">
+            <SelectValue placeholder="No task selected" />
+          </SelectTrigger>
+          <SelectContent className="bg-space-deep border-glass-border">
+            <SelectItem value="__none__">No task selected</SelectItem>
+            {tasks.map((task) => (
+              <SelectItem key={task.id} value={task.id}>
+                {task.title}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Memo Input */}
-      <div className="flex-1 px-4 pb-4">
+      <div className="flex-1 px-4 pb-4 min-h-0">
         <textarea
           ref={textareaRef}
           value={memo}

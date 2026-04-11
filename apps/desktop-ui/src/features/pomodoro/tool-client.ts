@@ -27,6 +27,8 @@ export interface PomodoroHistoryEntry {
   ended_at: string;
   memo_requested: boolean;
   memo?: string;
+  task_id?: string;
+  task_title?: string;
 }
 
 type InvokeFn = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
@@ -108,6 +110,11 @@ export function switchPomodoroMode(mode: "work" | "break", invokeFn?: InvokeFn) 
   return callPomodoro<PomodoroStatus>("pomodoro_switch_mode", { mode }, invokeFn);
 }
 
-export function pomodoroSaveMemo(id: string | null, memo: string, invokeFn?: InvokeFn) {
-  return callPomodoro<PomodoroStatus>("pomodoro_save_memo", { id, memo }, invokeFn);
+export function pomodoroSaveMemo(
+  id: string | null,
+  memo: string,
+  taskId: string | null,
+  invokeFn?: InvokeFn,
+) {
+  return callPomodoro<PomodoroStatus>("pomodoro_save_memo", { id, memo, taskId }, invokeFn);
 }
