@@ -1,6 +1,7 @@
 import { useMemo } from "react";
-import { Streamdown } from "streamdown";
 import { Button } from "@/components/ui/button";
+import { InstallProgressCard } from "@/components/update/InstallProgressCard";
+import { ReleaseNotesMarkdown } from "@/components/update/ReleaseNotesMarkdown";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Dialog,
@@ -11,46 +12,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { AppUpdateInfo } from "@/lib/updater";
+import type { InstallPhase } from "@/lib/update-install-progress";
 import { useTranslation } from "react-i18next";
 
 interface UpdatePromptDialogProps {
   updateInfo: AppUpdateInfo | null;
   isInstalling: boolean;
   installError: string | null;
-  installPhase: "idle" | "downloading" | "installing";
+  installPhase: InstallPhase;
   downloadedBytes: number;
   totalBytes: number | null;
   progressPercent: number | null;
   etaSeconds: number | null;
   onInstall: () => void;
   onLater: () => void;
-}
-
-function formatBytes(value: number): string {
-  if (value < 1024) {
-    return `${value} B`;
-  }
-
-  const units = ["KB", "MB", "GB"];
-  let size = value / 1024;
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${size.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-
-  const minutes = Math.floor(seconds / 60);
-  const remain = seconds % 60;
-  return `${minutes}m ${remain}s`;
 }
 
 export function UpdatePromptDialog({
@@ -106,49 +81,18 @@ export function UpdatePromptDialog({
 
         <div className="max-h-[52vh] overflow-y-auto px-6 py-4 custom-scrollbar">
           {isInstalling ? (
-            <div className="mb-4 rounded-lg border border-glass-border/70 bg-space-overlay/45 px-3 py-3">
-              <div className="mb-2 flex items-center justify-between gap-2 text-xs text-text-muted">
-                <span>
-                  {installPhase === "installing"
-                    ? t("updater.installingFiles")
-                    : t("updater.downloading")}
-                </span>
-                <span>
-                  {progressPercent !== null ? `${progressPercent}%` : t("updater.calculating")}
-                </span>
-              </div>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-space-deep/90">
-                <div
-                  className="h-full rounded-full bg-gradient-primary transition-[width] duration-200"
-                  style={{ width: `${progressPercent ?? 15}%` }}
-                />
-              </div>
-              {installPhase !== "installing" ? (
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-text-muted">
-                    {totalBytes
-                      ? t("updater.downloadedDetail", {
-                          downloaded: formatBytes(downloadedBytes),
-                          total: formatBytes(totalBytes),
-                        })
-                      : t("updater.downloadedOnly", { downloaded: formatBytes(downloadedBytes) })}
-                  </p>
-                  {etaSeconds !== null ? (
-                    <p className="text-xs text-text-muted">
-                      {t("updater.eta", { eta: formatDuration(etaSeconds) })}
-                    </p>
-                  ) : null}
-                </div>
-              ) : (
-                <p className="mt-2 text-xs text-text-muted">{t("updater.restartSoon")}</p>
-              )}
-            </div>
+            <InstallProgressCard
+              className="mb-4 rounded-lg border border-glass-border/70 bg-space-overlay/45 px-3 py-3"
+              installPhase={installPhase}
+              downloadedBytes={downloadedBytes}
+              totalBytes={totalBytes}
+              progressPercent={progressPercent}
+              etaSeconds={etaSeconds}
+            />
           ) : null}
 
           {updateInfo?.body ? (
-            <div className="text-sm leading-6 text-text-primary [&_h2]:mt-4 [&_h2]:text-base [&_h2]:font-semibold [&_h2]:text-text-primary [&_h3]:mt-3 [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:text-text-primary [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_a]:text-glow-green [&_a]:underline [&_code]:rounded-md [&_code]:bg-space-overlay/70 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.85em] [&_pre]:my-3 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-space-deep/70">
-              <Streamdown>{updateInfo.body}</Streamdown>
-            </div>
+            <ReleaseNotesMarkdown notes={updateInfo.body} />
           ) : (
             <p className="text-sm leading-6 text-text-primary">{fallbackMessage}</p>
           )}
