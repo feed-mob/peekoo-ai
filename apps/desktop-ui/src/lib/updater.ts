@@ -36,7 +36,7 @@ function buildDevMockUpdateInfo(): AppUpdateInfo {
   const version = import.meta.env.VITE_FORCE_UPDATER_VERSION || "0.1.99-dev";
   const notes = normalizeReleaseNotes(
     import.meta.env.VITE_FORCE_UPDATER_NOTES ||
-      "## What's Changed\n- Added markdown release notes rendering\n- Added installer progress bar with ETA\n\n```bash\n# dev mock update\npeekoo --self-update\n```",
+      "## What's Changed\n- Added markdown release notes rendering\n- Added installer progress bar with ETA\n- Added full changelog link",
   );
 
   return {
