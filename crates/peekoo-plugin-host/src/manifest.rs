@@ -19,6 +19,9 @@ pub struct PluginManifest {
     /// this plugin is loaded.
     #[serde(default)]
     pub companions: Vec<CompanionDef>,
+    /// External runtimes or system software required by the plugin.
+    #[serde(default)]
+    pub runtime_dependencies: Vec<RuntimeDependencyDef>,
 }
 
 /// Core plugin metadata.
@@ -141,6 +144,33 @@ pub struct CompanionDef {
     pub filename: Option<String>,
 }
 
+/// Declaration of a runtime or system dependency required by the plugin.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RuntimeDependencyDef {
+    pub kind: RuntimeDependencyKind,
+    pub required: Option<bool>,
+    pub min_version: Option<String>,
+    pub max_version: Option<String>,
+    pub command: Option<String>,
+    pub display_name: Option<String>,
+    pub install_hint: Option<String>,
+    #[serde(default)]
+    pub platforms: Vec<String>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeDependencyKind {
+    Python,
+    Node,
+    Dotnet,
+    Ruby,
+    Rust,
+    Java,
+    Custom,
+}
+
 /// Declaration of a UI panel provided by the plugin.
 #[derive(Debug, Clone, Deserialize)]
 pub struct UiPanelDef {
@@ -188,6 +218,7 @@ wasm = "plugin.wasm"
         assert!(m.events.is_none());
         assert!(m.data.is_none());
         assert!(m.ui.is_none());
+        assert!(m.runtime_dependencies.is_empty());
     }
 
     #[test]
@@ -241,6 +272,11 @@ default = 45
 min = 5
 max = 180
 
+[[runtime_dependencies]]
+kind = "python"
+min_version = "3.10"
+command = "python3"
+
 "#;
         let m = parse_manifest(toml).unwrap();
         assert_eq!(m.plugin.key, "health-reminders");
@@ -270,6 +306,19 @@ max = 180
         assert_eq!(config.fields.len(), 1);
         assert_eq!(config.fields[0].key, "water_interval_min");
         assert_eq!(config.fields[0].field_type, ConfigFieldType::Integer);
+        assert_eq!(m.runtime_dependencies.len(), 1);
+        assert_eq!(
+            m.runtime_dependencies[0].kind,
+            RuntimeDependencyKind::Python
+        );
+        assert_eq!(
+            m.runtime_dependencies[0].min_version.as_deref(),
+            Some("3.10")
+        );
+        assert_eq!(
+            m.runtime_dependencies[0].command.as_deref(),
+            Some("python3")
+        );
     }
 
     #[test]

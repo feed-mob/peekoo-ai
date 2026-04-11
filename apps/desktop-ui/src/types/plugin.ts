@@ -33,6 +33,22 @@ export const storePluginSchema = z.object({
   installed: z.boolean(),
   source: z.enum(["store", "none"]),
   hasUpdate: z.boolean(),
+  dependencySummary: z.object({
+    hasRequiredDependencies: z.boolean(),
+    blockingIssues: z.number(),
+    warnings: z.number(),
+    dependencies: z.array(z.object({
+      kind: z.string(),
+      required: z.boolean(),
+      displayName: z.string(),
+      commandTried: z.string().nullable().optional(),
+      status: z.enum(["satisfied", "missing", "version_mismatch", "unknown"]),
+      detectedVersion: z.string().nullable().optional(),
+      minVersion: z.string().nullable().optional(),
+      message: z.string().nullable().optional(),
+      installHint: z.string().nullable().optional(),
+    })),
+  }),
 });
 
 export const pluginConfigOptionSchema = z.object({

@@ -19,7 +19,7 @@ use peekoo_notifications::{
     PeekBadgeService,
 };
 use peekoo_paths::ensure_windows_pi_agent_env;
-use peekoo_plugin_host::PluginRegistry;
+use peekoo_plugin_host::{PluginManifest, PluginRegistry};
 use peekoo_pomodoro_app::{
     PomodoroAppService, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
 };
@@ -34,6 +34,9 @@ use crate::conversation::{self, LastSessionDto, json_messages_to_dtos};
 use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
+};
+use crate::plugin_dependency::{
+    first_blocking_dependency_message, summarize_manifest_dependencies,
 };
 use crate::plugin_localization::{
     PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, load_plugin_locale_json,
@@ -1299,6 +1302,9 @@ impl AgentApplication {
         let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
 
         for plugin in &mut catalog {
+            if let Ok(manifest) = self.resolve_store_plugin_manifest(&plugin.plugin_key) {
+                plugin.dependency_summary = summarize_manifest_dependencies(&manifest);
+            }
             if !plugin.installed {
                 continue;
             }
@@ -1313,9 +1319,13 @@ impl AgentApplication {
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.ensure_store_plugin_dependencies(plugin_key)?;
         let mut result = self
             .plugin_store
             .install_plugin(plugin_key, &self.plugin_registry)?;
+        if let Ok(manifest) = self.resolve_store_plugin_manifest(plugin_key) {
+            result.dependency_summary = summarize_manifest_dependencies(&manifest);
+        }
         let app_language = self.get_app_language_or_en();
         if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
             && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
@@ -1327,9 +1337,13 @@ impl AgentApplication {
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.ensure_store_plugin_dependencies(plugin_key)?;
         let mut result = self
             .plugin_store
             .update_plugin(plugin_key, &self.plugin_registry)?;
+        if let Ok(manifest) = self.resolve_store_plugin_manifest(plugin_key) {
+            result.dependency_summary = summarize_manifest_dependencies(&manifest);
+        }
         let app_language = self.get_app_language_or_en();
         if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
             && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
@@ -1364,6 +1378,69 @@ impl AgentApplication {
             }
             *guard = None;
         }
+    }
+
+    fn ensure_store_plugin_dependencies(&self, plugin_key: &str) -> Result<(), String> {
+        let manifest = self.resolve_store_plugin_manifest(plugin_key)?;
+        let summary = summarize_manifest_dependencies(&manifest);
+
+        if summary.has_required_dependencies {
+            return Ok(());
+        }
+
+        let reason = first_blocking_dependency_message(&summary)
+            .unwrap_or_else(|| "Required runtime dependencies are missing".to_string());
+        Err(format!(
+            "Cannot install or update plugin {plugin_key}: {reason}"
+        ))
+    }
+
+    fn resolve_store_plugin_manifest(&self, plugin_key: &str) -> Result<PluginManifest, String> {
+        if let Some(local_manifest) = self.find_local_store_manifest_override(plugin_key) {
+            return Ok(local_manifest);
+        }
+
+        self.plugin_store.fetch_plugin_manifest(plugin_key)
+    }
+
+    fn find_local_store_manifest_override(&self, plugin_key: &str) -> Option<PluginManifest> {
+        let mut roots = Vec::new();
+
+        if let Ok(current_dir) = std::env::current_dir() {
+            roots.extend(current_dir.ancestors().map(Path::to_path_buf));
+        }
+
+        let compile_time_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        roots.extend(compile_time_dir.ancestors().map(Path::to_path_buf));
+
+        let mut seen = std::collections::HashSet::new();
+        for root in roots {
+            if !seen.insert(root.clone()) {
+                continue;
+            }
+
+            let manifest_path = root
+                .join("plugins")
+                .join(plugin_key)
+                .join("peekoo-plugin.toml");
+
+            if !manifest_path.is_file() {
+                continue;
+            }
+
+            match peekoo_plugin_host::manifest::load_manifest(&manifest_path) {
+                Ok(manifest) => return Some(manifest),
+                Err(err) => {
+                    tracing::warn!(
+                        plugin_key,
+                        path = %manifest_path.display(),
+                        "Failed to load local store manifest override: {err}"
+                    );
+                }
+            }
+        }
+
+        None
     }
 
     /// Build a fresh `AgentService` from current settings + MCP-backed tools.

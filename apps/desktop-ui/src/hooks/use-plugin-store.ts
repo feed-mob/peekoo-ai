@@ -34,7 +34,7 @@ export function usePluginStore() {
       setCatalog((prev) =>
         prev.map((p) =>
           p.pluginKey === pluginKey
-            ? { ...p, installed: true, source: "store" }
+            ? installedPlugin
             : p
         )
       );
@@ -85,7 +85,7 @@ export function usePluginStore() {
       setCatalog((prev) =>
         prev.map((p) =>
           p.pluginKey === pluginKey
-            ? { ...p, installed: false, source: "none" }
+            ? { ...p, installed: false, source: "none", hasUpdate: false }
             : p
         )
       );
