@@ -409,7 +409,17 @@
     "title": "Actualización disponible",
     "message": "Peekoo {{version}} está disponible. ¿Instalarla ahora y reiniciar?",
     "messageWithNotes": "Peekoo {{version}} está disponible.\n\n{{notes}}\n\n¿Instalarla ahora y reiniciar?",
+    "versionAvailable": "Peekoo {{version}} está disponible.",
     "installButton": "Instalar y reiniciar",
+    "installing": "Instalando...",
+    "downloading": "Descargando actualización",
+    "installingFiles": "Instalando actualización",
+    "calculating": "calculando...",
+    "downloadedDetail": "{{downloaded}} de {{total}} descargados",
+    "downloadedOnly": "{{downloaded}} descargados",
+    "eta": "Tiempo estimado restante: {{eta}}",
+    "restartSoon": "La app se reiniciará al finalizar la instalación.",
+    "viewFullChangelog": "Ver changelog completo",
     "later": "Más tarde"
   },
   "agentRuntimes": {

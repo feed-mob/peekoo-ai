@@ -409,7 +409,17 @@
     "title": "Update Available",
     "message": "Peekoo {{version}} is available. Install it now and restart?",
     "messageWithNotes": "Peekoo {{version}} is available.\n\n{{notes}}\n\nInstall it now and restart?",
+    "versionAvailable": "Peekoo {{version}} is available.",
     "installButton": "Install and Restart",
+    "installing": "Installing...",
+    "downloading": "Downloading update",
+    "installingFiles": "Installing update",
+    "calculating": "calculating...",
+    "downloadedDetail": "{{downloaded}} of {{total}} downloaded",
+    "downloadedOnly": "{{downloaded}} downloaded",
+    "eta": "Estimated time left: {{eta}}",
+    "restartSoon": "Restarting app once installation finishes.",
+    "viewFullChangelog": "View full changelog",
     "later": "Later"
   },
   "agentRuntimes": {

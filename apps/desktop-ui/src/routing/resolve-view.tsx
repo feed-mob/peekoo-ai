@@ -10,6 +10,7 @@ const PluginsView = lazy(() => import("@/views/PluginsView"));
 const PluginPanelView = lazy(() => import("@/views/PluginPanelView"));
 const SettingsView = lazy(() => import("@/views/SettingsView"));
 const AboutView = lazy(() => import("@/views/AboutView"));
+const UpdaterView = lazy(() => import("@/views/UpdaterView"));
 
 function UnknownView({ label }: { label: string }) {
   return (
@@ -46,6 +47,8 @@ function viewForLabel(label: string) {
       return <SettingsView />;
     case "panel-about":
       return <AboutView />;
+    case "panel-updater":
+      return <UpdaterView />;
   }
 }
 
