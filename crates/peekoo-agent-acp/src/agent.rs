@@ -20,7 +20,7 @@ use peekoo_agent::{
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-use crate::context::TaskContext;
+use crate::context::{TaskContext, TaskCreationContext};
 // TODO: Re-enable after MCP bridge migration
 // use crate::mcp_tools::{TaskScopedTool, summarize_agent_event};
 
@@ -48,31 +48,41 @@ impl PeekooAgent {
     }
 }
 
-fn extract_task_context(prompt: &[acp::ContentBlock]) -> TaskContext {
-    prompt
-        .iter()
-        .find_map(|block| {
-            if let acp::ContentBlock::Text(text) = block {
-                serde_json::from_str::<TaskContext>(&text.text).ok()
-            } else {
-                None
-            }
-        })
-        .unwrap_or_else(|| {
-            tracing::warn!("No task context provided, using default");
-            TaskContext {
-                task_id: "unknown".to_string(),
-                title: "Untitled Task".to_string(),
-                description: None,
-                status: "todo".to_string(),
-                priority: "medium".to_string(),
-                labels: vec![],
-                scheduled_start_at: None,
-                scheduled_end_at: None,
-                estimated_duration_min: None,
-                comments: vec![],
-            }
-        })
+enum PromptContext {
+    TaskExecution(TaskContext),
+    TaskCreation(TaskCreationContext),
+}
+
+fn extract_prompt_context(prompt: &[acp::ContentBlock]) -> PromptContext {
+    for block in prompt {
+        let acp::ContentBlock::Text(text) = block else {
+            continue;
+        };
+
+        if let Ok(context) = serde_json::from_str::<TaskCreationContext>(&text.text)
+            && context.request_type == "task_creation_parse"
+        {
+            return PromptContext::TaskCreation(context);
+        }
+
+        if let Ok(context) = serde_json::from_str::<TaskContext>(&text.text) {
+            return PromptContext::TaskExecution(context);
+        }
+    }
+
+    tracing::warn!("No task context provided, using default");
+    PromptContext::TaskExecution(TaskContext {
+        task_id: "unknown".to_string(),
+        title: "Untitled Task".to_string(),
+        description: None,
+        status: "todo".to_string(),
+        priority: "medium".to_string(),
+        labels: vec![],
+        scheduled_start_at: None,
+        scheduled_end_at: None,
+        estimated_duration_min: None,
+        comments: vec![],
+    })
 }
 
 #[async_trait(?Send)]
@@ -142,7 +152,7 @@ impl acp::Agent for PeekooAgent {
             arguments.session_id
         );
 
-        let task_context = extract_task_context(&arguments.prompt);
+        let prompt_context = extract_prompt_context(&arguments.prompt);
 
         let session_context = self
             .sessions
@@ -150,56 +160,70 @@ impl acp::Agent for PeekooAgent {
             .get(&arguments.session_id.to_string())
             .cloned();
 
-        let task_prompt = task_context.to_prompt();
-
-        let (tx, rx) = oneshot::channel();
-        self.session_update_tx
-            .send((
-                SessionNotification::new(
-                    arguments.session_id.clone(),
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(
-                        format!(
-                            "Processing task: {}\n\nPreparing agent session...\n\n",
-                            task_context.title
-                        )
-                        .into(),
-                    )),
+        let (task_prompt, task_id, startup_text, preparing_text, emit_progress_updates) =
+            match &prompt_context {
+                PromptContext::TaskExecution(task_context) => (
+                    task_context.to_prompt(),
+                    task_context.task_id.clone(),
+                    format!(
+                        "Task received: {}\n\nMCP servers forwarded: {}\n\nRunning agent...",
+                        task_context.task_id,
+                        session_context
+                            .as_ref()
+                            .map(|session| session.mcp_servers.len())
+                            .unwrap_or_default()
+                    ),
+                    format!(
+                        "Processing task: {}\n\nPreparing agent session...\n\n",
+                        task_context.title
+                    ),
+                    true,
                 ),
-                tx,
-            ))
-            .map_err(|_| anyhow::anyhow!("failed to send session update"))?;
-        rx.await
-            .map_err(|_| anyhow::anyhow!("session update failed"))?;
+                PromptContext::TaskCreation(parse_context) => (
+                    parse_context.to_prompt(),
+                    "task-creation-parse".to_string(),
+                    String::new(),
+                    String::new(),
+                    false,
+                ),
+            };
 
-        let mut agent = build_agent_service(&task_context.task_id, session_context.as_ref())
+        if emit_progress_updates {
+            let (tx, rx) = oneshot::channel();
+            self.session_update_tx
+                .send((
+                    SessionNotification::new(
+                        arguments.session_id.clone(),
+                        SessionUpdate::AgentMessageChunk(ContentChunk::new(preparing_text.into())),
+                    ),
+                    tx,
+                ))
+                .map_err(|_| anyhow::anyhow!("failed to send session update"))?;
+            rx.await
+                .map_err(|_| anyhow::anyhow!("session update failed"))?;
+        }
+
+        let mut agent = build_agent_service(&task_id, session_context.as_ref())
             .await
             .map_err(|error| {
                 tracing::error!("Failed to create task agent: {}", error);
                 acp::Error::internal_error()
             })?;
 
-        let mcp_server_count = session_context
-            .as_ref()
-            .map(|session| session.mcp_servers.len())
-            .unwrap_or_default();
-
-        let startup_text = format!(
-            "Task received: {}\n\nMCP servers forwarded: {}\n\nRunning agent...",
-            task_context.task_id, mcp_server_count
-        );
-
-        let (tx, rx) = oneshot::channel();
-        self.session_update_tx
-            .send((
-                SessionNotification::new(
-                    arguments.session_id.clone(),
-                    SessionUpdate::AgentMessageChunk(ContentChunk::new(startup_text.into())),
-                ),
-                tx,
-            ))
-            .map_err(|_| anyhow::anyhow!("failed to send session update"))?;
-        rx.await
-            .map_err(|_| anyhow::anyhow!("session update failed"))?;
+        if emit_progress_updates {
+            let (tx, rx) = oneshot::channel();
+            self.session_update_tx
+                .send((
+                    SessionNotification::new(
+                        arguments.session_id.clone(),
+                        SessionUpdate::AgentMessageChunk(ContentChunk::new(startup_text.into())),
+                    ),
+                    tx,
+                ))
+                .map_err(|_| anyhow::anyhow!("failed to send session update"))?;
+            rx.await
+                .map_err(|_| anyhow::anyhow!("session update failed"))?;
+        }
 
         let final_text = agent
             .prompt(&task_prompt, move |event: AgentEvent| {
@@ -427,9 +451,9 @@ mod tests {
 
     use super::{
         SessionContext, TaskSessionStorage, build_agent_service_config, build_task_session_storage,
-        extract_task_context,
+        extract_prompt_context,
     };
-    use crate::context::Comment;
+    use crate::context::{Comment, TaskCreationContext};
 
     #[test]
     fn reuses_legacy_session_file_when_it_exists() {
@@ -527,7 +551,10 @@ mod tests {
             agent_client_protocol::ContentBlock::Text(TextContent::new(task_json)),
         ];
 
-        let task_context = extract_task_context(&prompt);
+        let prompt_context = extract_prompt_context(&prompt);
+        let super::PromptContext::TaskExecution(task_context) = prompt_context else {
+            panic!("expected task execution context");
+        };
 
         assert_eq!(task_context.task_id, "task-123");
         assert_eq!(task_context.title, "Finish task");
@@ -542,5 +569,28 @@ mod tests {
             }
             .text
         );
+    }
+
+    #[test]
+    fn extract_prompt_context_detects_task_creation_payload() {
+        let parse_json = serde_json::to_string(&TaskCreationContext {
+            request_type: "task_creation_parse".into(),
+            raw_text: "call mom tomorrow at 3pm".into(),
+            locale: Some("en-US".into()),
+            timezone: Some("UTC".into()),
+        })
+        .expect("serialize parse context");
+
+        let prompt = vec![agent_client_protocol::ContentBlock::Text(TextContent::new(
+            parse_json,
+        ))];
+        let prompt_context = extract_prompt_context(&prompt);
+
+        let super::PromptContext::TaskCreation(context) = prompt_context else {
+            panic!("expected task creation context");
+        };
+
+        assert_eq!(context.request_type, "task_creation_parse");
+        assert_eq!(context.raw_text, "call mom tomorrow at 3pm");
     }
 }

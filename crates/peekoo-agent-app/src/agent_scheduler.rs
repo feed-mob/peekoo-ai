@@ -1,14 +1,8 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use agent_client_protocol::{
-    Client, ClientSideConnection, ContentBlock, InitializeRequest, McpServer, McpServerHttp,
-    NewSessionRequest, PromptRequest, ProtocolVersion, TextContent,
-};
+use agent_client_protocol::{ContentBlock, TextContent};
 use peekoo_scheduler::Scheduler;
-use tokio::process::Command;
-use tokio::task::LocalSet;
-use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
 use peekoo_task_app::SqliteTaskService;
 
@@ -166,26 +160,6 @@ impl AgentScheduler {
     }
 }
 
-fn resolve_acp_command_path(
-    bundled_acp_path: Option<std::path::PathBuf>,
-    current_exe: Option<std::path::PathBuf>,
-) -> std::path::PathBuf {
-    if let Some(path) = bundled_acp_path.filter(|path| path.exists() && path.is_file()) {
-        return path;
-    }
-
-    let bin_name = if cfg!(windows) {
-        "peekoo-agent-acp.exe"
-    } else {
-        "peekoo-agent-acp"
-    };
-
-    current_exe
-        .and_then(|exe| exe.parent().map(|p| p.join(bin_name)))
-        .filter(|p| p.exists())
-        .unwrap_or_else(|| std::path::PathBuf::from(bin_name))
-}
-
 async fn check_and_execute_tasks(
     task_service: &SqliteTaskService,
     mcp_address: Option<std::net::SocketAddr>,
@@ -321,32 +295,25 @@ async fn execute_task_acp(
     context_prompt: Option<&str>,
     bundled_acp_path: Option<&std::path::Path>,
 ) -> Result<(), String> {
-    use agent_client_protocol::Agent as _;
-
     tracing::info!(
         "AgentScheduler: Preparing task context for task {}: '{}'",
         task.id,
         task.title
     );
 
-    // Get MCP server address (shared across all tasks)
-    let (mcp_host, mcp_port) = if let Some(addr) = mcp_address {
-        let host = addr.ip().to_string();
-        let port = addr.port();
+    if let Some(addr) = mcp_address {
         tracing::info!(
             "🔗 [MCP] Using shared server at http://{}:{}/mcp for task {}",
-            host,
-            port,
+            addr.ip(),
+            addr.port(),
             task.id
         );
-        (host, port)
     } else {
         tracing::warn!(
             "⚠️ [MCP] No MCP server configured for task {}, agents will run without tools",
             task.id
         );
-        ("127.0.0.1".to_string(), 0)
-    };
+    }
 
     let comments = task_service
         .get_task_activity(&task.id, TASK_CONTEXT_ACTIVITY_LIMIT)
@@ -379,221 +346,39 @@ async fn execute_task_acp(
         "comments": build_task_comment_context(&comments)
     });
 
-    tracing::info!(
-        "AgentScheduler: Spawning peekoo-agent-acp subprocess for task {}",
-        task.id
-    );
+    let prompt_json = serde_json::to_string(&task_context)
+        .map_err(|e| format!("Failed to serialize task context: {e}"))?;
 
-    let command_path = resolve_acp_command_path(
+    let mut content_blocks = Vec::new();
+    if let Some(ctx) = context_prompt {
+        content_blocks.push(ContentBlock::Text(TextContent::new(ctx.to_string())));
+    }
+    content_blocks.push(ContentBlock::Text(TextContent::new(prompt_json)));
+
+    let prompt_result = crate::acp_client::run_prompt_and_collect(
+        &format!("task-execution:{}", task.id),
+        content_blocks,
+        launch_env.to_vec(),
+        mcp_address,
         bundled_acp_path.map(std::path::Path::to_path_buf),
-        std::env::current_exe().ok(),
-    );
-
-    // Pass MCP server address via environment variables
-    let mut cmd = Command::new(&command_path);
-    if mcp_address.is_some() {
-        cmd.env("PEEKOO_MCP_PORT", mcp_port.to_string())
-            .env("PEEKOO_MCP_HOST", &mcp_host);
-    }
-    for (key, value) in launch_env {
-        cmd.env(key, value);
-    }
-
-    let mut child = match cmd
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::inherit())
-        .spawn()
-    {
-        Ok(child) => {
-            tracing::info!(
-                "AgentScheduler: Successfully spawned {:?} subprocess (pid: {:?})",
-                command_path,
-                child.id()
-            );
-            child
-        }
-        Err(e) => {
-            tracing::error!("AgentScheduler: Failed to spawn {:?}: {}", command_path, e);
-            return Err(format!("Failed to spawn {:?}: {}", command_path, e));
-        }
-    };
-
-    let stdin = child.stdin.take().expect("stdin should be available");
-    let stdout = child.stdout.take().expect("stdout should be available");
+        None,
+    )
+    .await
+    .map_err(|e| format!("ACP execution error: {e}"))?;
 
     tracing::info!(
-        "AgentScheduler: Setting up ACP LocalSet for task {}",
-        task.id
+        "AgentScheduler: ACP prompt completed for task {} - stop_reason: {:?}",
+        task.id,
+        prompt_result.stop_reason
     );
-    let local_set = LocalSet::new();
-
-    let task_id_for_spawn = task.id.clone();
-    let task_id_for_logs = task.id.clone();
-
-    let _stop_reason = match local_set
-        .run_until(async move {
-            let task_id = task_id_for_logs.clone();
-            tracing::info!(
-                "AgentScheduler: Creating ClientSideConnection for task {}",
-                task_id
-            );
-
-            let (conn, handle_io) = ClientSideConnection::new(
-                TaskClient {
-                    task_id: task_id.clone(),
-                },
-                stdin.compat_write(),
-                stdout.compat(),
-                |fut| {
-                    tokio::task::spawn_local(fut);
-                },
-            );
-
-            let task_id_spawn = task_id.clone();
-            tokio::task::spawn_local(async move {
-                if let Err(e) = handle_io.await {
-                    tracing::error!(
-                        "AgentScheduler: ACP I/O error for task {}: {}",
-                        task_id_spawn,
-                        e
-                    );
-                }
-            });
-
-            tracing::info!(
-                "AgentScheduler: Sending ACP initialize request for task {}",
-                task_id
-            );
-            let init_result = conn
-                .initialize(InitializeRequest::new(ProtocolVersion::V1))
-                .await
-                .map_err(|e| {
-                    tracing::error!(
-                        "AgentScheduler: ACP initialize failed for task {}: {}",
-                        task_id,
-                        e
-                    );
-                    format!("ACP initialize error: {}", e)
-                })?;
-
-            tracing::info!(
-                "AgentScheduler: ACP initialize successful for task {} - agent: {:?}",
-                task_id,
-                init_result.agent_info
-            );
-
-            tracing::info!("AgentScheduler: Creating ACP session for task {}", task_id);
-            let mcp_servers = build_session_mcp_servers(mcp_address);
-            let session = conn
-                .new_session(
-                    NewSessionRequest::new(std::env::current_dir().unwrap_or_default())
-                        .mcp_servers(mcp_servers),
-                )
-                .await
-                .map_err(|e| {
-                    tracing::error!(
-                        "AgentScheduler: ACP new_session failed for task {}: {}",
-                        task_id,
-                        e
-                    );
-                    format!("ACP new_session error: {}", e)
-                })?;
-
-            tracing::info!(
-                "AgentScheduler: ACP session created for task {} - session_id: {}",
-                task_id,
-                session.session_id
-            );
-
-            let prompt_json = serde_json::to_string(&task_context).map_err(|e| {
-                tracing::error!(
-                    "AgentScheduler: Failed to serialize task context for task {}: {}",
-                    task_id,
-                    e
-                );
-                format!("Failed to serialize task context: {}", e)
-            })?;
-
-            tracing::info!(
-                "AgentScheduler: Sending ACP prompt to agent for task {} (context size: {} bytes)",
-                task_id,
-                prompt_json.len()
-            );
-
-            // Build content blocks: context prompt first, then task context
-            let mut content_blocks = Vec::new();
-            if let Some(ctx) = context_prompt {
-                content_blocks.push(ContentBlock::Text(TextContent::new(ctx.to_string())));
-            }
-            content_blocks.push(ContentBlock::Text(TextContent::new(prompt_json)));
-
-            let prompt_response = conn
-                .prompt(PromptRequest::new(session.session_id, content_blocks))
-                .await
-                .map_err(|e| {
-                    tracing::error!(
-                        "AgentScheduler: ACP prompt failed for task {}: {}",
-                        task_id,
-                        e
-                    );
-                    format!("ACP prompt error: {}", e)
-                })?;
-
-            tracing::info!(
-                "AgentScheduler: ACP prompt completed for task {} - stop_reason: {:?}",
-                task_id,
-                prompt_response.stop_reason
-            );
-
-            Ok::<_, String>(prompt_response.stop_reason)
-        })
-        .await
-    {
-        Ok(reason) => {
-            tracing::info!(
-                "AgentScheduler: ACP communication completed successfully for task {}",
-                task_id_for_spawn
-            );
-            reason
-        }
-        Err(e) => {
-            tracing::error!(
-                "AgentScheduler: ACP execution error for task {}: {}",
-                task_id_for_spawn,
-                e
-            );
-            return Err(format!("ACP execution error: {}", e));
-        }
-    };
-
-    let task_id_final = task.id.clone();
-
-    tracing::info!(
-        "AgentScheduler: Cleaning up ACP subprocess for task {}",
-        task_id_final
-    );
-    drop(local_set);
-
-    match child.kill().await {
-        Ok(_) => tracing::info!(
-            "AgentScheduler: Successfully killed peekoo-agent-acp subprocess for task {}",
-            task_id_final
-        ),
-        Err(e) => tracing::warn!(
-            "AgentScheduler: Error killing subprocess for task {}: {}",
-            task_id_final,
-            e
-        ),
-    }
 
     tracing::info!(
         "AgentScheduler: Updating task {} agent_work_status to completed",
-        task_id_final
+        task.id
     );
 
     let final_activity_count = task_service
-        .get_task_activity(&task_id_final, 100)
+        .get_task_activity(&task.id, 100)
         .map(|events| events.len())
         .unwrap_or(initial_activity_count);
     if final_activity_count <= initial_activity_count {
@@ -602,35 +387,20 @@ async fn execute_task_acp(
         );
     }
 
-    if let Err(e) = task_service.update_agent_work_status(&task_id_final, "completed", None) {
+    if let Err(e) = task_service.update_agent_work_status(&task.id, "completed", None) {
         tracing::error!(
             "AgentScheduler: Failed to update task {} agent_work_status to completed: {}",
-            task_id_final,
+            task.id,
             e
         );
     }
 
     tracing::info!(
         "AgentScheduler: Task {} execution completed successfully",
-        task_id_final
+        task.id
     );
 
     Ok(())
-}
-
-pub(crate) fn build_session_mcp_servers(
-    mcp_address: Option<std::net::SocketAddr>,
-) -> Vec<McpServer> {
-    mcp_address
-        .map(|addr| {
-            let base_url = peekoo_mcp_server::mcp_url_for(addr);
-            let plugins_url = format!("{}/plugins", base_url);
-            vec![
-                McpServer::Http(McpServerHttp::new("peekoo-native-tools", base_url)),
-                McpServer::Http(McpServerHttp::new("peekoo-plugin-tools", plugins_url)),
-            ]
-        })
-        .unwrap_or_default()
 }
 
 fn build_task_comment_context(events: &[peekoo_task_app::TaskEventDto]) -> Vec<serde_json::Value> {
@@ -658,17 +428,8 @@ fn build_task_comment_context(events: &[peekoo_task_app::TaskEventDto]) -> Vec<s
 
 #[cfg(test)]
 mod tests {
-    use super::{build_session_mcp_servers, build_task_comment_context, resolve_acp_command_path};
+    use super::build_task_comment_context;
     use peekoo_task_app::TaskEventDto;
-
-    #[test]
-    fn builds_http_mcp_server_for_session() {
-        let servers = build_session_mcp_servers(Some(([127, 0, 0, 1], 49152).into()));
-        let serialized = serde_json::to_value(&servers).expect("serialize mcp servers");
-        assert_eq!(serialized[0]["type"], "http");
-        assert_eq!(serialized[0]["name"], "peekoo-native-tools");
-        assert_eq!(serialized[0]["url"], "http://127.0.0.1:49152/mcp");
-    }
 
     #[test]
     fn builds_comment_context_from_comment_events_only_in_chronological_order() {
@@ -702,116 +463,5 @@ mod tests {
         assert_eq!(comments[0]["id"], "comment-1");
         assert_eq!(comments[1]["id"], "comment-2");
         assert_eq!(comments[1]["text"], "@peekoo-agent follow up");
-    }
-
-    #[test]
-    fn resolve_acp_command_path_prefers_explicit_bundled_path() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let bundled = temp.path().join("peekoo-agent-acp");
-        std::fs::write(&bundled, "").expect("create bundled binary");
-
-        let resolved =
-            resolve_acp_command_path(Some(bundled.clone()), Some(temp.path().join("desktop")));
-
-        assert_eq!(resolved, bundled);
-    }
-
-    #[test]
-    fn resolve_acp_command_path_uses_sibling_binary_when_present() {
-        let temp = tempfile::tempdir().expect("tempdir");
-        let exe_dir = temp.path().join("bin");
-        std::fs::create_dir_all(&exe_dir).expect("create bin dir");
-        let current_exe = exe_dir.join("peekoo-desktop");
-        let sibling = exe_dir.join(if cfg!(windows) {
-            "peekoo-agent-acp.exe"
-        } else {
-            "peekoo-agent-acp"
-        });
-        std::fs::write(&sibling, "").expect("create sibling binary");
-
-        let resolved = resolve_acp_command_path(None, Some(current_exe));
-
-        assert_eq!(resolved, sibling);
-    }
-}
-
-#[derive(Clone)]
-struct TaskClient {
-    task_id: String,
-}
-
-#[async_trait::async_trait(?Send)]
-impl Client for TaskClient {
-    async fn request_permission(
-        &self,
-        args: agent_client_protocol::RequestPermissionRequest,
-    ) -> Result<agent_client_protocol::RequestPermissionResponse, agent_client_protocol::Error>
-    {
-        tracing::debug!(
-            "AgentScheduler: Agent requested permission for task {} - selecting first allow option if available",
-            self.task_id
-        );
-        if let Some(option) = args.options.iter().find(|option| {
-            matches!(
-                option.kind,
-                agent_client_protocol::PermissionOptionKind::AllowOnce
-                    | agent_client_protocol::PermissionOptionKind::AllowAlways
-            )
-        }) {
-            Ok(agent_client_protocol::RequestPermissionResponse::new(
-                agent_client_protocol::RequestPermissionOutcome::Selected(
-                    agent_client_protocol::SelectedPermissionOutcome::new(option.option_id.clone()),
-                ),
-            ))
-        } else {
-            Ok(agent_client_protocol::RequestPermissionResponse::new(
-                agent_client_protocol::RequestPermissionOutcome::Cancelled,
-            ))
-        }
-    }
-
-    async fn session_notification(
-        &self,
-        args: agent_client_protocol::SessionNotification,
-    ) -> Result<(), agent_client_protocol::Error> {
-        match &args.update {
-            agent_client_protocol::SessionUpdate::AgentMessageChunk(chunk) => {
-                if let agent_client_protocol::ContentBlock::Text(text) = &chunk.content {
-                    tracing::info!(
-                        "AgentScheduler: Agent message for task {}: {}",
-                        self.task_id,
-                        text.text.chars().take(200).collect::<String>()
-                    );
-                } else {
-                    tracing::debug!(
-                        "AgentScheduler: Agent sent non-text content for task {}",
-                        self.task_id
-                    );
-                }
-            }
-            agent_client_protocol::SessionUpdate::ToolCall(tool_call) => {
-                tracing::info!(
-                    "AgentScheduler: Agent tool call for task {}: {} - {:?}",
-                    self.task_id,
-                    tool_call.title,
-                    tool_call.kind
-                );
-            }
-            agent_client_protocol::SessionUpdate::ToolCallUpdate(update) => {
-                tracing::info!(
-                    "AgentScheduler: Agent tool call update for task {}: {:?}",
-                    self.task_id,
-                    update.fields
-                );
-            }
-            _ => {
-                tracing::debug!(
-                    "AgentScheduler: Received session update for task {}: {:?}",
-                    self.task_id,
-                    args.update
-                );
-            }
-        }
-        Ok(())
     }
 }
