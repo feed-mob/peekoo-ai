@@ -874,6 +874,7 @@ target = "opencode-plugin"
             installed: true,
             source: PluginSource::Store,
             has_update: false,
+            dependency_summary: PluginDependencySummaryDto::default(),
         };
 
         let json = serde_json::to_string(&dto).unwrap();
@@ -898,6 +899,7 @@ target = "opencode-plugin"
             installed: false,
             source: PluginSource::None,
             has_update: false,
+            dependency_summary: PluginDependencySummaryDto::default(),
         };
 
         let json = serde_json::to_string(&dto).unwrap();
