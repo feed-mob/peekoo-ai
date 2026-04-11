@@ -1037,8 +1037,28 @@ impl AgentApplication {
         &self,
         id: Option<String>,
         memo: String,
+        task_id: Option<String>,
     ) -> Result<PomodoroStatusDto, String> {
-        self.pomodoro.save_pomodoro_memo(id, memo)
+        let task_title =
+            task_id
+                .as_deref()
+                .and_then(|task_id| match self.task_service.load_task(task_id) {
+                    Ok(task) => Some(task.title),
+                    Err(err) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %err,
+                            "Failed to load task title for pomodoro memo linkage"
+                        );
+                        None
+                    }
+                });
+
+        let status =
+            self.pomodoro
+                .save_pomodoro_memo(id, memo.clone(), task_id.clone(), task_title)?;
+
+        Ok(status)
     }
 
     pub fn pomodoro_history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {

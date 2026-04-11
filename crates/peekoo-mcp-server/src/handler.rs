@@ -119,6 +119,7 @@ struct PomodoroSwitchModeParams {
 struct PomodoroSaveMemoParams {
     id: Option<String>,
     memo: String,
+    task_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -491,10 +492,23 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<PomodoroSaveMemoParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self
-            .pomodoro_service
-            .save_pomodoro_memo(params.id, params.memo)
-        {
+        let task_title = params
+            .task_id
+            .as_deref()
+            .map(|task_id| self.task_service.load_task(task_id).map(|task| task.title))
+            .transpose();
+
+        let task_title = match task_title {
+            Ok(task_title) => task_title,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        match self.pomodoro_service.save_pomodoro_memo(
+            params.id,
+            params.memo,
+            params.task_id,
+            task_title,
+        ) {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
