@@ -21,6 +21,7 @@ plugins/*/Cargo.lock
 .DS_Store
 .idea/
 .vscode/
+.opencode/
 .opencode/plans/
 .codex
 .cursor
