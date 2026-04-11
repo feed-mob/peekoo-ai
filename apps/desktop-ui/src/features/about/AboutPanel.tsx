@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { normalizeReleaseNotes } from "@/lib/release-notes";
 import { InstallProgressCard } from "@/components/update/InstallProgressCard";
 import { ReleaseNotesMarkdown } from "@/components/update/ReleaseNotesMarkdown";
-import { normalizeReleaseNotes } from "@/lib/release-notes";
 import { invoke } from "@tauri-apps/api/core";
 import { useAboutPanel } from "./useAboutPanel";
 import { useTranslation } from "react-i18next";
