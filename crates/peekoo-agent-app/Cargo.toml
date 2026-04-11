@@ -42,6 +42,7 @@ regex = "1"
 lazy_static = "1"
 anyhow = "1"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+semver = "1"
 
 [dev-dependencies]
 tokio = { version = "1.50.0", features = ["macros", "rt"] }

@@ -8,6 +8,7 @@ pub mod application;
 pub mod conversation;
 pub mod mcp_server;
 pub mod plugin;
+mod plugin_dependency;
 mod plugin_localization;
 pub mod plugin_tool_impl;
 pub mod runtime_adapters;
