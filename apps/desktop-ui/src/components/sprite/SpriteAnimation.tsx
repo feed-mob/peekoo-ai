@@ -11,6 +11,7 @@ import {
   validateAtlas,
   type SpriteAtlasGrid,
 } from "./spriteAtlas";
+import { getSpriteCanvasSize } from "./spriteCanvasSize";
 
 interface SpriteAnimationProps {
   animation?: AnimationType;
@@ -85,24 +86,21 @@ export default function SpriteAnimation({
         chromaKey === false ? img : buildKeyedSpriteSheet(img, chromaKey);
 
       if (canvasRef.current) {
-        // Use window.devicePixelRatio for crisp rendering on high-DPI displays
-        const dpr = window.devicePixelRatio || 1;
-        const displayWidth = Math.max(1, Math.round(atlas.nominalFrameWidth * scale));
-        const displayHeight = Math.max(1, Math.round(atlas.nominalFrameHeight * scale));
+        const canvasSize = getSpriteCanvasSize({
+          nominalFrameWidth: atlas.nominalFrameWidth,
+          nominalFrameHeight: atlas.nominalFrameHeight,
+          scale,
+          devicePixelRatio: window.devicePixelRatio || 1,
+        });
 
-        canvasRef.current.width = displayWidth * dpr;
-        canvasRef.current.height = displayHeight * dpr;
-        
-        // Scale context to match dpr
-        const ctx = canvasRef.current.getContext("2d");
-        if (ctx) {
-           ctx.scale(dpr, dpr);
-        }
-        
-        // Set CSS size
-        canvasRef.current.style.width = `${displayWidth}px`;
-        canvasRef.current.style.height = `${displayHeight}px`;
+        canvasRef.current.width = canvasSize.canvasWidth;
+        canvasRef.current.height = canvasSize.canvasHeight;
+        canvasRef.current.style.width = `${canvasSize.displayWidth}px`;
+        canvasRef.current.style.height = `${canvasSize.displayHeight}px`;
       }
+    };
+    img.onerror = () => {
+      console.error("Failed to load sprite image", imageSrc);
     };
   }, [scale, chromaKey, imageSrc, columns, rows]);
 

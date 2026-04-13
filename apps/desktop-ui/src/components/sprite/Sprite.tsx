@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SpriteAnimation from "./SpriteAnimation";
+import { getActiveSpriteManifest } from "./spriteManifest";
+import type { SpriteInfo } from "@/types/global-settings";
 import type { AnimationType, SpriteState, SpriteManifest } from "@/types/sprite";
 
 // Map mood states to sprite animation types (new sprite sheet layout)
@@ -34,6 +36,7 @@ const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
 };
 
 const DEFAULT_SPRITE_ID = "dark-cat";
+const SPRITE_SWITCH_FADE_MS = 150;
 
 interface SpriteProps {
   state?: SpriteState;
@@ -48,7 +51,8 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
   };
 
   const [activeSpriteId, setActiveSpriteId] = useState(DEFAULT_SPRITE_ID);
-  const [manifest, setManifest] = useState<SpriteManifest | null>(null);
+  const [manifests, setManifests] = useState<Record<string, SpriteManifest>>({});
+  const [spriteVisible, setSpriteVisible] = useState(true);
 
   // Load active sprite ID from global settings on mount
   useEffect(() => {
@@ -73,11 +77,70 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
 
   // Load sprite manifest
   useEffect(() => {
-    fetch(`/sprites/${activeSpriteId}/manifest.json`)
-      .then((res) => res.json())
-      .then((data: SpriteManifest) => setManifest(data))
-      .catch((err) => console.error("Failed to load sprite manifest", err));
+    let cancelled = false;
+
+    const loadManifest = async (spriteId: string) => {
+      try {
+        const response = await fetch(`/sprites/${spriteId}/manifest.json`);
+        const data = (await response.json()) as SpriteManifest;
+        if (cancelled) {
+          return;
+        }
+        setManifests((prev) => {
+          if (prev[spriteId] === data) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [spriteId]: data,
+          };
+        });
+      } catch (err) {
+        console.error("Failed to load sprite manifest", err);
+      }
+    };
+
+    void loadManifest(activeSpriteId);
+
+    invoke<SpriteInfo[]>("app_settings_list_sprites")
+      .then((sprites) => {
+        sprites
+          .filter((sprite) => sprite.id !== activeSpriteId)
+          .forEach((sprite) => {
+            void loadManifest(sprite.id);
+          });
+      })
+      .catch((err) => console.error("Failed to prefetch sprite manifests", err));
+
+    return () => {
+      cancelled = true;
+    };
   }, [activeSpriteId]);
+
+  const activeManifest = getActiveSpriteManifest(manifests, activeSpriteId);
+
+  useEffect(() => {
+    if (!activeManifest) {
+      return;
+    }
+
+    setSpriteVisible(false);
+    const timeoutId = window.setTimeout(() => {
+      setSpriteVisible(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeSpriteId, activeManifest]);
+
+  const spriteClasses = useMemo(
+    () =>
+      spriteVisible
+        ? "opacity-100"
+        : "opacity-0",
+    [spriteVisible],
+  );
 
   // Determine animation type from mood or animation state
   const getAnimationType = (): AnimationType => {
@@ -98,21 +161,25 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
     return "idle";
   };
 
-  if (!manifest) {
+  if (!activeManifest) {
     return null;
   }
 
   return (
-    <div className="flex items-center justify-center">
+    <div
+      className={`flex items-center justify-center transition-opacity ease-out ${spriteClasses}`}
+      style={{ transitionDuration: `${SPRITE_SWITCH_FADE_MS}ms` }}
+    >
       <SpriteAnimation
+        key={activeSpriteId}
         animation={getAnimationType()}
-        frameRate={manifest.frameRate || 8}
-        scale={manifest.scale ?? 0.40}
-        chromaKey={manifest.chromaKey}
-        imageSrc={`/sprites/${activeSpriteId}/${manifest.image}`}
-        columns={manifest.layout.columns}
-        rows={manifest.layout.rows}
-        pixelArt={manifest.chromaKey.pixelArt}
+        frameRate={activeManifest.frameRate || 8}
+        scale={activeManifest.scale ?? 0.40}
+        chromaKey={activeManifest.chromaKey}
+        imageSrc={`/sprites/${activeSpriteId}/${activeManifest.image}`}
+        columns={activeManifest.layout.columns}
+        rows={activeManifest.layout.rows}
+        pixelArt={activeManifest.chromaKey.pixelArt}
         onFrameChange={() => {
           // Optional: Log frame changes for debugging
         }}
