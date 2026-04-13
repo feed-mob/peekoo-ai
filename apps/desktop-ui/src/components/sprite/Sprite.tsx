@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SpriteAnimation from "./SpriteAnimation";
 import { getActiveSpriteManifest } from "./spriteManifest";
+import { loadSpriteAsset } from "./spriteAsset";
 import type { SpriteInfo } from "@/types/global-settings";
 import type { AnimationType, SpriteState, SpriteManifest } from "@/types/sprite";
 
@@ -51,73 +52,88 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
   };
 
   const [activeSpriteId, setActiveSpriteId] = useState(DEFAULT_SPRITE_ID);
+  const [sprites, setSprites] = useState<Record<string, SpriteInfo>>({});
   const [manifests, setManifests] = useState<Record<string, SpriteManifest>>({});
+  const [imageSources, setImageSources] = useState<Record<string, string>>({});
   const [spriteVisible, setSpriteVisible] = useState(true);
 
   // Load active sprite ID from global settings on mount
   useEffect(() => {
-    invoke<Record<string, string>>("app_settings_get")
-      .then((settings) => {
+    Promise.all([
+      invoke<Record<string, string>>("app_settings_get"),
+      invoke<SpriteInfo[]>("app_settings_list_sprites"),
+    ])
+      .then(([settings, availableSprites]) => {
+        setSprites(Object.fromEntries(availableSprites.map((sprite) => [sprite.id, sprite])));
         if (settings.active_sprite_id) {
           setActiveSpriteId(settings.active_sprite_id);
         }
       })
-      .catch((err) => console.error("Failed to load active sprite setting", err));
+      .catch((err) => console.error("Failed to load sprite settings", err));
   }, []);
 
   // Listen for sprite changes from the settings panel
   useEffect(() => {
     const unlisten = listen<{ id: string }>("sprite:changed", (event) => {
       setActiveSpriteId(event.payload.id);
+      void invoke<SpriteInfo[]>("app_settings_list_sprites")
+        .then((availableSprites) => {
+          setSprites(Object.fromEntries(availableSprites.map((sprite) => [sprite.id, sprite])));
+        })
+        .catch((err) => console.error("Failed to refresh sprite catalog", err));
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, []);
 
-  // Load sprite manifest
+  // Load sprite assets
   useEffect(() => {
     let cancelled = false;
+    const availableSprites = Object.values(sprites);
+    if (availableSprites.length === 0) {
+      return;
+    }
 
-    const loadManifest = async (spriteId: string) => {
-      try {
-        const response = await fetch(`/sprites/${spriteId}/manifest.json`);
-        const data = (await response.json()) as SpriteManifest;
-        if (cancelled) {
-          return;
-        }
-        setManifests((prev) => {
-          if (prev[spriteId] === data) {
-            return prev;
+    const loadAssets = async () => {
+      const loadedAssets = await Promise.all(
+        availableSprites.map(async (sprite) => {
+          try {
+            const asset = await loadSpriteAsset(sprite);
+            return [sprite.id, asset] as const;
+          } catch (err) {
+            console.error(`Failed to load sprite asset for ${sprite.id}`, err);
+            return null;
           }
-          return {
-            ...prev,
-            [spriteId]: data,
-          };
-        });
-      } catch (err) {
-        console.error("Failed to load sprite manifest", err);
+        }),
+      );
+
+      if (cancelled) {
+        return;
       }
+
+      const nextManifests: Record<string, SpriteManifest> = {};
+      const nextImageSources: Record<string, string> = {};
+      for (const loaded of loadedAssets) {
+        if (!loaded) {
+          continue;
+        }
+        nextManifests[loaded[0]] = loaded[1].manifest;
+        nextImageSources[loaded[0]] = loaded[1].imageSrc;
+      }
+      setManifests((prev) => ({ ...prev, ...nextManifests }));
+      setImageSources((prev) => ({ ...prev, ...nextImageSources }));
     };
 
-    void loadManifest(activeSpriteId);
-
-    invoke<SpriteInfo[]>("app_settings_list_sprites")
-      .then((sprites) => {
-        sprites
-          .filter((sprite) => sprite.id !== activeSpriteId)
-          .forEach((sprite) => {
-            void loadManifest(sprite.id);
-          });
-      })
-      .catch((err) => console.error("Failed to prefetch sprite manifests", err));
+    void loadAssets();
 
     return () => {
       cancelled = true;
     };
-  }, [activeSpriteId]);
+  }, [sprites]);
 
   const activeManifest = getActiveSpriteManifest(manifests, activeSpriteId);
+  const activeImageSrc = imageSources[activeSpriteId];
 
   useEffect(() => {
     if (!activeManifest) {
@@ -161,7 +177,7 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
     return "idle";
   };
 
-  if (!activeManifest) {
+  if (!activeManifest || !activeImageSrc) {
     return null;
   }
 
@@ -176,7 +192,7 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
         frameRate={activeManifest.frameRate || 8}
         scale={activeManifest.scale ?? 0.40}
         chromaKey={activeManifest.chromaKey}
-        imageSrc={`/sprites/${activeSpriteId}/${activeManifest.image}`}
+        imageSrc={activeImageSrc}
         columns={activeManifest.layout.columns}
         rows={activeManifest.layout.rows}
         pixelArt={activeManifest.chromaKey.pixelArt}

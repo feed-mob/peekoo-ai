@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use anyhow::anyhow;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
@@ -13,7 +14,11 @@ use peekoo_agent::config::{
     PEEKOO_OPENCODE_BIN_ENV,
 };
 use peekoo_agent::service::AgentService;
-use peekoo_app_settings::{AppSettingsService, SpriteInfo};
+use peekoo_app_settings::{
+    AppSettingsService, GenerateSpriteManifestInput, GeneratedSpriteManifest,
+    SaveCustomSpriteInput, SpriteInfo, SpriteManifest, SpriteManifestFile,
+    SpriteManifestValidation, ValidateSpriteManifestInput,
+};
 use peekoo_notifications::{
     MoodReaction, MoodReactionService, Notification, NotificationService, PeekBadgeItem,
     PeekBadgeService,
@@ -145,6 +150,28 @@ struct AcpParsedTask {
     estimated_duration_min: Option<u32>,
     recurrence_rule: Option<String>,
     recurrence_time_of_day: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpriteManifestDraftPromptInput<'a> {
+    image_path: &'a str,
+    image_width: u32,
+    image_height: u32,
+    frame_width: Option<u32>,
+    frame_height: Option<u32>,
+    has_alpha: bool,
+    background_mode: &'a str,
+    blank_frame_count: u32,
+    suggested_name: &'a str,
+    suggested_description: &'a str,
+    suggested_columns: u32,
+    suggested_rows: u32,
+    suggested_scale: f32,
+    suggested_frame_rate: u32,
+    use_chroma_key: bool,
+    pixel_art: bool,
+    manifest_template: &'a SpriteManifest,
 }
 
 pub struct AgentApplication {
@@ -799,6 +826,58 @@ impl AgentApplication {
 
     pub fn list_sprites(&self) -> Vec<SpriteInfo> {
         self.app_settings.list_sprites()
+    }
+
+    pub fn get_sprite_prompt(&self) -> &'static str {
+        self.app_settings.get_sprite_prompt()
+    }
+
+    pub fn get_sprite_image_data_url(&self, image_path: &str) -> Result<String, String> {
+        self.app_settings.get_sprite_image_data_url(image_path)
+    }
+
+    pub fn get_sprite_manifest_template(&self) -> SpriteManifest {
+        self.app_settings.get_sprite_manifest_template()
+    }
+
+    pub fn load_sprite_manifest_file(&self, manifest_path: &str) -> Result<SpriteManifest, String> {
+        self.app_settings.load_manifest_file(manifest_path)
+    }
+
+    pub fn get_custom_sprite_manifest(&self, sprite_id: &str) -> Result<SpriteManifestFile, String> {
+        self.app_settings.get_custom_sprite_manifest(sprite_id)
+    }
+
+    pub fn generate_sprite_manifest_draft(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        self.app_settings.generate_sprite_manifest_draft(input)
+    }
+
+    pub async fn generate_sprite_manifest_with_agent(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        match self.generate_sprite_manifest_with_agent_inner(input.clone()).await {
+            Ok(result) => Ok(result),
+            Err(_) => self.app_settings.generate_sprite_manifest_draft(input),
+        }
+    }
+
+    pub fn validate_sprite_manifest(
+        &self,
+        input: ValidateSpriteManifestInput,
+    ) -> Result<SpriteManifestValidation, String> {
+        self.app_settings.validate_manifest(&input)
+    }
+
+    pub fn save_custom_sprite(&self, input: SaveCustomSpriteInput) -> Result<SpriteInfo, String> {
+        self.app_settings.save_custom_sprite(input)
+    }
+
+    pub fn delete_custom_sprite(&self, sprite_id: &str) -> Result<(), String> {
+        self.app_settings.delete_custom_sprite(sprite_id)
     }
 
     pub fn get_app_settings(&self) -> Result<std::collections::HashMap<String, String>, String> {
@@ -1651,6 +1730,139 @@ impl AgentApplication {
         })?;
 
         Ok((service, settings_version))
+    }
+
+    fn create_ephemeral_agent_service(&self) -> Result<AgentService, String> {
+        let config = self.resolved_config()?;
+        let default_runtime = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .ok_or_else(|| "No default runtime configured".to_string())?;
+
+        let provider = peekoo_agent::config::AgentProvider::from_registry(
+            &default_runtime.provider_id,
+            &default_runtime.command,
+            default_runtime.args.clone(),
+        );
+
+        let model_id = default_runtime.config.default_model.as_deref();
+        let (mut config, _) = self.settings.to_agent_config(config, provider, model_id)?;
+        config.no_session = true;
+        config.session_dir = None;
+        config.resume_session_id = None;
+        config.mcp_servers =
+            crate::acp_client::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
+
+        let runtime_id = config.provider.id();
+        if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
+            let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
+            let adapter_env =
+                adapter.build_launch_env(&runtime_config, self.bundled_node_bin_dir.as_deref());
+            for (key, value) in adapter_env {
+                config.environment.entry(key).or_insert(value);
+            }
+        }
+
+        if let Some(path) = &self.bundled_opencode_path {
+            config.environment.insert(
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            );
+        }
+
+        let reactor = asupersync::runtime::reactor::create_reactor()
+            .map_err(|e| format!("Reactor error: {e}"))?;
+        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+            .with_reactor(reactor)
+            .build()
+            .map_err(|e| format!("Runtime error: {e}"))?;
+
+        runtime.block_on(AgentService::new(config)).map_err(|e| {
+            if peekoo_agent::backend::acp::is_auth_required_error(&e) {
+                format!("AUTH_REQUIRED:{runtime_id}")
+            } else {
+                format!("Agent init error: {e}")
+            }
+        })
+    }
+
+    async fn generate_sprite_manifest_with_agent_inner(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        let image_validation = self
+            .app_settings
+            .validate_sprite_image(&input.image_path, input.columns, input.rows)?;
+        let template = self.app_settings.get_sprite_manifest_template();
+        let prompt_payload = SpriteManifestDraftPromptInput {
+            image_path: &input.image_path,
+            image_width: image_validation.image_width,
+            image_height: image_validation.image_height,
+            frame_width: image_validation.frame_width,
+            frame_height: image_validation.frame_height,
+            has_alpha: image_validation.has_alpha,
+            background_mode: match image_validation.background_mode {
+                peekoo_app_settings::SpriteBackgroundMode::Transparent => "transparent",
+                peekoo_app_settings::SpriteBackgroundMode::FlatColor => "flatColor",
+                peekoo_app_settings::SpriteBackgroundMode::Opaque => "opaque",
+            },
+            blank_frame_count: image_validation.blank_frame_count,
+            suggested_name: &input.name,
+            suggested_description: input
+                .description
+                .as_deref()
+                .unwrap_or("A custom Peekoo sprite."),
+            suggested_columns: input.columns,
+            suggested_rows: input.rows,
+            suggested_scale: input.scale.unwrap_or(0.35),
+            suggested_frame_rate: input.frame_rate.unwrap_or(6),
+            use_chroma_key: input.use_chroma_key,
+            pixel_art: input.pixel_art,
+            manifest_template: &template,
+        };
+        let payload_json = serde_json::to_string_pretty(&prompt_payload)
+            .map_err(|e| format!("Serialize sprite prompt payload error: {e}"))?;
+
+        let app_language = self.get_app_language_or_en();
+        let instruction = format!(
+            "Generate a Peekoo sprite manifest JSON object for the uploaded sprite image.\n\
+Return JSON only with no markdown fences and no explanation.\n\
+Use the exact SpriteManifest shape shown in the template.\n\
+Respect the provided image metadata and suggested defaults.\n\
+Keep the provided columns and rows unless there is a very strong reason to change them.\n\
+If the background_mode is opaque, set chromaKey values appropriate for a likely non-transparent background.\n\
+Generate a concise, specific description based on the character visual style and personality cues from the image.\n\
+Do not use generic placeholder text like 'A custom Peekoo sprite.'\n\
+Language hint for text fields: {app_language}.\n\
+\nInput:\n{payload_json}"
+        );
+
+        let mut agent = self.create_ephemeral_agent_service()?;
+        let response = agent
+            .prompt(&instruction, |_| {})
+            .await
+            .map_err(|e| format!("Agent manifest draft error: {e}"))?;
+        let manifest_json = extract_json_object(&response)
+            .ok_or_else(|| "Agent did not return a JSON object for the sprite manifest".to_string())?;
+        let manifest: SpriteManifest = serde_json::from_str(manifest_json)
+            .map_err(|e| format!("Failed to parse agent-generated sprite manifest: {e}"))?;
+        let manifest_validation = self
+            .app_settings
+            .validate_manifest(&ValidateSpriteManifestInput {
+                image_path: input.image_path.clone(),
+                manifest: manifest.clone(),
+            })?;
+
+        if !manifest_validation.errors.is_empty() {
+            return Err(anyhow!("Agent-generated manifest failed validation").to_string());
+        }
+
+        Ok(GeneratedSpriteManifest {
+            manifest,
+            image_validation,
+            manifest_validation,
+        })
     }
 
     fn get_app_language_or_en(&self) -> String {

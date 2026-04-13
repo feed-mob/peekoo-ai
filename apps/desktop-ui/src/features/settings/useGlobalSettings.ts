@@ -2,6 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import type { SpriteInfo } from "@/types/global-settings";
+import type {
+  GenerateSpriteManifestInput,
+  GeneratedSpriteManifest,
+  SaveCustomSpriteInput,
+  SpriteManifest,
+  SpriteManifestValidation,
+} from "@/types/sprite";
 
 interface GlobalSettingsState {
   activeSpriteId: string | null;
@@ -112,6 +119,64 @@ export function useGlobalSettings() {
     [],
   );
 
+  const getSpritePrompt = useCallback(
+    () => invoke<string>("app_sprites_get_prompt"),
+    [],
+  );
+
+  const getSpriteManifestTemplate = useCallback(
+    () => invoke<SpriteManifest>("app_sprites_get_manifest_template"),
+    [],
+  );
+
+  const loadSpriteManifestFile = useCallback(
+    (manifestPath: string) => invoke<SpriteManifest>("app_sprites_load_manifest_file", { manifestPath }),
+    [],
+  );
+
+  const generateSpriteManifestDraft = useCallback(
+    (input: GenerateSpriteManifestInput) =>
+      invoke<GeneratedSpriteManifest>("app_sprites_generate_manifest_draft", { input }),
+    [],
+  );
+
+  const generateSpriteManifestWithAgent = useCallback(
+    (input: GenerateSpriteManifestInput) =>
+      invoke<GeneratedSpriteManifest>("app_sprites_generate_manifest_with_agent", { input }),
+    [],
+  );
+
+  const validateSpriteManifest = useCallback(
+    (input: { imagePath: string; manifest: SpriteManifest }) =>
+      invoke<SpriteManifestValidation>("app_sprites_validate_manifest", { input }),
+    [],
+  );
+
+  const saveCustomSprite = useCallback(
+    async (input: SaveCustomSpriteInput) => {
+      const sprite = await invoke<SpriteInfo>("app_sprites_save_custom", { input });
+      await invoke("app_settings_set", {
+        key: "active_sprite_id",
+        value: sprite.id,
+      });
+      await load();
+      await emit("sprite:changed", { id: sprite.id });
+      setState((prev) => ({ ...prev, activeSpriteId: sprite.id }));
+      return sprite;
+    },
+    [load],
+  );
+
+  const deleteCustomSprite = useCallback(
+    async (spriteId: string) => {
+      await invoke("app_sprites_delete", { spriteId });
+      const settings = await invoke<Record<string, string>>("app_settings_get");
+      await load();
+      await emit("sprite:changed", { id: settings.active_sprite_id ?? "dark-cat" });
+    },
+    [load],
+  );
+
   return {
     activeSpriteId: state.activeSpriteId,
     themeMode: state.themeMode,
@@ -124,5 +189,14 @@ export function useGlobalSettings() {
     setThemeMode,
     setAppLanguage,
     setLogLevel,
+    refresh: load,
+    getSpritePrompt,
+    getSpriteManifestTemplate,
+    loadSpriteManifestFile,
+    generateSpriteManifestDraft,
+    generateSpriteManifestWithAgent,
+    validateSpriteManifest,
+    saveCustomSprite,
+    deleteCustomSprite,
   };
 }
