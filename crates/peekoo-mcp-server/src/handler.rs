@@ -682,8 +682,7 @@ impl TaskMcpHandler {
                 frame_rate: params.frame_rate,
                 use_chroma_key: params.use_chroma_key,
                 pixel_art: params.pixel_art,
-            })
-        {
+            }) {
             Ok(result) => json_success(result),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -699,13 +698,19 @@ impl TaskMcpHandler {
     ) -> Result<CallToolResult, McpError> {
         let manifest = match serde_json::from_value(params.manifest) {
             Ok(manifest) => manifest,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!("Invalid manifest JSON: {e}"))])),
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid manifest JSON: {e}"
+                ))]));
+            }
         };
 
-        match self.settings_service.validate_manifest(&ValidateSpriteManifestInput {
-            image_path: params.image_path,
-            manifest,
-        }) {
+        match self
+            .settings_service
+            .validate_manifest(&ValidateSpriteManifestInput {
+                image_path: params.image_path,
+                manifest,
+            }) {
             Ok(result) => json_success(result),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -721,13 +726,19 @@ impl TaskMcpHandler {
     ) -> Result<CallToolResult, McpError> {
         let manifest = match serde_json::from_value(params.manifest) {
             Ok(manifest) => manifest,
-            Err(e) => return Ok(CallToolResult::error(vec![Content::text(format!("Invalid manifest JSON: {e}"))])),
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid manifest JSON: {e}"
+                ))]));
+            }
         };
 
-        match self.settings_service.save_custom_sprite(SaveCustomSpriteInput {
-            image_path: params.image_path,
-            manifest,
-        }) {
+        match self
+            .settings_service
+            .save_custom_sprite(SaveCustomSpriteInput {
+                image_path: params.image_path,
+                manifest,
+            }) {
             Ok(result) => json_success(result),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -741,8 +752,13 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<DeleteCustomSpriteParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self.settings_service.delete_custom_sprite(&params.sprite_id) {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("Custom sprite deleted")])),
+        match self
+            .settings_service
+            .delete_custom_sprite(&params.sprite_id)
+        {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+                "Custom sprite deleted",
+            )])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
     }

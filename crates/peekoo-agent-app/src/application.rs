@@ -844,7 +844,10 @@ impl AgentApplication {
         self.app_settings.load_manifest_file(manifest_path)
     }
 
-    pub fn get_custom_sprite_manifest(&self, sprite_id: &str) -> Result<SpriteManifestFile, String> {
+    pub fn get_custom_sprite_manifest(
+        &self,
+        sprite_id: &str,
+    ) -> Result<SpriteManifestFile, String> {
         self.app_settings.get_custom_sprite_manifest(sprite_id)
     }
 
@@ -859,7 +862,10 @@ impl AgentApplication {
         &self,
         input: GenerateSpriteManifestInput,
     ) -> Result<GeneratedSpriteManifest, String> {
-        match self.generate_sprite_manifest_with_agent_inner(input.clone()).await {
+        match self
+            .generate_sprite_manifest_with_agent_inner(input.clone())
+            .await
+        {
             Ok(result) => Ok(result),
             Err(_) => self.app_settings.generate_sprite_manifest_draft(input),
         }
@@ -1791,9 +1797,11 @@ impl AgentApplication {
         &self,
         input: GenerateSpriteManifestInput,
     ) -> Result<GeneratedSpriteManifest, String> {
-        let image_validation = self
-            .app_settings
-            .validate_sprite_image(&input.image_path, input.columns, input.rows)?;
+        let image_validation = self.app_settings.validate_sprite_image(
+            &input.image_path,
+            input.columns,
+            input.rows,
+        )?;
         let template = self.app_settings.get_sprite_manifest_template();
         let prompt_payload = SpriteManifestDraftPromptInput {
             image_path: &input.image_path,
@@ -1843,16 +1851,17 @@ Language hint for text fields: {app_language}.\n\
             .prompt(&instruction, |_| {})
             .await
             .map_err(|e| format!("Agent manifest draft error: {e}"))?;
-        let manifest_json = extract_json_object(&response)
-            .ok_or_else(|| "Agent did not return a JSON object for the sprite manifest".to_string())?;
+        let manifest_json = extract_json_object(&response).ok_or_else(|| {
+            "Agent did not return a JSON object for the sprite manifest".to_string()
+        })?;
         let manifest: SpriteManifest = serde_json::from_str(manifest_json)
             .map_err(|e| format!("Failed to parse agent-generated sprite manifest: {e}"))?;
-        let manifest_validation = self
-            .app_settings
-            .validate_manifest(&ValidateSpriteManifestInput {
-                image_path: input.image_path.clone(),
-                manifest: manifest.clone(),
-            })?;
+        let manifest_validation =
+            self.app_settings
+                .validate_manifest(&ValidateSpriteManifestInput {
+                    image_path: input.image_path.clone(),
+                    manifest: manifest.clone(),
+                })?;
 
         if !manifest_validation.errors.is_empty() {
             return Err(anyhow!("Agent-generated manifest failed validation").to_string());

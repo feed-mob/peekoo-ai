@@ -6,13 +6,13 @@ use peekoo_agent_app::{
     GenerateSpriteManifestInput, InstallProviderRequest, InstallProviderResponse,
     InstallationMethod, LastSessionDto, OauthCancelResponse, OauthStartResponse,
     OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto,
-    PluginPanelDto, PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput,
-    PomodoroStatusDto, PrerequisitesCheck, ProviderAuthDto, ProviderConfig, ProviderConfigDto,
-    ProviderInfo, ProviderRequest, RuntimeAuthenticationResult, RuntimeAuthenticationStatus,
-    RuntimeInfo, RuntimeInspectionResult, RuntimeTerminalAuthLaunch, SaveCustomSpriteInput,
-    SetApiKeyRequest, SetProviderConfigRequest, SkillInstallOutcome, SpriteInfo,
-    SpriteManifest, SpriteManifestFile, SpriteManifestValidation, StorePluginDto, TaskDto,
-    TaskEventDto, TestConnectionResult, ValidateSpriteManifestInput,
+    PluginPanelDto, PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+    PrerequisitesCheck, ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo,
+    ProviderRequest, RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo,
+    RuntimeInspectionResult, RuntimeTerminalAuthLaunch, SaveCustomSpriteInput, SetApiKeyRequest,
+    SetProviderConfigRequest, SkillInstallOutcome, SpriteInfo, SpriteManifest, SpriteManifestFile,
+    SpriteManifestValidation, StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    ValidateSpriteManifestInput,
 };
 use rusqlite::Connection;
 use serde::Serialize;

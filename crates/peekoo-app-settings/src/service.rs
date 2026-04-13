@@ -8,10 +8,10 @@ use image::ImageReader;
 use rusqlite::Connection;
 
 use crate::dto::{
-    GenerateSpriteManifestInput, GeneratedSpriteManifest, SaveCustomSpriteInput, SpriteBackgroundMode,
-    SpriteChromaKey, SpriteImageValidation, SpriteInfo, SpriteLayout, SpriteManifest,
-    SpriteManifestFile, SpriteManifestValidation, SpriteSource, SpriteSpillSuppression,
-    ValidateSpriteManifestInput, ValidationIssue,
+    GenerateSpriteManifestInput, GeneratedSpriteManifest, SaveCustomSpriteInput,
+    SpriteBackgroundMode, SpriteChromaKey, SpriteImageValidation, SpriteInfo, SpriteLayout,
+    SpriteManifest, SpriteManifestFile, SpriteManifestValidation, SpriteSource,
+    SpriteSpillSuppression, ValidateSpriteManifestInput, ValidationIssue,
 };
 use crate::store::AppSettingsStore;
 
@@ -177,7 +177,9 @@ impl AppSettingsService {
         }
         if key == SETTING_LOG_LEVEL {
             return match value {
-                "error" | "warn" | "info" | "debug" | "trace" => self.store.set(SETTING_LOG_LEVEL, value),
+                "error" | "warn" | "info" | "debug" | "trace" => {
+                    self.store.set(SETTING_LOG_LEVEL, value)
+                }
                 _ => Err(format!("Invalid log level: {value}")),
             };
         }
@@ -201,14 +203,12 @@ impl AppSettingsService {
             "png" => "image/png",
             "webp" => "image/webp",
             "jpg" | "jpeg" => "image/jpeg",
-            _ => {
-                match image::guess_format(&bytes).ok() {
-                    Some(image::ImageFormat::Png) => "image/png",
-                    Some(image::ImageFormat::WebP) => "image/webp",
-                    Some(image::ImageFormat::Jpeg) => "image/jpeg",
-                    _ => return Err(format!("Unsupported sprite image format: {extension}")),
-                }
-            }
+            _ => match image::guess_format(&bytes).ok() {
+                Some(image::ImageFormat::Png) => "image/png",
+                Some(image::ImageFormat::WebP) => "image/webp",
+                Some(image::ImageFormat::Jpeg) => "image/jpeg",
+                _ => return Err(format!("Unsupported sprite image format: {extension}")),
+            },
         };
 
         let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
@@ -237,7 +237,10 @@ impl AppSettingsService {
         serde_json::from_str(&contents).map_err(|e| format!("Failed to parse manifest file: {e}"))
     }
 
-    pub fn get_custom_sprite_manifest(&self, sprite_id: &str) -> Result<SpriteManifestFile, String> {
+    pub fn get_custom_sprite_manifest(
+        &self,
+        sprite_id: &str,
+    ) -> Result<SpriteManifestFile, String> {
         let sprite_dir = self.custom_sprite_dir(sprite_id);
         if !sprite_dir.exists() {
             return Err(format!("Unknown custom sprite: {sprite_id}"));
@@ -255,7 +258,8 @@ impl AppSettingsService {
         &self,
         input: GenerateSpriteManifestInput,
     ) -> Result<GeneratedSpriteManifest, String> {
-        let image_validation = self.validate_sprite_image(&input.image_path, input.columns, input.rows)?;
+        let image_validation =
+            self.validate_sprite_image(&input.image_path, input.columns, input.rows)?;
         let id = slugify_sprite_id(&input.name);
         let image_name = sanitize_file_name(
             Path::new(&input.image_path)
@@ -267,7 +271,9 @@ impl AppSettingsService {
         let manifest = SpriteManifest {
             id,
             name: input.name.trim().to_string(),
-            description: input.description.unwrap_or_else(|| "Custom Peekoo sprite".to_string()),
+            description: input
+                .description
+                .unwrap_or_else(|| "Custom Peekoo sprite".to_string()),
             image: image_name,
             layout: SpriteLayout {
                 columns: input.columns,
@@ -275,7 +281,10 @@ impl AppSettingsService {
             },
             scale: Some(input.scale.unwrap_or(0.35)),
             frame_rate: Some(input.frame_rate.unwrap_or(6)),
-            chroma_key: default_chroma_key(input.use_chroma_key || !image_validation.has_alpha, input.pixel_art),
+            chroma_key: default_chroma_key(
+                input.use_chroma_key || !image_validation.has_alpha,
+                input.pixel_art,
+            ),
         };
         let manifest_validation = self.validate_manifest(&ValidateSpriteManifestInput {
             image_path: input.image_path,
@@ -309,12 +318,11 @@ impl AppSettingsService {
             errors.push(issue("name", "Sprite name is required."));
         }
 
-        if Path::new(&input.manifest.image)
-            .components()
-            .count()
-            != 1
-        {
-            errors.push(issue("image", "Manifest image must be a file name without directories."));
+        if Path::new(&input.manifest.image).components().count() != 1 {
+            errors.push(issue(
+                "image",
+                "Manifest image must be a file name without directories.",
+            ));
         }
 
         if input.manifest.layout.columns == 0 || input.manifest.layout.rows == 0 {
@@ -328,7 +336,10 @@ impl AppSettingsService {
             if scale <= 0.0 {
                 errors.push(issue("scale", "Scale must be greater than zero."));
             } else if scale > 1.0 {
-                warnings.push(issue("scale", "Scale above 1.0 may appear oversized in the desktop window."));
+                warnings.push(issue(
+                    "scale",
+                    "Scale above 1.0 may appear oversized in the desktop window.",
+                ));
             }
         }
 
@@ -336,7 +347,10 @@ impl AppSettingsService {
             if frame_rate == 0 {
                 errors.push(issue("frameRate", "Frame rate must be greater than zero."));
             } else if frame_rate > 12 {
-                warnings.push(issue("frameRate", "Frame rates above 12 can feel too fast for desktop idle animations."));
+                warnings.push(issue(
+                    "frameRate",
+                    "Frame rates above 12 can feel too fast for desktop idle animations.",
+                ));
             }
         }
 
@@ -366,7 +380,10 @@ impl AppSettingsService {
                 has_alpha: false,
                 background_mode: SpriteBackgroundMode::Opaque,
                 blank_frame_count: 0,
-                errors: vec![issue("layout", "Columns and rows must be greater than zero.")],
+                errors: vec![issue(
+                    "layout",
+                    "Columns and rows must be greater than zero.",
+                )],
                 warnings: Vec::new(),
             });
         }
@@ -397,7 +414,10 @@ impl AppSettingsService {
         let height = rgba.height();
 
         if width == 0 || height == 0 {
-            errors.push(issue("image", "Sprite image dimensions must be greater than zero."));
+            errors.push(issue(
+                "image",
+                "Sprite image dimensions must be greater than zero.",
+            ));
         }
 
         if width % columns != 0 {
@@ -419,12 +439,18 @@ impl AppSettingsService {
         if let Some(frame_width) = frame_width
             && frame_width < 16
         {
-            warnings.push(issue("image", "Frame width is very small and may render poorly."));
+            warnings.push(issue(
+                "image",
+                "Frame width is very small and may render poorly.",
+            ));
         }
         if let Some(frame_height) = frame_height
             && frame_height < 16
         {
-            warnings.push(issue("image", "Frame height is very small and may render poorly."));
+            warnings.push(issue(
+                "image",
+                "Frame height is very small and may render poorly.",
+            ));
         }
 
         let has_alpha = rgba.pixels().any(|pixel| pixel.0[3] < 255);
@@ -432,7 +458,8 @@ impl AppSettingsService {
             rgba.get_pixel(0, 0).0,
             rgba.get_pixel(width.saturating_sub(1), 0).0,
             rgba.get_pixel(0, height.saturating_sub(1)).0,
-            rgba.get_pixel(width.saturating_sub(1), height.saturating_sub(1)).0,
+            rgba.get_pixel(width.saturating_sub(1), height.saturating_sub(1))
+                .0,
         ];
         let background_mode = if has_alpha {
             SpriteBackgroundMode::Transparent
@@ -492,16 +519,23 @@ impl AppSettingsService {
             ));
         }
 
-        if BUILTIN_SPRITES.iter().any(|sprite| sprite.id == input.manifest.id) {
+        if BUILTIN_SPRITES
+            .iter()
+            .any(|sprite| sprite.id == input.manifest.id)
+        {
             return Err("Custom sprite ID conflicts with a built-in sprite.".to_string());
         }
 
         let sprite_dir = self.custom_sprite_dir(&input.manifest.id);
         if sprite_dir.exists() {
-            return Err(format!("Custom sprite '{}' already exists.", input.manifest.id));
+            return Err(format!(
+                "Custom sprite '{}' already exists.",
+                input.manifest.id
+            ));
         }
 
-        fs::create_dir_all(&sprite_dir).map_err(|e| format!("Failed to create sprite directory: {e}"))?;
+        fs::create_dir_all(&sprite_dir)
+            .map_err(|e| format!("Failed to create sprite directory: {e}"))?;
         let source_path = Path::new(&input.image_path);
         let copied_image_name = sanitize_file_name(
             source_path
@@ -530,16 +564,21 @@ impl AppSettingsService {
         if !sprite_dir.exists() {
             return Err(format!("Unknown custom sprite: {sprite_id}"));
         }
-        fs::remove_dir_all(&sprite_dir).map_err(|e| format!("Failed to delete custom sprite: {e}"))?;
+        fs::remove_dir_all(&sprite_dir)
+            .map_err(|e| format!("Failed to delete custom sprite: {e}"))?;
         if self.get_active_sprite_id()? == sprite_id {
-            self.store.set(SETTING_ACTIVE_SPRITE_ID, DEFAULT_SPRITE_ID)?;
+            self.store
+                .set(SETTING_ACTIVE_SPRITE_ID, DEFAULT_SPRITE_ID)?;
         }
         Ok(())
     }
 
     fn sprite_exists(&self, sprite_id: &str) -> bool {
         BUILTIN_SPRITES.iter().any(|sprite| sprite.id == sprite_id)
-            || self.custom_sprite_dir(sprite_id).join(MANIFEST_FILE_NAME).exists()
+            || self
+                .custom_sprite_dir(sprite_id)
+                .join(MANIFEST_FILE_NAME)
+                .exists()
     }
 
     fn list_custom_sprites(&self) -> Vec<SpriteInfo> {
@@ -550,7 +589,8 @@ impl AppSettingsService {
         let mut sprites = Vec::new();
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_dir() || path.file_name().and_then(|name| name.to_str()) == Some("_drafts") {
+            if !path.is_dir() || path.file_name().and_then(|name| name.to_str()) == Some("_drafts")
+            {
                 continue;
             }
             let manifest_path = path.join(MANIFEST_FILE_NAME);
@@ -578,16 +618,19 @@ impl AppSettingsService {
         let manifest_path = self.custom_sprite_dir(sprite_id).join(MANIFEST_FILE_NAME);
         let contents = fs::read_to_string(&manifest_path)
             .map_err(|e| format!("Failed to read custom sprite manifest: {e}"))?;
-        serde_json::from_str(&contents).map_err(|e| format!("Failed to parse custom sprite manifest: {e}"))
+        serde_json::from_str(&contents)
+            .map_err(|e| format!("Failed to parse custom sprite manifest: {e}"))
     }
 
     fn write_custom_manifest(&self, manifest: &SpriteManifest) -> Result<(), String> {
         let sprite_dir = self.custom_sprite_dir(&manifest.id);
-        fs::create_dir_all(&sprite_dir).map_err(|e| format!("Failed to create sprite directory: {e}"))?;
+        fs::create_dir_all(&sprite_dir)
+            .map_err(|e| format!("Failed to create sprite directory: {e}"))?;
         let manifest_path = sprite_dir.join(MANIFEST_FILE_NAME);
         let content = serde_json::to_string_pretty(manifest)
             .map_err(|e| format!("Failed to serialize sprite manifest: {e}"))?;
-        fs::write(&manifest_path, content).map_err(|e| format!("Failed to write sprite manifest: {e}"))
+        fs::write(&manifest_path, content)
+            .map_err(|e| format!("Failed to write sprite manifest: {e}"))
     }
 
     fn custom_sprite_dir(&self, sprite_id: &str) -> PathBuf {
@@ -654,7 +697,11 @@ fn slugify_sprite_id(name: &str) -> String {
 }
 
 fn default_chroma_key(use_chroma_key: bool, pixel_art: bool) -> SpriteChromaKey {
-    let target_color = if use_chroma_key { [255, 0, 255] } else { [0, 0, 0] };
+    let target_color = if use_chroma_key {
+        [255, 0, 255]
+    } else {
+        [0, 0, 0]
+    };
     SpriteChromaKey {
         target_color,
         min_rb_over_g: 32,
@@ -815,7 +862,11 @@ mod tests {
 
         let sprites = svc.list_sprites();
         assert_eq!(sprites.len(), 3);
-        assert!(sprites.iter().any(|sprite| sprite.id == "buddy" && sprite.source == SpriteSource::Custom));
+        assert!(
+            sprites
+                .iter()
+                .any(|sprite| sprite.id == "buddy" && sprite.source == SpriteSource::Custom)
+        );
     }
 
     #[test]
@@ -840,7 +891,13 @@ mod tests {
             .unwrap();
 
         assert!(result.manifest_validation.errors.is_empty());
-        assert!(result.manifest_validation.warnings.iter().any(|issue| issue.field == "layout.rows"));
+        assert!(
+            result
+                .manifest_validation
+                .warnings
+                .iter()
+                .any(|issue| issue.field == "layout.rows")
+        );
     }
 
     #[test]

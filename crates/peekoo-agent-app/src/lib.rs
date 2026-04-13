@@ -34,9 +34,9 @@ pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};
 pub use peekoo_app_settings::{
     AppSettingsService, GenerateSpriteManifestInput, GeneratedSpriteManifest,
-    SaveCustomSpriteInput, SpriteBackgroundMode, SpriteImageValidation, SpriteInfo,
-    SpriteManifest, SpriteManifestFile, SpriteManifestValidation, SpriteSource,
-    ValidateSpriteManifestInput, ValidationIssue,
+    SaveCustomSpriteInput, SpriteBackgroundMode, SpriteImageValidation, SpriteInfo, SpriteManifest,
+    SpriteManifestFile, SpriteManifestValidation, SpriteSource, ValidateSpriteManifestInput,
+    ValidationIssue,
 };
 pub use peekoo_notifications::PeekBadgeItem;
 pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
