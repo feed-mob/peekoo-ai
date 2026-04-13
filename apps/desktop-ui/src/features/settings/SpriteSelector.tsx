@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Check } from "lucide-react";
 import SpriteAnimation from "@/components/sprite/SpriteAnimation";
+import { loadSpriteAsset } from "@/components/sprite/spriteAsset";
 import type { SpriteInfo } from "@/types/global-settings";
 import type { SpriteManifest } from "@/types/sprite";
 import { cn } from "@/lib/utils";
@@ -12,18 +13,21 @@ interface SpriteSelectorProps {
   onSelect: (spriteId: string) => void;
 }
 
-function SpritePreview({ spriteId }: { spriteId: string }) {
+function SpritePreview({ sprite }: { sprite: SpriteInfo }) {
   const { t } = useTranslation();
   const [manifest, setManifest] = useState<SpriteManifest | null>(null);
+  const [imageSrc, setImageSrc] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/sprites/${spriteId}/manifest.json`)
-      .then((res) => res.json())
-      .then((data: SpriteManifest) => setManifest(data))
-      .catch((err) => console.error(`Failed to load manifest for ${spriteId}`, err));
-  }, [spriteId]);
+    loadSpriteAsset(sprite)
+      .then((asset) => {
+        setManifest(asset.manifest);
+        setImageSrc(asset.imageSrc);
+      })
+      .catch((err) => console.error(`Failed to load manifest for ${sprite.id}`, err));
+  }, [sprite]);
 
-  if (!manifest) {
+  if (!manifest || !imageSrc) {
     return (
       <div className="w-full h-24 flex items-center justify-center text-text-muted text-xs">
         {t("settings.sprite.loadingPreview")}
@@ -38,7 +42,7 @@ function SpritePreview({ spriteId }: { spriteId: string }) {
         frameRate={manifest.frameRate || 8}
         scale={manifest.scale ?? 0.40}
         chromaKey={manifest.chromaKey}
-        imageSrc={`/sprites/${spriteId}/${manifest.image}`}
+        imageSrc={imageSrc}
         columns={manifest.layout.columns}
         rows={manifest.layout.rows}
         pixelArt={manifest.chromaKey.pixelArt}
@@ -84,7 +88,7 @@ export function SpriteSelector({ sprites, activeSpriteId, onSelect }: SpriteSele
                   <Check size={12} className="text-white" />
                 </div>
               )}
-              <SpritePreview spriteId={sprite.id} />
+              <SpritePreview sprite={sprite} />
               <div className="text-center">
                 <p className="text-xs font-medium text-text-primary">{resolveSpriteName(sprite)}</p>
                 <p className="text-[10px] text-text-muted leading-tight mt-0.5">

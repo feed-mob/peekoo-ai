@@ -1,5 +1,6 @@
 import { useGlobalSettings } from "./useGlobalSettings";
 import { SpriteSelector } from "./SpriteSelector";
+import { CustomSpriteManager } from "./CustomSpriteManager";
 import { AgentProviderPanel } from "@/features/agent-runtimes/AgentProviderPanel";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,6 +30,14 @@ export function SettingsPanel() {
     setThemeMode,
     setAppLanguage,
     setLogLevel,
+    getSpritePrompt,
+    getSpriteManifestTemplate,
+    loadSpriteManifestFile,
+    generateSpriteManifestDraft,
+    generateSpriteManifestWithAgent,
+    validateSpriteManifest,
+    saveCustomSprite,
+    deleteCustomSprite,
   } = useGlobalSettings();
 
   if (loading) {
@@ -139,6 +148,17 @@ export function SettingsPanel() {
           sprites={sprites}
           activeSpriteId={activeSpriteId}
           onSelect={setActiveSpriteId}
+        />
+        <CustomSpriteManager
+          sprites={sprites}
+          deleteCustomSprite={deleteCustomSprite}
+          getSpritePrompt={getSpritePrompt}
+          getSpriteManifestTemplate={getSpriteManifestTemplate}
+          loadSpriteManifestFile={loadSpriteManifestFile}
+          generateSpriteManifestDraft={generateSpriteManifestDraft}
+          generateSpriteManifestWithAgent={generateSpriteManifestWithAgent}
+          validateSpriteManifest={validateSpriteManifest}
+          saveCustomSprite={saveCustomSprite}
         />
       </section>
 

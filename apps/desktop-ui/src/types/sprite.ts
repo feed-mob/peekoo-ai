@@ -39,3 +39,59 @@ export interface SpriteManifest {
   };
 }
 
+export interface ValidationIssue {
+  field: string;
+  message: string;
+}
+
+export type SpriteBackgroundMode = "transparent" | "flatColor" | "opaque";
+
+export interface SpriteImageValidation {
+  imageWidth: number;
+  imageHeight: number;
+  frameWidth: number | null;
+  frameHeight: number | null;
+  hasAlpha: boolean;
+  backgroundMode: SpriteBackgroundMode;
+  blankFrameCount: number;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+}
+
+export interface SpriteManifestValidation {
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+}
+
+export interface GeneratedSpriteManifest {
+  manifest: SpriteManifest;
+  imageValidation: SpriteImageValidation;
+  manifestValidation: SpriteManifestValidation;
+}
+
+export interface CustomSpriteManifestFile {
+  manifest: SpriteManifest;
+  imagePath: string;
+}
+
+export interface GenerateSpriteManifestInput {
+  imagePath: string;
+  name: string;
+  description?: string | null;
+  columns: number;
+  rows: number;
+  scale?: number | null;
+  frameRate?: number | null;
+  useChromaKey: boolean;
+  pixelArt: boolean;
+}
+
+export interface ValidateSpriteManifestInput {
+  imagePath: string;
+  manifest: SpriteManifest;
+}
+
+export interface SaveCustomSpriteInput {
+  imagePath: string;
+  manifest: SpriteManifest;
+}

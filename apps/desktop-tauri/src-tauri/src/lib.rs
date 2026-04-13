@@ -3,14 +3,16 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    InstallProviderRequest, InstallProviderResponse, InstallationMethod, LastSessionDto,
-    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
-    PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
-    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
-    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo, RuntimeInspectionResult,
-    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SkillInstallOutcome,
-    SpriteInfo, StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    GenerateSpriteManifestInput, InstallProviderRequest, InstallProviderResponse,
+    InstallationMethod, LastSessionDto, OauthCancelResponse, OauthStartResponse,
+    OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto,
+    PluginPanelDto, PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+    PrerequisitesCheck, ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo,
+    ProviderRequest, RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo,
+    RuntimeInspectionResult, RuntimeTerminalAuthLaunch, SaveCustomSpriteInput, SetApiKeyRequest,
+    SetProviderConfigRequest, SkillInstallOutcome, SpriteInfo, SpriteManifest, SpriteManifestFile,
+    SpriteManifestValidation, StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    ValidateSpriteManifestInput,
 };
 use rusqlite::Connection;
 use serde::Serialize;
@@ -1017,6 +1019,79 @@ async fn app_settings_list_sprites(
 }
 
 #[tauri::command]
+async fn app_sprites_get_prompt(state: State<'_, AgentState>) -> Result<String, String> {
+    Ok(state.app.get_sprite_prompt().to_string())
+}
+
+#[tauri::command]
+async fn app_sprites_get_image_data_url(
+    image_path: String,
+    state: State<'_, AgentState>,
+) -> Result<String, String> {
+    state.app.get_sprite_image_data_url(&image_path)
+}
+
+#[tauri::command]
+async fn app_sprites_get_manifest_template(
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifest, String> {
+    Ok(state.app.get_sprite_manifest_template())
+}
+
+#[tauri::command]
+async fn app_sprites_load_manifest_file(
+    manifest_path: String,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifest, String> {
+    state.app.load_sprite_manifest_file(&manifest_path)
+}
+
+#[tauri::command]
+async fn app_sprites_get_custom_manifest(
+    sprite_id: String,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifestFile, String> {
+    state.app.get_custom_sprite_manifest(&sprite_id)
+}
+
+#[tauri::command]
+async fn app_sprites_generate_manifest_draft(
+    input: GenerateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<peekoo_agent_app::GeneratedSpriteManifest, String> {
+    state.app.generate_sprite_manifest_draft(input)
+}
+
+#[tauri::command]
+async fn app_sprites_generate_manifest_with_agent(
+    input: GenerateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<peekoo_agent_app::GeneratedSpriteManifest, String> {
+    state.app.generate_sprite_manifest_with_agent(input).await
+}
+
+#[tauri::command]
+async fn app_sprites_validate_manifest(
+    input: ValidateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifestValidation, String> {
+    state.app.validate_sprite_manifest(input)
+}
+
+#[tauri::command]
+async fn app_sprites_save_custom(
+    input: SaveCustomSpriteInput,
+    state: State<'_, AgentState>,
+) -> Result<SpriteInfo, String> {
+    state.app.save_custom_sprite(input)
+}
+
+#[tauri::command]
+async fn app_sprites_delete(sprite_id: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_custom_sprite(&sprite_id)
+}
+
+#[tauri::command]
 async fn app_settings_get_language(state: State<'_, AgentState>) -> Result<String, String> {
     state.app.get_app_language()
 }
@@ -1898,6 +1973,16 @@ pub fn run() {
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
+            app_sprites_get_prompt,
+            app_sprites_get_image_data_url,
+            app_sprites_get_manifest_template,
+            app_sprites_load_manifest_file,
+            app_sprites_get_custom_manifest,
+            app_sprites_generate_manifest_draft,
+            app_sprites_generate_manifest_with_agent,
+            app_sprites_validate_manifest,
+            app_sprites_save_custom,
+            app_sprites_delete,
             app_settings_get_language,
             app_settings_set_language,
             create_task,
