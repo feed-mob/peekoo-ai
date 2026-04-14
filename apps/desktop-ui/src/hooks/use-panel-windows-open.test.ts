@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 let existingWindow: { setFocus: () => Promise<void> } | null = null;
 let focusCount = 0;
 let createdWindows: Array<{ label: string; options: Record<string, unknown> }> = [];
+let showCount = 0;
 let monitorPointCalls: Array<{ x: number; y: number }> = [];
 
 const spriteState = {
@@ -24,6 +25,10 @@ class MockWebviewWindow {
     this.label = label;
     this.options = options;
     createdWindows.push({ label, options });
+  }
+
+  async show(): Promise<void> {
+    showCount += 1;
   }
 
   static async getByLabel(): Promise<{ setFocus: () => Promise<void> } | null> {
@@ -69,6 +74,7 @@ const { openPanelWindow } = await import("./use-panel-windows");
 beforeEach(() => {
   existingWindow = null;
   focusCount = 0;
+  showCount = 0;
   createdWindows = [];
   monitorPointCalls = [];
 
@@ -113,7 +119,9 @@ describe("openPanelWindow", () => {
         height: 640,
         x: 1224,
         y: 16,
+        visible: false,
       }),
     });
+    expect(showCount).toBe(0);
   });
 });

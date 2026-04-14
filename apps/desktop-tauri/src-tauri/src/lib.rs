@@ -1911,6 +1911,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin({
             let config = peekoo_analytics::posthog::config_from_env();
             let (api_key, api_host) = match &config {

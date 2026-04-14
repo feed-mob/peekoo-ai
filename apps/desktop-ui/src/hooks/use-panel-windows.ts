@@ -145,6 +145,7 @@ export async function openPanelWindow(
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
+    visible: false,
   });
 }
 
@@ -171,6 +172,9 @@ export function usePanelWindows() {
     const webview = await openPanelWindow(label, pluginPanels);
 
     webview.once("tauri://created", () => {
+      void webview.show().catch((error) => {
+        console.error(`Failed to show panel ${label}:`, error);
+      });
       setPanels((prev) => ({ ...prev, [label]: { isOpen: true } }));
       void emitPetReaction("panel-opened");
     });

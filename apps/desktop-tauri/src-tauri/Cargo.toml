@@ -20,6 +20,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
+tauri-plugin-window-state = "2"
 tauri-plugin-posthog = "0.2"
 tauri-plugin-sentry = { version = "0.5", features = ["minidump"] }
 log = "0.4"
