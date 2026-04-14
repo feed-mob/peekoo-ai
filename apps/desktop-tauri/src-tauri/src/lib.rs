@@ -31,6 +31,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_posthog::PostHogExt;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -477,6 +478,11 @@ fn toggle_main_window_visibility(app: &AppHandle) {
         let action = next_main_window_visibility_action(is_visible);
         apply_main_window_visibility_action(app, action);
     }
+}
+
+fn save_all_window_states(app: &AppHandle) -> Result<(), String> {
+    app.save_window_state(StateFlags::all())
+        .map_err(|e| format!("save window state error: {e}"))
 }
 
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
@@ -1540,6 +1546,11 @@ async fn ui_ready(state: State<'_, AgentState>) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn window_state_save_all(app: AppHandle) -> Result<(), String> {
+    save_all_window_states(&app)
+}
+
+#[tauri::command]
 async fn plugin_enable(
     plugin_key: String,
     window: Window,
@@ -1895,6 +1906,8 @@ pub fn run() {
                 if window.label() == MAIN_WINDOW_LABEL {
                     api.prevent_close();
                     let _ = window.hide();
+                } else {
+                    let _ = save_all_window_states(window.app_handle());
                 }
             }
         })
@@ -1927,6 +1940,7 @@ pub fn run() {
         .plugin(tauri_plugin_sentry::init(peekoo_analytics::sentry::client()))
         .invoke_handler(tauri::generate_handler![
             ui_ready,
+            window_state_save_all,
             resize_sprite_window,
             greet,
             get_sprite_state,
