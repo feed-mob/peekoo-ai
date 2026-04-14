@@ -15,7 +15,8 @@ if (shouldForwardConsole(import.meta.env.DEV)) {
   forwardConsole();
 }
 
-const label = getCurrentWebviewWindow().label;
+const currentWindow = getCurrentWebviewWindow();
+const label = currentWindow.label;
 const FORCE_UPDATER_IN_DEV = import.meta.env.DEV && import.meta.env.VITE_FORCE_UPDATER_DIALOG === "true";
 
 function App() {
@@ -42,6 +43,10 @@ function App() {
     if (label !== "main") {
       return;
     }
+
+    void currentWindow.show().catch((error) => {
+      console.error("Failed to show main window", error);
+    });
 
     let active = true;
 

@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
-let existingWindow: { setFocus: () => Promise<void> } | null = null;
+let existingWindow:
+  | { setFocus?: () => Promise<void>; close?: () => Promise<void> }
+  | null = null;
 let focusCount = 0;
+let closeCount = 0;
 let createdWindows: Array<{ label: string; options: Record<string, unknown> }> = [];
+let showCount = 0;
 let monitorPointCalls: Array<{ x: number; y: number }> = [];
+let invokeCalls: string[] = [];
 
 const spriteState = {
   scaleFactor: 2,
@@ -26,13 +31,27 @@ class MockWebviewWindow {
     createdWindows.push({ label, options });
   }
 
-  static async getByLabel(): Promise<{ setFocus: () => Promise<void> } | null> {
+  async show(): Promise<void> {
+    showCount += 1;
+  }
+
+  static async getByLabel(): Promise<
+    { setFocus?: () => Promise<void>; close?: () => Promise<void> } | null
+  > {
     return existingWindow;
   }
 }
 
 mock.module("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: MockWebviewWindow,
+}));
+
+mock.module("@tauri-apps/api/core", () => ({
+  transformCallback: () => 0,
+  invoke: async (command: string) => {
+    invokeCalls.push(command);
+    return null;
+  },
 }));
 
 mock.module("@tauri-apps/api/window", () => ({
@@ -64,13 +83,16 @@ mock.module("@tauri-apps/api/window", () => ({
   },
 }));
 
-const { openPanelWindow } = await import("./use-panel-windows");
+const { openPanelWindow, closePanelWindow } = await import("./use-panel-windows");
 
 beforeEach(() => {
   existingWindow = null;
   focusCount = 0;
+  closeCount = 0;
+  showCount = 0;
   createdWindows = [];
   monitorPointCalls = [];
+  invokeCalls = [];
 
   spriteState.scaleFactor = 2;
   spriteState.outerPosition = { x: 2000, y: 400, logical: { x: 1000, y: 200 } };
@@ -113,7 +135,22 @@ describe("openPanelWindow", () => {
         height: 640,
         x: 1224,
         y: 16,
+        visible: false,
       }),
     });
+    expect(showCount).toBe(0);
+  });
+
+  test("saves window state before closing an existing panel", async () => {
+    existingWindow = {
+      close: async () => {
+        closeCount += 1;
+      },
+    };
+
+    await closePanelWindow("panel-chat");
+
+    expect(invokeCalls).toEqual(["window_state_save_all"]);
+    expect(closeCount).toBe(1);
   });
 });

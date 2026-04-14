@@ -34,7 +34,7 @@ async function openPomodoroMemoWindow() {
     return;
   }
 
-  new WebviewWindow(config.label, {
+  const webview = new WebviewWindow(config.label, {
     url: "/",
     title: config.title,
     width: config.width,
@@ -47,6 +47,13 @@ async function openPomodoroMemoWindow() {
     minWidth: 320,
     minHeight: 280,
     shadow: true,
+    visible: false,
+  });
+
+  webview.once("tauri://created", () => {
+    void webview.show().catch(() => {
+      // ignore transient show failures for memo window
+    });
   });
 }
 

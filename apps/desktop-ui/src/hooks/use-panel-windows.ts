@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow, monitorFromPoint } from "@tauri-apps/api/window";
 import type { PanelLabel } from "@/types/window";
@@ -145,10 +146,17 @@ export async function openPanelWindow(
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,
+    visible: false,
   });
 }
 
 export async function closePanelWindow(label: PanelLabel): Promise<void> {
+  try {
+    await invoke("window_state_save_all");
+  } catch (error) {
+    console.error("Failed to persist window state before close", error);
+  }
+
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
     await existing.close();
@@ -171,6 +179,9 @@ export function usePanelWindows() {
     const webview = await openPanelWindow(label, pluginPanels);
 
     webview.once("tauri://created", () => {
+      void webview.show().catch((error) => {
+        console.error(`Failed to show panel ${label}:`, error);
+      });
       setPanels((prev) => ({ ...prev, [label]: { isOpen: true } }));
       void emitPetReaction("panel-opened");
     });
