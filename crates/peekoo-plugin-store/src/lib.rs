@@ -297,11 +297,8 @@ impl PluginStoreService {
 
         let requirements_path = requirements.to_string_lossy().to_string();
         let mut attempts = Vec::new();
-        let candidates: Vec<(&str, Vec<&str>)> = vec![
-            ("python3", vec![]),
-            ("python", vec![]),
-            ("py", vec!["-3"]),
-        ];
+        let candidates: Vec<(&str, Vec<&str>)> =
+            vec![("python3", vec![]), ("python", vec![]), ("py", vec!["-3"])];
 
         for (program, prefix_args) in candidates {
             // Best effort: bootstrap pip in case it is missing.
