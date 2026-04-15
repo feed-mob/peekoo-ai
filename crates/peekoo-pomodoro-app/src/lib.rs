@@ -40,6 +40,8 @@ pub struct PomodoroCycleDto {
     pub ended_at: String,
     pub memo_requested: bool,
     pub memo: Option<String>,
+    pub task_id: Option<String>,
+    pub task_title: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -231,19 +233,21 @@ impl PomodoroAppService {
         &self,
         id: Option<String>,
         memo: String,
+        task_id: Option<String>,
+        task_title: Option<String>,
     ) -> Result<PomodoroStatusDto, String> {
         let conn = self.conn()?;
 
         if let Some(cycle_id) = id {
             conn.execute(
-                "UPDATE pomodoro_cycle_history SET memo = ?1 WHERE id = ?2",
-                params![memo, cycle_id],
+                "UPDATE pomodoro_cycle_history SET memo = ?1, task_id = ?2, task_title = ?3 WHERE id = ?4",
+                params![memo, task_id, task_title, cycle_id],
             )
             .map_err(|err| format!("Failed to update specific cycle memo: {err}"))?;
         } else {
             conn.execute(
-                "UPDATE pomodoro_cycle_history SET memo = ?1 WHERE mode = 'work' AND id = (SELECT id FROM pomodoro_cycle_history WHERE mode = 'work' ORDER BY ended_at DESC LIMIT 1)",
-                params![memo],
+                "UPDATE pomodoro_cycle_history SET memo = ?1, task_id = ?2, task_title = ?3 WHERE mode = 'work' AND id = (SELECT id FROM pomodoro_cycle_history WHERE mode = 'work' ORDER BY ended_at DESC LIMIT 1)",
+                params![memo, task_id, task_title],
             )
             .map_err(|err| format!("Failed to update latest cycle memo: {err}"))?;
         }
@@ -256,7 +260,7 @@ impl PomodoroAppService {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo FROM pomodoro_cycle_history ORDER BY ended_at DESC LIMIT ?1",
+                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo, task_id, task_title FROM pomodoro_cycle_history ORDER BY ended_at DESC LIMIT ?1",
             )
             .map_err(|err| format!("Prepare pomodoro history query error: {err}"))?;
 
@@ -272,6 +276,8 @@ impl PomodoroAppService {
                     ended_at: row.get(6)?,
                     memo_requested: row.get::<_, i64>(7)? == 1,
                     memo: row.get(8)?,
+                    task_id: row.get(9)?,
+                    task_title: row.get(10)?,
                 })
             })
             .map_err(|err| format!("Query pomodoro history error: {err}"))?;
@@ -296,7 +302,7 @@ impl PomodoroAppService {
         let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo 
+                "SELECT id, mode, planned_minutes, actual_elapsed_secs, outcome, started_at, ended_at, memo_requested, memo, task_id, task_title 
                  FROM pomodoro_cycle_history 
                  WHERE date(datetime(ended_at, 'localtime')) BETWEEN ?1 AND ?2 
                  ORDER BY ended_at DESC 
@@ -316,6 +322,8 @@ impl PomodoroAppService {
                     ended_at: row.get(6)?,
                     memo_requested: row.get::<_, i64>(7)? == 1,
                     memo: row.get(8)?,
+                    task_id: row.get(9)?,
+                    task_title: row.get(10)?,
                 })
             })
             .map_err(|err| format!("Query pomodoro history by date error: {err}"))?;
@@ -947,5 +955,31 @@ mod tests {
         assert_eq!(updated.default_break_minutes, 8);
         assert!(updated.enable_memo);
         assert!(updated.auto_advance);
+    }
+
+    #[test]
+    fn save_pomodoro_memo_persists_task_link_in_history() {
+        let service = create_service();
+
+        service.start("work", 25).expect("start should succeed");
+        service.finish().expect("finish should succeed");
+
+        service
+            .save_pomodoro_memo(
+                None,
+                "Deep work notes".to_string(),
+                Some("task-123".to_string()),
+                Some("Ship memo-task linkage".to_string()),
+            )
+            .expect("memo save should succeed");
+
+        let history = service.history(10).expect("history should load");
+
+        assert_eq!(history[0].memo.as_deref(), Some("Deep work notes"));
+        assert_eq!(history[0].task_id.as_deref(), Some("task-123"));
+        assert_eq!(
+            history[0].task_title.as_deref(),
+            Some("Ship memo-task linkage")
+        );
     }
 }

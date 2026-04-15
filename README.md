@@ -31,7 +31,7 @@ Download the latest `.dmg` from [GitHub Releases](https://github.com/feed-mob/pe
 xattr -cr /Applications/Peekoo.app
 ```
 
-- Detailed macOS instructions: [`docs/install-macos.md`](docs/install-macos.md)
+- Detailed macOS instructions: [`docs/en/installation/macos.md`](docs/en/installation/macos.md)
 
 ### Windows
 
@@ -97,7 +97,7 @@ peekoo-ai/
 │   ├── persistence-sqlite/   # SQLite migrations
 │   ├── security/             # Secret storage (keyring, file, fallback)
 │   └── peekoo-paths/         # Shared filesystem path helpers
-└── docs/                     # Tech spec and architecture docs
+└── docs/                     # User-facing product and developer docs
 ```
 
 ### Architecture
@@ -123,7 +123,7 @@ For store-installed plugins, localization is now standardized:
 
 Recommended references for plugin authors:
 
-- [`docs/plugin-authoring.md`](docs/plugin-authoring.md) (`Plugin locales` section)
+- [`docs/en/develop/plugins.md`](docs/en/develop/plugins.md)
 - [`plugins/openclaw-sessions/`](plugins/openclaw-sessions) as a complete example (`locales/` + panel i18n usage)
 
 ## License

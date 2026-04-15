@@ -1,24 +1,58 @@
-import { ask } from "@tauri-apps/plugin-dialog";
 import { relaunch } from "@tauri-apps/plugin-process";
-import { check } from "@tauri-apps/plugin-updater";
-import i18next from "i18next";
+import { check, type DownloadEvent, type Update } from "@tauri-apps/plugin-updater";
+import { normalizeReleaseNotes } from "@/lib/release-notes";
 
 const UPDATE_CHECK_DELAY_MS = 3_000;
 
-function formatUpdateMessage(version: string, notes?: string): string {
-  const trimmedNotes = notes?.trim();
-  const t = i18next.t.bind(i18next);
-
-  if (!trimmedNotes) {
-    return t("updater.message", { version });
-  }
-
-  return t("updater.messageWithNotes", { version, notes: trimmedNotes });
+export interface AppUpdateInfo {
+  version: string;
+  body: string | null;
+  releaseUrl: string;
+  update: Update | null;
 }
 
-export async function checkForAppUpdates(): Promise<void> {
+export interface AppUpdateInstallProgress {
+  phase: "downloading" | "installing";
+  downloadedBytes: number;
+  totalBytes: number | null;
+  percent: number | null;
+}
+
+function resolveReleaseUrl(update: Update): string {
+  const rawUrl = update.rawJson?.html_url;
+  if (typeof rawUrl === "string" && rawUrl.startsWith("http")) {
+    return rawUrl;
+  }
+
+  const tag = update.version.startsWith("v") ? update.version : `v${update.version}`;
+  return `https://github.com/feed-mob/peekoo-ai/releases/tag/${tag}`;
+}
+
+interface CheckForAppUpdatesOptions {
+  forceInDev?: boolean;
+}
+
+function buildDevMockUpdateInfo(): AppUpdateInfo {
+  const version = import.meta.env.VITE_FORCE_UPDATER_VERSION || "0.1.99-dev";
+  const notes = normalizeReleaseNotes(
+    import.meta.env.VITE_FORCE_UPDATER_NOTES ||
+      "## What's Changed\n- Added markdown release notes rendering\n- Added installer progress bar with ETA\n- Added full changelog link",
+  );
+
+  return {
+    version,
+    body: notes,
+    releaseUrl: `https://github.com/feed-mob/peekoo-ai/releases/tag/v${version.replace(/^v/, "")}`,
+    update: null,
+  };
+}
+
+export async function checkForAppUpdates(options?: CheckForAppUpdatesOptions): Promise<AppUpdateInfo | null> {
   if (!import.meta.env.PROD) {
-    return;
+    if (import.meta.env.DEV && options?.forceInDev) {
+      return buildDevMockUpdateInfo();
+    }
+    return null;
   }
 
   await new Promise((resolve) => window.setTimeout(resolve, UPDATE_CHECK_DELAY_MS));
@@ -27,23 +61,25 @@ export async function checkForAppUpdates(): Promise<void> {
     const update = await check();
 
     if (!update) {
-      return;
+      return null;
     }
 
-    const shouldInstall = await ask(formatUpdateMessage(update.version, update.body), {
-      title: i18next.t("updater.title"),
-      kind: "info",
-      okLabel: i18next.t("updater.installButton"),
-      cancelLabel: i18next.t("updater.later"),
-    });
-
-    if (!shouldInstall) {
-      return;
-    }
-
-    await update.downloadAndInstall();
-    await relaunch();
+    return {
+      version: update.version,
+      body: normalizeReleaseNotes(update.body),
+      releaseUrl: resolveReleaseUrl(update),
+      update,
+    };
   } catch (error) {
     console.warn("peekoo updater check failed", error);
+    return null;
   }
+}
+
+export async function installAppUpdate(
+  update: Update,
+  onProgress?: (event: DownloadEvent) => void,
+): Promise<void> {
+  await update.downloadAndInstall(onProgress);
+  await relaunch();
 }

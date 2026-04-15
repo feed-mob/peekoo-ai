@@ -1,6 +1,6 @@
 [package]
 name = "peekoo-desktop-tauri"
-version = "0.1.23"
+version = "0.1.29"
 description = "Peekoo AI Desktop Pet - Tauri Version"
 edition = "2024"
 rust-version = "1.85"
@@ -20,6 +20,7 @@ tauri-plugin-notification = "2"
 tauri-plugin-process = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = { version = "2", features = ["rustls-tls"] }
+tauri-plugin-window-state = "2"
 tauri-plugin-posthog = "0.2"
 tauri-plugin-sentry = { version = "0.5", features = ["minidump"] }
 log = "0.4"

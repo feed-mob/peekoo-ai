@@ -25,4 +25,4 @@ For AssemblyScript plugins, define a local `abort(...)` export and point `asconf
 it with `"use": ["abort=assembly/index/abort"]`. This avoids a runtime failure from a missing
 `env::abort` import.
 
-See `docs/plugin-authoring.md` for a full plugin authoring walkthrough.
+See `docs/en/develop/plugins.md` for a full plugin authoring walkthrough.

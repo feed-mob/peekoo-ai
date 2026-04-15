@@ -4,9 +4,24 @@
  */
 
 const REMINDER_KEYS = {
-  water: { id: "Water", api_key: "water" },
-  eye: { id: "Eye", api_key: "eye_rest" },
-  stand: { id: "Stand", api_key: "standup" }
+  water: {
+    id: "Water",
+    api_key: "water",
+    config_key: "water_interval_min",
+    enabled_key: "water_enabled"
+  },
+  eye: {
+    id: "Eye",
+    api_key: "eye_rest",
+    config_key: "eye_rest_interval_min",
+    enabled_key: "eye_rest_enabled"
+  },
+  stand: {
+    id: "Stand",
+    api_key: "standup",
+    config_key: "standup_interval_min",
+    enabled_key: "standup_enabled"
+  }
 };
 
 let currentStatusSnapshot = null;
@@ -19,14 +34,32 @@ function formatTime(seconds) {
   return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
 }
 
+async function callHealthTool(toolName, args = {}) {
+  const result = await window.__TAURI__.core.invoke("plugin_call_tool", {
+    toolName,
+    argsJson: JSON.stringify(args),
+  });
+
+  return typeof result === "string" ? JSON.parse(result) : result;
+}
+
+function normalizeReminderStatus(status) {
+  if (Array.isArray(status?.reminders)) {
+    return Object.fromEntries(status.reminders.map(reminder => [reminder.reminder_type, reminder]));
+  }
+
+  return {
+    water: status?.water,
+    eye_rest: status?.eye_rest,
+    standup: status?.standup,
+  };
+}
+
 async function refreshStatus() {
   if (isUserDraggingSlider) return; 
 
   try {
-    const status = await window.__TAURI__.core.invoke("plugin_call_tool", {
-      toolName: "health_get_status",
-      argsJson: "{}",
-    });
+    const status = await callHealthTool("health_get_status");
     
     currentStatusSnapshot = status;
     renderStatus(status);
@@ -37,8 +70,10 @@ async function refreshStatus() {
 }
 
 function renderStatus(status) {
-  if (!status) return;
-  const { water, eye_rest, standup, config } = status;
+  if (!status || !status.config) return;
+
+  const { config } = status;
+  const reminders = normalizeReminderStatus(status);
 
   // Global Mute State
   const globalMuted = !config.global_enabled;
@@ -46,11 +81,12 @@ function renderStatus(status) {
   document.getElementById("iconActive").style.display = globalMuted ? "none" : "block";
   document.getElementById("btnMuteAll").style.borderColor = globalMuted ? "var(--color-danger)" : "";
 
-  const items = [
-    { key: 'water', data: water, enabled: config.water_enabled },
-    { key: 'eye', data: eye_rest, enabled: config.eye_rest_enabled },
-    { key: 'stand', data: standup, enabled: config.standup_enabled }
-  ];
+  const items = Object.entries(REMINDER_KEYS).map(([key, entry]) => ({
+    key,
+    reminder: reminders[entry.api_key],
+    enabled: Boolean(config[entry.enabled_key]),
+    intervalMin: Number(config[entry.config_key] || 0),
+  }));
 
   items.forEach(item => {
     const suffix = item.key.charAt(0).toUpperCase() + item.key.slice(1);
@@ -63,8 +99,10 @@ function renderStatus(status) {
       card.classList.remove("disabled");
       stateEl.textContent = "ACTIVE TRACKING";
       
-      const intervalSec = item.data.interval_min * 60;
-      const remainingSec = Math.max(0, item.data.time_remaining_secs);
+      const intervalSec = item.intervalMin * 60;
+      const remainingSec = item.reminder
+        ? Math.max(0, item.reminder.time_remaining_secs)
+        : intervalSec;
       const progress = intervalSec > 0 ? (1 - (remainingSec / intervalSec)) : 0;
       
       timeEl.textContent = formatTime(remainingSec);
@@ -86,17 +124,19 @@ function syncSettingsFromBackend(config) {
   if (!config || isUserDraggingSlider) return;
   
   Object.keys(REMINDER_KEYS).forEach(key => {
-    const suffix = REMINDER_KEYS[key].id;
+    const entry = REMINDER_KEYS[key];
+    const suffix = entry.id;
     const toggle = document.getElementById(`toggle${suffix}`);
     const range = document.getElementById(`range${suffix}`);
     const valDisplay = document.getElementById(`val${suffix}`);
-    
+    const intervalValue = config[entry.config_key];
+     
     // Smoothly update if value changed remotely (avoid jitter while dragging happens elsewhere)
-    if (Math.abs(range.value - config[`${key}_interval_min`]) > 0) {
-        range.value = config[`${key}_interval_min`];
+    if (String(range.value) !== String(intervalValue)) {
+        range.value = intervalValue;
         valDisplay.textContent = `${range.value}m`;
     }
-    toggle.checked = config[`${key}_enabled`];
+    toggle.checked = Boolean(config[entry.enabled_key]);
   });
 }
 
@@ -115,12 +155,11 @@ async function pushConfigUpdateToBackend() {
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(async () => {
     try {
-      await window.__TAURI__.core.invoke("plugin_call_tool", {
-        toolName: "health_configure",
-        argsJson: JSON.stringify(config),
-      });
+      const status = await callHealthTool("health_configure", config);
+      currentStatusSnapshot = status;
       isUserDraggingSlider = false;
-      refreshStatus();
+      renderStatus(status);
+      syncSettingsFromBackend(status.config);
     } catch (err) {
       console.error("Sync Failed:", err);
       isUserDraggingSlider = false;
@@ -145,12 +184,12 @@ document.getElementById("btnMuteAll").onclick = async () => {
   if (!currentStatusSnapshot) return;
   const targetState = !currentStatusSnapshot.config.global_enabled;
   try {
-     await window.__TAURI__.core.invoke("plugin_call_tool", {
-        toolName: "health_configure",
-        argsJson: JSON.stringify({ global_enabled: targetState }),
-      });
-      refreshStatus();
-  } catch(e) {}
+      const status = await callHealthTool("health_configure", { global_enabled: targetState });
+      currentStatusSnapshot = status;
+      renderStatus(status);
+      syncSettingsFromBackend(status.config);
+      await refreshStatus();
+   } catch(e) {}
 };
 
 // Item Listeners
@@ -173,11 +212,12 @@ Object.keys(REMINDER_KEYS).forEach(key => {
 
   resetBtn.onclick = async () => {
     try {
-      await window.__TAURI__.core.invoke("plugin_call_tool", {
-        toolName: "health_dismiss",
-        argsJson: JSON.stringify({ reminder_type: REMINDER_KEYS[key].api_key }),
+      const status = await callHealthTool("health_dismiss", {
+        reminder_type: REMINDER_KEYS[key].api_key,
       });
-      refreshStatus();
+      currentStatusSnapshot = status;
+      renderStatus(status);
+      syncSettingsFromBackend(status.config);
     } catch (err) {}
   };
 });

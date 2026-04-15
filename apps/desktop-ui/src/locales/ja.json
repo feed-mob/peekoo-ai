@@ -48,6 +48,45 @@
       "title": "ペットスプライト",
       "loadingPreview": "読み込み中..."
     },
+    "customSprite": {
+      "title": "カスタムスプライト",
+      "description": "スプライトシートをアップロードし、必要に応じて manifest を読み込み、保存前にドラフトを調整します。",
+      "copyPrompt": "プロンプトをコピー",
+      "copyManifestTemplate": "manifest テンプレートをコピー",
+      "uploadImage": "画像をアップロード",
+      "uploadManifest": "manifest をアップロード",
+      "validateDraft": "ドラフトを検証",
+      "saveCustomSprite": "カスタムスプライトを保存",
+      "preview": "プレビュー",
+      "blockingIssues": "ブロッキング問題",
+      "warnings": "警告",
+      "savedSprites": "保存済みカスタムスプライト",
+      "imagePath": "画像: {{path}}",
+      "toast": {
+        "promptCopied": "プロンプトをコピーしました",
+        "manifestTemplateCopied": "manifest テンプレートをコピーしました",
+        "generatedByAgent": "Peekoo-agent が manifest を生成しました",
+        "generatedByFallback": "既定ルールで manifest を生成しました"
+      },
+      "status": {
+        "generatingWithAgent": "Peekoo-agent で manifest を生成中..."
+      },
+      "json": {
+        "title": "Manifest JSON（完全編集）",
+        "invalidJson": "Manifest JSON が不正です"
+      },
+      "fields": {
+        "name": "スプライト名",
+        "id": "スプライト ID",
+        "description": "説明",
+        "columns": "列数",
+        "rows": "行数",
+        "scale": "スケール",
+        "frameRate": "フレームレート",
+        "pixelArt": "ピクセルアート"
+      },
+      "promptText": "スプライトシートを生成してください。\n\n要件:\n- PNG または JPG（圧縮ノイズを減らすため PNG 推奨）\n- 背景色は純粋なマゼンタ #ff00ff のみとすること。グラデーション、影、テクスチャ、ノイズ、圧縮ノイズは禁止。背景に第二の色を入れないこと。アプリ側で背景を透明化します\n- キャラクター以外に背景、シーン、地面、壁、煙、光の斑点などの環境要素を入れないこと。キャラクター以外の領域はすべて純粋なマゼンタ #ff00ff を維持すること\n- キャラクター、道具、影、反射、リムライト、グローに #ff00ff や近いマゼンタ色を使わないこと。誤ってキーアウトされます\n- 8 列 x 7 行の暗黙的なスプライトシートとして配置し、各フレーム領域は正方形にすること\n- セル境界、パネル境界、区切り線、グリッド線、枠、ボックス、シート外周の縁取りを描かないこと\n- フレーム境界は配置だけで表現し、見える線で区切らないこと\n- 各フレームの内側に小さな安全余白を確保し、キャラクターが完全に収まり、切れないようにすること\n- フレーム間および外周の背景は純粋なマゼンタ #ff00ff のままにし、継ぎ目、影、区切りピクセル、装飾的な縁を入れないこと\n- シート外周やフレーム間に黒い輪郭線や暗い仕切り線を入れないこと\n- 全体のアスペクト比はおおよそ 8:7 にすること\n- 推奨出力は 4K 級高解像度。例えば 4096x3584、各フレーム 512x512。アプリ側で 1024x896、各フレーム 128x128 に等比縮小します\n- 画質は高く保ち、ディテールが明瞭で、輪郭がシャープで、ぼけ、ジャギー、圧縮アーティファクトがないこと\n- 同じ行は同じアニメーションを表し、左から右へ連続フレームをループ再生します\n- Idle（1 行目）は呼吸と瞬きを含め、完全静止にしないこと\n- Sleepy/Rest（6 行目）は閉じた目での呼吸のみを描き、あくびは描かないこと\n- 同じ行の隣接フレームは非常に滑らかに変化すること。フレーム飛び、急激な位置変化、ポーズ変化、表情変化、ズーム変化、視点変化は禁止\n- キャラクター位置はフレーム間でできるだけ一定にし、できれば中央揃えとし、端で切れないようにすること\n\n行の意味（上から下）:\n- 1 行目: Idle/Peek - 穏やかな呼吸アニメーション。画面下から半身と目をのぞかせ、時々まばたきする\n- 2 行目: Happy/Celebrate - 明るい表情とお祝いの動き。タスク完了時に使う\n- 3 行目: Working/Focus - 集中した表情と作業姿勢。ポモドーロ中に使う\n- 4 行目: Thinking - 考えている表情と姿勢。AI 処理中に使う\n- 5 行目: Reminder - リマインダー表情とジェスチャー。締切、健康リマインダー、AI メッセージ通知に使う\n- 6 行目: Sleepy/Rest - 眠そうな表情、閉じた目での呼吸、あくびなし\n- 7 行目: Dragging - ドラッグされている状態。驚きまたは協力的な動きを見せる\n\nキャラクター: <character name>\n- スタイル: <character style>\n- 外見: <character appearance>\n- 要求: シート全体でライティングと配色を統一し、背景は純粋なマゼンタ #ff00ff を維持し、全体の作風を一貫させること\n- 出力: この sprite sheet 画像ファイルのみを出力すること"
+    },
     "logging": "ログ",
     "loggingHelp": "トラブルシューティング用のランタイムログの詳細度を設定します。変更を適用するには再起動が必要です。",
     "acpRuntimes": "ACP ランタイム",
@@ -94,6 +133,14 @@
     "noModelConfigured": "グローバルモデルが設定されていません",
     "modelHelp": "グローバルランタイム設定で変更してください。",
     "skillsHelp": "Peekooは設定されたスキルフォルダーからスキルを自動的に検出します。",
+    "uploadSkill": "スキルをアップロード",
+    "deleteSkill": "削除",
+    "replaceSkillTitle": "スキルを置き換え",
+    "replaceSkillDescription": "「{{skillId}}」という名前のスキルが既に存在します。置き換えますか？",
+    "replaceSkillConfirm": "置き換え",
+    "skillUploadError": "スキルのインストールに失敗しました",
+    "skillDeleteError": "スキルの削除に失敗しました",
+    "lockedSkillCannotDelete": "組み込みスキルは削除できません",
     "auth": {
       "mode": "認証モード",
       "none": "なし",
@@ -401,7 +448,17 @@
     "title": "更新があります",
     "message": "Peekoo {{version}} が利用可能です。今すぐインストールして再起動しますか？",
     "messageWithNotes": "Peekoo {{version}} が利用可能です。\n\n{{notes}}\n\n今すぐインストールして再起動しますか？",
+    "versionAvailable": "Peekoo {{version}} が利用可能です。",
     "installButton": "インストールして再起動",
+    "installing": "インストール中...",
+    "downloading": "更新をダウンロード中",
+    "installingFiles": "更新をインストール中",
+    "calculating": "計算中...",
+    "downloadedDetail": "{{downloaded}} / {{total}} をダウンロード済み",
+    "downloadedOnly": "{{downloaded}} をダウンロード済み",
+    "eta": "残り時間の目安: {{eta}}",
+    "restartSoon": "インストール完了後にアプリを再起動します。",
+    "viewFullChangelog": "完全なリリースノートを表示",
     "later": "後で"
   },
   "agentRuntimes": {

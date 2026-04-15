@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getName, getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { useUpdateInstallProgress, type InstallPhase } from "@/lib/update-install-progress";
 import { loadAboutSnapshot, type AboutSnapshot } from "./about-state";
 
 interface AboutPanelState {
@@ -9,6 +10,11 @@ interface AboutPanelState {
   loading: boolean;
   checking: boolean;
   installing: boolean;
+  installPhase: InstallPhase;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  progressPercent: number | null;
+  etaSeconds: number | null;
   error: string | null;
   refresh: () => Promise<void>;
   installUpdate: () => Promise<void>;
@@ -29,6 +35,7 @@ export function useAboutPanel(): AboutPanelState {
   const [checking, setChecking] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const progress = useUpdateInstallProgress({ isInstalling: installing });
 
   const refresh = useCallback(async () => {
     setChecking(true);
@@ -57,17 +64,19 @@ export function useAboutPanel(): AboutPanelState {
     }
 
     setInstalling(true);
+    progress.start();
     setError(null);
 
     try {
-      await update.downloadAndInstall();
+      await update.downloadAndInstall(progress.handleEvent);
       await relaunch();
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
       setInstalling(false);
+      progress.reset();
     }
-  }, [update]);
+  }, [progress, update]);
 
   useEffect(() => {
     void refresh();
@@ -78,6 +87,11 @@ export function useAboutPanel(): AboutPanelState {
     loading,
     checking,
     installing,
+    installPhase: progress.installPhase,
+    downloadedBytes: progress.downloadedBytes,
+    totalBytes: progress.totalBytes,
+    progressPercent: progress.progressPercent,
+    etaSeconds: progress.etaSeconds,
     error,
     refresh,
     installUpdate,

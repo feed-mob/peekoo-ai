@@ -102,4 +102,4 @@ just check-sdk
 just plugin-build health-reminders
 ```
 
-See `docs/plugin-authoring.md` and `plugins/health-reminders/` for full usage patterns.
+See `docs/en/develop/plugins.md` and `plugins/health-reminders/` for full usage patterns.

@@ -1,3 +1,4 @@
+pub mod acp_client;
 pub mod agent_provider_commands;
 pub mod agent_provider_service;
 pub mod agent_runtime_commands;
@@ -7,6 +8,7 @@ pub mod application;
 pub mod conversation;
 pub mod mcp_server;
 pub mod plugin;
+mod plugin_dependency;
 mod plugin_localization;
 pub mod plugin_tool_impl;
 pub mod runtime_adapters;
@@ -30,7 +32,12 @@ pub use agent_provider_service::{
 pub use agent_runtime_service::AgentRuntimeService;
 pub use application::AgentApplication;
 pub use conversation::{LastSessionDto, SessionMessageDto};
-pub use peekoo_app_settings::{AppSettingsService, SpriteInfo};
+pub use peekoo_app_settings::{
+    AppSettingsService, GenerateSpriteManifestInput, GeneratedSpriteManifest,
+    SaveCustomSpriteInput, SpriteBackgroundMode, SpriteImageValidation, SpriteInfo, SpriteManifest,
+    SpriteManifestFile, SpriteManifestValidation, SpriteSource, ValidateSpriteManifestInput,
+    ValidationIssue,
+};
 pub use peekoo_notifications::PeekBadgeItem;
 pub use peekoo_plugin_store::{PluginSource, StorePluginDto};
 pub use peekoo_pomodoro_app::{PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto};
@@ -40,5 +47,5 @@ pub use settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderCatalogDto, ProviderConfigDto, ProviderRequest, SetApiKeyRequest,
-    SetProviderConfigRequest, SettingsService, SkillDto,
+    SetProviderConfigRequest, SettingsService, SkillDto, SkillInstallOutcome,
 };

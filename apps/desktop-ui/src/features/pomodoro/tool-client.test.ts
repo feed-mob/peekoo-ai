@@ -3,6 +3,7 @@ import {
   finishPomodoro,
   getPomodoroHistory,
   getPomodoroStatus,
+  pomodoroSaveMemo,
   setPomodoroSettings,
   switchPomodoroMode,
 } from "./tool-client.ts";
@@ -72,5 +73,27 @@ describe("pomodoro tool client", () => {
 
     expect(result).toEqual([{ id: "cycle-1", mode: "work" }]);
     expect(calls).toEqual([{ command: "pomodoro_history", args: { limit: 5 } }]);
+  });
+
+  test("passes selected task id when saving a pomodoro memo", async () => {
+    const calls: Array<{ command: string; args?: Record<string, unknown> }> = [];
+
+    const invoke = async <T>(command: string, args?: Record<string, unknown>) => {
+      calls.push({ command, args });
+      return {} as T;
+    };
+
+    await pomodoroSaveMemo(null, "Deep work notes", "task-123", invoke);
+
+    expect(calls).toEqual([
+      {
+        command: "pomodoro_save_memo",
+        args: {
+          id: null,
+          memo: "Deep work notes",
+          taskId: "task-123",
+        },
+      },
+    ]);
   });
 });

@@ -327,28 +327,30 @@ export function TaskDetailView({
 
           {/* Schedule + Repeat (combined collapsible) */}
           <div>
-            <button
-              onClick={() => setScheduleOpen((v) => !v)}
-              className="flex items-center gap-2 w-full text-left group"
-            >
-              <Calendar size={14} className="text-text-muted shrink-0" />
-              <span className="text-[10px] text-text-muted font-medium flex-1">
-                {scheduleOpen
-                  ? t("tasks.detail.schedule")
-                  : recurring
-                  ? formatRecurrenceDisplay(
-                      task.recurrence_rule!,
-                      task.recurrence_time_of_day,
-                      t
-                    )
-                  : task.scheduled_start_at
-                  ? t("tasks.detail.scheduled")
-                  : t("tasks.detail.schedule")}
-              </span>
+            <div className="flex items-center gap-2 w-full group">
+              <button
+                onClick={() => setScheduleOpen((v) => !v)}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left"
+              >
+                <Calendar size={14} className="text-text-muted shrink-0" />
+                <span className="text-[10px] text-text-muted font-medium flex-1 truncate">
+                  {scheduleOpen
+                    ? t("tasks.detail.schedule")
+                    : recurring
+                    ? formatRecurrenceDisplay(
+                        task.recurrence_rule!,
+                        task.recurrence_time_of_day,
+                        t
+                      )
+                    : task.scheduled_start_at
+                    ? t("tasks.detail.scheduled")
+                    : t("tasks.detail.schedule")}
+                </span>
+              </button>
+
               {recurring && !scheduleOpen && (
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
+                  onClick={() => {
                     onUpdate({ recurrence_rule: null, recurrence_time_of_day: null });
                   }}
                   className="text-[10px] text-text-muted hover:text-color-danger transition-colors"
@@ -356,7 +358,7 @@ export function TaskDetailView({
                   {t("common.clear")}
                 </button>
               )}
-            </button>
+            </div>
 
             {scheduleOpen && (
               <div className="space-y-3 mt-3 pl-6">

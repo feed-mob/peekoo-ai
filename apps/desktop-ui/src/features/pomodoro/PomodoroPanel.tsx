@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { TimerDisplay } from "./TimerDisplay";
 import { TimerControls } from "./TimerControls";
 import { deriveCountdownSnapshot } from "./countdown";
@@ -6,6 +7,14 @@ import { Brain, Coffee, History, Settings2, Notebook, Play } from "lucide-react"
 import { emitPetReaction } from "@/lib/pet-events";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { Task } from "@/types/task";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import {
@@ -89,12 +98,15 @@ export function PomodoroPanel() {
 
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingMemo, setEditingMemo] = useState<string>("");
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const prevStateRef = useRef<string | null>(null);
 
-  const handleSaveHistoryMemo = async (id: string) => {
+  const handleSaveHistoryMemo = async (id: string, taskId: string | null) => {
     setIsApplying(true);
     try {
-      await pomodoroSaveMemo(id, editingMemo);
+      await pomodoroSaveMemo(id, editingMemo, taskId);
+
       setExpandedId(null);
       void fetchStatus(true);
     } finally {
@@ -150,6 +162,14 @@ export function PomodoroPanel() {
     const interval = window.setInterval(fetchStatus, 3000);
     return () => window.clearInterval(interval);
   }, [fetchStatus]);
+
+  useEffect(() => {
+    void invoke<Task[]>("list_tasks")
+      .then((tasks) => setAvailableTasks(tasks.filter((task) => task.status !== "done")))
+      .catch((err) => {
+        console.error("Failed to load tasks for pomodoro history:", err);
+      });
+  }, []);
 
   useEffect(() => {
     const interval = window.setInterval(() => setNowMs(Date.now()), 1000);
@@ -350,6 +370,7 @@ export function PomodoroPanel() {
                           } else {
                             setExpandedId(entry.id);
                             setEditingMemo(entry.memo || "");
+                            setEditingTaskId(entry.task_id ?? null);
                           }
                         }}
                       >
@@ -380,28 +401,58 @@ export function PomodoroPanel() {
                       </button>
 
                       {isExpanded && (
-                        <div className="pt-2 border-t border-white/5 animate-in slide-in-from-top-2 duration-200">
-                           <div className="flex flex-col gap-2">
-                             <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-text-muted flex items-center gap-1.5">
-                               <Notebook className="w-3 h-3" /> {t("pomodoro.focusMemo")}
-                             </div>
-                             <textarea
-                               className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-xs text-text-primary focus:outline-none focus:border-white/20 custom-scrollbar resize-none"
-                               rows={3}
+                         <div className="pt-2 border-t border-white/5 animate-in slide-in-from-top-2 duration-200">
+                            <div className="flex flex-col gap-2">
+                              {entry.task_title && (
+                                <div className="rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2 text-[11px] text-text-secondary">
+                                  <span className="mr-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-text-muted">
+                                    Task
+                                  </span>
+                                  <span className="text-text-primary">{entry.task_title}</span>
+                                </div>
+                              )}
+                              <div className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-text-muted flex items-center gap-1.5">
+                                <Notebook className="w-3 h-3" /> {t("pomodoro.focusMemo")}
+                              </div>
+                              <Select
+                                value={editingTaskId ?? "__none__"}
+                                onValueChange={(value) =>
+                                  setEditingTaskId(value === "__none__" ? null : value)
+                                }
+                              >
+                                <SelectTrigger className="h-8 rounded-xl bg-black/20 border-white/10 text-[11px]">
+                                  <SelectValue placeholder="No task selected" />
+                                </SelectTrigger>
+                                <SelectContent className="bg-space-deep border-glass-border">
+                                  <SelectItem value="__none__">No task selected</SelectItem>
+                                  {availableTasks.map((task) => (
+                                    <SelectItem key={task.id} value={task.id}>
+                                      {task.title}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <textarea
+                                className="w-full bg-black/20 border border-white/10 rounded-xl p-2.5 text-xs text-text-primary focus:outline-none focus:border-white/20 custom-scrollbar resize-none"
+                                rows={3}
                                 placeholder={isWork ? t("pomodoro.memo.workPlaceholder") : t("pomodoro.memo.breakPlaceholder")}
                                value={editingMemo}
                                onChange={(e) => setEditingMemo(e.target.value)}
                              />
                              <div className="flex justify-end mt-1">
-                               <Button
-                                 size="sm"
-                                 disabled={isApplying || editingMemo === (entry.memo || "")}
-                                 onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSaveHistoryMemo(entry.id);
-                                 }}
-                                 className="h-7 text-[10px] rounded-lg px-3 uppercase tracking-wider font-bold bg-white/10 hover:bg-white/20 text-white"
-                               >
+                                <Button
+                                  size="sm"
+                                  disabled={
+                                    isApplying ||
+                                    (editingMemo === (entry.memo || "") &&
+                                      editingTaskId === (entry.task_id ?? null))
+                                  }
+                                  onClick={(e) => {
+                                   e.stopPropagation();
+                                   handleSaveHistoryMemo(entry.id, editingTaskId);
+                                  }}
+                                  className="h-7 text-[10px] rounded-lg px-3 uppercase tracking-wider font-bold bg-white/10 hover:bg-white/20 text-white"
+                                >
                                  {isApplying ? t("pomodoro.actions.saving") : t("common.save")}
                                </Button>
                              </div>

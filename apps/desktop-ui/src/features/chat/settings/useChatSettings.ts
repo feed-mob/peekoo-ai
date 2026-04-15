@@ -1,13 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useEffect, useState } from "react";
-import { open } from "@tauri-apps/plugin-shell";
+import { open as openShell } from "@tauri-apps/plugin-shell";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AgentSettings,
   agentSettingsSchema,
   type AgentSettingsCatalog,
   agentSettingsCatalogSchema,
   type ProviderAuth,
+  skillInstallOutcomeSchema,
 } from "@/types/agent-settings";
 
 type SettingsPatch = {
@@ -27,6 +29,12 @@ export function useChatSettings() {
     "idle" | "pending" | "completed" | "failed" | "expired"
   >("idle");
   const [oauthError, setOauthError] = useState<string | null>(null);
+
+  const [isSkillLoading, setIsSkillLoading] = useState(false);
+  const [skillError, setSkillError] = useState<string | null>(null);
+  const [pendingReplaceSkillId, setPendingReplaceSkillId] = useState<string | null>(null);
+  // Holds the zip path across the conflict → confirm flow without triggering re-renders.
+  const pendingZipPathRef = useRef<string | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
@@ -87,7 +95,7 @@ export function useChatSettings() {
       authorizeUrl: string;
     };
 
-    await open(response.authorizeUrl);
+    await openShell(response.authorizeUrl);
     setOauthFlowId(response.flowId);
     setOauthStatus("pending");
     setOauthError(null);
@@ -135,6 +143,71 @@ export function useChatSettings() {
     return response;
   }, [oauthFlowId]);
 
+  const installZip = useCallback(async (zipPath: string, force: boolean) => {
+    const raw = await invoke("skill_install_from_zip", { zipPath, force });
+    return skillInstallOutcomeSchema.parse(raw);
+  }, []);
+
+  const uploadSkill = useCallback(async () => {
+    setSkillError(null);
+    const selected = await openDialog({
+      multiple: false,
+      filters: [{ name: "Skill zip", extensions: ["zip"] }],
+    });
+    if (!selected) return; // user cancelled
+
+    const zipPath = selected;
+    setIsSkillLoading(true);
+    try {
+      const outcome = await installZip(zipPath, false);
+      if (outcome.type === "conflict") {
+        pendingZipPathRef.current = zipPath;
+        setPendingReplaceSkillId(outcome.skillId);
+      } else {
+        await refresh();
+      }
+    } catch (err) {
+      setSkillError(String(err));
+    } finally {
+      setIsSkillLoading(false);
+    }
+  }, [installZip, refresh]);
+
+  const confirmReplaceSkill = useCallback(async () => {
+    const zipPath = pendingZipPathRef.current;
+    if (!zipPath) return;
+    setIsSkillLoading(true);
+    setSkillError(null);
+    try {
+      await installZip(zipPath, true);
+      await refresh();
+    } catch (err) {
+      setSkillError(String(err));
+    } finally {
+      setIsSkillLoading(false);
+      pendingZipPathRef.current = null;
+      setPendingReplaceSkillId(null);
+    }
+  }, [installZip, refresh]);
+
+  const cancelReplaceSkill = useCallback(() => {
+    pendingZipPathRef.current = null;
+    setPendingReplaceSkillId(null);
+  }, []);
+
+  const deleteSkill = useCallback(async (skillMdPath: string) => {
+    setIsSkillLoading(true);
+    setSkillError(null);
+    try {
+      await invoke("skill_delete", { skillMdPath });
+      await refresh();
+    } catch (err) {
+      setSkillError(String(err));
+    } finally {
+      setIsSkillLoading(false);
+    }
+  }, [refresh]);
+
   const selectedProvider = null; // Derived from useAgentProviders().defaultProvider instead
 
   useEffect(() => {
@@ -164,5 +237,12 @@ export function useChatSettings() {
     clearAuth,
     startOauth,
     pollOauthStatus,
+    isSkillLoading,
+    skillError,
+    pendingReplaceSkillId,
+    uploadSkill,
+    confirmReplaceSkill,
+    cancelReplaceSkill,
+    deleteSkill,
   };
 }

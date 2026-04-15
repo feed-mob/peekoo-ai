@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+use anyhow::anyhow;
 use rusqlite::Connection;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio_util::sync::CancellationToken;
@@ -13,13 +14,17 @@ use peekoo_agent::config::{
     PEEKOO_OPENCODE_BIN_ENV,
 };
 use peekoo_agent::service::AgentService;
-use peekoo_app_settings::{AppSettingsService, SpriteInfo};
+use peekoo_app_settings::{
+    AppSettingsService, GenerateSpriteManifestInput, GeneratedSpriteManifest,
+    SaveCustomSpriteInput, SpriteInfo, SpriteManifest, SpriteManifestFile,
+    SpriteManifestValidation, ValidateSpriteManifestInput,
+};
 use peekoo_notifications::{
     MoodReaction, MoodReactionService, Notification, NotificationService, PeekBadgeItem,
     PeekBadgeService,
 };
 use peekoo_paths::ensure_windows_pi_agent_env;
-use peekoo_plugin_host::PluginRegistry;
+use peekoo_plugin_host::{PluginManifest, PluginRegistry};
 use peekoo_pomodoro_app::{
     PomodoroAppService, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
 };
@@ -35,6 +40,9 @@ use crate::plugin::{
     PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
     manifest_to_summary, plugin_notification_from_message,
 };
+use crate::plugin_dependency::{
+    first_blocking_dependency_message, summarize_manifest_dependencies,
+};
 use crate::plugin_localization::{
     PluginLocaleBundle, discover_plugin_dirs_by_key, load_plugin_locale, load_plugin_locale_json,
     localize_config_field, localize_panel_title, localize_plugin_summary, localize_store_plugin,
@@ -46,7 +54,7 @@ use crate::settings::{
     AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto, OauthCancelResponse,
     OauthStartResponse, OauthStatusRequest, OauthStatusResponse, ProviderAuthDto,
     ProviderConfigDto, ProviderRequest, SetApiKeyRequest, SetProviderConfigRequest,
-    SettingsService, skill_discovery_roots,
+    SettingsService, SkillInstallOutcome, skill_discovery_roots,
 };
 use crate::task_notification_scheduler::TaskNotificationScheduler;
 use crate::task_runtime_service::TaskRuntimeService;
@@ -56,6 +64,7 @@ use peekoo_task_app::SqliteTaskService;
 use crate::workspace_bootstrap::ensure_agent_workspace;
 
 type TaskChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
+const TASK_PARSE_ACP_TIMEOUT_SECS: u64 = 12;
 
 fn format_error_chain(err: &dyn std::error::Error) -> String {
     let mut chain = Vec::new();
@@ -95,6 +104,76 @@ fn build_task_runtime_launch_env(config: &AgentServiceConfig) -> Vec<(String, St
     env
 }
 
+fn normalize_priority(priority: Option<String>) -> Option<String> {
+    match priority.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some("high") | Some("medium") | Some("low") => priority,
+        _ => None,
+    }
+}
+
+fn normalize_assignee(assignee: Option<String>) -> Option<String> {
+    match assignee.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        Some("user") | Some("agent") => assignee,
+        _ => None,
+    }
+}
+
+fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
+    value.and_then(|v| {
+        let trimmed = v.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
+}
+
+fn parse_rfc3339_or_none(value: Option<String>) -> Option<String> {
+    let trimmed = normalize_optional_trimmed(value)?;
+    chrono::DateTime::parse_from_rfc3339(&trimmed)
+        .ok()
+        .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
+}
+
+fn extract_json_object(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    (start < end).then(|| &text[start..=end])
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct AcpParsedTask {
+    title: String,
+    priority: Option<String>,
+    assignee: Option<String>,
+    labels: Option<Vec<String>>,
+    description: Option<String>,
+    scheduled_start_at: Option<String>,
+    scheduled_end_at: Option<String>,
+    estimated_duration_min: Option<u32>,
+    recurrence_rule: Option<String>,
+    recurrence_time_of_day: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpriteManifestDraftPromptInput<'a> {
+    image_path: &'a str,
+    image_width: u32,
+    image_height: u32,
+    frame_width: Option<u32>,
+    frame_height: Option<u32>,
+    has_alpha: bool,
+    background_mode: &'a str,
+    blank_frame_count: u32,
+    suggested_name: &'a str,
+    suggested_description: &'a str,
+    suggested_columns: u32,
+    suggested_rows: u32,
+    suggested_scale: f32,
+    suggested_frame_rate: u32,
+    use_chroma_key: bool,
+    pixel_art: bool,
+    manifest_template: &'a SpriteManifest,
+}
+
 pub struct AgentApplication {
     agent: Arc<Mutex<Option<AgentService>>>,
     settings: SettingsService,
@@ -124,6 +203,7 @@ pub struct AgentApplication {
     /// Scheduler for agent task execution.
     agent_scheduler: Arc<Mutex<Option<crate::agent_scheduler::AgentScheduler>>>,
     bundled_opencode_path: Option<PathBuf>,
+    bundled_acp_path: Option<PathBuf>,
     /// Directory containing the bundled Node.js binary (e.g. `<resources>/opencode/node/bin`).
     bundled_node_bin_dir: Option<PathBuf>,
 }
@@ -232,6 +312,7 @@ impl AgentApplication {
             conversation_generation: AtomicU64::new(0),
             agent_scheduler: Arc::new(Mutex::new(Some(agent_scheduler))),
             bundled_opencode_path,
+            bundled_acp_path,
             bundled_node_bin_dir,
         })
     }
@@ -456,6 +537,18 @@ impl AgentApplication {
 
     pub fn oauth_cancel(&self, req: OauthStatusRequest) -> Result<OauthCancelResponse, String> {
         self.settings.cancel_oauth(req)
+    }
+
+    pub fn install_skill_from_zip(
+        &self,
+        zip_path: &str,
+        force: bool,
+    ) -> Result<SkillInstallOutcome, String> {
+        self.settings.install_skill_from_zip(zip_path, force)
+    }
+
+    pub fn delete_skill(&self, skill_md_path: &str) -> Result<(), String> {
+        self.settings.delete_skill(skill_md_path)
     }
 
     pub fn list_agent_providers(&self) -> Result<Vec<ProviderInfo>, String> {
@@ -735,6 +828,64 @@ impl AgentApplication {
         self.app_settings.list_sprites()
     }
 
+    pub fn get_sprite_prompt(&self) -> &'static str {
+        self.app_settings.get_sprite_prompt()
+    }
+
+    pub fn get_sprite_image_data_url(&self, image_path: &str) -> Result<String, String> {
+        self.app_settings.get_sprite_image_data_url(image_path)
+    }
+
+    pub fn get_sprite_manifest_template(&self) -> SpriteManifest {
+        self.app_settings.get_sprite_manifest_template()
+    }
+
+    pub fn load_sprite_manifest_file(&self, manifest_path: &str) -> Result<SpriteManifest, String> {
+        self.app_settings.load_manifest_file(manifest_path)
+    }
+
+    pub fn get_custom_sprite_manifest(
+        &self,
+        sprite_id: &str,
+    ) -> Result<SpriteManifestFile, String> {
+        self.app_settings.get_custom_sprite_manifest(sprite_id)
+    }
+
+    pub fn generate_sprite_manifest_draft(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        self.app_settings.generate_sprite_manifest_draft(input)
+    }
+
+    pub async fn generate_sprite_manifest_with_agent(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        match self
+            .generate_sprite_manifest_with_agent_inner(input.clone())
+            .await
+        {
+            Ok(result) => Ok(result),
+            Err(_) => self.app_settings.generate_sprite_manifest_draft(input),
+        }
+    }
+
+    pub fn validate_sprite_manifest(
+        &self,
+        input: ValidateSpriteManifestInput,
+    ) -> Result<SpriteManifestValidation, String> {
+        self.app_settings.validate_manifest(&input)
+    }
+
+    pub fn save_custom_sprite(&self, input: SaveCustomSpriteInput) -> Result<SpriteInfo, String> {
+        self.app_settings.save_custom_sprite(input)
+    }
+
+    pub fn delete_custom_sprite(&self, sprite_id: &str) -> Result<(), String> {
+        self.app_settings.delete_custom_sprite(sprite_id)
+    }
+
     pub fn get_app_settings(&self) -> Result<std::collections::HashMap<String, String>, String> {
         self.app_settings.get_all()
     }
@@ -831,7 +982,9 @@ impl AgentApplication {
     pub fn create_task_from_text(&self, text: &str) -> Result<TaskDto, String> {
         use crate::task_parser::parse_task_text;
 
-        let parsed = parse_task_text(text);
+        let parsed = self
+            .parse_task_from_text_via_acp(text)
+            .unwrap_or_else(|_| parse_task_text(text));
 
         self.task_runtime_service().create_task(
             &parsed.title,
@@ -845,6 +998,66 @@ impl AgentApplication {
             parsed.recurrence_rule.as_deref(),
             parsed.recurrence_time_of_day.as_deref(),
         )
+    }
+
+    fn parse_task_from_text_via_acp(
+        &self,
+        text: &str,
+    ) -> Result<crate::task_parser::ParsedTask, String> {
+        let parse_payload = serde_json::json!({
+            "request_type": "task_creation_parse",
+            "raw_text": text,
+            "locale": self.get_app_language().ok(),
+            "timezone": std::env::var("TZ").ok(),
+        });
+
+        let parse_payload = serde_json::to_string(&parse_payload)
+            .map_err(|e| format!("Serialize parse payload error: {e}"))?;
+
+        let prompt_result = crate::acp_client::run_prompt_and_collect_blocking(
+            "task-creation-parse",
+            vec![agent_client_protocol::ContentBlock::Text(
+                agent_client_protocol::TextContent::new(parse_payload),
+            )],
+            self.agent_launch_env(),
+            crate::mcp_server::get_mcp_address(),
+            self.bundled_acp_path.clone(),
+            Some(std::time::Duration::from_secs(TASK_PARSE_ACP_TIMEOUT_SECS)),
+        )?;
+
+        let raw = prompt_result.text;
+        let json_blob = extract_json_object(&raw)
+            .ok_or_else(|| "ACP parser returned no JSON object".to_string())?;
+        let acp_parsed: AcpParsedTask =
+            serde_json::from_str(json_blob).map_err(|e| format!("Parse task JSON error: {e}"))?;
+
+        let title = acp_parsed.title.trim();
+        if title.is_empty() {
+            return Err("ACP parser returned empty title".to_string());
+        }
+
+        let mut labels = acp_parsed
+            .labels
+            .unwrap_or_default()
+            .into_iter()
+            .map(|label| label.trim().to_lowercase())
+            .filter(|label| !label.is_empty())
+            .collect::<Vec<_>>();
+        labels.sort();
+        labels.dedup();
+
+        Ok(crate::task_parser::ParsedTask {
+            title: title.to_string(),
+            priority: normalize_priority(acp_parsed.priority),
+            assignee: normalize_assignee(acp_parsed.assignee),
+            labels,
+            description: normalize_optional_trimmed(acp_parsed.description),
+            scheduled_start_at: parse_rfc3339_or_none(acp_parsed.scheduled_start_at),
+            scheduled_end_at: parse_rfc3339_or_none(acp_parsed.scheduled_end_at),
+            estimated_duration_min: acp_parsed.estimated_duration_min,
+            recurrence_rule: normalize_optional_trimmed(acp_parsed.recurrence_rule),
+            recurrence_time_of_day: normalize_optional_trimmed(acp_parsed.recurrence_time_of_day),
+        })
     }
 
     pub fn get_task_activity(
@@ -912,8 +1125,28 @@ impl AgentApplication {
         &self,
         id: Option<String>,
         memo: String,
+        task_id: Option<String>,
     ) -> Result<PomodoroStatusDto, String> {
-        self.pomodoro.save_pomodoro_memo(id, memo)
+        let task_title =
+            task_id
+                .as_deref()
+                .and_then(|task_id| match self.task_service.load_task(task_id) {
+                    Ok(task) => Some(task.title),
+                    Err(err) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %err,
+                            "Failed to load task title for pomodoro memo linkage"
+                        );
+                        None
+                    }
+                });
+
+        let status =
+            self.pomodoro
+                .save_pomodoro_memo(id, memo.clone(), task_id.clone(), task_title)?;
+
+        Ok(status)
     }
 
     pub fn pomodoro_history(&self, limit: usize) -> Result<Vec<PomodoroCycleDto>, String> {
@@ -1287,6 +1520,9 @@ impl AgentApplication {
         let plugin_dirs = discover_plugin_dirs_by_key(&discovered);
 
         for plugin in &mut catalog {
+            if let Ok(manifest) = self.resolve_store_plugin_manifest(&plugin.plugin_key) {
+                plugin.dependency_summary = summarize_manifest_dependencies(&manifest);
+            }
             if !plugin.installed {
                 continue;
             }
@@ -1301,9 +1537,13 @@ impl AgentApplication {
     }
 
     pub fn store_install(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.ensure_store_plugin_dependencies(plugin_key)?;
         let mut result = self
             .plugin_store
             .install_plugin(plugin_key, &self.plugin_registry)?;
+        if let Ok(manifest) = self.resolve_store_plugin_manifest(plugin_key) {
+            result.dependency_summary = summarize_manifest_dependencies(&manifest);
+        }
         let app_language = self.get_app_language_or_en();
         if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
             && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
@@ -1315,9 +1555,13 @@ impl AgentApplication {
     }
 
     pub fn store_update(&self, plugin_key: &str) -> Result<StorePluginDto, String> {
+        self.ensure_store_plugin_dependencies(plugin_key)?;
         let mut result = self
             .plugin_store
             .update_plugin(plugin_key, &self.plugin_registry)?;
+        if let Ok(manifest) = self.resolve_store_plugin_manifest(plugin_key) {
+            result.dependency_summary = summarize_manifest_dependencies(&manifest);
+        }
         let app_language = self.get_app_language_or_en();
         if let Some(plugin_dir) = self.plugin_dir_for_key(plugin_key)
             && let Some(locale) = load_plugin_locale(&plugin_dir, &app_language)
@@ -1352,6 +1596,69 @@ impl AgentApplication {
             }
             *guard = None;
         }
+    }
+
+    fn ensure_store_plugin_dependencies(&self, plugin_key: &str) -> Result<(), String> {
+        let manifest = self.resolve_store_plugin_manifest(plugin_key)?;
+        let summary = summarize_manifest_dependencies(&manifest);
+
+        if summary.has_required_dependencies {
+            return Ok(());
+        }
+
+        let reason = first_blocking_dependency_message(&summary)
+            .unwrap_or_else(|| "Required runtime dependencies are missing".to_string());
+        Err(format!(
+            "Cannot install or update plugin {plugin_key}: {reason}"
+        ))
+    }
+
+    fn resolve_store_plugin_manifest(&self, plugin_key: &str) -> Result<PluginManifest, String> {
+        if let Some(local_manifest) = self.find_local_store_manifest_override(plugin_key) {
+            return Ok(local_manifest);
+        }
+
+        self.plugin_store.fetch_plugin_manifest(plugin_key)
+    }
+
+    fn find_local_store_manifest_override(&self, plugin_key: &str) -> Option<PluginManifest> {
+        let mut roots = Vec::new();
+
+        if let Ok(current_dir) = std::env::current_dir() {
+            roots.extend(current_dir.ancestors().map(Path::to_path_buf));
+        }
+
+        let compile_time_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        roots.extend(compile_time_dir.ancestors().map(Path::to_path_buf));
+
+        let mut seen = std::collections::HashSet::new();
+        for root in roots {
+            if !seen.insert(root.clone()) {
+                continue;
+            }
+
+            let manifest_path = root
+                .join("plugins")
+                .join(plugin_key)
+                .join("peekoo-plugin.toml");
+
+            if !manifest_path.is_file() {
+                continue;
+            }
+
+            match peekoo_plugin_host::manifest::load_manifest(&manifest_path) {
+                Ok(manifest) => return Some(manifest),
+                Err(err) => {
+                    tracing::warn!(
+                        plugin_key,
+                        path = %manifest_path.display(),
+                        "Failed to load local store manifest override: {err}"
+                    );
+                }
+            }
+        }
+
+        None
     }
 
     /// Build a fresh `AgentService` from current settings + MCP-backed tools.
@@ -1401,7 +1708,7 @@ impl AgentApplication {
         }
 
         config.mcp_servers =
-            crate::agent_scheduler::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
+            crate::acp_client::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
 
         // If get_last_session stashed a path, resume that session for full
         // context restore. The path is consumed so it is only used once.
@@ -1429,6 +1736,142 @@ impl AgentApplication {
         })?;
 
         Ok((service, settings_version))
+    }
+
+    fn create_ephemeral_agent_service(&self) -> Result<AgentService, String> {
+        let config = self.resolved_config()?;
+        let default_runtime = self
+            .provider_service
+            .get_default_runtime()
+            .map_err(|e| format!("Get default runtime error: {e}"))?
+            .ok_or_else(|| "No default runtime configured".to_string())?;
+
+        let provider = peekoo_agent::config::AgentProvider::from_registry(
+            &default_runtime.provider_id,
+            &default_runtime.command,
+            default_runtime.args.clone(),
+        );
+
+        let model_id = default_runtime.config.default_model.as_deref();
+        let (mut config, _) = self.settings.to_agent_config(config, provider, model_id)?;
+        config.no_session = true;
+        config.session_dir = None;
+        config.resume_session_id = None;
+        config.mcp_servers =
+            crate::acp_client::build_session_mcp_servers(crate::mcp_server::get_mcp_address());
+
+        let runtime_id = config.provider.id();
+        if let Ok(runtime_config) = self.provider_service.get_provider_config(&runtime_id) {
+            let adapter = crate::runtime_adapters::adapter_for_runtime(&runtime_id);
+            let adapter_env =
+                adapter.build_launch_env(&runtime_config, self.bundled_node_bin_dir.as_deref());
+            for (key, value) in adapter_env {
+                config.environment.entry(key).or_insert(value);
+            }
+        }
+
+        if let Some(path) = &self.bundled_opencode_path {
+            config.environment.insert(
+                PEEKOO_OPENCODE_BIN_ENV.to_string(),
+                path.to_string_lossy().into_owned(),
+            );
+        }
+
+        let reactor = asupersync::runtime::reactor::create_reactor()
+            .map_err(|e| format!("Reactor error: {e}"))?;
+        let runtime = asupersync::runtime::RuntimeBuilder::current_thread()
+            .with_reactor(reactor)
+            .build()
+            .map_err(|e| format!("Runtime error: {e}"))?;
+
+        runtime.block_on(AgentService::new(config)).map_err(|e| {
+            if peekoo_agent::backend::acp::is_auth_required_error(&e) {
+                format!("AUTH_REQUIRED:{runtime_id}")
+            } else {
+                format!("Agent init error: {e}")
+            }
+        })
+    }
+
+    async fn generate_sprite_manifest_with_agent_inner(
+        &self,
+        input: GenerateSpriteManifestInput,
+    ) -> Result<GeneratedSpriteManifest, String> {
+        let image_validation = self.app_settings.validate_sprite_image(
+            &input.image_path,
+            input.columns,
+            input.rows,
+        )?;
+        let template = self.app_settings.get_sprite_manifest_template();
+        let prompt_payload = SpriteManifestDraftPromptInput {
+            image_path: &input.image_path,
+            image_width: image_validation.image_width,
+            image_height: image_validation.image_height,
+            frame_width: image_validation.frame_width,
+            frame_height: image_validation.frame_height,
+            has_alpha: image_validation.has_alpha,
+            background_mode: match image_validation.background_mode {
+                peekoo_app_settings::SpriteBackgroundMode::Transparent => "transparent",
+                peekoo_app_settings::SpriteBackgroundMode::FlatColor => "flatColor",
+                peekoo_app_settings::SpriteBackgroundMode::Opaque => "opaque",
+            },
+            blank_frame_count: image_validation.blank_frame_count,
+            suggested_name: &input.name,
+            suggested_description: input
+                .description
+                .as_deref()
+                .unwrap_or("A custom Peekoo sprite."),
+            suggested_columns: input.columns,
+            suggested_rows: input.rows,
+            suggested_scale: input.scale.unwrap_or(0.35),
+            suggested_frame_rate: input.frame_rate.unwrap_or(6),
+            use_chroma_key: input.use_chroma_key,
+            pixel_art: input.pixel_art,
+            manifest_template: &template,
+        };
+        let payload_json = serde_json::to_string_pretty(&prompt_payload)
+            .map_err(|e| format!("Serialize sprite prompt payload error: {e}"))?;
+
+        let app_language = self.get_app_language_or_en();
+        let instruction = format!(
+            "Generate a Peekoo sprite manifest JSON object for the uploaded sprite image.\n\
+Return JSON only with no markdown fences and no explanation.\n\
+Use the exact SpriteManifest shape shown in the template.\n\
+Respect the provided image metadata and suggested defaults.\n\
+Keep the provided columns and rows unless there is a very strong reason to change them.\n\
+If the background_mode is opaque, set chromaKey values appropriate for a likely non-transparent background.\n\
+Generate a concise, specific description based on the character visual style and personality cues from the image.\n\
+Do not use generic placeholder text like 'A custom Peekoo sprite.'\n\
+Language hint for text fields: {app_language}.\n\
+\nInput:\n{payload_json}"
+        );
+
+        let mut agent = self.create_ephemeral_agent_service()?;
+        let response = agent
+            .prompt(&instruction, |_| {})
+            .await
+            .map_err(|e| format!("Agent manifest draft error: {e}"))?;
+        let manifest_json = extract_json_object(&response).ok_or_else(|| {
+            "Agent did not return a JSON object for the sprite manifest".to_string()
+        })?;
+        let manifest: SpriteManifest = serde_json::from_str(manifest_json)
+            .map_err(|e| format!("Failed to parse agent-generated sprite manifest: {e}"))?;
+        let manifest_validation =
+            self.app_settings
+                .validate_manifest(&ValidateSpriteManifestInput {
+                    image_path: input.image_path.clone(),
+                    manifest: manifest.clone(),
+                })?;
+
+        if !manifest_validation.errors.is_empty() {
+            return Err(anyhow!("Agent-generated manifest failed validation").to_string());
+        }
+
+        Ok(GeneratedSpriteManifest {
+            manifest,
+            image_validation,
+            manifest_validation,
+        })
     }
 
     fn get_app_language_or_en(&self) -> String {
@@ -1681,6 +2124,7 @@ mod tests {
 
     use super::{
         build_task_runtime_launch_env, format_error_chain, install_discovered_plugins,
+        normalize_assignee, normalize_optional_trimmed, normalize_priority, parse_rfc3339_or_none,
         should_restore_agent,
     };
     use std::error::Error as StdError;
@@ -1822,6 +2266,42 @@ mod tests {
         )));
         assert!(env.contains(&("PEEKOO_AGENT_MODEL".to_string(), "test-model".to_string())));
         assert!(env.contains(&("PEEKOO_AGENT_API_KEY".to_string(), "secret".to_string())));
+    }
+
+    #[test]
+    fn normalize_priority_accepts_only_known_values() {
+        assert_eq!(normalize_priority(Some("high".into())), Some("high".into()));
+        assert_eq!(normalize_priority(Some("urgent".into())), None);
+        assert_eq!(normalize_priority(Some("".into())), None);
+    }
+
+    #[test]
+    fn normalize_assignee_accepts_only_user_or_agent() {
+        assert_eq!(normalize_assignee(Some("user".into())), Some("user".into()));
+        assert_eq!(
+            normalize_assignee(Some("agent".into())),
+            Some("agent".into())
+        );
+        assert_eq!(normalize_assignee(Some("team".into())), None);
+    }
+
+    #[test]
+    fn normalize_optional_trimmed_drops_empty_values() {
+        assert_eq!(
+            normalize_optional_trimmed(Some("  hello  ".into())),
+            Some("hello".into())
+        );
+        assert_eq!(normalize_optional_trimmed(Some("   ".into())), None);
+        assert_eq!(normalize_optional_trimmed(None), None);
+    }
+
+    #[test]
+    fn parse_rfc3339_or_none_normalizes_valid_timestamp() {
+        assert_eq!(
+            parse_rfc3339_or_none(Some("2026-04-11T10:00:00+02:00".into())),
+            Some("2026-04-11T08:00:00+00:00".into())
+        );
+        assert_eq!(parse_rfc3339_or_none(Some("not-a-date".into())), None);
     }
 
     fn test_registry(plugin_name: &str) -> Arc<PluginRegistry> {

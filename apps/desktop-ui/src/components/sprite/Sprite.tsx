@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import SpriteAnimation from "./SpriteAnimation";
+import { getActiveSpriteManifest } from "./spriteManifest";
+import { loadSpriteAsset } from "./spriteAsset";
+import type { SpriteInfo } from "@/types/global-settings";
 import type { AnimationType, SpriteState, SpriteManifest } from "@/types/sprite";
 
 // Map mood states to sprite animation types (new sprite sheet layout)
@@ -34,6 +37,7 @@ const ANIMATION_TO_TYPE: Record<string, AnimationType> = {
 };
 
 const DEFAULT_SPRITE_ID = "dark-cat";
+const SPRITE_SWITCH_FADE_MS = 150;
 
 interface SpriteProps {
   state?: SpriteState;
@@ -48,36 +52,111 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
   };
 
   const [activeSpriteId, setActiveSpriteId] = useState(DEFAULT_SPRITE_ID);
-  const [manifest, setManifest] = useState<SpriteManifest | null>(null);
+  const [sprites, setSprites] = useState<Record<string, SpriteInfo>>({});
+  const [manifests, setManifests] = useState<Record<string, SpriteManifest>>({});
+  const [imageSources, setImageSources] = useState<Record<string, string>>({});
+  const [spriteVisible, setSpriteVisible] = useState(true);
 
   // Load active sprite ID from global settings on mount
   useEffect(() => {
-    invoke<Record<string, string>>("app_settings_get")
-      .then((settings) => {
+    Promise.all([
+      invoke<Record<string, string>>("app_settings_get"),
+      invoke<SpriteInfo[]>("app_settings_list_sprites"),
+    ])
+      .then(([settings, availableSprites]) => {
+        setSprites(Object.fromEntries(availableSprites.map((sprite) => [sprite.id, sprite])));
         if (settings.active_sprite_id) {
           setActiveSpriteId(settings.active_sprite_id);
         }
       })
-      .catch((err) => console.error("Failed to load active sprite setting", err));
+      .catch((err) => console.error("Failed to load sprite settings", err));
   }, []);
 
   // Listen for sprite changes from the settings panel
   useEffect(() => {
     const unlisten = listen<{ id: string }>("sprite:changed", (event) => {
       setActiveSpriteId(event.payload.id);
+      void invoke<SpriteInfo[]>("app_settings_list_sprites")
+        .then((availableSprites) => {
+          setSprites(Object.fromEntries(availableSprites.map((sprite) => [sprite.id, sprite])));
+        })
+        .catch((err) => console.error("Failed to refresh sprite catalog", err));
     });
     return () => {
       unlisten.then((fn) => fn());
     };
   }, []);
 
-  // Load sprite manifest
+  // Load sprite assets
   useEffect(() => {
-    fetch(`/sprites/${activeSpriteId}/manifest.json`)
-      .then((res) => res.json())
-      .then((data: SpriteManifest) => setManifest(data))
-      .catch((err) => console.error("Failed to load sprite manifest", err));
-  }, [activeSpriteId]);
+    let cancelled = false;
+    const availableSprites = Object.values(sprites);
+    if (availableSprites.length === 0) {
+      return;
+    }
+
+    const loadAssets = async () => {
+      const loadedAssets = await Promise.all(
+        availableSprites.map(async (sprite) => {
+          try {
+            const asset = await loadSpriteAsset(sprite);
+            return [sprite.id, asset] as const;
+          } catch (err) {
+            console.error(`Failed to load sprite asset for ${sprite.id}`, err);
+            return null;
+          }
+        }),
+      );
+
+      if (cancelled) {
+        return;
+      }
+
+      const nextManifests: Record<string, SpriteManifest> = {};
+      const nextImageSources: Record<string, string> = {};
+      for (const loaded of loadedAssets) {
+        if (!loaded) {
+          continue;
+        }
+        nextManifests[loaded[0]] = loaded[1].manifest;
+        nextImageSources[loaded[0]] = loaded[1].imageSrc;
+      }
+      setManifests((prev) => ({ ...prev, ...nextManifests }));
+      setImageSources((prev) => ({ ...prev, ...nextImageSources }));
+    };
+
+    void loadAssets();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sprites]);
+
+  const activeManifest = getActiveSpriteManifest(manifests, activeSpriteId);
+  const activeImageSrc = imageSources[activeSpriteId];
+
+  useEffect(() => {
+    if (!activeManifest) {
+      return;
+    }
+
+    setSpriteVisible(false);
+    const timeoutId = window.setTimeout(() => {
+      setSpriteVisible(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeSpriteId, activeManifest]);
+
+  const spriteClasses = useMemo(
+    () =>
+      spriteVisible
+        ? "opacity-100"
+        : "opacity-0",
+    [spriteVisible],
+  );
 
   // Determine animation type from mood or animation state
   const getAnimationType = (): AnimationType => {
@@ -98,21 +177,25 @@ export function Sprite({ state, animationOverride = null }: SpriteProps) {
     return "idle";
   };
 
-  if (!manifest) {
+  if (!activeManifest || !activeImageSrc) {
     return null;
   }
 
   return (
-    <div className="flex items-center justify-center">
+    <div
+      className={`flex items-center justify-center transition-opacity ease-out ${spriteClasses}`}
+      style={{ transitionDuration: `${SPRITE_SWITCH_FADE_MS}ms` }}
+    >
       <SpriteAnimation
+        key={activeSpriteId}
         animation={getAnimationType()}
-        frameRate={manifest.frameRate || 8}
-        scale={manifest.scale ?? 0.40}
-        chromaKey={manifest.chromaKey}
-        imageSrc={`/sprites/${activeSpriteId}/${manifest.image}`}
-        columns={manifest.layout.columns}
-        rows={manifest.layout.rows}
-        pixelArt={manifest.chromaKey.pixelArt}
+        frameRate={activeManifest.frameRate || 8}
+        scale={activeManifest.scale ?? 0.40}
+        chromaKey={activeManifest.chromaKey}
+        imageSrc={activeImageSrc}
+        columns={activeManifest.layout.columns}
+        rows={activeManifest.layout.rows}
+        pixelArt={activeManifest.chromaKey.pixelArt}
         onFrameChange={() => {
           // Optional: Log frame changes for debugging
         }}

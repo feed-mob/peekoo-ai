@@ -3,14 +3,16 @@
 
 use peekoo_agent_app::{
     AgentApplication, AgentSettingsCatalogDto, AgentSettingsDto, AgentSettingsPatchDto,
-    InstallProviderRequest, InstallProviderResponse, InstallationMethod, LastSessionDto,
-    OauthCancelResponse, OauthStartResponse, OauthStatusRequest, OauthStatusResponse,
-    PluginConfigFieldDto, PluginNotificationDto, PluginPanelDto, PluginSummaryDto,
-    PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto, PrerequisitesCheck,
-    ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo, ProviderRequest,
-    RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo, RuntimeInspectionResult,
-    RuntimeTerminalAuthLaunch, SetApiKeyRequest, SetProviderConfigRequest, SpriteInfo,
-    StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    GenerateSpriteManifestInput, InstallProviderRequest, InstallProviderResponse,
+    InstallationMethod, LastSessionDto, OauthCancelResponse, OauthStartResponse,
+    OauthStatusRequest, OauthStatusResponse, PluginConfigFieldDto, PluginNotificationDto,
+    PluginPanelDto, PluginSummaryDto, PomodoroCycleDto, PomodoroSettingsInput, PomodoroStatusDto,
+    PrerequisitesCheck, ProviderAuthDto, ProviderConfig, ProviderConfigDto, ProviderInfo,
+    ProviderRequest, RuntimeAuthenticationResult, RuntimeAuthenticationStatus, RuntimeInfo,
+    RuntimeInspectionResult, RuntimeTerminalAuthLaunch, SaveCustomSpriteInput, SetApiKeyRequest,
+    SetProviderConfigRequest, SkillInstallOutcome, SpriteInfo, SpriteManifest, SpriteManifestFile,
+    SpriteManifestValidation, StorePluginDto, TaskDto, TaskEventDto, TestConnectionResult,
+    ValidateSpriteManifestInput,
 };
 use rusqlite::Connection;
 use serde::Serialize;
@@ -29,6 +31,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_posthog::PostHogExt;
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 // ============================================================================
 // Agent State — lazily initialized on first prompt
 // ============================================================================
@@ -435,13 +438,10 @@ struct TaskChangeEvent {
 }
 
 fn emit_tasks_changed(app: &AppHandle, task_id: Option<&str>) {
-    let _ = app.emit_to(
-        MAIN_WINDOW_LABEL,
-        TASKS_CHANGED_EVENT,
-        TaskChangeEvent {
-            task_id: task_id.map(|id| id.to_string()),
-        },
-    );
+    let payload = TaskChangeEvent {
+        task_id: task_id.map(|id| id.to_string()),
+    };
+    let _ = app.emit(TASKS_CHANGED_EVENT, payload);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -478,6 +478,11 @@ fn toggle_main_window_visibility(app: &AppHandle) {
         let action = next_main_window_visibility_action(is_visible);
         apply_main_window_visibility_action(app, action);
     }
+}
+
+fn save_all_window_states(app: &AppHandle) -> Result<(), String> {
+    app.save_window_state(StateFlags::all())
+        .map_err(|e| format!("save window state error: {e}"))
 }
 
 fn handle_tray_menu_event(app: &AppHandle, menu_id: &str) {
@@ -635,6 +640,20 @@ async fn agent_settings_catalog(
     state: State<'_, AgentState>,
 ) -> Result<AgentSettingsCatalogDto, String> {
     state.app.settings_catalog().await
+}
+
+#[tauri::command]
+async fn skill_install_from_zip(
+    zip_path: String,
+    force: bool,
+    state: State<'_, AgentState>,
+) -> Result<SkillInstallOutcome, String> {
+    state.app.install_skill_from_zip(&zip_path, force)
+}
+
+#[tauri::command]
+async fn skill_delete(skill_md_path: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_skill(&skill_md_path)
 }
 
 #[tauri::command]
@@ -1006,6 +1025,79 @@ async fn app_settings_list_sprites(
 }
 
 #[tauri::command]
+async fn app_sprites_get_prompt(state: State<'_, AgentState>) -> Result<String, String> {
+    Ok(state.app.get_sprite_prompt().to_string())
+}
+
+#[tauri::command]
+async fn app_sprites_get_image_data_url(
+    image_path: String,
+    state: State<'_, AgentState>,
+) -> Result<String, String> {
+    state.app.get_sprite_image_data_url(&image_path)
+}
+
+#[tauri::command]
+async fn app_sprites_get_manifest_template(
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifest, String> {
+    Ok(state.app.get_sprite_manifest_template())
+}
+
+#[tauri::command]
+async fn app_sprites_load_manifest_file(
+    manifest_path: String,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifest, String> {
+    state.app.load_sprite_manifest_file(&manifest_path)
+}
+
+#[tauri::command]
+async fn app_sprites_get_custom_manifest(
+    sprite_id: String,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifestFile, String> {
+    state.app.get_custom_sprite_manifest(&sprite_id)
+}
+
+#[tauri::command]
+async fn app_sprites_generate_manifest_draft(
+    input: GenerateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<peekoo_agent_app::GeneratedSpriteManifest, String> {
+    state.app.generate_sprite_manifest_draft(input)
+}
+
+#[tauri::command]
+async fn app_sprites_generate_manifest_with_agent(
+    input: GenerateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<peekoo_agent_app::GeneratedSpriteManifest, String> {
+    state.app.generate_sprite_manifest_with_agent(input).await
+}
+
+#[tauri::command]
+async fn app_sprites_validate_manifest(
+    input: ValidateSpriteManifestInput,
+    state: State<'_, AgentState>,
+) -> Result<SpriteManifestValidation, String> {
+    state.app.validate_sprite_manifest(input)
+}
+
+#[tauri::command]
+async fn app_sprites_save_custom(
+    input: SaveCustomSpriteInput,
+    state: State<'_, AgentState>,
+) -> Result<SpriteInfo, String> {
+    state.app.save_custom_sprite(input)
+}
+
+#[tauri::command]
+async fn app_sprites_delete(sprite_id: String, state: State<'_, AgentState>) -> Result<(), String> {
+    state.app.delete_custom_sprite(&sprite_id)
+}
+
+#[tauri::command]
 async fn app_settings_get_language(state: State<'_, AgentState>) -> Result<String, String> {
     state.app.get_app_language()
 }
@@ -1309,10 +1401,12 @@ async fn pomodoro_history_by_date_range(
 async fn pomodoro_save_memo(
     id: Option<String>,
     memo: String,
+    #[allow(non_snake_case)] taskId: Option<String>,
     state: State<'_, AgentState>,
     app: AppHandle,
 ) -> Result<PomodoroStatusDto, String> {
-    let status = state.app.save_pomodoro_memo(id, memo)?;
+    let status = state.app.save_pomodoro_memo(id, memo, taskId)?;
+
     flush_plugin_notifications(&app, &state)?;
     Ok(status)
 }
@@ -1449,6 +1543,11 @@ async fn dnd_set(active: bool, state: State<'_, AgentState>) -> Result<(), Strin
 async fn ui_ready(state: State<'_, AgentState>) -> Result<(), String> {
     state.app.mark_ui_ready();
     Ok(())
+}
+
+#[tauri::command]
+async fn window_state_save_all(app: AppHandle) -> Result<(), String> {
+    save_all_window_states(&app)
 }
 
 #[tauri::command]
@@ -1807,6 +1906,8 @@ pub fn run() {
                 if window.label() == MAIN_WINDOW_LABEL {
                     api.prevent_close();
                     let _ = window.hide();
+                } else {
+                    let _ = save_all_window_states(window.app_handle());
                 }
             }
         })
@@ -1823,6 +1924,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin({
             let config = peekoo_analytics::posthog::config_from_env();
             let (api_key, api_host) = match &config {
@@ -1838,6 +1940,7 @@ pub fn run() {
         .plugin(tauri_plugin_sentry::init(peekoo_analytics::sentry::client()))
         .invoke_handler(tauri::generate_handler![
             ui_ready,
+            window_state_save_all,
             resize_sprite_window,
             greet,
             get_sprite_state,
@@ -1849,6 +1952,8 @@ pub fn run() {
             agent_settings_get,
             agent_settings_update,
             agent_settings_catalog,
+            skill_install_from_zip,
+            skill_delete,
             agent_provider_auth_set_api_key,
             agent_provider_auth_clear,
             agent_provider_config_set,
@@ -1883,6 +1988,16 @@ pub fn run() {
             app_settings_get,
             app_settings_set,
             app_settings_list_sprites,
+            app_sprites_get_prompt,
+            app_sprites_get_image_data_url,
+            app_sprites_get_manifest_template,
+            app_sprites_load_manifest_file,
+            app_sprites_get_custom_manifest,
+            app_sprites_generate_manifest_draft,
+            app_sprites_generate_manifest_with_agent,
+            app_sprites_validate_manifest,
+            app_sprites_save_custom,
+            app_sprites_delete,
             app_settings_get_language,
             app_settings_set_language,
             create_task,

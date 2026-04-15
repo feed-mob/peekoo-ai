@@ -1,5 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { InstallProgressCard } from "@/components/update/InstallProgressCard";
+import { ReleaseNotesMarkdown } from "@/components/update/ReleaseNotesMarkdown";
+import { normalizeReleaseNotes } from "@/lib/release-notes";
 import { invoke } from "@tauri-apps/api/core";
 import { useAboutPanel } from "./useAboutPanel";
 import { useTranslation } from "react-i18next";
@@ -32,7 +35,20 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 export function AboutPanel() {
   const { t } = useTranslation();
-  const { snapshot, loading, checking, installing, error, refresh, installUpdate } = useAboutPanel();
+  const {
+    snapshot,
+    loading,
+    checking,
+    installing,
+    installPhase,
+    downloadedBytes,
+    totalBytes,
+    progressPercent,
+    etaSeconds,
+    error,
+    refresh,
+    installUpdate,
+  } = useAboutPanel();
 
   if (loading && !snapshot) {
     return (
@@ -57,6 +73,7 @@ export function AboutPanel() {
   }
 
   const publishedLabel = formatReleaseDate(snapshot.releaseDate);
+  const normalizedReleaseNotes = normalizeReleaseNotes(snapshot.releaseNotes);
 
   return (
     <div className="space-y-5">
@@ -87,10 +104,10 @@ export function AboutPanel() {
         </div>
       ) : null}
 
-      {snapshot.releaseNotes ? (
+      {normalizedReleaseNotes ? (
         <div className="space-y-2 rounded-xl border border-glass-border/70 bg-space-overlay/40 px-4 py-3">
           <p className="text-xs uppercase tracking-[0.18em] text-text-muted">{t("about.releaseNotes")}</p>
-          <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{snapshot.releaseNotes}</p>
+          <ReleaseNotesMarkdown notes={normalizedReleaseNotes} />
         </div>
       ) : null}
 
@@ -98,6 +115,17 @@ export function AboutPanel() {
         <div className="rounded-xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
           {error}
         </div>
+      ) : null}
+
+      {installing ? (
+        <InstallProgressCard
+          className="rounded-xl border border-glass-border/70 bg-space-overlay/40 px-4 py-3"
+          installPhase={installPhase}
+          downloadedBytes={downloadedBytes}
+          totalBytes={totalBytes}
+          progressPercent={progressPercent}
+          etaSeconds={etaSeconds}
+        />
       ) : null}
 
       <div className="flex flex-wrap gap-3">

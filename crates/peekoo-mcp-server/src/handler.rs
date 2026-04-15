@@ -1,6 +1,9 @@
 //! MCP Server handler implementation for Peekoo native tools (task, pomodoro, settings)
 
-use peekoo_app_settings::AppSettingsService;
+use peekoo_app_settings::{
+    AppSettingsService, GenerateSpriteManifestInput, SaveCustomSpriteInput,
+    ValidateSpriteManifestInput,
+};
 use peekoo_pomodoro_app::{PomodoroAppService, PomodoroSettingsInput};
 use peekoo_task_app::TaskService;
 use peekoo_task_domain::TaskStatus;
@@ -119,6 +122,7 @@ struct PomodoroSwitchModeParams {
 struct PomodoroSaveMemoParams {
     id: Option<String>,
     memo: String,
+    task_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -164,6 +168,40 @@ struct SetActiveSpriteParams {
 #[serde(deny_unknown_fields)]
 struct SetThemeParams {
     mode: String,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct GenerateSpriteManifestParams {
+    image_path: String,
+    name: String,
+    description: Option<String>,
+    columns: u32,
+    rows: u32,
+    scale: Option<f32>,
+    frame_rate: Option<u32>,
+    use_chroma_key: bool,
+    pixel_art: bool,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ValidateSpriteManifestParams {
+    image_path: String,
+    manifest: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct SaveCustomSpriteParams {
+    image_path: String,
+    manifest: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct DeleteCustomSpriteParams {
+    sprite_id: String,
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -491,10 +529,23 @@ impl TaskMcpHandler {
         &self,
         Parameters(params): Parameters<PomodoroSaveMemoParams>,
     ) -> Result<CallToolResult, McpError> {
-        match self
-            .pomodoro_service
-            .save_pomodoro_memo(params.id, params.memo)
-        {
+        let task_title = params
+            .task_id
+            .as_deref()
+            .map(|task_id| self.task_service.load_task(task_id).map(|task| task.title))
+            .transpose();
+
+        let task_title = match task_title {
+            Ok(task_title) => task_title,
+            Err(e) => return Ok(CallToolResult::error(vec![Content::text(e)])),
+        };
+
+        match self.pomodoro_service.save_pomodoro_memo(
+            params.id,
+            params.memo,
+            params.task_id,
+            task_title,
+        ) {
             Ok(dto) => json_success(dto),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
         }
@@ -593,6 +644,123 @@ impl TaskMcpHandler {
     async fn settings_list_sprites(&self) -> Result<CallToolResult, McpError> {
         let sprites = self.settings_service.list_sprites();
         json_success(sprites)
+    }
+
+    #[tool(
+        name = "settings_get_sprite_prompt",
+        description = "Get the recommended prompt template for generating a Peekoo sprite sheet."
+    )]
+    async fn settings_get_sprite_prompt(&self) -> Result<CallToolResult, McpError> {
+        json_success(serde_json::json!({ "prompt": self.settings_service.get_sprite_prompt() }))
+    }
+
+    #[tool(
+        name = "settings_get_sprite_manifest_template",
+        description = "Get an example sprite manifest template for custom sprites."
+    )]
+    async fn settings_get_sprite_manifest_template(&self) -> Result<CallToolResult, McpError> {
+        json_success(self.settings_service.get_sprite_manifest_template())
+    }
+
+    #[tool(
+        name = "settings_generate_sprite_manifest_draft",
+        description = "Generate a starter manifest draft and image validation report for an uploaded sprite image path."
+    )]
+    async fn settings_generate_sprite_manifest_draft(
+        &self,
+        Parameters(params): Parameters<GenerateSpriteManifestParams>,
+    ) -> Result<CallToolResult, McpError> {
+        match self
+            .settings_service
+            .generate_sprite_manifest_draft(GenerateSpriteManifestInput {
+                image_path: params.image_path,
+                name: params.name,
+                description: params.description,
+                columns: params.columns,
+                rows: params.rows,
+                scale: params.scale,
+                frame_rate: params.frame_rate,
+                use_chroma_key: params.use_chroma_key,
+                pixel_art: params.pixel_art,
+            }) {
+            Ok(result) => json_success(result),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(
+        name = "settings_validate_sprite_manifest",
+        description = "Validate a custom sprite manifest JSON object against an uploaded sprite image path."
+    )]
+    async fn settings_validate_sprite_manifest(
+        &self,
+        Parameters(params): Parameters<ValidateSpriteManifestParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let manifest = match serde_json::from_value(params.manifest) {
+            Ok(manifest) => manifest,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid manifest JSON: {e}"
+                ))]));
+            }
+        };
+
+        match self
+            .settings_service
+            .validate_manifest(&ValidateSpriteManifestInput {
+                image_path: params.image_path,
+                manifest,
+            }) {
+            Ok(result) => json_success(result),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(
+        name = "settings_save_custom_sprite",
+        description = "Save a validated custom sprite from a local image path and manifest JSON object."
+    )]
+    async fn settings_save_custom_sprite(
+        &self,
+        Parameters(params): Parameters<SaveCustomSpriteParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let manifest = match serde_json::from_value(params.manifest) {
+            Ok(manifest) => manifest,
+            Err(e) => {
+                return Ok(CallToolResult::error(vec![Content::text(format!(
+                    "Invalid manifest JSON: {e}"
+                ))]));
+            }
+        };
+
+        match self
+            .settings_service
+            .save_custom_sprite(SaveCustomSpriteInput {
+                image_path: params.image_path,
+                manifest,
+            }) {
+            Ok(result) => json_success(result),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
+    }
+
+    #[tool(
+        name = "settings_delete_custom_sprite",
+        description = "Delete a saved custom sprite by ID. Built-in sprites cannot be deleted."
+    )]
+    async fn settings_delete_custom_sprite(
+        &self,
+        Parameters(params): Parameters<DeleteCustomSpriteParams>,
+    ) -> Result<CallToolResult, McpError> {
+        match self
+            .settings_service
+            .delete_custom_sprite(&params.sprite_id)
+        {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text(
+                "Custom sprite deleted",
+            )])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e)])),
+        }
     }
 
     #[tool(

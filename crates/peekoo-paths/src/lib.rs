@@ -64,6 +64,14 @@ pub fn peekoo_global_cache_dir() -> Result<PathBuf, String> {
     Ok(data_dir.join("cache"))
 }
 
+pub fn peekoo_sprites_dir() -> Result<PathBuf, String> {
+    Ok(peekoo_global_data_dir()?.join("sprites"))
+}
+
+pub fn peekoo_sprite_drafts_dir() -> Result<PathBuf, String> {
+    Ok(peekoo_sprites_dir()?.join("_drafts"))
+}
+
 pub fn peekoo_log_dir() -> Result<PathBuf, String> {
     Ok(peekoo_global_data_dir()?.join("logs"))
 }
@@ -130,6 +138,13 @@ mod tests {
         let data = peekoo_global_data_dir().expect("peekoo data dir");
         let logs = peekoo_log_dir().expect("peekoo log dir");
         assert_eq!(logs, data.join("logs"));
+    }
+
+    #[test]
+    fn sprites_dir_is_inside_data_dir() {
+        let data = peekoo_global_data_dir().expect("peekoo data dir");
+        let sprites = peekoo_sprites_dir().expect("peekoo sprites dir");
+        assert_eq!(sprites, data.join("sprites"));
     }
 
     #[test]

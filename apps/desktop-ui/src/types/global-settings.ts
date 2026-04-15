@@ -4,6 +4,7 @@ export const SpriteInfoSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string(),
+  source: z.enum(["builtin", "custom"]),
 });
 export type SpriteInfo = z.infer<typeof SpriteInfoSchema>;
 

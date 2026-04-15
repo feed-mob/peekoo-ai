@@ -48,6 +48,45 @@
       "title": "Sprite de mascota",
       "loadingPreview": "Cargando..."
     },
+    "customSprite": {
+      "title": "Sprite personalizado",
+      "description": "Sube una hoja de sprites, opcionalmente carga un manifest y ajusta el borrador antes de guardarlo.",
+      "copyPrompt": "Copiar prompt",
+      "copyManifestTemplate": "Copiar plantilla de manifest",
+      "uploadImage": "Subir imagen",
+      "uploadManifest": "Subir manifest",
+      "validateDraft": "Validar borrador",
+      "saveCustomSprite": "Guardar sprite personalizado",
+      "preview": "Vista previa",
+      "blockingIssues": "Problemas bloqueantes",
+      "warnings": "Advertencias",
+      "savedSprites": "Sprites personalizados guardados",
+      "imagePath": "Imagen: {{path}}",
+      "toast": {
+        "promptCopied": "Prompt copiado",
+        "manifestTemplateCopied": "Plantilla de manifest copiada",
+        "generatedByAgent": "Manifest generado por Peekoo-agent",
+        "generatedByFallback": "Manifest generado con reglas predeterminadas"
+      },
+      "status": {
+        "generatingWithAgent": "Generando manifest con Peekoo-agent..."
+      },
+      "json": {
+        "title": "Manifest JSON (edición completa)",
+        "invalidJson": "El JSON del manifest no es válido"
+      },
+      "fields": {
+        "name": "Nombre del sprite",
+        "id": "ID del sprite",
+        "description": "Descripción",
+        "columns": "Columnas",
+        "rows": "Filas",
+        "scale": "Escala",
+        "frameRate": "Frecuencia de cuadros",
+        "pixelArt": "Pixel art"
+      },
+      "promptText": "Genera una hoja de sprites.\n\nRequisitos:\n- PNG o JPG (se recomienda PNG para reducir artefactos de compresión)\n- El color de fondo debe ser únicamente magenta puro #ff00ff: sin degradados, sombras, texturas, ruido ni artefactos de compresión; no debe haber píxeles de un segundo color de fondo; la app eliminará ese fondo automáticamente\n- El personaje no debe incluir fondo, escena, suelo, pared, humo, destellos ni otros elementos de entorno; excepto el personaje, todas las áreas deben permanecer en magenta puro #ff00ff\n- Evita usar el color de fondo #ff00ff o magentas muy similares en el personaje, accesorios, sombras, reflejos, luces de contorno o brillos, porque también se eliminarán\n- Organiza la imagen como una hoja de sprites implícita de 8 columnas x 7 filas; cada región de fotograma debe ser cuadrada\n- No dibujes bordes de celda, bordes de panel, líneas divisorias, líneas de cuadrícula, cajas, marcos ni ningún borde exterior alrededor de la hoja\n- Los límites entre fotogramas deben definirse solo por su colocación, no por líneas visibles\n- Mantén un pequeño margen de seguridad dentro de cada fotograma para que el personaje quede completamente contenido y no se recorte\n- El fondo entre los fotogramas y alrededor de ellos debe seguir siendo magenta puro #ff00ff, sin uniones oscuras, sombras, píxeles divisores ni bordes decorativos\n- No añadas contornos negros ni trazos oscuros como separadores alrededor de la hoja o entre fotogramas\n- La relación de aspecto total debe ser aproximadamente 8:7\n- Se recomienda una salida de resolución alta tipo 4K, por ejemplo 4096x3584 con 512x512 por fotograma; la app la escalará proporcionalmente a 1024x896 con 128x128 por fotograma\n- Mantén alta calidad de imagen: detalles claros, bordes nítidos, sin desenfoque, sin dientes de sierra ni artefactos de compresión\n- La misma fila representa la misma animación; de izquierda a derecha son fotogramas consecutivos en bucle\n- Idle (fila 1) debe incluir respiración y parpadeo; no debe ser completamente estático\n- Sleepy/Rest (fila 6) solo debe mostrar respiración con ojos cerrados; no dibujes bostezos\n- Los fotogramas adyacentes en la misma fila deben transicionar con mucha suavidad: sin saltos, sin grandes desplazamientos, cambios bruscos de pose, expresión, zoom o punto de vista\n- La posición del personaje debe mantenerse consistente entre fotogramas, idealmente centrada, y no debe recortarse en los bordes\n\nSignificado de las filas (de arriba abajo):\n- Fila 1: Idle/Peek - respiración suave, asomándose desde la parte inferior de la pantalla con medio cuerpo y ojos visibles, con parpadeos ocasionales\n- Fila 2: Happy/Celebrate - expresión alegre y gestos de celebración, para cuando se completan tareas\n- Fila 3: Working/Focus - expresión concentrada y postura de trabajo, para sesiones pomodoro\n- Fila 4: Thinking - expresión y postura de pensamiento, para cuando la IA está procesando\n- Fila 5: Reminder - expresión y gestos de recordatorio, para fechas límite, salud y notificaciones de IA\n- Fila 6: Sleepy/Rest - expresión somnolienta, respiración con ojos cerrados, sin bostezos\n- Fila 7: Dragging - estado al ser arrastrado, con gesto sorprendido o cooperativo mientras se mueve\n\nPersonaje: <character name>\n- Estilo: <character style>\n- Apariencia del personaje: <character appearance>\n- Requisitos: mantén iluminación y paleta de color consistentes en toda la hoja, conserva el fondo en magenta puro #ff00ff y mantén un estilo uniforme\n- Salida: devuelve solo el archivo de imagen de la sprite sheet"
+    },
     "logging": "Registro",
     "loggingHelp": "Define el nivel de detalle del registro para solucionar problemas. Se requiere reiniciar para aplicar los cambios.",
     "acpRuntimes": "Runtimes ACP",
@@ -94,6 +133,14 @@
     "noModelConfigured": "No hay un modelo global configurado",
     "modelHelp": "Cambia esto en la configuración global del runtime.",
     "skillsHelp": "Peekoo encuentra habilidades automáticamente desde las carpetas de habilidades configuradas.",
+    "uploadSkill": "Subir habilidad",
+    "deleteSkill": "Eliminar",
+    "replaceSkillTitle": "Reemplazar habilidad",
+    "replaceSkillDescription": "Ya existe una habilidad llamada \"{{skillId}}\". ¿Reemplazarla?",
+    "replaceSkillConfirm": "Reemplazar",
+    "skillUploadError": "Error al instalar la habilidad",
+    "skillDeleteError": "Error al eliminar la habilidad",
+    "lockedSkillCannotDelete": "La habilidad integrada no se puede eliminar",
     "auth": {
       "mode": "Modo de autenticación",
       "none": "ninguno",
@@ -401,7 +448,17 @@
     "title": "Actualización disponible",
     "message": "Peekoo {{version}} está disponible. ¿Instalarla ahora y reiniciar?",
     "messageWithNotes": "Peekoo {{version}} está disponible.\n\n{{notes}}\n\n¿Instalarla ahora y reiniciar?",
+    "versionAvailable": "Peekoo {{version}} está disponible.",
     "installButton": "Instalar y reiniciar",
+    "installing": "Instalando...",
+    "downloading": "Descargando actualización",
+    "installingFiles": "Instalando actualización",
+    "calculating": "calculando...",
+    "downloadedDetail": "{{downloaded}} de {{total}} descargados",
+    "downloadedOnly": "{{downloaded}} descargados",
+    "eta": "Tiempo estimado restante: {{eta}}",
+    "restartSoon": "La app se reiniciará al finalizar la instalación.",
+    "viewFullChangelog": "Ver changelog completo",
     "later": "Más tarde"
   },
   "agentRuntimes": {

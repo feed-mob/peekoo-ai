@@ -35,6 +35,49 @@ pub enum PluginSource {
     None,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DependencyCheckStatusDto {
+    Satisfied,
+    Missing,
+    VersionMismatch,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RuntimeDependencyStatusDto {
+    pub kind: String,
+    pub required: bool,
+    pub display_name: String,
+    pub command_tried: Option<String>,
+    pub status: DependencyCheckStatusDto,
+    pub detected_version: Option<String>,
+    pub min_version: Option<String>,
+    pub message: Option<String>,
+    pub install_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDependencySummaryDto {
+    pub has_required_dependencies: bool,
+    pub blocking_issues: usize,
+    pub warnings: usize,
+    pub dependencies: Vec<RuntimeDependencyStatusDto>,
+}
+
+impl Default for PluginDependencySummaryDto {
+    fn default() -> Self {
+        Self {
+            has_required_dependencies: true,
+            blocking_issues: 0,
+            warnings: 0,
+            dependencies: Vec::new(),
+        }
+    }
+}
+
 /// DTO describing a plugin available in the remote store.
 ///
 /// The `installed` flag and `source` field are cross-referenced against the
@@ -56,6 +99,7 @@ pub struct StorePluginDto {
     pub source: PluginSource,
     /// Whether a newer version is available in the store.
     pub has_update: bool,
+    pub dependency_summary: PluginDependencySummaryDto,
 }
 
 #[derive(Debug, Deserialize)]
@@ -162,6 +206,10 @@ impl PluginStoreService {
 
         let local_plugins = registry.discover();
         Ok(self.build_dto(manifest, &local_plugins, false))
+    }
+
+    pub fn fetch_plugin_manifest(&self, plugin_key: &str) -> Result<PluginManifest, String> {
+        self.fetch_plugin_metadata(plugin_key)
     }
 
     /// Update an installed plugin to the latest version from GitHub.
@@ -472,6 +520,7 @@ impl PluginStoreService {
             installed,
             source,
             has_update,
+            dependency_summary: PluginDependencySummaryDto::default(),
         }
     }
 
@@ -888,6 +937,7 @@ target = "opencode-plugin"
             installed: true,
             source: PluginSource::Store,
             has_update: false,
+            dependency_summary: PluginDependencySummaryDto::default(),
         };
 
         let json = serde_json::to_string(&dto).unwrap();
@@ -912,6 +962,7 @@ target = "opencode-plugin"
             installed: false,
             source: PluginSource::None,
             has_update: false,
+            dependency_summary: PluginDependencySummaryDto::default(),
         };
 
         let json = serde_json::to_string(&dto).unwrap();
