@@ -1,7 +1,7 @@
 #![no_main]
 
 use peekoo_plugin_sdk::prelude::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[plugin_fn]
 pub fn plugin_init(_: String) -> FnResult<String> {
@@ -21,11 +21,7 @@ struct MijiaBridgeInput {
 }
 
 fn python_candidates() -> Vec<String> {
-    vec![
-        "python3".to_string(),
-        "python".to_string(),
-        "py".to_string(),
-    ]
+    vec!["python3".to_string(), "python".to_string()]
 }
 
 fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<String> {
@@ -67,13 +63,11 @@ fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<
 pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String> {
     let action = input.action.trim();
     if action.is_empty() {
-        return Ok(
-            json!({
-                "success": false,
-                "message": "action is required"
-            })
-            .to_string(),
-        );
+        return Ok(json!({
+            "success": false,
+            "message": "action is required"
+        })
+        .to_string());
     }
 
     let payload_json = serde_json::to_string(&input.payload)

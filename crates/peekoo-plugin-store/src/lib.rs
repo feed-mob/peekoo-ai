@@ -348,6 +348,11 @@ impl PluginStoreService {
         let candidates: Vec<(&str, Vec<&str>)> =
             vec![("python3", vec![]), ("python", vec![]), ("py", vec!["-3"])];
 
+        // Install dependencies into a per-plugin isolated directory to avoid
+        // cross-plugin conflicts (instead of --user site-packages).
+        let target_dir = plugin_dir.join("python-env");
+        let target_path = target_dir.to_string_lossy().to_string();
+
         for (program, prefix_args) in candidates {
             // Best effort: bootstrap pip in case it is missing.
             let mut ensure_args = prefix_args.clone();
@@ -359,7 +364,8 @@ impl PluginStoreService {
                 "-m",
                 "pip",
                 "install",
-                "--user",
+                "--target",
+                &target_path,
                 "-r",
                 requirements_path.as_str(),
             ]);

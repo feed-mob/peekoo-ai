@@ -2347,10 +2347,10 @@
         img.src = data.qr_url;
         img.style.display = "block";
         el("qrWrap").classList.add("show");
+        setStatus("");
       } else {
         showQrPlaceholder("QR code is not ready yet. Tap to regenerate.");
       }
-      setStatus("");
       scheduleLoginPolling();
     } catch (err) {
       showQrPlaceholder(err.message || String(err));
