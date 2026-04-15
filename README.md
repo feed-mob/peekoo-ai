@@ -2,6 +2,8 @@
 
 AI-powered desktop pet built with Tauri v2, React, and Rust. A small, transparent, always-on-top companion that lives on your desktop with chat, task management, and a pomodoro timer.
 
+![Peekoo Demo](assets/Peekoo_Peek.gif)
+
 ## Features
 
 - **AI Chat** — Conversational AI with streaming responses, configurable LLM providers, and persona/skill loading
