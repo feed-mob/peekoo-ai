@@ -698,7 +698,7 @@ if __name__ == "__main__":
             emit(
                 {
                     "success": False,
-                    "message": "Python package mijiaAPI not found. Install it with: pip install mijiaAPI",
+                    "message": "Python package mijiaAPI not found in runtime. Repackage the plugin runtime or install with: pip install mijiaAPI",
                     "code": "mijia_api_missing",
                 },
                 1,
@@ -707,7 +707,7 @@ if __name__ == "__main__":
             emit(
                 {
                     "success": False,
-                    "message": "Python package requests not found. Install it with: pip install requests",
+                    "message": "Python package requests not found in runtime. Repackage the plugin runtime or install with: pip install requests",
                     "code": "requests_missing",
                 },
                 1,

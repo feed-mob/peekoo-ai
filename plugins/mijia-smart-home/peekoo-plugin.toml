@@ -23,3 +23,10 @@ title = "Mijia Smart Home Manager"
 width = 980
 height = 700
 entry = "ui/panel.html"
+
+[[runtime_dependencies]]
+kind = "python"
+required = true
+command = "python3"
+display_name = "Python"
+install_hint = "Please install Python 3 and ensure `python3 --version` works in your shell."

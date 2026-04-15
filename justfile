@@ -82,6 +82,8 @@ plugin-install name:
     python -c "import pathlib, shutil, tomllib; src = pathlib.Path('plugins/{{name}}'); manifest = tomllib.loads((src / 'peekoo-plugin.toml').read_text()); wasm_rel = pathlib.Path(manifest['plugin']['wasm']); wasm_src = src / wasm_rel; wasm_dst = pathlib.Path.home() / '.peekoo' / 'plugins' / '{{name}}' / wasm_rel; wasm_dst.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(wasm_src, wasm_dst)"
     if [ -d plugins/{{name}}/ui ]; then cp -r plugins/{{name}}/ui ~/.peekoo/plugins/{{name}}/; fi
     if [ -d plugins/{{name}}/companions ]; then cp -r plugins/{{name}}/companions ~/.peekoo/plugins/{{name}}/; fi
+    if [ -d plugins/{{name}}/runtime ]; then cp -r plugins/{{name}}/runtime ~/.peekoo/plugins/{{name}}/; fi
+    if [ -d plugins/{{name}}/vendor ]; then cp -r plugins/{{name}}/vendor ~/.peekoo/plugins/{{name}}/; fi
 
 # Install an AssemblyScript plugin into the local Peekoo plugin dir
 plugin-install-as name:
@@ -91,6 +93,9 @@ plugin-install-as name:
 
 # Build and install a Rust plugin
 plugin name: (plugin-build name) (plugin-install name)
+
+# Build and install Mijia plugin
+plugin-mijia-smart-home: (plugin-build "mijia-smart-home") (plugin-install "mijia-smart-home")
 
 # Build all maintained first-party plugins
 plugin-build-all:

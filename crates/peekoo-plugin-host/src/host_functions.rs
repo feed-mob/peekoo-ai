@@ -884,13 +884,32 @@ fn host_process_exec(
 ) -> Result<(), Error> {
     let ctx = user_data.get().map_err(|e| Error::msg(format!("{e}")))?;
     let ctx = ctx.lock().map_err(|e| Error::msg(format!("{e}")))?;
-    require_declared_capability(&ctx, "process:exec")?;
+    if let Err(err) = require_declared_capability(&ctx, "process:exec") {
+        let response = serde_json::json!({
+            "ok": false,
+            "statusCode": -1,
+            "stdout": "",
+            "stderr": err.to_string(),
+        })
+        .to_string();
+        write_output(plugin, outputs, &response)?;
+        return Ok(());
+    }
+
     let input_str = read_input(plugin, inputs)?;
     let req: serde_json::Value = serde_json::from_str(&input_str).unwrap_or_default();
 
     let program = req["program"].as_str().unwrap_or_default().trim();
     if program.is_empty() {
-        return Err(Error::msg("process program is required"));
+        let response = serde_json::json!({
+            "ok": false,
+            "statusCode": -1,
+            "stdout": "",
+            "stderr": "process program is required",
+        })
+        .to_string();
+        write_output(plugin, outputs, &response)?;
+        return Ok(());
     }
 
     let args = req["args"]
@@ -903,13 +922,40 @@ fn host_process_exec(
         .unwrap_or_default();
 
     let cwd = req["cwd"].as_str().unwrap_or(".");
-    let resolved_cwd = resolve_process_cwd(&ctx, cwd)?;
+    let resolved_cwd = match resolve_process_cwd(&ctx, cwd) {
+        Ok(path) => path,
+        Err(err) => {
+            let response = serde_json::json!({
+                "ok": false,
+                "statusCode": -1,
+                "stdout": "",
+                "stderr": err.to_string(),
+            })
+            .to_string();
+            write_output(plugin, outputs, &response)?;
+            return Ok(());
+        }
+    };
 
-    let output = Command::new(program)
+    let resolved_program = resolve_process_program(program, &resolved_cwd);
+    let output = match Command::new(&resolved_program)
         .args(&args)
         .current_dir(&resolved_cwd)
         .output()
-        .map_err(|e| Error::msg(format!("Process spawn failed: {e}")))?;
+    {
+        Ok(output) => output,
+        Err(e) => {
+            let response = serde_json::json!({
+                "ok": false,
+                "statusCode": -1,
+                "stdout": "",
+                "stderr": format!("Process spawn failed ({e})"),
+            })
+            .to_string();
+            write_output(plugin, outputs, &response)?;
+            return Ok(());
+        }
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -928,6 +974,22 @@ fn host_process_exec(
         .to_string(),
     )?;
     Ok(())
+}
+
+fn resolve_process_program(program: &str, cwd: &Path) -> PathBuf {
+    let expanded = expand_tilde_path(program);
+    let candidate = PathBuf::from(expanded);
+    if candidate.is_absolute() {
+        return candidate;
+    }
+
+    // Keep PATH lookup behavior for plain command names (e.g. "python3").
+    let has_path_separator = program.contains('/') || program.contains('\\');
+    if !has_path_separator {
+        return candidate;
+    }
+
+    cwd.join(candidate)
 }
 
 fn host_set_mood(

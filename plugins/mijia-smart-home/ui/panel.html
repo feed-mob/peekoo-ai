@@ -1277,6 +1277,18 @@
     resetDetail();
   }
 
+  function showQrPlaceholder(message = "") {
+    const wrap = el("qrWrap");
+    const img = el("qrImage");
+    if (!wrap || !img) return;
+    img.removeAttribute("src");
+    img.style.display = "none";
+    wrap.classList.add("show");
+    if (message) {
+      setStatus(message, "error");
+    }
+  }
+
   function stopLoginPolling() {
     state.loginPolling = false;
     if (state.loginPollTimer) {
@@ -1292,7 +1304,7 @@
     const run = async () => {
       if (!state.loginPolling || state.authenticated) return;
       try {
-        const result = await callBridge("login_finish", { timeout_secs: 20 });
+        const result = await callBridge("login_finish", { timeout_secs: 8 });
         if (result.authenticated) {
           state.authenticated = true;
           stopLoginPolling();
@@ -1309,8 +1321,22 @@
         }
       } catch (err) {
         const msg = err?.message || String(err);
-        // Polling timeout is expected before user confirms in app.
-        if (!msg.toLowerCase().includes("timed out")) {
+        if (msg.includes("No pending login session found")) {
+          stopLoginPolling();
+          await startLogin();
+          return;
+        }
+        // Polling timeout is expected before/around user confirmation.
+        // Keep polling silently to avoid flashing transient timeout errors.
+        const lower = msg.toLowerCase();
+        if (
+          lower.includes("timed out") ||
+          lower.includes("timeout") ||
+          lower.includes("time-out") ||
+          msg.includes("超时")
+        ) {
+          // no-op
+        } else {
           setStatus(msg, "error");
         }
       }
@@ -2317,13 +2343,17 @@
       }
 
       if (data.qr_url) {
-        el("qrImage").src = data.qr_url;
+        const img = el("qrImage");
+        img.src = data.qr_url;
+        img.style.display = "block";
         el("qrWrap").classList.add("show");
+        setStatus("");
+      } else {
+        showQrPlaceholder("QR code is not ready yet. Tap to regenerate.");
       }
-      setStatus("");
       scheduleLoginPolling();
     } catch (err) {
-      setStatus(err.message || String(err), "error");
+      showQrPlaceholder(err.message || String(err));
     } finally {
       setLoading(false);
     }

@@ -1,7 +1,7 @@
 #![no_main]
 
 use peekoo_plugin_sdk::prelude::*;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 #[plugin_fn]
 pub fn plugin_init(_: String) -> FnResult<String> {
@@ -20,8 +20,8 @@ struct MijiaBridgeInput {
     payload: Value,
 }
 
-fn python_candidates() -> Vec<&'static str> {
-    vec!["python", "python3"]
+fn python_candidates() -> Vec<String> {
+    vec!["python3".to_string(), "python".to_string()]
 }
 
 fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<String> {
@@ -30,7 +30,16 @@ fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<
         action.to_string(),
         payload_json.to_string(),
     ];
-    let result = peekoo::process::exec(program, &args, Some("."))?;
+    let result = match peekoo::process::exec(program, &args, Some(".")) {
+        Ok(result) => result,
+        Err(err) => {
+            return Ok(json!({
+                "success": false,
+                "message": format!("process exec failed: {err}")
+            })
+            .to_string());
+        }
+    };
     if result.ok {
         return Ok(result.stdout.trim().to_string());
     }
@@ -54,13 +63,11 @@ fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<
 pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String> {
     let action = input.action.trim();
     if action.is_empty() {
-        return Ok(
-            json!({
-                "success": false,
-                "message": "action is required"
-            })
-            .to_string(),
-        );
+        return Ok(json!({
+            "success": false,
+            "message": "action is required"
+        })
+        .to_string());
     }
 
     let payload_json = serde_json::to_string(&input.payload)
@@ -68,13 +75,24 @@ pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String
 
     let mut errors = Vec::new();
     for python in python_candidates() {
-        let out = run_bridge_once(python, action, &payload_json)?;
+        let out = run_bridge_once(&python, action, &payload_json)?;
         if let Ok(parsed) = serde_json::from_str::<Value>(&out) {
             let success = parsed
                 .get("success")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
             if success {
+                return Ok(out);
+            }
+            let message = parsed
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+
+            // If the bridge script actually executed and returned a business error
+            // (e.g. login timeout / pending session missing), return it directly.
+            // Only continue trying other interpreters for spawn-level failures.
+            if !message.contains("Process spawn failed") {
                 return Ok(out);
             }
         }
@@ -84,7 +102,7 @@ pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String
     Ok(json!({
         "success": false,
         "message": format!(
-            "Failed to run Mijia bridge script. Please make sure Python and mijiaAPI are installed.\n{}",
+            "Failed to run Mijia bridge script after trying available Python runtimes.\n{}",
             errors.join("\n")
         )
     })

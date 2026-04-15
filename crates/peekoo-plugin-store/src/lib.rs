@@ -8,6 +8,7 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -190,6 +191,7 @@ impl PluginStoreService {
 
         let install_result = self
             .download_plugin_files(plugin_key, &dest_dir)
+            .and_then(|()| self.install_python_requirements_if_present(plugin_key, &dest_dir))
             .and_then(|()| {
                 registry
                     .install_plugin(&dest_dir)
@@ -247,7 +249,8 @@ impl PluginStoreService {
         );
 
         self.replace_installed_plugin(plugin_key, &dest_dir, registry, |dest_dir| {
-            self.download_plugin_files(plugin_key, dest_dir)
+            self.download_plugin_files(plugin_key, dest_dir)?;
+            self.install_python_requirements_if_present(plugin_key, dest_dir)
         })?;
 
         let local_plugins = registry.discover();
@@ -328,6 +331,72 @@ impl PluginStoreService {
         }
 
         Ok(())
+    }
+
+    fn install_python_requirements_if_present(
+        &self,
+        plugin_key: &str,
+        plugin_dir: &Path,
+    ) -> Result<(), String> {
+        let requirements = plugin_dir.join("companions").join("requirements.txt");
+        if !requirements.exists() {
+            return Ok(());
+        }
+
+        let requirements_path = requirements.to_string_lossy().to_string();
+        let mut attempts = Vec::new();
+        let candidates: Vec<(&str, Vec<&str>)> =
+            vec![("python3", vec![]), ("python", vec![]), ("py", vec!["-3"])];
+
+        // Install dependencies into a per-plugin isolated directory to avoid
+        // cross-plugin conflicts (instead of --user site-packages).
+        let target_dir = plugin_dir.join("python-env");
+        let target_path = target_dir.to_string_lossy().to_string();
+
+        for (program, prefix_args) in candidates {
+            // Best effort: bootstrap pip in case it is missing.
+            let mut ensure_args = prefix_args.clone();
+            ensure_args.extend(["-m", "ensurepip", "--upgrade"]);
+            let _ = Command::new(program).args(&ensure_args).output();
+
+            let mut install_args = prefix_args;
+            install_args.extend([
+                "-m",
+                "pip",
+                "install",
+                "--target",
+                &target_path,
+                "-r",
+                requirements_path.as_str(),
+            ]);
+
+            match Command::new(program).args(&install_args).output() {
+                Ok(output) if output.status.success() => {
+                    info!(
+                        plugin = plugin_key,
+                        requirements = requirements_path.as_str(),
+                        python = program,
+                        "Installed plugin Python requirements"
+                    );
+                    return Ok(());
+                }
+                Ok(output) => {
+                    attempts.push(format!(
+                        "{program} exited {}: {}",
+                        output.status.code().unwrap_or(-1),
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    ));
+                }
+                Err(err) => {
+                    attempts.push(format!("{program} spawn failed: {err}"));
+                }
+            }
+        }
+
+        Err(format!(
+            "Failed to install Python dependencies for plugin '{plugin_key}'. Tried python3/python/py.\n{}",
+            attempts.join("\n")
+        ))
     }
 
     /// Unload a plugin from the registry and delete its directory from
