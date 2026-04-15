@@ -19,25 +19,48 @@ interface AboutDependencies {
   check: () => Promise<UpdateLike | null>;
 }
 
-export async function loadAboutSnapshot(deps: AboutDependencies): Promise<{
+export interface LoadAboutSnapshotResult {
   snapshot: AboutSnapshot;
   update: UpdateLike | null;
-}> {
-  const [appName, currentVersion, update] = await Promise.all([
+  updateError: string | null;
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "Unknown error";
+}
+
+export async function loadAboutSnapshot(deps: AboutDependencies): Promise<LoadAboutSnapshotResult> {
+  const [appNameResult, currentVersionResult, updateResult] = await Promise.allSettled([
     deps.getName(),
     deps.getVersion(),
     deps.check(),
   ]);
 
+  if (appNameResult.status === "rejected") {
+    throw appNameResult.reason;
+  }
+
+  if (currentVersionResult.status === "rejected") {
+    throw currentVersionResult.reason;
+  }
+
+  const update = updateResult.status === "fulfilled" ? updateResult.value : null;
+  const updateError = updateResult.status === "rejected" ? getErrorMessage(updateResult.reason) : null;
+
   return {
     snapshot: {
-      appName,
-      currentVersion,
+      appName: appNameResult.value,
+      currentVersion: currentVersionResult.value,
       availableVersion: update?.version ?? null,
       releaseDate: update?.date ?? null,
       releaseNotes: update?.body ?? null,
       isUpdateAvailable: update !== null,
     },
     update,
+    updateError,
   };
 }

@@ -50,6 +50,7 @@ export function useAboutPanel(): AboutPanelState {
 
       setSnapshot(result.snapshot);
       setUpdate(import.meta.env.PROD ? (result.update as Update | null) : null);
+      setError(result.updateError);
     } catch (nextError) {
       setError(getErrorMessage(nextError));
     } finally {
