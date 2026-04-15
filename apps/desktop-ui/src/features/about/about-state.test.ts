@@ -18,6 +18,7 @@ describe("loadAboutSnapshot", () => {
       isUpdateAvailable: false,
     });
     expect(result.update).toBeNull();
+    expect(result.updateError).toBeNull();
   });
 
   test("returns new version metadata when an update is available", async () => {
@@ -43,5 +44,27 @@ describe("loadAboutSnapshot", () => {
       isUpdateAvailable: true,
     });
     expect(result.update).toEqual(fakeUpdate);
+    expect(result.updateError).toBeNull();
+  });
+
+  test("keeps app details when update check fails", async () => {
+    const result = await loadAboutSnapshot({
+      getName: async () => "Peekoo",
+      getVersion: async () => "0.1.2",
+      check: async () => {
+        throw new Error("Updater unavailable on this platform");
+      },
+    });
+
+    expect(result.snapshot).toEqual({
+      appName: "Peekoo",
+      currentVersion: "0.1.2",
+      availableVersion: null,
+      releaseDate: null,
+      releaseNotes: null,
+      isUpdateAvailable: false,
+    });
+    expect(result.update).toBeNull();
+    expect(result.updateError).toBe("Updater unavailable on this platform");
   });
 });
