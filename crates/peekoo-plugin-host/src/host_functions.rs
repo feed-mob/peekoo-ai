@@ -949,11 +949,7 @@ fn host_process_exec(
                 "ok": false,
                 "statusCode": -1,
                 "stdout": "",
-                "stderr": format!(
-                    "Process spawn failed: program='{}' cwd='{}' ({e})",
-                    resolved_program.display(),
-                    resolved_cwd.display()
-                ),
+                "stderr": format!("Process spawn failed ({e})"),
             })
             .to_string();
             write_output(plugin, outputs, &response)?;
