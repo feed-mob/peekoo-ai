@@ -1,7 +1,6 @@
 #![no_main]
 
 use peekoo_plugin_sdk::prelude::*;
-use peekoo_python_sdk::{all_python_candidates, is_spawn_error_message};
 use serde_json::{Value, json};
 
 #[plugin_fn]
@@ -22,7 +21,11 @@ struct MijiaBridgeInput {
 }
 
 fn python_candidates() -> Vec<String> {
-    all_python_candidates()
+    vec![
+        "python3".to_string(),
+        "python".to_string(),
+        "py".to_string(),
+    ]
 }
 
 fn run_bridge_once(program: &str, action: &str, payload_json: &str) -> FnResult<String> {
@@ -95,7 +98,7 @@ pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String
             // If the bridge script actually executed and returned a business error
             // (e.g. login timeout / pending session missing), return it directly.
             // Only continue trying other interpreters for spawn-level failures.
-            if !is_spawn_error_message(message) {
+            if !message.contains("Process spawn failed") {
                 return Ok(out);
             }
         }
@@ -105,7 +108,7 @@ pub fn tool_mijia_bridge(Json(input): Json<MijiaBridgeInput>) -> FnResult<String
     Ok(json!({
         "success": false,
         "message": format!(
-            "Failed to run Mijia bridge script after trying bundled and system Python runtimes.\n{}",
+            "Failed to run Mijia bridge script after trying available Python runtimes.\n{}",
             errors.join("\n")
         )
     })
