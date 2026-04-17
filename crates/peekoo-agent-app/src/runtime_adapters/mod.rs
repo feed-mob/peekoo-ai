@@ -1,6 +1,20 @@
 use crate::agent_provider_service::ProviderConfig;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NativeLoginLaunch {
+    pub command: String,
+    pub args: Vec<String>,
+    pub cwd: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PreferredLoginMethod {
+    Acp,
+    Native,
+}
 
 pub trait RuntimeAdapter: Send + Sync {
     fn build_terminal_auth_launch(
@@ -105,30 +119,124 @@ pub trait RuntimeAdapter: Send + Sync {
 
         Some(parts.join(" "))
     }
+
+    fn build_native_login_launch(
+        &self,
+        _command: &str,
+        _base_args: &[String],
+        _install_dir: &Path,
+    ) -> Option<NativeLoginLaunch> {
+        None
+    }
+
+    fn build_manual_native_login_command(
+        &self,
+        command: &str,
+        base_args: &[String],
+        install_dir: &Path,
+    ) -> Option<String> {
+        let launch = self.build_native_login_launch(command, base_args, install_dir)?;
+
+        let shell_quote = |s: &str| -> String {
+            if s.contains(|c: char| !c.is_alphanumeric() && !"-_./:@".contains(c)) {
+                format!("'{}'", s.replace('\'', "'\\''"))
+            } else {
+                s.to_string()
+            }
+        };
+
+        let mut parts = vec![shell_quote(&launch.command)];
+        for arg in &launch.args {
+            parts.push(shell_quote(arg));
+        }
+
+        Some(parts.join(" "))
+    }
+
+    fn preferred_login_method(&self) -> Option<PreferredLoginMethod> {
+        None
+    }
 }
 
-/// All runtimes use the same adapter — command, args, and display name
-/// come from the ACP registry database, not hardcoded values.
-pub fn adapter_for_runtime(_runtime_id: &str) -> Box<dyn RuntimeAdapter> {
-    Box::new(CustomRuntimeAdapter)
+/// All runtimes use the same adapter by default; specific runtimes can layer on
+/// native login behavior without changing the generic ACP launch env handling.
+pub fn adapter_for_runtime(runtime_id: &str) -> Box<dyn RuntimeAdapter> {
+    match runtime_id {
+        "kimi" => Box::new(KimiRuntimeAdapter),
+        "qwen-code" => Box::new(QwenCodeRuntimeAdapter),
+        _ => Box::new(CustomRuntimeAdapter),
+    }
 }
 
 pub struct CustomRuntimeAdapter;
 
-impl RuntimeAdapter for CustomRuntimeAdapter {
-    fn build_terminal_auth_launch(
+pub struct KimiRuntimeAdapter;
+
+pub struct QwenCodeRuntimeAdapter;
+
+impl RuntimeAdapter for CustomRuntimeAdapter {}
+
+impl RuntimeAdapter for KimiRuntimeAdapter {
+    fn build_native_login_launch(
         &self,
-        _command: &str,
+        command: &str,
         _base_args: &[String],
-        _method_args: &[String],
-    ) -> Option<(String, Vec<String>)> {
-        None
+        install_dir: &Path,
+    ) -> Option<NativeLoginLaunch> {
+        Some(NativeLoginLaunch {
+            command: command.to_string(),
+            args: vec!["login".to_string()],
+            cwd: install_dir.to_path_buf(),
+        })
+    }
+
+    fn preferred_login_method(&self) -> Option<PreferredLoginMethod> {
+        Some(PreferredLoginMethod::Native)
+    }
+}
+
+impl RuntimeAdapter for QwenCodeRuntimeAdapter {
+    fn build_native_login_launch(
+        &self,
+        command: &str,
+        base_args: &[String],
+        install_dir: &Path,
+    ) -> Option<NativeLoginLaunch> {
+        let mut args = Vec::new();
+        let mut inserted = false;
+
+        for arg in base_args {
+            if arg == "--" {
+                args.push(arg.clone());
+                args.push("auth".to_string());
+                inserted = true;
+                break;
+            }
+            args.push(arg.clone());
+        }
+
+        if !inserted {
+            if !args.is_empty() {
+                args.push("--".to_string());
+            }
+            args.push("auth".to_string());
+        }
+
+        Some(NativeLoginLaunch {
+            command: command.to_string(),
+            args,
+            cwd: install_dir.to_path_buf(),
+        })
+    }
+
+    fn preferred_login_method(&self) -> Option<PreferredLoginMethod> {
+        Some(PreferredLoginMethod::Native)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{CustomRuntimeAdapter, RuntimeAdapter};
+    use super::{CustomRuntimeAdapter, RuntimeAdapter, adapter_for_runtime};
     use crate::agent_provider_service::ProviderConfig;
     use std::collections::HashMap;
 
@@ -183,5 +291,69 @@ mod tests {
             path.starts_with("/tmp:"),
             "PATH should start with the node bin dir, got: {path}"
         );
+    }
+
+    #[test]
+    fn kimi_native_login_uses_installed_binary_with_login_arg() {
+        let adapter = adapter_for_runtime("kimi");
+        let install_dir = std::path::Path::new("/home/test/.peekoo/resources/agents/kimi");
+
+        let launch = adapter
+            .build_native_login_launch(
+                "/home/test/.peekoo/resources/agents/kimi/kimi",
+                &[],
+                install_dir,
+            )
+            .expect("kimi native login launch");
+
+        assert_eq!(launch.command, "/home/test/.peekoo/resources/agents/kimi/kimi");
+        assert_eq!(launch.args, vec!["login".to_string()]);
+        assert_eq!(launch.cwd, install_dir);
+    }
+
+    #[test]
+    fn qwen_native_login_appends_auth_to_npx_command() {
+        let adapter = adapter_for_runtime("qwen-code");
+        let install_dir = std::path::Path::new("/home/test/.peekoo/resources/agents/qwen-code");
+
+        let launch = adapter
+            .build_native_login_launch(
+                "/home/test/.peekoo/resources/node/bin/npm",
+                &[
+                    "exec".to_string(),
+                    "@qwen-code/qwen-code".to_string(),
+                    "--".to_string(),
+                    "acp".to_string(),
+                    "--stdio".to_string(),
+                ],
+                install_dir,
+            )
+            .expect("qwen native login launch");
+
+        assert_eq!(launch.command, "/home/test/.peekoo/resources/node/bin/npm");
+        assert_eq!(
+            launch.args,
+            vec![
+                "exec".to_string(),
+                "@qwen-code/qwen-code".to_string(),
+                "--".to_string(),
+                "auth".to_string()
+            ]
+        );
+        assert_eq!(launch.cwd, install_dir);
+    }
+
+    #[test]
+    fn kimi_prefers_native_login() {
+        let adapter = adapter_for_runtime("kimi");
+
+        assert_eq!(adapter.preferred_login_method(), Some(super::PreferredLoginMethod::Native));
+    }
+
+    #[test]
+    fn custom_runtime_has_no_login_preference() {
+        let adapter = adapter_for_runtime("custom-runtime");
+
+        assert_eq!(adapter.preferred_login_method(), None);
     }
 }

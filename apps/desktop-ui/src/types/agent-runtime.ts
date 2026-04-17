@@ -47,6 +47,8 @@ export const authMethodSchema = z.object({
   manualLoginCommand: z.string().nullish(),
 });
 
+export const preferredLoginMethodSchema = z.enum(["acp", "native"]);
+
 export const runtimeAuthenticationStatusSchema = z.enum([
   "authenticated",
   "terminal_login_started",
@@ -60,6 +62,8 @@ export const runtimeAuthenticationResultSchema = z.object({
 export const runtimeInspectionResultSchema = z.object({
   runtimeId: z.string(),
   authMethods: z.array(authMethodSchema),
+  nativeLoginCommand: z.string().nullish(),
+  preferredLoginMethod: preferredLoginMethodSchema.nullish(),
   authRequired: z.boolean(),
   discoveredModels: z.array(discoveredModelSchema),
   currentModelId: z.string().nullish(),
@@ -70,6 +74,7 @@ export const runtimeInspectionResultSchema = z.object({
 
 export type DiscoveredModel = z.infer<typeof discoveredModelSchema>;
 export type AuthMethod = z.infer<typeof authMethodSchema>;
+export type PreferredLoginMethod = z.infer<typeof preferredLoginMethodSchema>;
 export type RuntimeAuthenticationStatus = z.infer<typeof runtimeAuthenticationStatusSchema>;
 export type RuntimeAuthenticationResult = z.infer<typeof runtimeAuthenticationResultSchema>;
 export type RuntimeInspectionResult = z.infer<typeof runtimeInspectionResultSchema>;

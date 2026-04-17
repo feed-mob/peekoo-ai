@@ -214,6 +214,18 @@ export function useAgentProviders() {
     }
   }, [refresh]);
 
+  const launchNativeRuntimeLogin = useCallback(async (runtimeId: string): Promise<RuntimeAuthenticationResult> => {
+    try {
+      const raw = await invoke<unknown>("launch_native_runtime_login", { runtimeId });
+      const result = runtimeAuthenticationResultSchema.parse(raw);
+      await refresh();
+      return result;
+    } catch (err) {
+      setError(String(err));
+      throw err;
+    }
+  }, [refresh]);
+
   // Refresh runtime capabilities (re-inspect)
   const refreshRuntimeCapabilities = useCallback(async (runtimeId: string): Promise<RuntimeInspectionResult> => {
     try {
@@ -282,6 +294,7 @@ export function useAgentProviders() {
     removeCustomProvider,
     inspectRuntime,
     authenticateRuntime,
+    launchNativeRuntimeLogin,
     refreshRuntimeCapabilities,
     getRuntimeDefaults,
   };

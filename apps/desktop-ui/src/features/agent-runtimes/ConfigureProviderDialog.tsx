@@ -41,7 +41,7 @@ import {
   type RuntimeInspectionResult,
   type RuntimeAuthenticationResult,
 } from "@/types/agent-runtime";
-import { getProviderAuthState } from "./provider-auth-state";
+import { getProviderAuthState, getProviderLoginPresentation } from "./provider-auth-state";
 
 interface ConfigureProviderDialogProps {
   provider: RuntimeInfo | null;
@@ -50,6 +50,7 @@ interface ConfigureProviderDialogProps {
   onSave: (providerId: string, config: RuntimeConfig) => Promise<void>;
   onInspect: (runtimeId: string) => Promise<RuntimeInspectionResult>;
   onAuthenticate: (runtimeId: string, methodId: string) => Promise<RuntimeAuthenticationResult>;
+  onNativeLogin: (runtimeId: string) => Promise<RuntimeAuthenticationResult>;
   onRefreshCapabilities: (runtimeId: string) => Promise<RuntimeInspectionResult>;
   onTest: (providerId: string) => Promise<{
     success: boolean;
@@ -66,6 +67,7 @@ export function ConfigureProviderDialog({
   onSave,
   onInspect,
   onAuthenticate,
+  onNativeLogin,
   onRefreshCapabilities,
   onTest,
 }: ConfigureProviderDialogProps) {
@@ -117,7 +119,8 @@ export function ConfigureProviderDialog({
       onInspect(provider.providerId)
         .then((result) => {
           setInspection(result);
-          setShowAuthMethods(result.authRequired);
+          const loginPresentation = getProviderLoginPresentation(result);
+          setShowAuthMethods(loginPresentation.primaryLoginMethod === "acp" && result.authRequired);
           // Prefer the saved default model; only fall back for the picker UI.
           const savedModel = provider.config.defaultModel || "";
           const discoveredIds = new Set(result.discoveredModels.map((model) => model.modelId));
@@ -171,7 +174,10 @@ export function ConfigureProviderDialog({
     try {
       const result = await onRefreshCapabilities(provider.providerId);
       setInspection(result);
-      setShowAuthMethods((current) => result.authRequired || current);
+      const loginPresentation = getProviderLoginPresentation(result);
+      setShowAuthMethods((current) =>
+        loginPresentation.primaryLoginMethod === "acp" ? result.authRequired || current : current,
+      );
       // Refresh the picker options without overwriting the saved default model.
       const discoveredIds = new Set(result.discoveredModels.map((model) => model.modelId));
       if (!selectedModel || !discoveredIds.has(selectedModel)) {
@@ -207,6 +213,26 @@ export function ConfigureProviderDialog({
         setShowAuthMethods(true);
         pollForAuthCompletion(provider.providerId);
       }
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleNativeLogin = async () => {
+    if (!provider) return;
+
+    setIsAuthenticating(true);
+    setError(null);
+    setTestResult(null);
+    try {
+      const result = await onNativeLogin(provider.providerId);
+      setTestResult({
+        success: true,
+        message: result.message,
+      });
+      pollForAuthCompletion(provider.providerId);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -300,7 +326,14 @@ export function ConfigureProviderDialog({
 
   const hasAuthMethods = (inspection?.authMethods.length ?? 0) > 0;
   const { requiresAuth, loginAvailable } = getProviderAuthState(inspection);
-  const authMethodsVisible = requiresAuth || showAuthMethods;
+  const nativeLoginCommand = inspection?.nativeLoginCommand ?? null;
+  const {
+    primaryLoginMethod,
+    shouldShowNativeLogin,
+    shouldShowAcpLogin,
+    hasAcpFallback,
+  } = getProviderLoginPresentation(inspection);
+  const authMethodsVisible = shouldShowAcpLogin || (hasAcpFallback && showAuthMethods);
   const discoveredModels = inspection?.discoveredModels || [];
 
   return (
@@ -349,28 +382,84 @@ export function ConfigureProviderDialog({
           </div>
 
           {/* Auth Section */}
-          {hasAuthMethods && (
+          {(hasAuthMethods || nativeLoginCommand) && (
             <div className="space-y-3 border-t border-glass-border pt-4">
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
                   <Lock className="h-4 w-4" />
                   {t("agentRuntimes.configureDialog.authSection")}
                 </Label>
-                {requiresAuth && (
-                  <span className="text-xs text-yellow-700 dark:text-yellow-400">{t("agentRuntimes.configureDialog.loginRequired")}</span>
-                )}
-                {loginAvailable && (
+                <div className="flex items-center gap-2">
+                  {requiresAuth && (
+                    <span className="text-xs text-yellow-700 dark:text-yellow-400">{t("agentRuntimes.configureDialog.loginRequired")}</span>
+                  )}
                   <Button
                     size="sm"
                     variant="ghost"
                     className="h-auto px-2 py-1 text-xs text-text-muted hover:text-text-primary"
-                    onClick={() => setShowAuthMethods((current) => !current)}
+                    onClick={() => void handleRefreshCapabilities()}
+                    disabled={isInspecting}
                   >
-                    {authMethodsVisible ? t("agentRuntimes.configureDialog.hideLoginOptions") : t("agentRuntimes.configureDialog.loginAvailable")}
+                    {t("agentRuntimes.configureDialog.refreshStatus")}
                   </Button>
-                )}
+                  {hasAcpFallback && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-auto px-2 py-1 text-xs text-text-muted hover:text-text-primary"
+                      onClick={() => setShowAuthMethods((current) => !current)}
+                    >
+                      {authMethodsVisible
+                        ? t("agentRuntimes.configureDialog.hideAdvancedLoginOptions")
+                        : t("agentRuntimes.configureDialog.showAdvancedLoginOptions")}
+                    </Button>
+                  )}
+                </div>
               </div>
-              
+
+              {shouldShowNativeLogin && nativeLoginCommand && (
+                <div className="rounded-md border border-glass-border p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-medium text-text-primary">
+                        {t("agentRuntimes.configureDialog.nativeLoginTitle")}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {t("agentRuntimes.configureDialog.nativeLoginDescription")}
+                      </div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={() => void handleNativeLogin()}
+                      disabled={isAuthenticating}
+                    >
+                      {isAuthenticating ? (
+                        <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                      ) : null}
+                      {t("agentRuntimes.configureDialog.openTerminalToLogin")}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-md bg-space-deep px-3 py-2">
+                    <code className="flex-1 text-xs text-text-secondary break-all font-mono">
+                      {nativeLoginCommand}
+                    </code>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 w-7 p-0 shrink-0"
+                      onClick={() => void handleCopyCommand(nativeLoginCommand, "native-login")}
+                    >
+                      {copiedMethodId === "native-login" ? (
+                        <Check className="h-3.5 w-3.5 text-green-700 dark:text-green-400" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               {authMethodsVisible ? (
                 <div className="space-y-2">
                   {inspection?.authMethods.map((method) => (
@@ -417,9 +506,11 @@ export function ConfigureProviderDialog({
                   ))}
                 </div>
               ) : (
-                <p className="text-xs text-text-muted">
-                  {t("agentRuntimes.configureDialog.loginAvailable")}
-                </p>
+                primaryLoginMethod === "acp" && loginAvailable ? (
+                  <p className="text-xs text-text-muted">
+                    {t("agentRuntimes.configureDialog.loginAvailable")}
+                  </p>
+                ) : null
               )}
             </div>
           )}
