@@ -315,8 +315,8 @@ fn cached_inspection_supports_login_preferences(
     runtime_id: &str,
     inspection: &RuntimeInspectionResult,
 ) -> bool {
-    let expected_preference = crate::runtime_adapters::adapter_for_runtime(runtime_id)
-        .preferred_login_method();
+    let expected_preference =
+        crate::runtime_adapters::adapter_for_runtime(runtime_id).preferred_login_method();
 
     match expected_preference {
         Some(expected) => {
@@ -926,10 +926,11 @@ impl AgentProviderService {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
 
-        if use_cache && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
-            if cached_inspection_supports_login_preferences(runtime_id, &cached) {
-                return Ok(cached);
-            }
+        if use_cache
+            && let Some(cached) = self.cached_runtime_inspection(runtime_id)?
+            && cached_inspection_supports_login_preferences(runtime_id, &cached)
+        {
+            return Ok(cached);
         }
 
         // Get runtime info
@@ -964,8 +965,11 @@ impl AgentProviderService {
         let manual_login_args = args.clone();
         let install_dir = self.runtime_install_dir(runtime_id);
         let inspection_adapter = crate::runtime_adapters::adapter_for_runtime(runtime_id);
-        let native_login_command = inspection_adapter
-            .build_manual_native_login_command(&manual_login_command, &manual_login_args, &install_dir);
+        let native_login_command = inspection_adapter.build_manual_native_login_command(
+            &manual_login_command,
+            &manual_login_args,
+            &install_dir,
+        );
         let preferred_login_method = inspection_adapter.preferred_login_method();
         let mut backend = AcpBackend::new(command, args);
 
@@ -1144,7 +1148,10 @@ impl AgentProviderService {
     }
 
     pub fn runtime_install_dir(&self, runtime_id: &str) -> std::path::PathBuf {
-        self.data_dir.join("resources").join("agents").join(runtime_id)
+        self.data_dir
+            .join("resources")
+            .join("agents")
+            .join(runtime_id)
     }
 
     /// Set the default provider
@@ -2417,7 +2424,10 @@ mod tests {
             error: Some("Authentication required".to_string()),
         };
 
-        assert!(!cached_inspection_supports_login_preferences("kimi", &inspection));
+        assert!(!cached_inspection_supports_login_preferences(
+            "kimi",
+            &inspection
+        ));
     }
 
     #[test]
@@ -2435,7 +2445,10 @@ mod tests {
             error: None,
         };
 
-        assert!(cached_inspection_supports_login_preferences("opencode", &inspection));
+        assert!(cached_inspection_supports_login_preferences(
+            "opencode",
+            &inspection
+        ));
     }
 
     #[test]

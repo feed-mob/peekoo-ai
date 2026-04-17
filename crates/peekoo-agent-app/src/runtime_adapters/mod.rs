@@ -306,7 +306,10 @@ mod tests {
             )
             .expect("kimi native login launch");
 
-        assert_eq!(launch.command, "/home/test/.peekoo/resources/agents/kimi/kimi");
+        assert_eq!(
+            launch.command,
+            "/home/test/.peekoo/resources/agents/kimi/kimi"
+        );
         assert_eq!(launch.args, vec!["login".to_string()]);
         assert_eq!(launch.cwd, install_dir);
     }
@@ -347,7 +350,10 @@ mod tests {
     fn kimi_prefers_native_login() {
         let adapter = adapter_for_runtime("kimi");
 
-        assert_eq!(adapter.preferred_login_method(), Some(super::PreferredLoginMethod::Native));
+        assert_eq!(
+            adapter.preferred_login_method(),
+            Some(super::PreferredLoginMethod::Native)
+        );
     }
 
     #[test]

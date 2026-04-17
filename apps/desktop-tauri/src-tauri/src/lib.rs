@@ -98,7 +98,10 @@ fn write_terminal_auth_script(
     let content = {
         let mut lines = vec!["@echo off".to_string()];
         if let Some(cwd) = cwd {
-            lines.push(format!("cd /d {}", quote_windows_cmd(&cwd.to_string_lossy())));
+            lines.push(format!(
+                "cd /d {}",
+                quote_windows_cmd(&cwd.to_string_lossy())
+            ));
         }
         for (key, value) in env_vars {
             lines.push(format!("set \"{}={}\"", key, value));
@@ -185,7 +188,12 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
         match Command::new(terminal)
             .args(build_args(launch))
             .envs(&launch.env)
-            .current_dir(launch.cwd.as_deref().unwrap_or_else(|| std::path::Path::new(".")))
+            .current_dir(
+                launch
+                    .cwd
+                    .as_deref()
+                    .unwrap_or_else(|| std::path::Path::new(".")),
+            )
             .spawn()
         {
             Ok(_) => return Ok(()),
@@ -854,9 +862,9 @@ async fn authenticate_runtime(
 ) -> Result<RuntimeAuthenticationResult, String> {
     map_runtime_auth_action(
         state
-        .app
-        .authenticate_runtime(&runtime_id, &method_id)
-        .await?,
+            .app
+            .authenticate_runtime(&runtime_id, &method_id)
+            .await?,
     )
 }
 
