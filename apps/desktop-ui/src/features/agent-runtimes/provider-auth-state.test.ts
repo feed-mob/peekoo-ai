@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getProviderAuthState, getProviderStatusText } from "./provider-auth-state";
+import { getProviderAuthState, getProviderLoginPresentation, getProviderStatusText } from "./provider-auth-state";
 
 const mockT = ((key: string) => key) as import("i18next").TFunction;
 
@@ -23,6 +23,48 @@ describe("getProviderAuthState", () => {
     expect(state.requiresAuth).toBe(true);
     expect(state.loginAvailable).toBe(false);
   });
+
+  test("treats native login as available even without ACP auth methods", () => {
+    const state = getProviderAuthState({
+      authRequired: false,
+      authMethods: [],
+      nativeLoginCommand: "kimi login",
+      preferredLoginMethod: "native",
+    });
+
+    expect(state.requiresAuth).toBe(false);
+    expect(state.loginAvailable).toBe(true);
+  });
+});
+
+describe("getProviderLoginPresentation", () => {
+  test("prefers native login when backend marks it preferred", () => {
+    const presentation = getProviderLoginPresentation({
+      authRequired: true,
+      authMethods: [{ id: "browser", name: "Browser Login" }],
+      nativeLoginCommand: "kimi login",
+      preferredLoginMethod: "native",
+    });
+
+    expect(presentation.primaryLoginMethod).toBe("native");
+    expect(presentation.shouldShowNativeLogin).toBe(true);
+    expect(presentation.shouldShowAcpLogin).toBe(false);
+    expect(presentation.hasAcpFallback).toBe(true);
+  });
+
+  test("uses ACP login as primary when native is not preferred", () => {
+    const presentation = getProviderLoginPresentation({
+      authRequired: true,
+      authMethods: [{ id: "browser", name: "Browser Login" }],
+      nativeLoginCommand: "some login",
+      preferredLoginMethod: "acp",
+    });
+
+    expect(presentation.primaryLoginMethod).toBe("acp");
+    expect(presentation.shouldShowNativeLogin).toBe(false);
+    expect(presentation.shouldShowAcpLogin).toBe(true);
+    expect(presentation.hasAcpFallback).toBe(false);
+  });
 });
 
 describe("getProviderStatusText", () => {
@@ -31,6 +73,8 @@ describe("getProviderStatusText", () => {
       getProviderStatusText("ready", {
         authRequired: false,
         authMethods: [{ id: "browser", name: "Browser Login" }],
+        nativeLoginCommand: null,
+        preferredLoginMethod: null,
       }, null, mockT),
     ).toBe("agentRuntimes.status.loginAvailable");
   });
@@ -40,6 +84,8 @@ describe("getProviderStatusText", () => {
       getProviderStatusText("ready", {
         authRequired: true,
         authMethods: [{ id: "browser", name: "Browser Login" }],
+        nativeLoginCommand: null,
+        preferredLoginMethod: null,
       }, null, mockT),
     ).toBe("agentRuntimes.status.loginRequired");
   });

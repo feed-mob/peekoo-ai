@@ -755,6 +755,18 @@ impl AgentApplication {
         .map_err(|e| format!("Runtime authentication error: {e}"))
     }
 
+    pub async fn launch_native_runtime_login(
+        &self,
+        runtime_id: &str,
+    ) -> Result<crate::agent_provider_commands::RuntimeAuthenticationAction, String> {
+        crate::agent_provider_commands::launch_native_runtime_login(
+            &self.provider_service,
+            runtime_id.to_string(),
+        )
+        .await
+        .map_err(|e| format!("Runtime native login error: {e}"))
+    }
+
     /// Refresh runtime capabilities by re-inspecting
     pub async fn refresh_runtime_capabilities(
         &self,

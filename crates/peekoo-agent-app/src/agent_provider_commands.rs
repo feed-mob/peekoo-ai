@@ -11,6 +11,7 @@ use crate::agent_provider_service::{
 use crate::runtime_adapters::adapter_for_runtime;
 use agent_client_protocol as acp;
 use serde::{Deserialize, Serialize};
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -20,6 +21,7 @@ pub struct RuntimeTerminalAuthLaunch {
     pub command: String,
     pub args: Vec<String>,
     pub env: std::collections::HashMap<String, String>,
+    pub cwd: Option<PathBuf>,
     pub message: String,
 }
 
@@ -66,6 +68,23 @@ fn decorate_authenticate_runtime_error(
     }
 
     error
+}
+
+async fn run_authentication_phase_with_timeout<T, F>(
+    runtime_id: &str,
+    phase: &str,
+    timeout: std::time::Duration,
+    future: F,
+) -> anyhow::Result<T>
+where
+    F: Future<Output = anyhow::Result<T>>,
+{
+    match tokio::time::timeout(timeout, future).await {
+        Ok(result) => result,
+        Err(_) => Err(anyhow::anyhow!(
+            "Runtime {runtime_id} authentication timed out during {phase}"
+        )),
+    }
 }
 
 /// Initialize the provider service
@@ -230,7 +249,16 @@ pub async fn authenticate_runtime(
         mcp_servers: Vec::new(),
     };
 
-    match backend.initialize(backend_config).await {
+    let auth_timeout = std::time::Duration::from_secs(20);
+
+    match run_authentication_phase_with_timeout(
+        &runtime_id,
+        "initialize",
+        auth_timeout,
+        backend.initialize(backend_config),
+    )
+    .await
+    {
         Ok(()) => {}
         Err(error) if is_auth_required_error(&error) => {
             tracing::info!(
@@ -283,6 +311,7 @@ pub async fn authenticate_runtime(
                 command: terminal_command,
                 args: terminal_args,
                 env: terminal_env,
+                cwd: None,
                 message: format!(
                     "Terminal login started for {}. Complete the login in the terminal window, then click Refresh.",
                     runtime.display_name
@@ -291,16 +320,24 @@ pub async fn authenticate_runtime(
         ));
     }
 
-    let auth_result = backend
-        .authenticate(&method_id)
-        .await
-        .map_err(|error| decorate_authenticate_runtime_error(&runtime_id, &method_id, error));
+    let auth_result = run_authentication_phase_with_timeout(
+        &runtime_id,
+        "authenticate",
+        auth_timeout,
+        backend.authenticate(&method_id),
+    )
+    .await
+    .map_err(|error| decorate_authenticate_runtime_error(&runtime_id, &method_id, error));
 
     auth_result?;
-    backend
-        .refresh_session_capabilities()
-        .await
-        .map_err(|error| {
+    run_authentication_phase_with_timeout(
+        &runtime_id,
+        "refresh",
+        auth_timeout,
+        backend.refresh_session_capabilities(),
+    )
+    .await
+    .map_err(|error| {
             if is_auth_required_error(&error) {
                 anyhow::anyhow!(
                     "Runtime {} started authentication with {}, but it still reports login is required. Finish the runtime login flow and refresh again.",
@@ -327,6 +364,45 @@ pub async fn authenticate_runtime(
     })
 }
 
+pub async fn launch_native_runtime_login(
+    service: &AgentProviderService,
+    runtime_id: String,
+) -> anyhow::Result<RuntimeAuthenticationAction> {
+    let runtime = service
+        .get_runtime(&runtime_id)?
+        .ok_or_else(|| anyhow::anyhow!("Runtime not found: {}", runtime_id))?;
+
+    if !runtime.is_installed {
+        return Err(anyhow::anyhow!("Runtime not installed: {}", runtime_id));
+    }
+
+    let (command, args) = service.get_runtime_command(&runtime_id).await?;
+    let install_dir = service.runtime_install_dir(&runtime_id);
+    let config = service.get_provider_config(&runtime_id)?;
+    let adapter = adapter_for_runtime(&runtime_id);
+    let launch = adapter
+        .build_native_login_launch(&command, &args, &install_dir)
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "Runtime {} does not support native terminal login in Peekoo yet.",
+                runtime_id
+            )
+        })?;
+
+    Ok(RuntimeAuthenticationAction::LaunchTerminal(
+        RuntimeTerminalAuthLaunch {
+            command: launch.command,
+            args: launch.args,
+            env: adapter.build_launch_env(&config, service.node_bin_dir()),
+            cwd: Some(launch.cwd),
+            message: format!(
+                "Terminal login started for {}. Complete the login in the terminal window, then click Refresh.",
+                runtime.display_name
+            ),
+        },
+    ))
+}
+
 /// Refresh runtime capabilities (re-inspect)
 pub async fn refresh_runtime_capabilities(
     service: &AgentProviderService,
@@ -338,6 +414,8 @@ pub async fn refresh_runtime_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::params;
+    use std::time::Duration;
     use tempfile::TempDir;
 
     fn create_test_service() -> (AgentProviderService, TempDir) {
@@ -456,5 +534,72 @@ mod tests {
 
         // Should return a valid check result
         assert!(!check.missing_components.contains(&"Invalid".to_string()));
+    }
+
+    #[tokio::test]
+    async fn native_login_launches_registry_installed_kimi_from_install_dir() {
+        let (service, temp_dir) = create_test_service();
+        let install_root = temp_dir
+            .path()
+            .join("data")
+            .join("resources")
+            .join("agents")
+            .join("kimi");
+        std::fs::create_dir_all(&install_root).unwrap();
+
+        {
+            let conn = service.test_conn();
+            conn.execute(
+                "INSERT INTO agent_runtimes (
+                    id, runtime_type, display_name, description, command, args_json,
+                    installation_method, is_bundled, is_installed, is_default,
+                    status, status_message, config_json, created_at, updated_at
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'binary', 0, 1, 0, 'ready', NULL, '{}', ?7, ?7)",
+                params![
+                    "provider_kimi",
+                    "kimi",
+                    "Kimi CLI",
+                    "Moonshot",
+                    install_root.join("kimi").to_string_lossy().to_string(),
+                    "[]",
+                    "2026-04-17T00:00:00Z"
+                ],
+            )
+            .unwrap();
+        }
+
+        let action = launch_native_runtime_login(&service, "kimi".to_string())
+            .await
+            .expect("native login action");
+
+        match action {
+            RuntimeAuthenticationAction::LaunchTerminal(launch) => {
+                assert_eq!(launch.command, install_root.join("kimi").to_string_lossy());
+                assert_eq!(launch.args, vec!["login".to_string()]);
+                assert_eq!(launch.cwd.as_deref(), Some(install_root.as_path()));
+            }
+            other => panic!("expected terminal launch, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn authentication_phase_timeout_returns_targeted_error() {
+        let result = run_authentication_phase_with_timeout(
+            "kimi",
+            "initialize",
+            Duration::from_millis(10),
+            async {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                anyhow::Ok(())
+            },
+        )
+        .await;
+
+        let error = result.expect_err("timeout expected");
+        assert!(
+            error
+                .to_string()
+                .contains("Runtime kimi authentication timed out during initialize")
+        );
     }
 }

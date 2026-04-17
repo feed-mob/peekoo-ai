@@ -67,6 +67,7 @@ fn write_terminal_auth_script(
     command: &str,
     args: &[String],
     env_vars: &std::collections::HashMap<String, String>,
+    cwd: Option<&std::path::Path>,
 ) -> Result<PathBuf, String> {
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -80,6 +81,9 @@ fn write_terminal_auth_script(
     #[cfg(target_os = "macos")]
     let content = {
         let mut lines = vec!["#!/bin/bash".to_string()];
+        if let Some(cwd) = cwd {
+            lines.push(format!("cd {}", quote_posix_shell(&cwd.to_string_lossy())));
+        }
         for (key, value) in env_vars {
             lines.push(format!("export {}={}", key, quote_posix_shell(value)));
         }
@@ -93,6 +97,12 @@ fn write_terminal_auth_script(
     #[cfg(target_os = "windows")]
     let content = {
         let mut lines = vec!["@echo off".to_string()];
+        if let Some(cwd) = cwd {
+            lines.push(format!(
+                "cd /d {}",
+                quote_windows_cmd(&cwd.to_string_lossy())
+            ));
+        }
         for (key, value) in env_vars {
             lines.push(format!("set \"{}={}\"", key, value));
         }
@@ -178,6 +188,12 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
         match Command::new(terminal)
             .args(build_args(launch))
             .envs(&launch.env)
+            .current_dir(
+                launch
+                    .cwd
+                    .as_deref()
+                    .unwrap_or_else(|| std::path::Path::new(".")),
+            )
             .spawn()
         {
             Ok(_) => return Ok(()),
@@ -196,7 +212,13 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
 
 #[cfg(target_os = "macos")]
 fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
-    let script = write_terminal_auth_script("command", &launch.command, &launch.args, &launch.env)?;
+    let script = write_terminal_auth_script(
+        "command",
+        &launch.command,
+        &launch.args,
+        &launch.env,
+        launch.cwd.as_deref(),
+    )?;
     Command::new("open")
         .arg("-a")
         .arg("Terminal")
@@ -208,7 +230,13 @@ fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String
 
 #[cfg(target_os = "windows")]
 fn launch_terminal_auth(launch: &RuntimeTerminalAuthLaunch) -> Result<(), String> {
-    let script = write_terminal_auth_script("cmd", &launch.command, &launch.args, &launch.env)?;
+    let script = write_terminal_auth_script(
+        "cmd",
+        &launch.command,
+        &launch.args,
+        &launch.env,
+        launch.cwd.as_deref(),
+    )?;
     Command::new("cmd")
         .args(["/C", "start", "", script.to_string_lossy().as_ref()])
         .spawn()
@@ -832,11 +860,18 @@ async fn authenticate_runtime(
     method_id: String,
     state: State<'_, AgentState>,
 ) -> Result<RuntimeAuthenticationResult, String> {
-    match state
-        .app
-        .authenticate_runtime(&runtime_id, &method_id)
-        .await?
-    {
+    map_runtime_auth_action(
+        state
+            .app
+            .authenticate_runtime(&runtime_id, &method_id)
+            .await?,
+    )
+}
+
+fn map_runtime_auth_action(
+    action: peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction,
+) -> Result<RuntimeAuthenticationResult, String> {
+    match action {
         peekoo_agent_app::agent_provider_commands::RuntimeAuthenticationAction::Authenticated {
             message,
         } => Ok(RuntimeAuthenticationResult {
@@ -853,6 +888,14 @@ async fn authenticate_runtime(
             })
         }
     }
+}
+
+#[tauri::command]
+async fn launch_native_runtime_login(
+    runtime_id: String,
+    state: State<'_, AgentState>,
+) -> Result<RuntimeAuthenticationResult, String> {
+    map_runtime_auth_action(state.app.launch_native_runtime_login(&runtime_id).await?)
 }
 
 #[tauri::command]
@@ -1974,6 +2017,7 @@ pub fn run() {
             set_default_agent_runtime,
             inspect_runtime,
             authenticate_runtime,
+            launch_native_runtime_login,
             refresh_runtime_capabilities,
             // ACP Registry Commands
             get_registry_agents,

@@ -1,15 +1,36 @@
 import type { RuntimeInspectionResult, RuntimeStatus } from "@/types/agent-runtime";
 import type { TFunction } from "i18next";
 
-type ProviderInspectionLike = Pick<RuntimeInspectionResult, "authRequired" | "authMethods"> | null | undefined;
+type ProviderInspectionLike = Pick<RuntimeInspectionResult, "authRequired" | "authMethods" | "nativeLoginCommand" | "preferredLoginMethod"> | null | undefined;
 
 export function getProviderAuthState(inspection: ProviderInspectionLike) {
   const requiresAuth = inspection?.authRequired === true;
-  const loginAvailable = !requiresAuth && (inspection?.authMethods.length ?? 0) > 0;
+  const loginAvailable = !requiresAuth && ((inspection?.authMethods.length ?? 0) > 0 || !!inspection?.nativeLoginCommand);
 
   return {
     requiresAuth,
     loginAvailable,
+  };
+}
+
+export function getProviderLoginPresentation(inspection: ProviderInspectionLike) {
+  const hasAcpLogin = (inspection?.authMethods.length ?? 0) > 0;
+  const hasNativeLogin = !!inspection?.nativeLoginCommand;
+  const preferredLoginMethod = inspection?.preferredLoginMethod ?? null;
+
+  const primaryLoginMethod = preferredLoginMethod === "native" && hasNativeLogin
+    ? "native"
+    : hasAcpLogin
+      ? "acp"
+      : hasNativeLogin
+        ? "native"
+        : null;
+
+  return {
+    primaryLoginMethod,
+    shouldShowNativeLogin: hasNativeLogin && primaryLoginMethod === "native",
+    shouldShowAcpLogin: hasAcpLogin && primaryLoginMethod === "acp",
+    hasAcpFallback: hasAcpLogin && primaryLoginMethod !== "acp",
   };
 }
 

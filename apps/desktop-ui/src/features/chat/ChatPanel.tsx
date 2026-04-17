@@ -29,6 +29,7 @@ export function ChatPanel() {
     getRuntimeDefaults,
     inspectRuntime,
     authenticateRuntime,
+    launchNativeRuntimeLogin,
     refreshRuntimeCapabilities,
     updateConfig,
     testConnection,
@@ -239,6 +240,7 @@ export function ChatPanel() {
         }}
         onInspect={inspectRuntime}
         onAuthenticate={authenticateRuntime}
+        onNativeLogin={launchNativeRuntimeLogin}
         onRefreshCapabilities={async (runtimeId) => {
           const result = await refreshRuntimeCapabilities(runtimeId);
           if (!result.authRequired) {

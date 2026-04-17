@@ -32,6 +32,7 @@ export function AgentProviderPanel() {
     addCustomProvider,
     inspectRuntime,
     authenticateRuntime,
+    launchNativeRuntimeLogin,
     refreshRuntimeCapabilities,
   } = useAgentProviders();
 
@@ -304,6 +305,7 @@ export function AgentProviderPanel() {
         onSave={updateConfig}
         onInspect={inspectRuntime}
         onAuthenticate={authenticateRuntime}
+        onNativeLogin={launchNativeRuntimeLogin}
         onRefreshCapabilities={refreshRuntimeCapabilities}
         onTest={testConnection}
       />

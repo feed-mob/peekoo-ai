@@ -266,6 +266,8 @@ pub struct AuthMethodInfo {
 pub struct RuntimeInspectionResult {
     pub runtime_id: String,
     pub auth_methods: Vec<AuthMethodInfo>,
+    pub native_login_command: Option<String>,
+    pub preferred_login_method: Option<crate::runtime_adapters::PreferredLoginMethod>,
     pub auth_required: bool,
     pub discovered_models: Vec<DiscoveredModelInfo>,
     pub current_model_id: Option<String>,
@@ -306,6 +308,22 @@ fn test_connection_result_from_inspection(
         message: "Connection successful".to_string(),
         available_models,
         provider_version: None,
+    }
+}
+
+fn cached_inspection_supports_login_preferences(
+    runtime_id: &str,
+    inspection: &RuntimeInspectionResult,
+) -> bool {
+    let expected_preference =
+        crate::runtime_adapters::adapter_for_runtime(runtime_id).preferred_login_method();
+
+    match expected_preference {
+        Some(expected) => {
+            inspection.preferred_login_method == Some(expected)
+                && inspection.native_login_command.is_some()
+        }
+        None => true,
     }
 }
 
@@ -908,7 +926,10 @@ impl AgentProviderService {
         use peekoo_agent::backend::acp::is_auth_required_error;
         use peekoo_agent::backend::{AcpBackend, AgentBackend, BackendConfig};
 
-        if use_cache && let Some(cached) = self.cached_runtime_inspection(runtime_id)? {
+        if use_cache
+            && let Some(cached) = self.cached_runtime_inspection(runtime_id)?
+            && cached_inspection_supports_login_preferences(runtime_id, &cached)
+        {
             return Ok(cached);
         }
 
@@ -928,6 +949,8 @@ impl AgentProviderService {
             return Ok(RuntimeInspectionResult {
                 runtime_id: runtime_id.to_string(),
                 auth_methods: vec![],
+                native_login_command: None,
+                preferred_login_method: None,
                 auth_required: false,
                 discovered_models: vec![],
                 current_model_id: None,
@@ -940,6 +963,14 @@ impl AgentProviderService {
         // Create ACP backend for temporary inspection
         let manual_login_command = command.clone();
         let manual_login_args = args.clone();
+        let install_dir = self.runtime_install_dir(runtime_id);
+        let inspection_adapter = crate::runtime_adapters::adapter_for_runtime(runtime_id);
+        let native_login_command = inspection_adapter.build_manual_native_login_command(
+            &manual_login_command,
+            &manual_login_args,
+            &install_dir,
+        );
+        let preferred_login_method = inspection_adapter.preferred_login_method();
         let mut backend = AcpBackend::new(command, args);
 
         // Prepare backend config
@@ -1008,6 +1039,8 @@ impl AgentProviderService {
                 let inspection = RuntimeInspectionResult {
                     runtime_id: runtime_id.to_string(),
                     auth_methods,
+                    native_login_command: native_login_command.clone(),
+                    preferred_login_method,
                     auth_required,
                     discovered_models,
                     current_model_id,
@@ -1049,6 +1082,8 @@ impl AgentProviderService {
                 let inspection = RuntimeInspectionResult {
                     runtime_id: runtime_id.to_string(),
                     auth_methods,
+                    native_login_command: native_login_command.clone(),
+                    preferred_login_method,
                     auth_required,
                     discovered_models: vec![],
                     current_model_id: None,
@@ -1068,6 +1103,8 @@ impl AgentProviderService {
                 Ok(RuntimeInspectionResult {
                     runtime_id: runtime_id.to_string(),
                     auth_methods: vec![],
+                    native_login_command,
+                    preferred_login_method,
                     auth_required: false,
                     discovered_models: vec![],
                     current_model_id: None,
@@ -1108,6 +1145,13 @@ impl AgentProviderService {
                 runtime_id
             ))
         }
+    }
+
+    pub fn runtime_install_dir(&self, runtime_id: &str) -> std::path::PathBuf {
+        self.data_dir
+            .join("resources")
+            .join("agents")
+            .join(runtime_id)
     }
 
     /// Set the default provider
@@ -2327,6 +2371,8 @@ mod tests {
                 description: None,
                 manual_login_command: None,
             }],
+            native_login_command: None,
+            preferred_login_method: None,
             auth_required: true,
             discovered_models: vec![DiscoveredModelInfo {
                 model_id: "gpt-5.4".to_string(),
@@ -2349,6 +2395,8 @@ mod tests {
         let result = test_connection_result_from_inspection(RuntimeInspectionResult {
             runtime_id: "codex".to_string(),
             auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
             auth_required: false,
             discovered_models: vec![],
             current_model_id: None,
@@ -2362,11 +2410,55 @@ mod tests {
     }
 
     #[test]
+    fn stale_cached_inspection_is_rejected_for_native_preferred_runtime() {
+        let inspection = RuntimeInspectionResult {
+            runtime_id: "kimi".to_string(),
+            auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
+            auth_required: true,
+            discovered_models: vec![],
+            current_model_id: None,
+            supports_model_selection: false,
+            supports_config_options: false,
+            error: Some("Authentication required".to_string()),
+        };
+
+        assert!(!cached_inspection_supports_login_preferences(
+            "kimi",
+            &inspection
+        ));
+    }
+
+    #[test]
+    fn cached_inspection_remains_valid_for_non_native_preferred_runtime() {
+        let inspection = RuntimeInspectionResult {
+            runtime_id: "opencode".to_string(),
+            auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
+            auth_required: false,
+            discovered_models: vec![],
+            current_model_id: None,
+            supports_model_selection: false,
+            supports_config_options: false,
+            error: None,
+        };
+
+        assert!(cached_inspection_supports_login_preferences(
+            "opencode",
+            &inspection
+        ));
+    }
+
+    #[test]
     fn test_runtime_inspection_cache_round_trip() {
         let (service, _temp, _bundled_bin) = create_test_service_with_bundled_opencode();
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
             auth_required: false,
             discovered_models: vec![DiscoveredModelInfo {
                 model_id: "opencode/big-pickle".to_string(),
@@ -2405,6 +2497,8 @@ mod tests {
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
             auth_required: false,
             discovered_models: vec![DiscoveredModelInfo {
                 model_id: "opencode/big-pickle".to_string(),
@@ -2460,6 +2554,8 @@ mod tests {
         let inspection = RuntimeInspectionResult {
             runtime_id: "opencode".to_string(),
             auth_methods: vec![],
+            native_login_command: None,
+            preferred_login_method: None,
             auth_required: false,
             discovered_models: vec![DiscoveredModelInfo {
                 model_id: "opencode/big-pickle".to_string(),
