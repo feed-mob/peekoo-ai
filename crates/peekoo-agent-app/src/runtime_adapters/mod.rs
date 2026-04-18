@@ -2,6 +2,47 @@ use crate::agent_provider_service::ProviderConfig;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+fn build_launch_env_from_getter<F>(
+    provider_config: &ProviderConfig,
+    node_bin_dir: Option<&Path>,
+    get_env: F,
+) -> HashMap<String, String>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let mut env = provider_config.env_vars.clone();
+
+    // Forward critical path vars so runtimes can find credentials/config
+    // regardless of how the Tauri app was launched.
+    for key in &[
+        "HOME",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "USERPROFILE",
+        "APPDATA",
+        "LOCALAPPDATA",
+    ] {
+        if !env.contains_key(*key)
+            && let Some(val) = get_env(key)
+        {
+            env.insert((*key).to_string(), val);
+        }
+    }
+
+    // Forward PATH, prepending the bundled Node.js bin directory when
+    // available so agent wrapper scripts can resolve `node`.
+    let current_path = get_env("PATH").unwrap_or_default();
+    let enriched_path = node_bin_dir
+        .filter(|dir| dir.is_dir())
+        .map(|dir| format!("{}:{}", dir.display(), current_path))
+        .unwrap_or(current_path);
+    if !env.contains_key("PATH") {
+        env.insert("PATH".to_string(), enriched_path);
+    }
+
+    env
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NativeLoginLaunch {
     pub command: String,
@@ -50,30 +91,7 @@ pub trait RuntimeAdapter: Send + Sync {
         provider_config: &ProviderConfig,
         node_bin_dir: Option<&Path>,
     ) -> HashMap<String, String> {
-        let mut env = provider_config.env_vars.clone();
-
-        // Forward critical path vars so runtimes can find credentials/config
-        // regardless of how the Tauri app was launched.
-        for key in &["HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME"] {
-            if !env.contains_key(*key)
-                && let Ok(val) = std::env::var(key)
-            {
-                env.insert((*key).to_string(), val);
-            }
-        }
-
-        // Forward PATH, prepending the bundled Node.js bin directory when
-        // available so agent wrapper scripts can resolve `node`.
-        let current_path = std::env::var("PATH").unwrap_or_default();
-        let enriched_path = node_bin_dir
-            .filter(|dir| dir.is_dir())
-            .map(|dir| format!("{}:{}", dir.display(), current_path))
-            .unwrap_or(current_path);
-        if !env.contains_key("PATH") {
-            env.insert("PATH".to_string(), enriched_path);
-        }
-
-        env
+        build_launch_env_from_getter(provider_config, node_bin_dir, |key| std::env::var(key).ok())
     }
 
     fn build_launch_args(
@@ -271,6 +289,54 @@ mod tests {
         let env = adapter.build_launch_env(&config, None);
 
         assert_eq!(env.get("HOME").map(String::as_str), Some("/custom/home"));
+    }
+
+    #[test]
+    fn default_build_launch_env_forwards_windows_env_when_absent() {
+        let config = ProviderConfig {
+            default_model: None,
+            env_vars: HashMap::new(),
+            custom_args: vec![],
+        };
+
+        let env = super::build_launch_env_from_getter(&config, None, |key| match key {
+            "USERPROFILE" => Some("C:/Users/tester".to_string()),
+            "APPDATA" => Some("C:/Users/tester/AppData/Roaming".to_string()),
+            "LOCALAPPDATA" => Some("C:/Users/tester/AppData/Local".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(
+            env.get("USERPROFILE").map(String::as_str),
+            Some("C:/Users/tester")
+        );
+        assert_eq!(
+            env.get("APPDATA").map(String::as_str),
+            Some("C:/Users/tester/AppData/Roaming")
+        );
+        assert_eq!(
+            env.get("LOCALAPPDATA").map(String::as_str),
+            Some("C:/Users/tester/AppData/Local")
+        );
+    }
+
+    #[test]
+    fn default_build_launch_env_does_not_override_user_configured_windows_env() {
+        let config = ProviderConfig {
+            default_model: None,
+            env_vars: HashMap::from([("USERPROFILE".to_string(), "D:/Custom/Profile".to_string())]),
+            custom_args: vec![],
+        };
+
+        let env = super::build_launch_env_from_getter(&config, None, |key| match key {
+            "USERPROFILE" => Some("C:/Users/tester".to_string()),
+            _ => None,
+        });
+
+        assert_eq!(
+            env.get("USERPROFILE").map(String::as_str),
+            Some("D:/Custom/Profile")
+        );
     }
 
     #[test]
