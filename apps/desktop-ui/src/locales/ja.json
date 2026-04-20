@@ -246,7 +246,9 @@
     "installing": "インストール中...",
     "installAndRestart": "インストールして再起動",
     "openLogs": "ログを開く",
-    "unknownError": "不明なエラー"
+    "unknownError": "不明なエラー",
+    "starRequest": "Peekoo を気に入りましたか？GitHub でスターを付けてください！",
+    "openGitHub": "GitHub"
   },
   "plugins": {
     "tabs": {

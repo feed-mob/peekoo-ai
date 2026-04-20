@@ -246,7 +246,9 @@
     "installing": "Installing...",
     "installAndRestart": "Install and Restart",
     "openLogs": "Open Logs",
-    "unknownError": "Unknown error"
+    "unknownError": "Unknown error",
+    "starRequest": "Enjoying Peekoo? Give us a star on GitHub!",
+    "openGitHub": "GitHub"
   },
   "plugins": {
     "tabs": {

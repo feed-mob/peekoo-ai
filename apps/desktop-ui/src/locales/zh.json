@@ -246,7 +246,9 @@
     "installing": "安装中...",
     "installAndRestart": "安装并重启",
     "openLogs": "打开日志",
-    "unknownError": "未知错误"
+    "unknownError": "未知错误",
+    "starRequest": "喜欢 Peekoo？在 GitHub 上给我们一颗星吧！",
+    "openGitHub": "GitHub"
   },
   "plugins": {
     "tabs": {

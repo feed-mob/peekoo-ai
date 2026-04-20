@@ -256,7 +256,9 @@
     "installing": "Installation...",
     "installAndRestart": "Installer et redémarrer",
     "openLogs": "Ouvrir les journaux",
-    "unknownError": "Erreur inconnue"
+    "unknownError": "Erreur inconnue",
+    "starRequest": "Vous appréciez Peekoo ? Donnez-nous une étoile sur GitHub !",
+    "openGitHub": "GitHub"
   },
   "plugins": {
     "tabs": {
