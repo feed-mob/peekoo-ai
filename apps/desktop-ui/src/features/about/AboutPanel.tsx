@@ -6,6 +6,7 @@ import { normalizeReleaseNotes } from "@/lib/release-notes";
 import { invoke } from "@tauri-apps/api/core";
 import { useAboutPanel } from "./useAboutPanel";
 import { useTranslation } from "react-i18next";
+import { Github, Star } from "lucide-react";
 
 function formatReleaseDate(value: string | null): string | null {
   if (!value) {
@@ -87,6 +88,22 @@ export function AboutPanel() {
             {snapshot.isUpdateAvailable ? t("about.updateAvailable") : t("about.upToDate")}
           </Badge>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-glass-border/70 bg-space-overlay/40 px-3 py-3">
+        <div className="flex items-center gap-2">
+          <Star className="h-4 w-4 text-warning" />
+          <span className="text-sm text-text-primary">{t("about.starRequest")}</span>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => void invoke("system_open_url", { url: "https://github.com/feed-mob/peekoo-ai" })}
+        >
+          <Github className="h-4 w-4" />
+          <span>{t("about.openGitHub")}</span>
+        </Button>
       </div>
 
       <div className="space-y-3">
