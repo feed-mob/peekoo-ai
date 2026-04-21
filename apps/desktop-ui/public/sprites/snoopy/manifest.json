@@ -1,0 +1,29 @@
+{
+  "id": "snoopy",
+  "name": "Snoopy",
+  "description": "Adorable Snoopy sprite with a cheerful classic-cartoon charm.",
+  "image": "snoopy.jpeg",
+  "layout": {
+    "columns": 8,
+    "rows": 7
+  },
+  "scale": 0.55,
+  "frameRate": 6,
+  "chromaKey": {
+    "targetColor": [
+      255,
+      0,
+      255
+    ],
+    "minRbOverG": 32,
+    "threshold": 110,
+    "softness": 80,
+    "spillSuppression": {
+      "enabled": true,
+      "threshold": 260,
+      "strength": 0.9
+    },
+    "stripDarkFringe": true,
+    "pixelArt": false
+  }
+}
