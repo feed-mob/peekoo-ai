@@ -42,6 +42,10 @@ import {
   type RuntimeAuthenticationResult,
 } from "@/types/agent-runtime";
 import { getProviderAuthState, getProviderLoginPresentation } from "./provider-auth-state";
+import {
+  getAuthFeedbackAfterRefresh,
+  getAuthFeedbackAfterRuntimeAuthentication,
+} from "./runtime-auth-feedback";
 
 interface ConfigureProviderDialogProps {
   provider: RuntimeInfo | null;
@@ -93,6 +97,7 @@ export function ConfigureProviderDialog({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAuthMethods, setShowAuthMethods] = useState(false);
   const [isTerminalLaunchCoolingDown, setIsTerminalLaunchCoolingDown] = useState(false);
+  const [awaitingManualLoginRefresh, setAwaitingManualLoginRefresh] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [copiedMethodId, setCopiedMethodId] = useState<string | null>(null);
   const terminalLaunchCooldownRef = useRef<number | null>(null);
@@ -131,6 +136,7 @@ export function ConfigureProviderDialog({
       setShowAdvanced(false);
       setShowAuthMethods(false);
       setIsTerminalLaunchCoolingDown(false);
+      setAwaitingManualLoginRefresh(false);
 
       if (provider.isBundled) {
         return;
@@ -196,6 +202,18 @@ export function ConfigureProviderDialog({
     try {
       const result = await onRefreshCapabilities(provider.providerId);
       setInspection(result);
+      const feedback = getAuthFeedbackAfterRefresh(
+        awaitingManualLoginRefresh,
+        result.authRequired,
+        t("agentRuntimes.configureDialog.loginCompletedMessage"),
+      );
+      setAwaitingManualLoginRefresh(feedback.awaitingManualRefresh);
+      if (awaitingManualLoginRefresh) {
+        setTestResult(feedback.alert);
+      }
+      if (feedback.alert) {
+        setShowAuthMethods(false);
+      }
       const loginPresentation = getProviderLoginPresentation(result);
       setShowAuthMethods((current) =>
         loginPresentation.primaryLoginMethod === "acp" ? result.authRequired || current : current,
@@ -223,10 +241,9 @@ export function ConfigureProviderDialog({
     setTestResult(null);
     try {
       const result = await onAuthenticate(provider.providerId, methodId);
-      setTestResult({
-        success: true,
-        message: result.message,
-      });
+      const feedback = getAuthFeedbackAfterRuntimeAuthentication(result);
+      setAwaitingManualLoginRefresh(feedback.awaitingManualRefresh);
+      setTestResult(feedback.alert);
       if (result.status === "authenticated") {
         await handleRefreshCapabilities();
       } else {
@@ -248,10 +265,9 @@ export function ConfigureProviderDialog({
     setTestResult(null);
     try {
       const result = await onNativeLogin(provider.providerId);
-      setTestResult({
-        success: true,
-        message: result.message,
-      });
+      const feedback = getAuthFeedbackAfterRuntimeAuthentication(result);
+      setAwaitingManualLoginRefresh(feedback.awaitingManualRefresh);
+      setTestResult(feedback.alert);
       startTerminalLaunchCooldown();
     } catch (err) {
       setError(String(err));
