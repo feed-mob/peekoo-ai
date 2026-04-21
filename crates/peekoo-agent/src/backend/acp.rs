@@ -19,6 +19,17 @@ use tokio::process::Command;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tokio_util::compat::{TokioAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
+#[cfg(target_os = "windows")]
+fn configure_background_spawn(cmd: &mut Command) {
+    use std::os::windows::process::CommandExt;
+
+    // CREATE_NO_WINDOW
+    cmd.creation_flags(0x0800_0000);
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_background_spawn(_cmd: &mut Command) {}
+
 /// ACP-based backend implementation that wraps non-Send ACP operations
 pub struct AcpBackend {
     /// Command to spawn the ACP agent
@@ -525,6 +536,7 @@ impl AcpBackend {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
+        configure_background_spawn(&mut cmd);
 
         // Set environment variables
         for (key, value) in &self.environment {
