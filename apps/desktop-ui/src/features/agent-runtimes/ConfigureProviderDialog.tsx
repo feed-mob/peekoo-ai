@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
@@ -92,8 +92,29 @@ export function ConfigureProviderDialog({
   const [inspection, setInspection] = useState<RuntimeInspectionResult | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAuthMethods, setShowAuthMethods] = useState(false);
+  const [isTerminalLaunchCoolingDown, setIsTerminalLaunchCoolingDown] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [copiedMethodId, setCopiedMethodId] = useState<string | null>(null);
+  const terminalLaunchCooldownRef = useRef<number | null>(null);
+
+  const startTerminalLaunchCooldown = () => {
+    setIsTerminalLaunchCoolingDown(true);
+    if (terminalLaunchCooldownRef.current !== null) {
+      window.clearTimeout(terminalLaunchCooldownRef.current);
+    }
+    terminalLaunchCooldownRef.current = window.setTimeout(() => {
+      setIsTerminalLaunchCoolingDown(false);
+      terminalLaunchCooldownRef.current = null;
+    }, 8000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (terminalLaunchCooldownRef.current !== null) {
+        window.clearTimeout(terminalLaunchCooldownRef.current);
+      }
+    };
+  }, []);
 
   // Load config and inspect runtime when dialog opens
   useEffect(() => {
@@ -109,6 +130,7 @@ export function ConfigureProviderDialog({
       setSelectedModel(provider.config.defaultModel || "");
       setShowAdvanced(false);
       setShowAuthMethods(false);
+      setIsTerminalLaunchCoolingDown(false);
 
       if (provider.isBundled) {
         return;
@@ -208,10 +230,8 @@ export function ConfigureProviderDialog({
       if (result.status === "authenticated") {
         await handleRefreshCapabilities();
       } else {
-        // Terminal login started — poll for auth completion so the user
-        // doesn't have to manually click Refresh after finishing in the terminal.
         setShowAuthMethods(true);
-        pollForAuthCompletion(provider.providerId);
+        startTerminalLaunchCooldown();
       }
     } catch (err) {
       setError(String(err));
@@ -232,33 +252,12 @@ export function ConfigureProviderDialog({
         success: true,
         message: result.message,
       });
-      pollForAuthCompletion(provider.providerId);
+      startTerminalLaunchCooldown();
     } catch (err) {
       setError(String(err));
     } finally {
       setIsAuthenticating(false);
     }
-  };
-
-  const pollForAuthCompletion = (providerId: string) => {
-    let attempts = 0;
-    const maxAttempts = 24; // ~2 minutes at 5s intervals
-    const interval = setInterval(async () => {
-      attempts++;
-      try {
-        const result = await onRefreshCapabilities(providerId);
-        if (!result.authRequired) {
-          clearInterval(interval);
-          setShowAuthMethods(false);
-          setTestResult({ success: true, message: "Login successful." });
-        }
-      } catch {
-        // ignore transient errors during polling
-      }
-      if (attempts >= maxAttempts) {
-        clearInterval(interval);
-      }
-    }, 5000);
   };
 
   const handleModelChange = (modelId: string) => {
@@ -432,7 +431,7 @@ export function ConfigureProviderDialog({
                       size="sm"
                       variant="default"
                       onClick={() => void handleNativeLogin()}
-                      disabled={isAuthenticating}
+                      disabled={isAuthenticating || isTerminalLaunchCoolingDown}
                     >
                       {isAuthenticating ? (
                         <Loader2 className="mr-2 h-3 w-3 animate-spin" />
@@ -457,6 +456,9 @@ export function ConfigureProviderDialog({
                       )}
                     </Button>
                   </div>
+                  <p className="text-xs text-text-muted">
+                    {t("agentRuntimes.configureDialog.manualRefreshAfterLoginHint")}
+                  </p>
                 </div>
               )}
 
@@ -475,7 +477,7 @@ export function ConfigureProviderDialog({
                           size="sm"
                           variant="outline"
                           onClick={() => handleAuthenticate(method.id)}
-                          disabled={isAuthenticating}
+                          disabled={isAuthenticating || isTerminalLaunchCoolingDown}
                         >
                           {isAuthenticating ? (
                             <Loader2 className="mr-2 h-3 w-3 animate-spin" />

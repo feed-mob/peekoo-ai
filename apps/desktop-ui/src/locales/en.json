@@ -533,6 +533,7 @@
       "hideAdvancedLoginOptions": "Hide advanced login options",
       "nativeLoginTitle": "Native CLI Login",
       "nativeLoginDescription": "Open a terminal and run the runtime's built-in login command.",
+      "manualRefreshAfterLoginHint": "After finishing login in the terminal, click Refresh Status.",
       "openTerminalToLogin": "Open Terminal to Login",
       "refreshStatus": "Refresh Status",
       "modelSection": "Model",
