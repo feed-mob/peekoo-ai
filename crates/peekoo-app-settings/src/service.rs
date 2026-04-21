@@ -795,7 +795,11 @@ mod tests {
     fn list_sprites_returns_builtins() {
         let (svc, _) = test_service();
         let sprites = svc.list_sprites();
-        assert!(sprites.iter().all(|sprite| sprite.source == SpriteSource::Builtin));
+        assert!(
+            sprites
+                .iter()
+                .all(|sprite| sprite.source == SpriteSource::Builtin)
+        );
         assert!(sprites.iter().any(|sprite| sprite.id == "dark-cat"));
         assert!(sprites.iter().any(|sprite| sprite.id == "cute-dog"));
     }

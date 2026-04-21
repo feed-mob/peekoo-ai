@@ -67,11 +67,13 @@ fn discover_builtin_sprites(sprites_dir: &Path) -> Vec<BuiltinSprite> {
         });
     }
 
-    builtins.sort_by(|left, right| match (left.id == "dark-cat", right.id == "dark-cat") {
-        (true, false) => Ordering::Less,
-        (false, true) => Ordering::Greater,
-        _ => left.id.cmp(&right.id),
-    });
+    builtins.sort_by(
+        |left, right| match (left.id == "dark-cat", right.id == "dark-cat") {
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            _ => left.id.cmp(&right.id),
+        },
+    );
 
     builtins
 }
