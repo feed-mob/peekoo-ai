@@ -30,18 +30,7 @@ struct BuiltinSprite {
     description: &'static str,
 }
 
-const BUILTIN_SPRITES: &[BuiltinSprite] = &[
-    BuiltinSprite {
-        id: "dark-cat",
-        name: "Dark Cat",
-        description: "Default dark-themed AI pet.",
-    },
-    BuiltinSprite {
-        id: "cute-dog",
-        name: "Cute Dog",
-        description: "A cute alternative AI pet.",
-    },
-];
+include!(concat!(env!("OUT_DIR"), "/builtin_sprites.rs"));
 
 const DEFAULT_SPRITE_PROMPT: &str = r#"Create a desktop pet sprite sheet for Peekoo.
 
@@ -806,8 +795,18 @@ mod tests {
     fn list_sprites_returns_builtins() {
         let (svc, _) = test_service();
         let sprites = svc.list_sprites();
-        assert_eq!(sprites.len(), 2);
-        assert_eq!(sprites[0].source, SpriteSource::Builtin);
+        assert!(sprites.iter().all(|sprite| sprite.source == SpriteSource::Builtin));
+        assert!(sprites.iter().any(|sprite| sprite.id == "dark-cat"));
+        assert!(sprites.iter().any(|sprite| sprite.id == "cute-dog"));
+    }
+
+    #[test]
+    fn list_sprites_auto_discovers_builtin_sprite_manifests() {
+        let (svc, _) = test_service();
+        let sprites = svc.list_sprites();
+
+        assert!(sprites.iter().any(|sprite| sprite.id == "mimi"));
+        assert!(sprites.iter().any(|sprite| sprite.id == "snoopy"));
     }
 
     #[test]
@@ -861,7 +860,6 @@ mod tests {
         .unwrap();
 
         let sprites = svc.list_sprites();
-        assert_eq!(sprites.len(), 3);
         assert!(
             sprites
                 .iter()
