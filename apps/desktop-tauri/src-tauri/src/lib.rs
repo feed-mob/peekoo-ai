@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 use tauri::{
-    AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, State, Window,
+    AppHandle, Emitter, LogicalSize, LogicalUnit, Manager, PixelUnit, RunEvent, State, Window,
     WindowSizeConstraints,
     image::Image,
     menu::MenuBuilder,
@@ -2083,8 +2083,17 @@ pub fn run() {
             plugin_store_update,
             plugin_store_uninstall,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                if let Some(state) = app_handle.try_state::<AgentState>() {
+                    if let Err(err) = state.app.pause_pomodoro_on_exit() {
+                        tracing::warn!("Failed to pause pomodoro on exit: {err}");
+                    }
+                }
+            }
+        });
 }
 
 fn show_plugin_notification(
