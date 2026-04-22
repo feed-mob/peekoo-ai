@@ -1121,6 +1121,23 @@ impl AgentApplication {
         self.pomodoro.pause()
     }
 
+    pub fn pause_pomodoro_on_exit(&self) -> Result<(), String> {
+        match self.pomodoro.pause() {
+            Ok(_) => {
+                tracing::info!("Paused pomodoro timer before app exit");
+                Ok(())
+            }
+            Err(err) if err == "cannot pause unless running" => {
+                // Timer was already idle or paused — nothing to do.
+                Ok(())
+            }
+            Err(err) => {
+                tracing::warn!("Failed to pause pomodoro on exit: {err}");
+                Err(err)
+            }
+        }
+    }
+
     pub fn resume_pomodoro(&self) -> Result<PomodoroStatusDto, String> {
         self.pomodoro.resume()
     }
