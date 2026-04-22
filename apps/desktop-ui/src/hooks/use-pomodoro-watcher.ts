@@ -11,12 +11,16 @@ import { PANEL_WINDOW_CONFIGS } from "@/types/window";
 function hasPendingFocusMemo(entry: PomodoroHistoryEntry | undefined): boolean {
   if (!entry) return false;
   if (entry.mode !== "work") return false;
+  if (entry.outcome !== "completed") return false;
   if (!entry.memo_requested) return false;
   return !entry.memo || entry.memo.trim().length === 0;
 }
 
 function findLatestPendingFocusMemo(entries: PomodoroHistoryEntry[]): PomodoroHistoryEntry | null {
+  const thirtyMinutesAgo = Date.now() - 30 * 60 * 1000;
   for (const entry of entries) {
+    const endedAt = new Date(entry.ended_at).getTime();
+    if (endedAt < thirtyMinutesAgo) continue;
     if (hasPendingFocusMemo(entry)) {
       return entry;
     }
