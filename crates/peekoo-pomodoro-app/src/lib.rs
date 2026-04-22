@@ -434,6 +434,18 @@ impl PomodoroAppService {
             status.last_reset_date = Some(today);
             save_status(&conn, &status)?;
         }
+
+        // If the timer expired while the app was not running, treat it as
+        // cancelled so that memo popups and focus counters stay accurate.
+        if status.state == PomodoroState::Running {
+            let now = now_epoch();
+            status.refresh_time_remaining(now);
+            if status.time_remaining_secs == 0 {
+                let record = status.finish(now).map_err(|err| err.to_string())?;
+                insert_cycle_record(&conn, &record)?;
+                save_status(&conn, &status)?;
+            }
+        }
         drop(conn);
 
         let status = self.refresh_runtime_if_due()?;
@@ -981,5 +993,43 @@ mod tests {
             history[0].task_title.as_deref(),
             Some("Ship memo-task linkage")
         );
+    }
+
+    #[test]
+    fn stale_running_session_on_init_is_recorded_as_cancelled() {
+        let conn = Arc::new(Mutex::new(peekoo_persistence_sqlite::setup_test_db()));
+
+        // Seed a stale Running session whose timer expired while the app was down.
+        let now = now_epoch();
+        let started_at = now - 3600; // started 1 hour ago
+        let expected_fire = now - 1800; // expected to fire 30 min ago
+        {
+            let conn_guard = conn.lock().unwrap();
+            conn_guard
+                .execute(
+                    "UPDATE pomodoro_state SET mode = 'work', state = 'Running', minutes = 25, time_remaining_secs = 1500, started_at_epoch = ?1, expected_fire_at_epoch = ?2, completed_focus = 5, enable_memo = 1, last_reset_date = date('now')",
+                    params![started_at, expected_fire],
+                )
+                .unwrap();
+        }
+
+        let (notifications, _receiver) = NotificationService::new();
+        let service = PomodoroAppService::new(
+            conn,
+            Arc::new(notifications),
+            Arc::new(PeekBadgeService::new()),
+            Arc::new(MoodReactionService::new()),
+        )
+        .expect("service should initialize");
+
+        let status = service.get_status().expect("status should load");
+        assert_eq!(status.state, "Idle");
+        assert_eq!(status.completed_focus, 5); // must NOT increment
+
+        let history = service.history(10).expect("history should load");
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].mode, "work");
+        assert_eq!(history[0].outcome, "cancelled");
+        assert!(!history[0].memo_requested);
     }
 }
