@@ -88,7 +88,9 @@ export function usePomodoroWatcher() {
           lastCompletedRef.current = status.completed_focus;
           isInitialized.current = true;
 
-          if (status.enable_memo) {
+          const isActiveSession =
+            status.state === "Running" || status.state === "Paused";
+          if (status.enable_memo && !isActiveSession) {
             // Covers app restarts or missed transitions where completed_focus delta is not observable.
             await maybePromptPendingMemo(12);
           }
@@ -109,7 +111,11 @@ export function usePomodoroWatcher() {
           lastCompletedRef.current = status.completed_focus;
         } else if (status.enable_memo) {
           // Keep trying while memo remains unsaved, useful when WM blocks first window creation/focus.
-          await maybePromptPendingMemo(12);
+          const isActiveSession =
+            status.state === "Running" || status.state === "Paused";
+          if (!isActiveSession) {
+            await maybePromptPendingMemo(12);
+          }
         }
       } catch {
         // ignore transient errors while pomodoro state is unavailable
