@@ -1,47 +1,68 @@
 # Pomodoro
 
-## Overview
+Peekoo has a built-in pomodoro timer to help you protect focus time and build a working rhythm. The timer, task system, and session history all live in the same app — no switching tools.
 
-Peekoo includes a built-in pomodoro timer for focus sessions.
+<!-- Image placeholder: Pomodoro panel screenshot -->
 
-It is designed to stay close to the rest of the product. You can move from capturing a task, to starting a focus session, to saving a short memo when the session ends, all without leaving the same companion.
+## Open Pomodoro
 
-## Core Actions
+Right-click the sprite → Pomodoro
 
-The current runtime supports:
+You can also start a session directly from chat, for example:
 
-- start a focus or break session
-- pause the current session
-- resume a paused session
-- finish or cancel a session
-- switch modes
-- view session history
-- save a memo for a pomodoro session
-- configure pomodoro settings
+> Peekoo, start a 25-minute focus session for me
+
+## Basic Controls
+
+| Action | Description |
+|--------|-------------|
+| Start | Begin timing in the current mode |
+| Pause / Resume | Temporarily pause or continue the timer |
+| Reset | End the current session and return to the initial state |
+| Switch Mode | Manually switch between focus and break |
+
+Below the timer is a daily badge wall that tracks all focus and break sessions for the day with small icons.
 
 ## Typical Focus Flow
 
-1. Choose the task you want to focus on.
-2. Start a focus session.
-3. Pause only if you need to step away.
-4. Finish the session when the work block ends.
-5. Save a memo if you want to remember what happened.
+1. Open the Pomodoro panel
+2. Click Start to begin a focus session
+3. When the focus time ends, switch to break mode
+4. After the break, start the next round
+5. After a session ends, write a short memo to record what you got done and link it to the corresponding task
 
-This works well for solo planning because the timer, task system, and history live in the same app.
+## Focus Memo
 
-## Task Linkage
+After each session ends, you can write a short memo. The memo window is linked to the task system — you can select the corresponding task directly:
 
-Pomodoro history can persist an optional linked task when saving a focus memo. This keeps the pomodoro record connected to the task without mutating task comments as a side effect.
+- Memo: jot down what you accomplished, key takeaways, reflections, or ideas that came up
+- Link to task: pick from your unfinished tasks to connect the session record to a specific task
 
-## When to Use It
+If the "Focus Memo" option is enabled, a memo window will pop up automatically when a session ends. You can also expand any entry in the history to add or edit a memo at any time.
 
-Pomodoro is most useful when you want to:
+## Session History
 
-- protect a short block of focused work
-- build momentum on one visible task
-- leave a lightweight record of what you completed
-- review your recent focus history later
+The lower part of the panel shows recent session records, filterable by time range:
 
-## Why It Is Built In
+- Recent 6
+- Today
+- Yesterday
+- Last 7 days
+- Last 30 days
 
-Pomodoro is part of the same productivity surface as tasks and settings, so it is available through the UI and through MCP-exposed tools.
+Each entry shows the mode (focus / break), end time, actual vs. planned duration, and whether the session was completed or interrupted.
+
+## Settings
+
+Click the settings icon in the top right of the panel:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Focus duration | Minutes per focus session | 25 min |
+| Break duration | Minutes for a short break | 5 min |
+| Long break duration | Minutes for a long break | 15 min |
+| Cycle | Focus sessions before a long break | 4 |
+| Focus memo | Auto-open memo window when a session ends | Off |
+| Autopilot | Automatically advance to the next phase | Off |
+
+Click "Save Changes" to apply.

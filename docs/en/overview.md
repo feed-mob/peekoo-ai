@@ -1,43 +1,57 @@
 # Product Overview
 
-Peekoo AI is an AI desktop companion that lives directly on your screen. It combines a lightweight desktop pet, a chat interface, productivity tools, and an extension system into one always-available workspace companion.
+> Peekoo: A little peek, a lot of help.
 
-Peekoo is built for people who want AI support to feel present, fast, and close to their daily workflow. Instead of opening a separate browser tab or full desktop window every time you want help, you keep Peekoo nearby and use it as a companion for thinking, planning, and staying focused.
+Peekoo is an AI companion app built around a desktop pet, with an extensible plugin system that grows with your needs.
+
+Most of the time, it just sits quietly in the corner of your screen — peeking at you, occasionally dozing off, doing exactly what a desktop pet does. But when you need it, it's ready to help.
+
+<!-- Image placeholder: Peekoo desktop screenshot -->
+
+We think of Peekoo as an **infinitely extensible, fully customizable desktop companion**. The project started from a question: how can AI integrate into work and study in a gentler, less intrusive way?
+
+Peekoo's answer: always nearby, never in the way.
 
 ## Core Features
 
-- AI chat with streaming responses and configurable providers
-- Built-in task management that stays close to your desktop flow
-- Pomodoro focus sessions with pause, resume, finish, and history
-- Animated sprites with mood-based reactions and presence on the desktop
-- Plugin support for extra tools, panels, and integrations
+- **AI Chat** — Start a conversation anytime, with configurable providers and runtime model switching. Connects to CLI tools like OpenCode, with one-click agent integration — no coding required
+- **Task Management** — Built-in task system that stays close to your desktop workflow
+- **Pomodoro** — Focus timer with pause, resume, finish, and session history
+- **Sprite** — Customizable desktop character. Upload your own image or use the built-in image prompt to generate one
+- **Skills** — Upload skill files to extend agent capabilities. MCP configuration support coming soon
+- **Plugin Store** — Continuously growing, with unlimited potential to expand what Peekoo can do
 
-## Architecture at a Glance
+## Available Plugins
 
-Peekoo uses a layered desktop architecture:
+| Plugin | What it does |
+|--------|-------------|
+| Health Reminders | Reminds you to drink water, rest your eyes, and stand up during work sessions |
+| OpenClaw Sessions | Open and manage OpenClaw sessions directly from Peekoo |
+| Claude Code / OpenCode Companion | Peekoo's expressions sync with every thought and output from your agent |
+| Mijia Smart Home | Control your Mijia smart home devices through Peekoo |
+| Google Calendar | Import your schedule and join Google Meet calls directly from chat |
+| Linear | Import your existing Todolist and sync with Peekoo tasks |
 
-```text
-desktop-ui -> desktop-tauri -> peekoo-agent-app -> domain/runtime crates
-```
+…and more on the way.
 
-`desktop-ui` renders the React experience. `desktop-tauri` handles transport. `peekoo-agent-app` owns orchestration for agent runtime, settings, tasks, pomodoro, and plugin integration.
+## Design Philosophy
 
-## Why Peekoo Feels Different
+Peekoo separates "core companionship" from "customization needs" by design, avoiding feature bloat. At the same time, it makes the AI agent's work visible and personal — giving a warm, reactive face to what would otherwise be a cold tool.
 
-Peekoo is designed around presence rather than interruption. The sprite gives the app a visible place on the desktop, the chat surface keeps AI interaction close at hand, and the built-in productivity tools reduce context switching. You can move from asking a question, to tracking a task, to starting a focus session without leaving the same companion.
+We're building Peekoo's neural network one plugin at a time. The possibilities are open-ended.
 
-## Built for Extension
+## Supported Platforms
 
-Peekoo is not limited to its built-in tools. Its plugin system allows new tools, panels, and integrations to be added over time. That makes it useful for both individual workflows and more specialized setups.
+Windows, macOS, and Linux — all available as installable packages.
 
-## Who This Docs Set Is For
+## Who It's For
 
-- Users who want to install and use Peekoo
-- Power users who want to configure ACP and skills
-- Developers who want to understand the SDK and plugin system
+- People who want AI support woven into their daily workflow
+- Individuals who need lightweight task tracking and focus sessions
+- Developers who want to extend Peekoo through plugins or the SDK
 
 ## Next Steps
 
-1. Start with [Quick Start](./quick-start.md).
-2. If you are installing from a release, read [Installation](./installation/index.md).
-3. If you want to extend Peekoo, read [Develop](./develop/index.md).
+- Ready to start → [Quick Start](./quick-start.md)
+- Installing from a release → [Installation](./installation/index.md)
+- Building plugins or exploring the SDK → [Develop](./develop/index.md)
