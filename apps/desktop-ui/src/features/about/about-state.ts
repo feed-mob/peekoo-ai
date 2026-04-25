@@ -1,3 +1,5 @@
+import { getErrorMessage } from "@/lib/error-message";
+
 export interface UpdateLike {
   version: string;
   date?: string;
@@ -25,12 +27,8 @@ export interface LoadAboutSnapshotResult {
   updateError: string | null;
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return "Unknown error";
+function shouldSuppressUpdateError(message: string): boolean {
+  return message.includes("fallback platforms") && message.includes("response `platforms` object");
 }
 
 export async function loadAboutSnapshot(deps: AboutDependencies): Promise<LoadAboutSnapshotResult> {
@@ -49,7 +47,10 @@ export async function loadAboutSnapshot(deps: AboutDependencies): Promise<LoadAb
   }
 
   const update = updateResult.status === "fulfilled" ? updateResult.value : null;
-  const updateError = updateResult.status === "rejected" ? getErrorMessage(updateResult.reason) : null;
+  const rawUpdateError =
+    updateResult.status === "rejected" ? getErrorMessage(updateResult.reason) : null;
+  const updateError =
+    rawUpdateError && !shouldSuppressUpdateError(rawUpdateError) ? rawUpdateError : null;
 
   return {
     snapshot: {

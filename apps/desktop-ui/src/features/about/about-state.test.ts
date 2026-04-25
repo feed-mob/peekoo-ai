@@ -67,4 +67,25 @@ describe("loadAboutSnapshot", () => {
     expect(result.update).toBeNull();
     expect(result.updateError).toBe("Updater unavailable on this platform");
   });
+
+  test("suppresses missing platform updater errors", async () => {
+    const result = await loadAboutSnapshot({
+      getName: async () => "Peekoo",
+      getVersion: async () => "0.1.30",
+      check: async () => {
+        throw "None of the fallback platforms `[\"darwin-aarch64-app\", \"darwin-aarch64\"]` were found in the response `platforms` object";
+      },
+    });
+
+    expect(result.snapshot).toEqual({
+      appName: "Peekoo",
+      currentVersion: "0.1.30",
+      availableVersion: null,
+      releaseDate: null,
+      releaseNotes: null,
+      isUpdateAvailable: false,
+    });
+    expect(result.update).toBeNull();
+    expect(result.updateError).toBeNull();
+  });
 });
