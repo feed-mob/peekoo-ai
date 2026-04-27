@@ -11,6 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Task } from "@/types/task";
+import { isMacOsPlatform } from "@/lib/window-transparency";
 
 function taskSortBucket(task: Task): number {
   if (task.status === "in_progress") return 0;
@@ -82,6 +83,9 @@ export async function submitPomodoroMemo({
 }
 
 export default function PomodoroMemoView() {
+  const shellClassName = isMacOsPlatform()
+    ? "relative w-full h-screen flex flex-col bg-glass/45 border border-glass-border/80 rounded-panel overflow-hidden shadow-panel"
+    : "relative w-full h-screen flex flex-col bg-glass backdrop-blur-2xl border border-glass-border rounded-panel overflow-hidden shadow-panel";
   const [memo, setMemo] = useState("");
   const [tasks, setTasks] = useState<Task[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -122,7 +126,7 @@ export default function PomodoroMemoView() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen flex flex-col bg-glass backdrop-blur-2xl border border-glass-border rounded-panel overflow-hidden shadow-panel">
+    <div className={shellClassName}>
       {/* Title bar */}
       <div className="relative flex items-center justify-between h-12 px-4 select-none shrink-0">
         <div

@@ -9,6 +9,7 @@ import { useSystemTheme } from "@/hooks/use-system-theme";
 import { initI18n, setupLanguageListener } from "@/lib/i18n";
 import { openPanelWindow } from "@/hooks/use-panel-windows";
 import { useEffect } from "react";
+import { installMacOsPanelTransparencyFix } from "@/lib/window-transparency";
 import "./index.css";
 
 if (shouldForwardConsole(import.meta.env.DEV)) {
@@ -21,6 +22,8 @@ const FORCE_UPDATER_IN_DEV = import.meta.env.DEV && import.meta.env.VITE_FORCE_U
 
 function App() {
   useSystemTheme();
+
+  useEffect(() => installMacOsPanelTransparencyFix(currentWindow), []);
 
   useEffect(() => {
     let disposed = false;

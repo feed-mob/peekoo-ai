@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { emitPetReaction } from "@/lib/pet-events";
 import { motion } from "framer-motion";
+import { isMacOsPlatform } from "@/lib/window-transparency";
 
 interface PanelShellProps {
   title: string;
@@ -31,6 +32,10 @@ const RESIZE_HANDLE_CLASSES: Record<ResizeDirection, string> = {
 };
 
 export function PanelShell({ title, children }: PanelShellProps) {
+  const shellClassName = isMacOsPlatform()
+    ? "relative w-full h-screen flex flex-col bg-glass/45 border border-glass-border/80 rounded-panel overflow-hidden shadow-panel"
+    : "relative w-full h-screen flex flex-col bg-glass backdrop-blur-2xl border border-glass-border rounded-panel overflow-hidden shadow-panel";
+
   const handleClose = async () => {
     await emitPetReaction("panel-closed");
     const win = getCurrentWindow();
@@ -47,7 +52,7 @@ export function PanelShell({ title, children }: PanelShellProps) {
     };
 
   return (
-    <div className="relative w-full h-screen flex flex-col bg-glass backdrop-blur-2xl border border-glass-border rounded-panel overflow-hidden shadow-panel">
+    <div className={shellClassName}>
       {(
         Object.entries(RESIZE_HANDLE_CLASSES) as [ResizeDirection, string][]
       ).map(([direction, className]) => (
