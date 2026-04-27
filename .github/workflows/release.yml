@@ -196,8 +196,66 @@ jobs:
           releaseBody: ${{ needs.release-notes.outputs.release_body }}
           releaseDraft: true
           prerelease: false
-          includeUpdaterJson: true
+          uploadUpdaterJson: false
           args: ${{ matrix.args }}
+
+      - name: Upload macOS updater bundle assets
+        if: matrix.platform == 'macos-14'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          APP_TAR_GZ=$(find apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos -maxdepth 1 -name '*.app.tar.gz' | head -n 1)
+          APP_TAR_GZ_SIG="${APP_TAR_GZ}.sig"
+
+          if [ -z "$APP_TAR_GZ" ] || [ ! -f "$APP_TAR_GZ" ]; then
+            echo "macOS updater bundle (.app.tar.gz) was not generated" >&2
+            exit 1
+          fi
+
+          if [ ! -f "$APP_TAR_GZ_SIG" ]; then
+            echo "macOS updater signature (.app.tar.gz.sig) was not generated" >&2
+            exit 1
+          fi
+
+          ASSET_BASE="Peekoo_${{ needs.prepare-release.outputs.tag_version }}_aarch64.app.tar.gz"
+          cp "$APP_TAR_GZ" "$ASSET_BASE"
+          cp "$APP_TAR_GZ_SIG" "${ASSET_BASE}.sig"
+
+          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" \
+            "$ASSET_BASE#${ASSET_BASE}" \
+            "${ASSET_BASE}.sig#${ASSET_BASE}.sig" \
+            --clobber
+
+  publish-updater-json:
+    needs: [prepare-release, release-notes, publish-tauri]
+    if: needs.prepare-release.result == 'success' && needs.release-notes.result == 'success' && needs.publish-tauri.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare-release.outputs.target_sha }}
+
+      - name: Build merged updater manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python scripts/build_updater_manifest.py \
+            --owner "${GITHUB_REPOSITORY%/*}" \
+            --repo "${GITHUB_REPOSITORY#*/}" \
+            --tag "${{ needs.prepare-release.outputs.tag_name }}" \
+            --version "${{ needs.prepare-release.outputs.tag_version }}" \
+            --require-platform darwin-aarch64 \
+            --require-platform linux-x86_64 \
+            --require-platform windows-x86_64 \
+            --output latest.json
+
+      - name: Upload merged updater manifest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "${{ needs.prepare-release.outputs.tag_name }}" latest.json --clobber
 
   finalize-release:
     if: github.event_name == 'workflow_dispatch' && inputs.finalize_release_tag
