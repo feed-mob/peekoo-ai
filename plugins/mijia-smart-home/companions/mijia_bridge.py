@@ -14,7 +14,7 @@ def _peekoo_data_dir():
         return Path(override).expanduser()
 
     if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        base = os.environ.get("LOCALAPPDATA")
         if base:
             return Path(base) / "Peekoo" / "peekoo"
 
@@ -76,8 +76,11 @@ def _normalize_auth_path(raw):
         if not p.is_absolute():
             p = AUTH_BASE_DIR / p
     else:
+        default_auth_path = AUTH_BASE_DIR / "auth.json"
         legacy_auth_path = LEGACY_AUTH_BASE_DIR / "auth.json"
-        if legacy_auth_path.exists():
+        if default_auth_path.exists():
+            p = default_auth_path
+        elif legacy_auth_path.exists():
             p = legacy_auth_path
         else:
             p = AUTH_BASE_DIR / "auth.json"
