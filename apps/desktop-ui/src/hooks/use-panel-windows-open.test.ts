@@ -44,6 +44,11 @@ class MockWebviewWindow {
 
 mock.module("@tauri-apps/api/webviewWindow", () => ({
   WebviewWindow: MockWebviewWindow,
+  getCurrentWebviewWindow: () => ({
+    label: "panel-chat",
+    setBackgroundColor: async () => {},
+    listen: async () => () => {},
+  }),
 }));
 
 mock.module("@tauri-apps/api/core", () => ({
@@ -135,6 +140,7 @@ describe("openPanelWindow", () => {
         height: 640,
         x: 1224,
         y: 16,
+        backgroundColor: "#00000000",
         visible: false,
       }),
     });
