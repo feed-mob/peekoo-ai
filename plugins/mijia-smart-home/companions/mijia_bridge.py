@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 import time
 import types
@@ -6,7 +7,23 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from urllib import parse
 
-AUTH_BASE_DIR = (Path.home() / ".peekoo" / "mijia").resolve()
+
+def _peekoo_data_dir():
+    override = os.environ.get("PEEKOO_DATA_DIR")
+    if override:
+        return Path(override).expanduser()
+
+    if os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+        if base:
+            return Path(base) / "Peekoo" / "peekoo"
+
+    return Path.home() / ".peekoo"
+
+PEEKOO_DATA_DIR = _peekoo_data_dir().resolve()
+LEGACY_PEEKOO_DIR = (Path.home() / ".peekoo").resolve()
+AUTH_BASE_DIR = (PEEKOO_DATA_DIR / "mijia").resolve()
+LEGACY_AUTH_BASE_DIR = (LEGACY_PEEKOO_DIR / "mijia").resolve()
 
 
 def _debug_log(message):
@@ -18,8 +35,10 @@ def _bootstrap_import_paths():
     plugin_dir = script_dir.parent
     vendor_candidates = [
         plugin_dir / "vendor",
-        Path.home() / ".peekoo" / "mijia" / "vendor",
-        Path.home() / ".peekoo" / "plugins" / "mijia-smart-home" / "vendor",
+        PEEKOO_DATA_DIR / "mijia" / "vendor",
+        PEEKOO_DATA_DIR / "plugins" / "mijia-smart-home" / "vendor",
+        LEGACY_PEEKOO_DIR / "mijia" / "vendor",
+        LEGACY_PEEKOO_DIR / "plugins" / "mijia-smart-home" / "vendor",
         Path.cwd() / "plugins" / "mijia-smart-home" / "vendor",
         Path("/tmp/mijia-api-inspect"),
     ]
@@ -57,12 +76,23 @@ def _normalize_auth_path(raw):
         if not p.is_absolute():
             p = AUTH_BASE_DIR / p
     else:
-        p = AUTH_BASE_DIR / "auth.json"
+        default_auth_path = AUTH_BASE_DIR / "auth.json"
+        legacy_auth_path = LEGACY_AUTH_BASE_DIR / "auth.json"
+        if default_auth_path.exists():
+            p = default_auth_path
+        elif legacy_auth_path.exists():
+            p = legacy_auth_path
+        else:
+            p = AUTH_BASE_DIR / "auth.json"
     if p.is_dir():
         p = p / "auth.json"
     p = p.resolve()
-    if AUTH_BASE_DIR != p and AUTH_BASE_DIR not in p.parents:
-        raise ValueError("auth_path must be inside ~/.peekoo/mijia")
+    allowed_roots = [AUTH_BASE_DIR]
+    if LEGACY_AUTH_BASE_DIR != AUTH_BASE_DIR:
+        allowed_roots.append(LEGACY_AUTH_BASE_DIR)
+    if not any(root == p or root in p.parents for root in allowed_roots):
+        allowed = ", ".join(str(root) for root in allowed_roots)
+        raise ValueError(f"auth_path must be inside one of: {allowed}")
     return p
 
 

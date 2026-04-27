@@ -21,3 +21,12 @@ This command builds WASM and installs the plugin to `~/.peekoo/plugins/mijia-sma
 At runtime, the plugin tries Python interpreters in this order:
 1. system `python3`
 2. system `python`
+
+## Runtime data paths
+
+The companion stores Mijia auth data under Peekoo's platform-specific data directory:
+
+- Windows: `%LOCALAPPDATA%\Peekoo\peekoo\mijia`
+- macOS/Linux: `~/.peekoo/mijia`
+
+For backward compatibility, it also reads legacy auth data from `~/.peekoo/mijia` when present.
