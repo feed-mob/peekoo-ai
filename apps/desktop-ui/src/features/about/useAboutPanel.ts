@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getName, getVersion } from "@tauri-apps/api/app";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
+import { getErrorMessage } from "@/lib/error-message";
 import { useUpdateInstallProgress, type InstallPhase } from "@/lib/update-install-progress";
 import { loadAboutSnapshot, type AboutSnapshot } from "./about-state";
 
@@ -18,14 +19,6 @@ interface AboutPanelState {
   error: string | null;
   refresh: () => Promise<void>;
   installUpdate: () => Promise<void>;
-}
-
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown error";
 }
 
 export function useAboutPanel(): AboutPanelState {
