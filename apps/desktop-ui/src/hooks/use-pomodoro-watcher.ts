@@ -7,6 +7,10 @@ import {
   type PomodoroStatus,
 } from "@/features/pomodoro/tool-client";
 import { PANEL_WINDOW_CONFIGS } from "@/types/window";
+import {
+  panelWindowBackgroundColor,
+  panelWindowEffects,
+} from "@/lib/window-transparency";
 
 function hasPendingFocusMemo(entry: PomodoroHistoryEntry | undefined): boolean {
   if (!entry) return false;
@@ -45,6 +49,8 @@ async function openPomodoroMemoWindow() {
     height: config.height,
     decorations: false,
     transparent: true,
+    backgroundColor: panelWindowBackgroundColor(),
+    windowEffects: panelWindowEffects(),
     alwaysOnTop: true,
     center: true,
     resizable: true,

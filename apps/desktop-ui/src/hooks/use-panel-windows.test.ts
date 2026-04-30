@@ -1,4 +1,15 @@
 import { describe, expect, test } from "bun:test";
+
+import { mock } from "bun:test";
+
+mock.module("@tauri-apps/api/webviewWindow", () => ({
+  getCurrentWebviewWindow: () => ({
+    label: "panel-chat",
+    setBackgroundColor: async () => {},
+    listen: async () => () => {},
+  }),
+}));
+
 import { calculatePanelPosition } from "./use-panel-windows";
 
 describe("calculatePanelPosition", () => {
