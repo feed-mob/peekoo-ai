@@ -11,6 +11,7 @@ import { InstallProviderDialog } from "./InstallProviderDialog";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
 import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
 import { shouldShowHermesInstallGuidance } from "./hermes-install-guidance";
+import { getRuntimeIconUrl } from "./runtime-icon-url";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { useRegistryAgents } from "@/hooks/useRegistryAgents";
 import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
@@ -142,7 +143,7 @@ export function AgentProviderPanel() {
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
                 <img
-                  src={`https://cdn.agentclientprotocol.com/registry/v1/latest/${defaultProvider.providerId}.svg`}
+                  src={getRuntimeIconUrl(defaultProvider.providerId)}
                   alt={defaultProvider.displayName}
                   className="h-8 w-8 object-contain"
                   onError={(e) => {
