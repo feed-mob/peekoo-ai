@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Plus, AlertCircle, RefreshCw, Sparkles, Search, Download } from "lucide-react";
 import { ProviderCard } from "./ProviderCard";
 import { RegistryAgentCard } from "./RegistryAgentCard";
+import { HermesInstallGuidanceCard } from "./HermesInstallGuidanceCard";
 import { InstallProviderDialog } from "./InstallProviderDialog";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
 import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
+import { shouldShowHermesInstallGuidance } from "./hermes-install-guidance";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { useRegistryAgents } from "@/hooks/useRegistryAgents";
 import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
@@ -56,7 +58,8 @@ export function AgentProviderPanel() {
   const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
   const [isConfigureDialogOpen, setIsConfigureDialogOpen] = useState(false);
   const [isAddCustomDialogOpen, setIsAddCustomDialogOpen] = useState(false);
-  const totalAvailableCount = registryAgents.length;
+  const showHermesGuidance = shouldShowHermesInstallGuidance(installedProviders);
+  const totalAvailableCount = registryAgents.length + (showHermesGuidance ? 1 : 0);
 
   // Load providers on mount
   useEffect(() => {
@@ -242,6 +245,7 @@ export function AgentProviderPanel() {
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
+              {showHermesGuidance && <HermesInstallGuidanceCard />}
               {registryAgents.map((agent) => (
                 <RegistryAgentCard
                   key={agent.registryId}

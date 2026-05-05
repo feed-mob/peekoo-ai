@@ -477,6 +477,13 @@
     "showingRuntimes": "Mostrando {{count}} runtimes",
     "searchPlaceholder": "Buscar agentes (ej. Gemini, Cursor, Claude)...",
     "noRuntimesFound": "No se encontraron runtimes",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "Instala Hermes localmente para usarlo como runtime ACP.",
+      "description": "Peekoo detecta Hermes desde tu PATH. Instala Hermes y reinicia Peekoo para que el runtime aparezca en Runtimes instalados.",
+      "restartHint": "Reinicia Peekoo después de instalarlo.",
+      "docsLink": "Documentación de instalación"
+    },
     "loading": "Cargando...",
     "loadMore": "Cargar más agentes",
     "default": "Predeterminado",
