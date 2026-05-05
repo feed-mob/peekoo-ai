@@ -483,6 +483,13 @@
     "showingRuntimes": "显示 {{count}} 个运行时",
     "searchPlaceholder": "搜索智能体（如 Gemini、Cursor、Claude）...",
     "noRuntimesFound": "未找到运行时",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "在本机安装 Hermes 后即可将其用作 ACP 运行时。",
+      "description": "Peekoo 会从 PATH 检测 Hermes。安装 Hermes 后，请重启 Peekoo，让运行时显示在已安装列表中。",
+      "restartHint": "安装后请重启 Peekoo。",
+      "docsLink": "安装文档"
+    },
     "loading": "加载中...",
     "loadMore": "加载更多智能体",
     "default": "默认",

@@ -483,6 +483,13 @@
     "showingRuntimes": "Showing {{count}} runtimes",
     "searchPlaceholder": "Search agents (e.g., Gemini, Cursor, Claude)...",
     "noRuntimesFound": "No runtimes found",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "Install Hermes locally to use it as an ACP runtime.",
+      "description": "Peekoo detects Hermes from your PATH. Install Hermes, then restart Peekoo so the runtime appears in Installed Runtimes.",
+      "restartHint": "Restart Peekoo after installation.",
+      "docsLink": "Installation docs"
+    },
     "loading": "Loading...",
     "loadMore": "Load more agents",
     "default": "Default",

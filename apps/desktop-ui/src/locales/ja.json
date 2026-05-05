@@ -477,6 +477,13 @@
     "showingRuntimes": "{{count}} 件のランタイムを表示",
     "searchPlaceholder": "エージェントを検索（例: Gemini, Cursor, Claude）...",
     "noRuntimesFound": "ランタイムが見つかりません",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "Hermes をローカルにインストールすると ACP ランタイムとして使用できます。",
+      "description": "Peekoo は PATH から Hermes を検出します。Hermes をインストールした後、Peekoo を再起動するとインストール済みランタイムに表示されます。",
+      "restartHint": "インストール後に Peekoo を再起動してください。",
+      "docsLink": "インストール手順"
+    },
     "loading": "読み込み中...",
     "loadMore": "さらにエージェントを読み込む",
     "default": "デフォルト",
