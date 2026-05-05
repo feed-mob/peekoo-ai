@@ -205,11 +205,25 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          APP_TAR_GZ=$(find apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos -maxdepth 1 -name '*.app.tar.gz' | head -n 1)
+          APP_TAR_GZ=$(
+            find \
+              target/${{ matrix.rust_target }}/release/bundle/macos \
+              target/release/bundle/macos \
+              apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos \
+              apps/desktop-tauri/src-tauri/target/release/bundle/macos \
+              -maxdepth 1 \
+              -name '*.app.tar.gz' \
+              2>/dev/null | head -n 1
+          )
           APP_TAR_GZ_SIG="${APP_TAR_GZ}.sig"
 
           if [ -z "$APP_TAR_GZ" ] || [ ! -f "$APP_TAR_GZ" ]; then
             echo "macOS updater bundle (.app.tar.gz) was not generated" >&2
+            echo "Searched in:" >&2
+            echo "  - target/${{ matrix.rust_target }}/release/bundle/macos" >&2
+            echo "  - target/release/bundle/macos" >&2
+            echo "  - apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" >&2
+            echo "  - apps/desktop-tauri/src-tauri/target/release/bundle/macos" >&2
             exit 1
           fi
 
