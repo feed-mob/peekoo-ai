@@ -487,6 +487,13 @@
     "showingRuntimes": "Affichage de {{count}} exécuteurs",
     "searchPlaceholder": "Rechercher des agents (ex. Gemini, Cursor, Claude)...",
     "noRuntimesFound": "Aucun exécuteur trouvé",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "Installez Hermes localement pour l'utiliser comme exécuteur ACP.",
+      "description": "Peekoo détecte Hermes depuis votre PATH. Installez Hermes, puis redémarrez Peekoo pour afficher l'exécuteur dans les exécuteurs installés.",
+      "restartHint": "Redémarrez Peekoo après l'installation.",
+      "docsLink": "Documentation d'installation"
+    },
     "loading": "Chargement...",
     "loadMore": "Charger plus d'agents",
     "default": "Par défaut",

@@ -161,12 +161,13 @@ pub fn calculate_display_order(registry_id: &str) -> i32 {
         "codex-acp" => 1,
         "claude-acp" => 2,
         "gemini" => 3,
-        "cursor" => 4,
-        "goose" => 5,
-        "kimi" => 6,
-        "qwen-code" => 7,
-        "cline" => 8,
-        "auggie" => 9,
+        "hermes-agent" => 4,
+        "cursor" => 5,
+        "goose" => 6,
+        "kimi" => 7,
+        "qwen-code" => 8,
+        "cline" => 9,
+        "auggie" => 10,
         _ => {
             // Alphabetical order for rest
             100 + registry_id.chars().next().map(|c| c as i32).unwrap_or(127)
@@ -360,6 +361,7 @@ impl AgentProviderService {
             bundled_opencode_path.filter(|path| path.exists() && path.is_file());
 
         Self::seed_installed_opencode(&conn, bundled_opencode_path.as_deref())?;
+        Self::seed_installed_hermes(&conn, command_available("hermes"))?;
 
         // Initialize registry client (may fail if no network/cache, but service still works)
         let registry_client = RegistryClient::new().ok();
@@ -406,6 +408,7 @@ impl AgentProviderService {
             bundled_opencode_path.filter(|path| path.exists() && path.is_file());
 
         Self::seed_installed_opencode(&conn, bundled_opencode_path.as_deref())?;
+        Self::seed_installed_hermes(&conn, command_available("hermes"))?;
 
         // Don't initialize registry client in tests to avoid network calls
         let registry_client = None;
@@ -580,6 +583,48 @@ impl AgentProviderService {
                 if is_bundled { 1i64 } else { 0i64 },
                 now,
             ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Seed Hermes only when its CLI is installed and visible on PATH.
+    fn seed_installed_hermes(conn: &Connection, is_on_path: bool) -> anyhow::Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        if !is_on_path {
+            conn.execute(
+                "UPDATE agent_runtimes
+                 SET is_installed = 0,
+                     status = 'not_installed',
+                     status_message = NULL,
+                     updated_at = ?1
+                 WHERE runtime_type = 'hermes-agent'",
+                params![now],
+            )?;
+            return Ok(());
+        }
+
+        conn.execute(
+            "INSERT INTO agent_runtimes (
+                id, runtime_type, display_name, description, command, args_json,
+                installation_method, is_bundled, is_installed, is_default,
+                status, status_message, config_json, registry_id, created_at, updated_at
+            ) VALUES (
+                'provider_hermes-agent', 'hermes-agent', 'Hermes Agent', 'Nous Research Hermes Agent with ACP support',
+                'hermes', '[\"acp\"]',
+                'binary', 0, 1, 0,
+                'ready', NULL, '{}', 'hermes-agent', ?1, ?1
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                command = excluded.command,
+                args_json = excluded.args_json,
+                installation_method = excluded.installation_method,
+                is_installed = excluded.is_installed,
+                status = excluded.status,
+                status_message = excluded.status_message,
+                updated_at = excluded.updated_at",
+            params![now],
         )?;
 
         Ok(())
@@ -2104,6 +2149,7 @@ mod tests {
     fn test_list_providers() {
         let (service, _temp) = create_test_service();
         let opencode_available = command_available("opencode");
+        let hermes_available = command_available("hermes");
 
         let providers = service.list_providers().unwrap();
 
@@ -2116,10 +2162,84 @@ mod tests {
             assert!(opencode.is_installed);
             assert!(opencode.is_default);
             assert!(!opencode.is_bundled);
-        } else {
-            // no rows seeded — DB is empty
+        }
+        if hermes_available {
+            let hermes = providers
+                .iter()
+                .find(|p| p.provider_id == "hermes-agent")
+                .unwrap();
+            assert!(hermes.is_installed);
+            assert!(!hermes.is_bundled);
+        }
+        if !opencode_available && !hermes_available {
+            // no path-discovered rows seeded — DB is empty
             assert!(providers.is_empty());
         }
+    }
+
+    #[test]
+    fn hermes_runtime_is_not_seeded_when_command_is_unavailable() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test_providers.db");
+        let conn = Connection::open(db_path).unwrap();
+        peekoo_persistence_sqlite::run_all_migrations(&conn).unwrap();
+
+        AgentProviderService::seed_installed_hermes(&conn, false).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM agent_runtimes WHERE runtime_type = 'hermes-agent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn hermes_runtime_is_seeded_with_acp_launch_command_when_available() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test_providers.db");
+        let conn = Connection::open(db_path).unwrap();
+        peekoo_persistence_sqlite::run_all_migrations(&conn).unwrap();
+
+        AgentProviderService::seed_installed_hermes(&conn, true).unwrap();
+
+        let (display_name, command, args_json, status): (String, String, String, String) = conn
+            .query_row(
+                "SELECT display_name, command, args_json, status FROM agent_runtimes WHERE runtime_type = 'hermes-agent'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        let args: Vec<String> = serde_json::from_str(&args_json).unwrap();
+
+        assert_eq!(display_name, "Hermes Agent");
+        assert_eq!(command, "hermes");
+        assert_eq!(args, vec!["acp".to_string()]);
+        assert_eq!(status, "ready");
+    }
+
+    #[test]
+    fn hermes_runtime_is_marked_not_installed_when_command_disappears() {
+        let temp_dir = TempDir::new().unwrap();
+        let db_path = temp_dir.path().join("test_providers.db");
+        let conn = Connection::open(db_path).unwrap();
+        peekoo_persistence_sqlite::run_all_migrations(&conn).unwrap();
+
+        AgentProviderService::seed_installed_hermes(&conn, true).unwrap();
+        AgentProviderService::seed_installed_hermes(&conn, false).unwrap();
+
+        let (is_installed, status): (i64, String) = conn
+            .query_row(
+                "SELECT is_installed, status FROM agent_runtimes WHERE runtime_type = 'hermes-agent'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(is_installed, 0);
+        assert_eq!(status, "not_installed");
     }
 
     #[test]
@@ -2140,6 +2260,7 @@ mod tests {
     fn test_list_runtimes_uses_runtime_table() {
         let (service, _temp) = create_test_service();
         let opencode_available = command_available("opencode");
+        let hermes_available = command_available("hermes");
 
         let runtimes = service.list_runtimes().unwrap();
         let runtime_rows: i64 = service
@@ -2147,13 +2268,24 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM agent_runtimes", [], |row| row.get(0))
             .unwrap();
 
+        let expected_count =
+            (if opencode_available { 1 } else { 0 }) + (if hermes_available { 1 } else { 0 });
+        assert_eq!(runtimes.len(), expected_count as usize);
+        assert_eq!(runtime_rows, expected_count);
+
         if opencode_available {
-            assert_eq!(runtimes.len(), 1);
-            assert_eq!(runtime_rows, 1);
-            assert_eq!(runtimes[0].provider_id, "opencode");
-        } else {
-            assert_eq!(runtimes.len(), 0);
-            assert_eq!(runtime_rows, 0);
+            assert!(
+                runtimes
+                    .iter()
+                    .any(|runtime| runtime.provider_id == "opencode")
+            );
+        }
+        if hermes_available {
+            assert!(
+                runtimes
+                    .iter()
+                    .any(|runtime| runtime.provider_id == "hermes-agent")
+            );
         }
     }
 

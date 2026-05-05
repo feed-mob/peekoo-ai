@@ -8,6 +8,10 @@ import { emitPetReaction } from "@/lib/pet-events";
 import { usePlugins } from "@/hooks/use-plugins";
 import type { PluginPanel } from "@/types/plugin";
 import type { PanelWindowConfig } from "@/types/window";
+import {
+  panelWindowBackgroundColor,
+  panelWindowEffects,
+} from "@/lib/window-transparency";
 
 interface PanelWindowState {
   isOpen: boolean;
@@ -143,6 +147,8 @@ export async function openPanelWindow(
     decorations: false,
     shadow: false,
     transparent: true,
+    backgroundColor: panelWindowBackgroundColor(),
+    windowEffects: panelWindowEffects(),
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: true,

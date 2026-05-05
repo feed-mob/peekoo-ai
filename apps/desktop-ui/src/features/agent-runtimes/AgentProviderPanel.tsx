@@ -6,9 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Plus, AlertCircle, RefreshCw, Sparkles, Search, Download } from "lucide-react";
 import { ProviderCard } from "./ProviderCard";
 import { RegistryAgentCard } from "./RegistryAgentCard";
+import { HermesInstallGuidanceCard } from "./HermesInstallGuidanceCard";
 import { InstallProviderDialog } from "./InstallProviderDialog";
 import { ConfigureProviderDialog } from "./ConfigureProviderDialog";
 import { AddCustomRuntimeDialog } from "./AddCustomRuntimeDialog";
+import { shouldShowHermesInstallGuidance } from "./hermes-install-guidance";
+import { getRuntimeIconUrl } from "./runtime-icon-url";
 import { useAgentProviders } from "@/hooks/useAgentProviders";
 import { useRegistryAgents } from "@/hooks/useRegistryAgents";
 import { type RuntimeInfo, type InstallationMethod } from "@/types/agent-runtime";
@@ -56,7 +59,8 @@ export function AgentProviderPanel() {
   const [isInstallDialogOpen, setIsInstallDialogOpen] = useState(false);
   const [isConfigureDialogOpen, setIsConfigureDialogOpen] = useState(false);
   const [isAddCustomDialogOpen, setIsAddCustomDialogOpen] = useState(false);
-  const totalAvailableCount = registryAgents.length;
+  const showHermesGuidance = shouldShowHermesInstallGuidance(installedProviders);
+  const totalAvailableCount = registryAgents.length + (showHermesGuidance ? 1 : 0);
 
   // Load providers on mount
   useEffect(() => {
@@ -139,7 +143,7 @@ export function AgentProviderPanel() {
             <div className="flex items-center gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
                 <img
-                  src={`https://cdn.agentclientprotocol.com/registry/v1/latest/${defaultProvider.providerId}.svg`}
+                  src={getRuntimeIconUrl(defaultProvider.providerId)}
                   alt={defaultProvider.displayName}
                   className="h-8 w-8 object-contain"
                   onError={(e) => {
@@ -242,6 +246,7 @@ export function AgentProviderPanel() {
         ) : (
           <>
             <div className="grid gap-4 sm:grid-cols-2">
+              {showHermesGuidance && <HermesInstallGuidanceCard />}
               {registryAgents.map((agent) => (
                 <RegistryAgentCard
                   key={agent.registryId}

@@ -477,6 +477,13 @@
     "showingRuntimes": "顯示 {{count}} 個執行階段",
     "searchPlaceholder": "搜尋智慧體（如 Gemini、Cursor、Claude）...",
     "noRuntimesFound": "未找到執行階段",
+    "hermesGuidance": {
+      "title": "Hermes Agent",
+      "subtitle": "在本機安裝 Hermes 後即可將其用作 ACP 執行階段。",
+      "description": "Peekoo 會從 PATH 偵測 Hermes。安裝 Hermes 後，請重新啟動 Peekoo，讓執行階段顯示在已安裝列表中。",
+      "restartHint": "安裝後請重新啟動 Peekoo。",
+      "docsLink": "安裝文件"
+    },
     "loading": "載入中...",
     "loadMore": "載入更多智慧體",
     "default": "預設",

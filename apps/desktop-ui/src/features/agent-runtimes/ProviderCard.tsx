@@ -7,6 +7,7 @@ import {
   type RuntimeInspectionResult,
 } from "@/types/agent-runtime";
 import { getProviderAuthState, getProviderStatusText } from "./provider-auth-state";
+import { getRuntimeIconUrl } from "./runtime-icon-url";
 import { Star, Download, Settings, Trash2, Check, AlertCircle, Loader2, Lock, RefreshCw } from "lucide-react";
 
 interface ProviderCardProps {
@@ -124,7 +125,7 @@ export function ProviderCard({
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white dark:bg-white/10 overflow-hidden p-1">
             <img
-              src={`https://cdn.agentclientprotocol.com/registry/v1/latest/${provider.providerId}.svg`}
+              src={getRuntimeIconUrl(provider.providerId)}
               alt={provider.displayName}
               className="h-8 w-8 object-contain"
               onError={(e) => {
