@@ -2,8 +2,12 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Terminal } from "lucide-react";
-import { HERMES_INSTALL_COMMAND, HERMES_INSTALL_DOCS_URL } from "./hermes-install-guidance";
+import { ExternalLink } from "lucide-react";
+import {
+  HERMES_AVAILABLE_RUNTIME_ICON_URL,
+  HERMES_INSTALL_COMMAND,
+  HERMES_INSTALL_DOCS_URL,
+} from "./hermes-install-guidance";
 
 export function HermesInstallGuidanceCard() {
   const { t } = useTranslation();
@@ -13,7 +17,11 @@ export function HermesInstallGuidanceCard() {
       <CardHeader className="pb-3">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-space-deep text-primary">
-            <Terminal className="h-5 w-5" />
+            <img
+              src={HERMES_AVAILABLE_RUNTIME_ICON_URL}
+              alt={t("agentRuntimes.hermesGuidance.title")}
+              className="h-8 w-8 object-contain"
+            />
           </div>
           <div className="min-w-0 flex-1">
             <CardTitle className="text-sm font-medium text-text-primary">
