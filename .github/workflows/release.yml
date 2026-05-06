@@ -203,8 +203,22 @@ jobs:
         if: matrix.platform == 'macos-14'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
+          APP_BUNDLE=$(
+            find \
+              target/${{ matrix.rust_target }}/release/bundle/macos \
+              target/release/bundle/macos \
+              apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos \
+              apps/desktop-tauri/src-tauri/target/release/bundle/macos \
+              -maxdepth 1 \
+              -type d \
+              -name '*.app' \
+              2>/dev/null | head -n 1
+          )
+
           APP_TAR_GZ=$(
             find \
               target/${{ matrix.rust_target }}/release/bundle/macos \
@@ -215,10 +229,38 @@ jobs:
               -name '*.app.tar.gz' \
               2>/dev/null | head -n 1
           )
-          APP_TAR_GZ_SIG="${APP_TAR_GZ}.sig"
 
           if [ -z "$APP_TAR_GZ" ] || [ ! -f "$APP_TAR_GZ" ]; then
-            echo "macOS updater bundle (.app.tar.gz) was not generated" >&2
+            if [ -z "$APP_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
+              echo "macOS updater bundle (.app.tar.gz) was not generated and no .app bundle was found to repackage" >&2
+              echo "Searched in:" >&2
+              echo "  - target/${{ matrix.rust_target }}/release/bundle/macos" >&2
+              echo "  - target/release/bundle/macos" >&2
+              echo "  - apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos" >&2
+              echo "  - apps/desktop-tauri/src-tauri/target/release/bundle/macos" >&2
+              exit 1
+            fi
+
+            APP_TAR_GZ="$RUNNER_TEMP/Peekoo.app.tar.gz"
+            tar -C "$(dirname "$APP_BUNDLE")" -czf "$APP_TAR_GZ" "$(basename "$APP_BUNDLE")"
+          fi
+
+          APP_TAR_GZ_SIG="${APP_TAR_GZ}.sig"
+
+          if [ ! -f "$APP_TAR_GZ_SIG" ]; then
+            SIGN_TARGET="$APP_TAR_GZ"
+            case "$SIGN_TARGET" in
+              /*) ;;
+              *) SIGN_TARGET="$GITHUB_WORKSPACE/$SIGN_TARGET" ;;
+            esac
+            (
+              cd apps/desktop-tauri/src-tauri
+              cargo tauri signer sign "$SIGN_TARGET"
+            )
+          fi
+
+          if [ ! -f "$APP_TAR_GZ" ]; then
+            echo "macOS updater bundle (.app.tar.gz) is missing after packaging" >&2
             echo "Searched in:" >&2
             echo "  - target/${{ matrix.rust_target }}/release/bundle/macos" >&2
             echo "  - target/release/bundle/macos" >&2
