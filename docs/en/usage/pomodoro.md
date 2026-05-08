@@ -2,7 +2,7 @@
 
 Peekoo has a built-in pomodoro timer to help you protect focus time and build a working rhythm. The timer, task system, and session history all live in the same app — no switching tools.
 
-<!-- Image placeholder: Pomodoro panel screenshot -->
+![Pomodoro panel](assets/screenshots/pomodoro.png)
 
 ## Open Pomodoro
 

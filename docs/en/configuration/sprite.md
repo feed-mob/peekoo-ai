@@ -2,7 +2,7 @@
 
 The sprite is the character Peekoo displays on your desktop. You can use one of the built-in characters or upload your own image to create a custom companion.
 
-<!-- Image placeholder: Sprite switcher screenshot -->
+![Sprite switcher](assets/screenshots/sprite-settings.png)
 
 ## Switch Built-in Sprites
 
