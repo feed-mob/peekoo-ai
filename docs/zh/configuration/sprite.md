@@ -2,7 +2,7 @@
 
 Sprite 是 Peekoo 常驻在桌面上的角色形象。你可以使用内置的角色，也可以上传自己的图片来定制专属桌宠。
 
-<!-- 图片占位：Sprite 切换界面截图 -->
+![Sprite 切换界面](assets/screenshots/sprite-settings.png)
 
 ## 切换内置 Sprite
 

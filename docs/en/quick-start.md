@@ -14,7 +14,7 @@ Download the latest release from GitHub Releases, then follow the platform guide
 
 After launch, Peekoo appears as a small desktop character on your screen.
 
-<!-- Image placeholder: Peekoo desktop screenshot -->
+![Peekoo desktop](assets/screenshots/sprite-desktop.png)
 
 - Single-click the sprite → returns to default idle state
 - Double-click the sprite → opens Mini Chat for a quick conversation

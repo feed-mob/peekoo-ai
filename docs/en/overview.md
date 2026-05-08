@@ -6,7 +6,7 @@ Peekoo is an AI companion app built around a desktop pet, with an extensible plu
 
 Most of the time, it just sits quietly in the corner of your screen — peeking at you, occasionally dozing off, doing exactly what a desktop pet does. But when you need it, it's ready to help.
 
-<!-- Image placeholder: Peekoo desktop screenshot -->
+![Peekoo desktop](assets/screenshots/sprite-desktop.png)
 
 We think of Peekoo as an **infinitely extensible, fully customizable desktop companion**. The project started from a question: how can AI integrate into work and study in a gentler, less intrusive way?
 
