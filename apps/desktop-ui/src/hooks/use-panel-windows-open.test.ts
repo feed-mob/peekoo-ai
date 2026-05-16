@@ -1,14 +1,22 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 let existingWindow:
-  | { setFocus?: () => Promise<void>; close?: () => Promise<void> }
+  | {
+      setFocus?: () => Promise<void>;
+      close?: () => Promise<void>;
+      show?: () => Promise<void>;
+      hide?: () => Promise<void>;
+      isVisible?: () => Promise<boolean>;
+    }
   | null = null;
 let focusCount = 0;
 let closeCount = 0;
+let hideCount = 0;
 let createdWindows: Array<{ label: string; options: Record<string, unknown> }> = [];
 let showCount = 0;
 let monitorPointCalls: Array<{ x: number; y: number }> = [];
 let invokeCalls: string[] = [];
+let emittedEvents: Array<{ event: string; payload: unknown }> = [];
 
 const spriteState = {
   scaleFactor: 2,
@@ -36,7 +44,13 @@ class MockWebviewWindow {
   }
 
   static async getByLabel(): Promise<
-    { setFocus?: () => Promise<void>; close?: () => Promise<void> } | null
+    {
+      setFocus?: () => Promise<void>;
+      close?: () => Promise<void>;
+      show?: () => Promise<void>;
+      hide?: () => Promise<void>;
+      isVisible?: () => Promise<boolean>;
+    } | null
   > {
     return existingWindow;
   }
@@ -57,6 +71,13 @@ mock.module("@tauri-apps/api/core", () => ({
     invokeCalls.push(command);
     return null;
   },
+}));
+
+mock.module("@tauri-apps/api/event", () => ({
+  emit: async (event: string, payload: unknown) => {
+    emittedEvents.push({ event, payload });
+  },
+  listen: async () => () => {},
 }));
 
 mock.module("@tauri-apps/api/window", () => ({
@@ -94,10 +115,12 @@ beforeEach(() => {
   existingWindow = null;
   focusCount = 0;
   closeCount = 0;
+  hideCount = 0;
   showCount = 0;
   createdWindows = [];
   monitorPointCalls = [];
   invokeCalls = [];
+  emittedEvents = [];
 
   spriteState.scaleFactor = 2;
   spriteState.outerPosition = { x: 2000, y: 400, logical: { x: 1000, y: 200 } };
@@ -111,6 +134,7 @@ beforeEach(() => {
 describe("openPanelWindow", () => {
   test("focuses an existing panel window instead of creating a new one", async () => {
     existingWindow = {
+      isVisible: async () => true,
       setFocus: async () => {
         focusCount += 1;
       },
@@ -149,14 +173,22 @@ describe("openPanelWindow", () => {
 
   test("saves window state before closing an existing panel", async () => {
     existingWindow = {
-      close: async () => {
-        closeCount += 1;
+      isVisible: async () => true,
+      hide: async () => {
+        hideCount += 1;
       },
     };
 
     await closePanelWindow("panel-chat");
 
     expect(invokeCalls).toEqual(["window_state_save_all"]);
-    expect(closeCount).toBe(1);
+    expect(closeCount).toBe(0);
+    expect(hideCount).toBe(1);
+    expect(emittedEvents).toEqual([
+      {
+        event: "panel-visibility-changed",
+        payload: { label: "panel-chat", isOpen: false },
+      },
+    ]);
   });
 });
