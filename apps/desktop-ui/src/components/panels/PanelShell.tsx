@@ -3,7 +3,9 @@ import { X } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { emitPetReaction } from "@/lib/pet-events";
 import { motion } from "framer-motion";
+import { closePanelWindow } from "@/hooks/use-panel-windows";
 import { isMacOsPlatform } from "@/lib/window-transparency";
+import type { PanelLabel } from "@/types/window";
 
 interface PanelShellProps {
   title: string;
@@ -39,7 +41,7 @@ export function PanelShell({ title, children }: PanelShellProps) {
   const handleClose = async () => {
     await emitPetReaction("panel-closed");
     const win = getCurrentWindow();
-    await win.close();
+    await closePanelWindow(win.label as PanelLabel);
   };
 
   const handleResizeStart =
