@@ -21,6 +21,14 @@ use crate::state::PluginStateStore;
 const DEFAULT_MEMORY_MAX_PAGES: u32 = 256;
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(5000);
 
+fn plugin_timeout(manifest: &PluginManifest) -> Duration {
+    manifest
+        .plugin
+        .timeout_ms
+        .map(Duration::from_millis)
+        .unwrap_or(DEFAULT_TIMEOUT)
+}
+
 pub struct PluginRegistry {
     plugins: Mutex<HashMap<String, PluginInstance>>,
     plugin_dirs: Vec<PathBuf>,
@@ -195,12 +203,13 @@ impl PluginRegistry {
 
         let companions = manifest.companions.clone();
 
+        let timeout = plugin_timeout(&manifest);
         let mut instance = PluginInstance::load(
             manifest,
             plugin_dir.to_path_buf(),
             host_fns,
             DEFAULT_MEMORY_MAX_PAGES,
-            DEFAULT_TIMEOUT,
+            timeout,
         )?;
         instance.initialize()?;
 
