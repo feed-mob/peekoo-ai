@@ -38,6 +38,10 @@ async function openPomodoroMemoWindow() {
 
   const existing = await WebviewWindow.getByLabel(config.label);
   if (existing) {
+    const isVisible = await existing.isVisible().catch(() => true);
+    if (!isVisible) {
+      await existing.show();
+    }
     await existing.setFocus();
     return;
   }
