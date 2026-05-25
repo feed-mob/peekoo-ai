@@ -38,6 +38,8 @@ pub struct PluginMeta {
     pub min_peekoo_version: Option<String>,
     /// Path to the `.wasm` module relative to the manifest file.
     pub wasm: String,
+    /// Optional per-plugin WASM call timeout in milliseconds.
+    pub timeout_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -207,12 +209,14 @@ key = "example"
 name = "Example Plugin"
 version = "0.1.0"
 wasm = "plugin.wasm"
+timeout_ms = 15000
 "#;
         let m = parse_manifest(toml).unwrap();
         assert_eq!(m.plugin.key, "example");
         assert_eq!(m.plugin.name, "Example Plugin");
         assert_eq!(m.plugin.version, "0.1.0");
         assert_eq!(m.plugin.wasm, "plugin.wasm");
+        assert_eq!(m.plugin.timeout_ms, Some(15000));
         assert!(m.permissions.is_none());
         assert!(m.tools.is_none());
         assert!(m.events.is_none());
@@ -232,6 +236,7 @@ author = "Peekoo Team"
 description = "Periodic health reminders"
 min_peekoo_version = "0.1.0"
 wasm = "plugin.wasm"
+timeout_ms = 30000
 
 [permissions]
 required = ["timer", "notifications", "state:read", "state:write"]

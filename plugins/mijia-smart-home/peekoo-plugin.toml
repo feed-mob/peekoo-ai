@@ -6,6 +6,7 @@ author = "Peekoo Developer"
 description = "Mijia device QR login, device list, quick toggles, and detailed controls"
 min_peekoo_version = "0.1.0"
 wasm = "target/wasm32-wasip1/release/mijia_smart_home.wasm"
+timeout_ms = 45000
 
 [permissions]
 required = []
