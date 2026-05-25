@@ -107,7 +107,7 @@ jobs:
         include:
           - platform: macos-14
             rust_target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles dmg,updater
+            args: --target aarch64-apple-darwin --bundles app,dmg,updater
           - platform: ubuntu-22.04
             rust_target: x86_64-unknown-linux-gnu
             args: --bundles appimage,deb
@@ -207,28 +207,28 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         shell: bash
         run: |
-          APP_BUNDLE=$(
-            find \
-              target/${{ matrix.rust_target }}/release/bundle/macos \
-              target/release/bundle/macos \
-              apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos \
-              apps/desktop-tauri/src-tauri/target/release/bundle/macos \
-              -maxdepth 1 \
-              -type d \
-              -name '*.app' \
-              2>/dev/null | head -n 1
+          SEARCH_DIRS=(
+            "target/${{ matrix.rust_target }}/release/bundle/macos"
+            "target/release/bundle/macos"
+            "apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos"
+            "apps/desktop-tauri/src-tauri/target/release/bundle/macos"
           )
 
-          APP_TAR_GZ=$(
-            find \
-              target/${{ matrix.rust_target }}/release/bundle/macos \
-              target/release/bundle/macos \
-              apps/desktop-tauri/src-tauri/target/${{ matrix.rust_target }}/release/bundle/macos \
-              apps/desktop-tauri/src-tauri/target/release/bundle/macos \
-              -maxdepth 1 \
-              -name '*.app.tar.gz' \
-              2>/dev/null | head -n 1
-          )
+          APP_BUNDLE=""
+          APP_TAR_GZ=""
+          for dir in "${SEARCH_DIRS[@]}"; do
+            if [ ! -d "$dir" ]; then
+              continue
+            fi
+
+            if [ -z "$APP_BUNDLE" ]; then
+              APP_BUNDLE=$(find "$dir" -maxdepth 1 -type d -name '*.app' -print -quit)
+            fi
+
+            if [ -z "$APP_TAR_GZ" ]; then
+              APP_TAR_GZ=$(find "$dir" -maxdepth 1 -name '*.app.tar.gz' -print -quit)
+            fi
+          done
 
           if [ -z "$APP_TAR_GZ" ] || [ ! -f "$APP_TAR_GZ" ]; then
             if [ -z "$APP_BUNDLE" ] || [ ! -d "$APP_BUNDLE" ]; then
