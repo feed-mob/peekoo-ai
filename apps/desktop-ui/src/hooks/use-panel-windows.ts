@@ -1,6 +1,5 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { emit, listen } from "@tauri-apps/api/event";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getCurrentWindow, monitorFromPoint } from "@tauri-apps/api/window";
 import type { PanelLabel } from "@/types/window";
@@ -19,7 +18,6 @@ interface PanelWindowState {
 }
 
 export type PanelWindowStates = Record<string, PanelWindowState>;
-export const PANEL_VISIBILITY_CHANGED_EVENT = "panel-visibility-changed";
 
 const INITIAL_STATE: PanelWindowStates = {
   "panel-chat": { isOpen: false },
@@ -113,10 +111,6 @@ export async function openPanelWindow(
 
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
-    const isVisible = await existing.isVisible().catch(() => true);
-    if (!isVisible) {
-      await existing.show();
-    }
     await existing.setFocus();
     return existing;
   }
@@ -171,45 +165,17 @@ export async function closePanelWindow(label: PanelLabel): Promise<void> {
 
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
-    const isVisible = await existing.isVisible().catch(() => true);
-    if (isVisible) {
-      await existing.hide();
-    }
+    await existing.close();
   }
-
-  await emit(PANEL_VISIBILITY_CHANGED_EVENT, { label, isOpen: false });
 }
 
 export function usePanelWindows() {
   const { plugins: installedPlugins, panels: pluginPanels } = usePlugins();
   const [panels, setPanels] = useState<PanelWindowStates>(INITIAL_STATE);
 
-  useEffect(() => {
-    const unlistenPromise = listen<{ label?: string; isOpen?: boolean }>(
-      PANEL_VISIBILITY_CHANGED_EVENT,
-      (event) => {
-        const label = event.payload?.label;
-        const isOpen = event.payload?.isOpen;
-        if (!label || typeof isOpen !== "boolean") {
-          return;
-        }
-
-        setPanels((prev) => ({ ...prev, [label]: { isOpen } }));
-      },
-    );
-
-    return () => {
-      void unlistenPromise.then((unlisten) => unlisten());
-    };
-  }, []);
-
   const openPanel = useCallback(async (label: PanelLabel) => {
     const existing = await WebviewWindow.getByLabel(label);
     if (existing) {
-      const isVisible = await existing.isVisible().catch(() => true);
-      if (!isVisible) {
-        await existing.show();
-      }
       await existing.setFocus();
       setPanels((prev) => ({ ...prev, [label]: { isOpen: true } }));
       void emitPetReaction("panel-opened");
