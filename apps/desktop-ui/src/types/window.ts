@@ -42,8 +42,8 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
   "panel-tasks": {
     label: "panel-tasks",
     title: "Peekoo Tasks",
-    width: 340,
-    height: 420,
+    width: 400,
+    height: 560,
   },
   "panel-pomodoro": {
     label: "panel-pomodoro",
@@ -60,8 +60,8 @@ export const PANEL_WINDOW_CONFIGS: Record<string, PanelWindowConfig> = {
   "panel-plugins": {
     label: "panel-plugins",
     title: "Peekoo Plugins",
-    width: 500,
-    height: 600,
+    width: 540,
+    height: 720,
   },
   "panel-settings": {
     label: "panel-settings",

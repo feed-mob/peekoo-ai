@@ -137,7 +137,7 @@ describe("openPanelWindow", () => {
       options: expect.objectContaining({
         title: "Peekoo Chat",
         width: 520,
-        height: 640,
+        height: 568,
         x: 1224,
         y: 16,
         backgroundColor: "#00000000",
@@ -145,6 +145,48 @@ describe("openPanelWindow", () => {
       }),
     });
     expect(showCount).toBe(0);
+  });
+
+  test("opens the tasks panel at its default size when it fits the work area", async () => {
+    monitorState = {
+      position: { x: 0, y: 0 },
+      size: { width: 1920, height: 1040 },
+    };
+    spriteState.outerPosition = { x: 400, y: 200, logical: { x: 200, y: 100 } };
+
+    await openPanelWindow("panel-tasks");
+
+    expect(createdWindows[0]).toEqual({
+      label: "panel-tasks",
+      options: expect.objectContaining({
+        title: "Peekoo Tasks",
+        width: 400,
+        height: 560,
+        x: 380,
+        y: 100,
+      }),
+    });
+  });
+
+  test("shrinks the plugins panel to fit a short work area and keeps it on screen", async () => {
+    monitorState = {
+      position: { x: 0, y: 0 },
+      size: { width: 1366, height: 728 },
+    };
+    spriteState.outerPosition = { x: 400, y: 200, logical: { x: 200, y: 100 } };
+
+    await openPanelWindow("panel-plugins");
+
+    expect(createdWindows[0]).toEqual({
+      label: "panel-plugins",
+      options: expect.objectContaining({
+        title: "Peekoo Plugins",
+        width: 540,
+        height: 696,
+        x: 380,
+        y: 16,
+      }),
+    });
   });
 
   test("saves window state before closing an existing panel", async () => {
