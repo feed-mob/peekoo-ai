@@ -14,7 +14,14 @@ const ScrollArea = React.forwardRef<
     className={cn("relative overflow-hidden", className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit]">
+    {/*
+      Radix renders the viewport's content wrapper with an inline
+      `display: table`, which sizes it to its widest child instead of the
+      viewport. Force it back to block so rows can shrink and `truncate`
+      works; only a vertical scrollbar is rendered, so wider content was
+      being clipped past the panel edge rather than scrolled.
+    */}
+    <ScrollAreaPrimitive.Viewport className="h-full w-full rounded-[inherit] [&>div]:block!">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />
