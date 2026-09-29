@@ -10,7 +10,7 @@ mock.module("@tauri-apps/api/webviewWindow", () => ({
   }),
 }));
 
-import { calculatePanelPosition } from "./use-panel-windows";
+import { calculatePanelPosition, fitPanelSizeToWorkArea } from "./use-panel-windows";
 
 describe("calculatePanelPosition", () => {
   test("uses the sprite position when no work area is available", () => {
@@ -135,5 +135,62 @@ describe("calculatePanelPosition", () => {
     });
 
     expect(position).toEqual({ x: 16, y: 40 });
+  });
+});
+
+describe("fitPanelSizeToWorkArea", () => {
+  test("keeps the configured size when no work area is available", () => {
+    expect(fitPanelSizeToWorkArea({ width: 540, height: 720 })).toEqual({
+      width: 540,
+      height: 720,
+    });
+  });
+
+  test("keeps the configured size when it fits inside the work area", () => {
+    const size = fitPanelSizeToWorkArea(
+      { width: 540, height: 720 },
+      {
+        position: { x: 0, y: 0 },
+        size: { width: 1440, height: 900 },
+      },
+    );
+
+    expect(size).toEqual({ width: 540, height: 720 });
+  });
+
+  test("shrinks a panel taller than the work area to fit inside the margins", () => {
+    const size = fitPanelSizeToWorkArea(
+      { width: 540, height: 720 },
+      {
+        position: { x: 0, y: 0 },
+        size: { width: 1366, height: 728 },
+      },
+    );
+
+    expect(size).toEqual({ width: 540, height: 696 });
+  });
+
+  test("shrinks both dimensions on a very small work area", () => {
+    const size = fitPanelSizeToWorkArea(
+      { width: 540, height: 720 },
+      {
+        position: { x: -800, y: 24 },
+        size: { width: 500, height: 400 },
+      },
+    );
+
+    expect(size).toEqual({ width: 468, height: 368 });
+  });
+
+  test("keeps the configured size when the work area is degenerate", () => {
+    const size = fitPanelSizeToWorkArea(
+      { width: 400, height: 560 },
+      {
+        position: { x: 0, y: 0 },
+        size: { width: 0, height: 20 },
+      },
+    );
+
+    expect(size).toEqual({ width: 400, height: 560 });
   });
 });

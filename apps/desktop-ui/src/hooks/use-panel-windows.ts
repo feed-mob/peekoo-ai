@@ -90,6 +90,29 @@ export function calculatePanelPosition({
   };
 }
 
+function fitDimension(requested: number, available: number): number {
+  return available > 0 ? Math.min(requested, available) : requested;
+}
+
+/**
+ * Shrinks a panel's default size so it fits inside the monitor work area
+ * (minus the screen margin). Without this, a panel taller than a small
+ * laptop screen opens with its bottom edge below the taskbar/dock.
+ */
+export function fitPanelSizeToWorkArea(
+  size: { width: number; height: number },
+  workArea?: WorkAreaBounds,
+): { width: number; height: number } {
+  if (!workArea) {
+    return size;
+  }
+
+  return {
+    width: fitDimension(size.width, workArea.size.width - PANEL_SCREEN_MARGIN * 2),
+    height: fitDimension(size.height, workArea.size.height - PANEL_SCREEN_MARGIN * 2),
+  };
+}
+
 function resolvePanelConfig(
   label: string,
   pluginPanels: PluginPanel[],
@@ -128,20 +151,24 @@ export async function openPanelWindow(
         size: monitor.workArea.size.toLogical(scaleFactor),
       }
     : undefined;
+  const { width: panelWidth, height: panelHeight } = fitPanelSizeToWorkArea(
+    config,
+    workArea,
+  );
   const { x: panelX, y: panelY } = calculatePanelPosition({
     spriteX: spritePosLogical.x,
     spriteY: spritePosLogical.y,
     spriteWidth: spriteSizeLogical.width,
-    panelWidth: config.width,
-    panelHeight: config.height,
+    panelWidth,
+    panelHeight,
     workArea,
   });
 
   return new WebviewWindow(label, {
     url: "/",
     title: config.title,
-    width: config.width,
-    height: config.height,
+    width: panelWidth,
+    height: panelHeight,
     x: panelX,
     y: panelY,
     decorations: false,
